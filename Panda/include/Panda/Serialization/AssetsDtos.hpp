@@ -6,6 +6,7 @@
 
 #include <Foundation/Foundation.hpp>
 #include <Rain/Rain.hpp>
+#include <cstdint>
 #include <variant>
 
 namespace Panda {

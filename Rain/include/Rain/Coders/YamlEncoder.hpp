@@ -2,6 +2,8 @@
 
 #include "Rain/Coder.hpp"
 
+#include <cstdint>
+
 namespace YAML {
 class Emitter;
 }

@@ -2,6 +2,8 @@
 
 #include <Panda/Base/Base.hpp>
 
+#include <cstdint>
+
 namespace Panda::Gizmo {
 
 enum Operation {

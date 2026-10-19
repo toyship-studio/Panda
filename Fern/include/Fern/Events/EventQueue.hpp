@@ -10,6 +10,8 @@
 
 #include <Foundation/CommandBuffer.hpp>
 
+#include <cstdint>
+
 namespace Fern {
 
 class Window;

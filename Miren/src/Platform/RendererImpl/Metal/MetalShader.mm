@@ -293,14 +293,11 @@ void *MetalShader::getPipeline(
 
     NSError *error = nil;
     MTLRenderPipelineReflection *reflection = nil;
-    // BindingInfo == the former ArgumentInfo (the same value 1<<0), the constant is available
-    // since macOS 13 / iOS 16; on iOS with deployment 14 the numerically equal old flag is used.
-#    if defined(PLATFORM_IOS)
+    // Reflection with the binding info of the arguments. The flag is MTLPipelineOptionBindingInfo in
+    // the macOS 15 / iOS 18 SDKs and MTLPipelineOptionArgumentInfo before them, the same value 1 << 0:
+    // the numeric flag builds against any SDK and deployment target (CI builds with Xcode 15.4).
     const MTLPipelineOption reflectionOptions =
         MTLPipelineOptionBufferTypeInfo | static_cast<MTLPipelineOption>(1 << 0);
-#    else
-    const MTLPipelineOption reflectionOptions = MTLPipelineOptionBindingInfo | MTLPipelineOptionBufferTypeInfo;
-#    endif
     id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:descriptor
                                                                                options:reflectionOptions
                                                                             reflection:&reflection

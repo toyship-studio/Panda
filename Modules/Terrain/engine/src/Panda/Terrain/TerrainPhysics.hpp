@@ -4,6 +4,7 @@
 
 #include <box3d/box3d.h>
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

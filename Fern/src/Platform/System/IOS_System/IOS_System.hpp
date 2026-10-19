@@ -2,6 +2,8 @@
 
 #include "Fern/Platform/PlatformSystem.hpp"
 
+#include <cstdint>
+
 namespace Fern {
 
 class IOS_System final : public PlatformSystem {

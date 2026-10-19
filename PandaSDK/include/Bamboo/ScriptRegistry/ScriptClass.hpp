@@ -4,6 +4,7 @@
 #include "Bamboo/Script.hpp"
 #include "Panda/ScriptEngine/ABI/ScriptManifest.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

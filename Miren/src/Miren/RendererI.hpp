@@ -10,6 +10,8 @@
 #include "Miren/Encoder/PassInput.hpp"
 #include "Miren/VertexBufferLayoutData.hpp"
 
+#include <cstdint>
+
 namespace Miren {
 
 class RendererI {

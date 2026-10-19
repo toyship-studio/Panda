@@ -4,6 +4,7 @@
 #include <Miren/Miren.hpp>
 #include "Panda/Base/UUID.hpp"
 #include <array>
+#include <cstdint>
 #include <string>
 
 #include "Panda/Assets/Base/AssetInfo.hpp"

@@ -4,6 +4,7 @@
 #    include <format>
 #endif
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <string_view>
 

@@ -10,6 +10,7 @@
 #include "Base/AssetRef.hpp"
 
 #include <Miren/Miren.hpp>
+#include <cstdint>
 #include <cstdlib>
 
 namespace Panda {

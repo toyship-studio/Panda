@@ -4,6 +4,8 @@
 
 #include "Fern/Events/Event.hpp"
 
+#include <cstdint>
+
 namespace Fern {
 
 class WindowResizeEvent : public Event {

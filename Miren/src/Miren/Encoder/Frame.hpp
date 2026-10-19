@@ -11,6 +11,7 @@
 #include "Miren/Encoder/View.hpp"
 
 #include <Foundation/CommandBuffer.hpp>
+#include <cstdint>
 #include <string_view>
 
 namespace Miren {

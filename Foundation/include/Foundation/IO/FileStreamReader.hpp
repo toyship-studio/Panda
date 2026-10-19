@@ -2,6 +2,7 @@
 
 #include "StreamReaderI.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 

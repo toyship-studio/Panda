@@ -4,6 +4,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <cstdint>
+
 namespace Rain {
 
 class YamlDecoder final : public Decoder {

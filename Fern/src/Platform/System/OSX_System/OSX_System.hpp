@@ -2,6 +2,7 @@
 
 #include "Fern/Platform/PlatformSystem.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 

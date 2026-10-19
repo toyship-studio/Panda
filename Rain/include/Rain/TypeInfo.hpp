@@ -2,6 +2,7 @@
 
 #include "Rain/Base.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

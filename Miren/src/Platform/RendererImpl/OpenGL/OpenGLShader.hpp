@@ -7,6 +7,7 @@
 #include "Miren/VertexBufferLayoutData.hpp"
 #include "Miren/Base.hpp"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 

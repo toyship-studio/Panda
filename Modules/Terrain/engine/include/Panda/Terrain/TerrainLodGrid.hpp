@@ -4,6 +4,7 @@
 #include "Panda/Terrain/TerrainLodSettings.hpp"
 #include "Panda/Renderer/RuntimeMesh.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>

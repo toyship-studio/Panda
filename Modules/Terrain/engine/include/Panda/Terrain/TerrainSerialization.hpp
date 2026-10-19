@@ -5,6 +5,7 @@
 #include "Panda/Terrain/TerrainData3D.hpp"
 #include "Panda/Terrain/TerrainTrees.hpp"
 
+#include <cstdint>
 #include <istream>
 #include <ostream>
 

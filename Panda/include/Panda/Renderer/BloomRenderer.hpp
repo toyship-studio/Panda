@@ -6,6 +6,8 @@
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 // Settings of the camera's built-in bloom (CameraComponent.bloom*).

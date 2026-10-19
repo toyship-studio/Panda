@@ -12,6 +12,7 @@
 #include "Memory.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 
 namespace Foundation {

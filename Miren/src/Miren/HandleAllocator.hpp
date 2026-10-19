@@ -6,6 +6,8 @@
 
 #include "Miren/Base.hpp"
 
+#include <cstdint>
+
 namespace Miren {
 
 template<typename T, uint32_t Max>

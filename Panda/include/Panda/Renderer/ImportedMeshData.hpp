@@ -2,6 +2,8 @@
 
 #include "Panda/Renderer/Vertex.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 struct ImportedPrimitiveData {

@@ -3,6 +3,7 @@
 #include <Panda/Assets/Base/AssetHandler.hpp>
 #include <Panda/Assets/Base/AssetInfo.hpp>
 #include <Rain/Coders/BinaryDecoder.hpp>
+#include <cstdint>
 #include <map>
 
 namespace Panda {

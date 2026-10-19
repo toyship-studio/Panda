@@ -4,6 +4,7 @@
 
 #include <Miren/Miren.hpp>
 #include <array>
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <Rain/Rain.hpp>
 

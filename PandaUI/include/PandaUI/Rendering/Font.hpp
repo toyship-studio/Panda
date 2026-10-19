@@ -4,6 +4,7 @@
 #include "PandaUI/Core/TextureHandle.hpp"
 #include "PandaUI/Rendering/TextLayout.hpp" // FontFamily, FontWeight
 
+#include <cstdint>
 #include <memory>
 #include <string_view>
 #include <unordered_map>

@@ -2,6 +2,8 @@
 
 #include "Panda/ScriptEngine/ABI/ScriptApi.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 class Entity;

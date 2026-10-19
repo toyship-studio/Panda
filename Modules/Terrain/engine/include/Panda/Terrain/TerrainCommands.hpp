@@ -6,6 +6,7 @@
 #include "Panda/WorldCommands/WorldCommand.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <vector>
 
 // Terrain undo commands (the world history stack): strokes of the height/layer, flora mask and

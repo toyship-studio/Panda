@@ -5,6 +5,8 @@
 #include <Miren/Miren.hpp>
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // GPU mesh generated at runtime (chunks of world systems, script geometry): owns the

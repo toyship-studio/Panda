@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>

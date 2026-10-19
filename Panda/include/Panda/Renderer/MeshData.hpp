@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 struct MeshData {

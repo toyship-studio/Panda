@@ -4,6 +4,7 @@
 #include "Panda/Physics/EntityBodies.hpp"
 #include "Panda/Physics/PhysicsComponents.hpp"
 
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 

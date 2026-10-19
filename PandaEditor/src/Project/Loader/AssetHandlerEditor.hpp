@@ -10,6 +10,7 @@
 
 #include <Panda/Assets/Base/AssetHandler.hpp>
 #include <Panda/Renderer/MaterialData.hpp>
+#include <cstdint>
 #include <map>
 
 namespace Panda {

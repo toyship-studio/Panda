@@ -5,6 +5,8 @@
 #include "Fern/Events/Event.hpp"
 #include "Fern/Events/Key.hpp"
 
+#include <cstdint>
+
 namespace Fern {
 
 struct CharacterInputEvent : public Event {

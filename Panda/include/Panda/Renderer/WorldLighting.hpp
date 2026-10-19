@@ -5,6 +5,7 @@
 #include "Panda/Base/Base.hpp"
 
 #include <array>
+#include <cstdint>
 #include <glm/glm.hpp>
 
 namespace Panda {

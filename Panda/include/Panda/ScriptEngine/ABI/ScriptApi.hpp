@@ -4,6 +4,8 @@
 #include <PandaUI/Rendering/DrawList.hpp>
 #include <PandaUI/Core/Event.hpp>
 
+#include <cstdint>
+
 namespace Panda::Scripting {
 
 constexpr uint32_t SCRIPT_ABI_VERSION = 29;

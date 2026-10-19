@@ -8,6 +8,7 @@
 #include "Miren/MirenStates.hpp"
 #include "RenderPassInputs.hpp"
 
+#include <cstdint>
 #include <string_view>
 
 namespace Miren {

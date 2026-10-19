@@ -9,6 +9,8 @@
 
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // Frame inputs for the chain: the scene color is required, the rest — if present (handle validity).

@@ -5,6 +5,8 @@
 #include <Rain/Rain.hpp>
 #include "Panda/Base/UUID.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 template<size_t L, typename T>

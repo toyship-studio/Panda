@@ -12,6 +12,7 @@
 #include <d3d11.h>
 
 #include <atomic>
+#include <cstdint>
 
 namespace Fern {
 

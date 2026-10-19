@@ -7,6 +7,8 @@
 #include <Foundation/Assert.hpp>
 #include <Foundation/Logger.hpp>
 
+#include <cstdint>
+
 namespace Miren {
 
 #define MAX_VERTEX_LAYOUT_ELEMENTS 20

@@ -9,6 +9,8 @@
 
 #include <Foundation/CommandBuffer.hpp>
 
+#include <cstdint>
+
 namespace Miren {
 
 enum RendererCommandType {

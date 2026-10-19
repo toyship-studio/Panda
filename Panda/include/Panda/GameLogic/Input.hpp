@@ -10,6 +10,8 @@
 #include <Fern/Events/Key.hpp>
 #include <Fern/Base/Base.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 class Input {

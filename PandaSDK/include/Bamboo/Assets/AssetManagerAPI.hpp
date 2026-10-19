@@ -2,6 +2,8 @@
 
 #include "Bamboo/Base.hpp"
 
+#include <cstdint>
+
 namespace Bamboo {
 
 namespace AssetManagerAPI {

@@ -4,6 +4,7 @@
 #include "VertexBufferLayoutData.hpp"
 
 #include <Foundation/Foundation.hpp>
+#include <cstdint>
 #include <cstdlib>
 
 #if MIREN_LOG_ENABLED == 1

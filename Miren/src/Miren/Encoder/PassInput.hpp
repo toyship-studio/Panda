@@ -5,6 +5,7 @@
 #include <Foundation/Logger.hpp>
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <string_view>
 

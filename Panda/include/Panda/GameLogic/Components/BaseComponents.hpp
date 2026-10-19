@@ -12,6 +12,8 @@
 
 #include <Foundation/Foundation.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // Tombstone: the entity was deleted by an editor command but stays in the registry for undo —

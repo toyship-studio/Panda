@@ -12,6 +12,7 @@
 #include "Panda/Terrain/TerrainLodGrid.hpp"
 #include "Panda/Terrain/TerrainTrees.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 

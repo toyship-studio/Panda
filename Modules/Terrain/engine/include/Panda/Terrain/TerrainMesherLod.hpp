@@ -6,6 +6,8 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // Far LOD meshes of the terrain: a decimated heightfield of the top surface with skirts along the

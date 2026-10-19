@@ -2,6 +2,7 @@
 
 #include "Rain/Coder.hpp"
 
+#include <cstdint>
 #include <vector>
 #include <rapidjson/document.h>
 #include <rapidjson/reader.h>

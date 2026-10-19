@@ -8,6 +8,7 @@
 #include <Panda/Renderer/PostprocessingPipeline.hpp>
 #include <Panda/ScriptEngine/ScriptEngine.hpp>
 
+#include <cstdint>
 #include <memory>
 
 namespace Panda {

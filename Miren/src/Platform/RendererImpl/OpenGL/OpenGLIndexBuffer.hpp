@@ -6,6 +6,8 @@
 
 #include "Miren/VertexBufferLayoutData.hpp"
 
+#include <cstdint>
+
 namespace Miren {
 
 class OpenGLIndexBuffer {

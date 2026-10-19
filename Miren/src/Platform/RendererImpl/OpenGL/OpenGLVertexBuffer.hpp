@@ -7,6 +7,8 @@
 #include "Miren/VertexBufferLayoutData.hpp"
 #include "Miren/Base.hpp"
 
+#include <cstdint>
+
 namespace Miren {
 
 class OpenGLVertexBuffer {

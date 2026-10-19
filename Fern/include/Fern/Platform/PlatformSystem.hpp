@@ -4,6 +4,7 @@
 #include "Fern/Window/Window.hpp"
 
 #include <Foundation/IO/StreamReaderI.hpp>
+#include <cstdint>
 #include <filesystem>
 
 namespace Fern {

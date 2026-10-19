@@ -9,6 +9,8 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include <cstdint>
+
 namespace Fern {
 
 // GLFW and GLAD based context

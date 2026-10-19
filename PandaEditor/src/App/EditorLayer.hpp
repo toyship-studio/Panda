@@ -19,6 +19,7 @@
 #include <Panda/Renderer/PostprocessingPipeline.hpp>
 #include <Panda/UI/PandaUIImpl.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 

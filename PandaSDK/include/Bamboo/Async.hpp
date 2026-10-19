@@ -30,6 +30,7 @@
 #include <PandaAsync/PandaAsync.hpp>
 
 #include <concepts>
+#include <cstdint>
 #include <functional>
 #include <type_traits>
 #include <utility>

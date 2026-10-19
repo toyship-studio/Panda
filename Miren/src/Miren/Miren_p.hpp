@@ -24,6 +24,7 @@
 
 #include <thread>
 
+#include <cstdint>
 #include <vector>
 
 namespace Miren {

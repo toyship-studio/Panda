@@ -4,6 +4,8 @@
 
 #include <Rain/Rain.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 struct TransformComponentDto : public Rain::Codable {

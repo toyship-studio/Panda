@@ -5,6 +5,8 @@
 
 #include <Rain/Rain.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // Emitter DTO in .world (key particleEmitterComponent); the defaults mirror the component.

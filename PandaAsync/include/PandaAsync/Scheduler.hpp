@@ -3,6 +3,7 @@
 #include <PandaAsync/Context.hpp>
 #include <PandaAsync/JobHandle.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>

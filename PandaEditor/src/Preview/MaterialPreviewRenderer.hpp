@@ -6,6 +6,7 @@
 #include <Panda/Renderer/Vertex.hpp>
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

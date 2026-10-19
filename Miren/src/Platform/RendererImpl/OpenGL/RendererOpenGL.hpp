@@ -12,6 +12,8 @@
 #include "OpenGLIndexBuffer.hpp"
 #include "OpenGLVertexBuffer.hpp"
 
+#include <cstdint>
+
 namespace Miren {
 
 class RendererOpenGL : public RendererI {

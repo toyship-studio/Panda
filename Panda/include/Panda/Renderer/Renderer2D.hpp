@@ -8,6 +8,8 @@
 
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 /// Renderer2D is responsible for drawing primitive two-dimensional shapes.

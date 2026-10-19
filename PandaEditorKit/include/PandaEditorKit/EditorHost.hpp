@@ -8,6 +8,7 @@
 #include <Panda/WorldCommands/WorldCommand.hpp>
 #include <PandaUI/PandaUI.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>

@@ -6,6 +6,8 @@
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/ostreamwrapper.h>
 
+#include <cstdint>
+
 namespace Rain {
 
 class JsonEncoder final : public Encoder {

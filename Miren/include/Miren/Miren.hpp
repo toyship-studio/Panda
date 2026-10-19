@@ -9,6 +9,7 @@
 #include "VertexBufferLayoutData.hpp"
 
 #include <Fern/GraphicsContext/GraphicsContext.hpp>
+#include <cstdint>
 #include <string_view>
 #include <vector>
 

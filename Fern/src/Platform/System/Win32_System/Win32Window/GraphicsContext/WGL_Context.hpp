@@ -9,6 +9,8 @@
 #endif
 #include <windows.h>
 
+#include <cstdint>
+
 namespace Fern {
 
 class WGL_Context final : public GraphicsContext {

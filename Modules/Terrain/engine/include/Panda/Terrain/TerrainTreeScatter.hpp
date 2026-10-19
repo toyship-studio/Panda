@@ -4,6 +4,7 @@
 #include "Panda/Terrain/TerrainData2D.hpp"
 #include "Panda/Terrain/TerrainTrees.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

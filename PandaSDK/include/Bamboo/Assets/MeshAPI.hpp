@@ -2,6 +2,7 @@
 
 #include "Bamboo/Base.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace Bamboo {

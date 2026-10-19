@@ -2,6 +2,8 @@
 
 #include <Foundation/PlatformDetection.hpp>
 
+#include <cstdint>
+
 #if defined(PLATFORM_MACOS) || defined(PLATFORM_IOS)
 
 #    include "Miren/Base.hpp"

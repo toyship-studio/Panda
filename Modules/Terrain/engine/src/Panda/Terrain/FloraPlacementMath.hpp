@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <glm/glm.hpp>
 
 // Ingredients of the vegetation placement weight — the SINGLE source of the formulas: they are

@@ -5,6 +5,7 @@
 #include <PandaUI/Core/Event.hpp>
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 

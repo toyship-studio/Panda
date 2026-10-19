@@ -2,6 +2,7 @@
 
 #include "Miren/Base.hpp"
 #include <Fern/GraphicsContext/GraphicsContext.hpp>
+#include <cstdint>
 #include <vector>
 
 namespace Miren {

@@ -7,6 +7,8 @@
 #include <Miren/Miren.hpp>
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 struct ImportedPrimitive {

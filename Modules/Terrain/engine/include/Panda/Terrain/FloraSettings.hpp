@@ -4,6 +4,7 @@
 #include "Panda/Base/Base.hpp"
 #include "Panda/Base/ColorSpace.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

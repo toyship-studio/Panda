@@ -5,6 +5,7 @@
 #include "Bamboo/ScriptRegistry/ScriptClass.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <unordered_map>
 

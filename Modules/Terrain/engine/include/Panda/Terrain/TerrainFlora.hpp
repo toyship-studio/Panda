@@ -10,6 +10,7 @@
 
 #include <Miren/Base.hpp>
 #include <glm/glm.hpp>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <vector>

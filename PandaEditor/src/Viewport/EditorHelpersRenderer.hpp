@@ -4,6 +4,8 @@
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Renderer/Std140Buffer.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 class EditorHelpersRenderer final {

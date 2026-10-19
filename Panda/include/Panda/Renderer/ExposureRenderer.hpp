@@ -4,6 +4,8 @@
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 // Settings of the camera's auto exposure (CameraComponent.autoExposure*).

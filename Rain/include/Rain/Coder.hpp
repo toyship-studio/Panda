@@ -3,6 +3,7 @@
 #include "TypeInfo.hpp"
 #include "UUID.hpp"
 
+#include <cstdint>
 #include <istream>
 #include <ostream>
 #include <filesystem>

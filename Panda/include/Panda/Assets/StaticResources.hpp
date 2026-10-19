@@ -4,6 +4,8 @@
 #include "Panda/Assets/RuntimeMeshAsset.hpp"
 #include "Panda/Assets/MaterialAsset.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 enum class PrimitiveMeshKind : uint32_t; // GameLogic/Components/BaseComponents.hpp

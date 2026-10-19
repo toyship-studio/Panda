@@ -3,6 +3,8 @@
 #include "Rain/Coder.hpp"
 #include "Rain/Coders/BinaryCoder.hpp"
 
+#include <cstdint>
+
 namespace Rain {
 
 class BinaryEncoder final : public Encoder {

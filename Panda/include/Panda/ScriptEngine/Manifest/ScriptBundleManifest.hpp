@@ -2,6 +2,7 @@
 
 #include "Panda/ScriptEngine/ABI/ScriptManifest.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>

@@ -2,6 +2,8 @@
 
 #include "Panda/Renderer/MaterialData.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 // System values of material fields: a field with such a name in ANY material is set by the

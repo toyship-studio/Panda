@@ -9,6 +9,8 @@
 #include <Panda/Terrain/TerrainBrush2D.hpp>
 #include <Panda/Terrain/TerrainBrush3D.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 // Terrain brush tool. Only one is active: each has its own set of parameters in the form.

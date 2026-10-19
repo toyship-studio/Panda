@@ -6,6 +6,7 @@
 #include "Base/AssetImporterBase.hpp"
 
 #include <Miren/Miren.hpp>
+#include <cstdint>
 #include <cstdlib>
 
 namespace Panda {

@@ -16,6 +16,7 @@
 
 #include <Miren/Miren.hpp>
 #include <array>
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

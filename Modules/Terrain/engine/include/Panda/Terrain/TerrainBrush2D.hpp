@@ -2,6 +2,8 @@
 
 #include "Panda/Terrain/TerrainData2D.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 enum class TerrainBrushMode2D {

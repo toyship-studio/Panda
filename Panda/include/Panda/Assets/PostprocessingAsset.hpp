@@ -3,6 +3,7 @@
 #include "Panda/Assets/MaterialAsset.hpp"
 #include "Base/AssetRef.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

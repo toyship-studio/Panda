@@ -8,6 +8,8 @@
 
 #include <PandaAsync/Scheduler.hpp>
 
+#include <cstdint>
+
 namespace Fern {
 class Window;
 }

@@ -7,6 +7,7 @@
 
 #include <PandaUI/Core/TextureHandle.hpp>
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>

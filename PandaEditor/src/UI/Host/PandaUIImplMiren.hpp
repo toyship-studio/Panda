@@ -3,6 +3,7 @@
 #include <Miren/Miren.hpp>
 #include <PandaUI/PandaUI.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 

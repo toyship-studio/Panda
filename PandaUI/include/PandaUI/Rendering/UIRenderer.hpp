@@ -6,6 +6,7 @@
 #include "PandaUI/Rendering/PrimBuffer.hpp"
 #include "PandaUI/Core/TextureHandle.hpp"
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 

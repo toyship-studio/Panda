@@ -2,6 +2,7 @@
 
 #include <PandaUI/PandaUI.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 

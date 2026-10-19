@@ -4,6 +4,8 @@
 #include "Panda/Physics/EntityBodies.hpp"
 #include "Panda/Physics/PhysicsComponents.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 class World;

@@ -4,6 +4,8 @@
 
 #include <Miren/Miren.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 struct Vertex {

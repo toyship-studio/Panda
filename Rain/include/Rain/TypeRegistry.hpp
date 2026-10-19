@@ -4,6 +4,7 @@
 #include "Coder.hpp"
 #include "TypeName.hpp"
 
+#include <cstdint>
 #include <unordered_map>
 #include <string>
 #include <optional>

@@ -6,6 +6,7 @@
 #include "Panda/ScriptEngine/InnerScriptHook.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>

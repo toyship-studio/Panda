@@ -4,6 +4,7 @@
 
 #include <Rain/Rain.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

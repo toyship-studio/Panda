@@ -3,6 +3,7 @@
 #include "Panda/ScriptEngine/ABI/ScriptManifest.hpp"
 #include "Bamboo/ScriptRegistry/ScriptClass.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

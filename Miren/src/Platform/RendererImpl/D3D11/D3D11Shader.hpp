@@ -2,6 +2,8 @@
 
 #include <Foundation/PlatformDetection.hpp>
 
+#include <cstdint>
+
 #ifdef PLATFORM_WINDOWS
 
 #    include "Miren/Base.hpp"

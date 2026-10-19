@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Foundation/Allocator.hpp>
+#include <cstdint>
 #include <cstring>
 
 namespace Foundation {

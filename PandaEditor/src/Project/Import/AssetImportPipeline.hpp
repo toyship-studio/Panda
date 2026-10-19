@@ -3,6 +3,7 @@
 #include <Panda/Assets/Base/AssetInfo.hpp>
 #include <Panda/Assets/Base/Path.hpp>
 
+#include <cstdint>
 #include <map>
 
 namespace Panda {

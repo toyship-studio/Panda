@@ -5,6 +5,8 @@
 #include <Foundation/Foundation.hpp>
 #include <Rain/Rain.hpp>
 
+#include <cstdint>
+
 namespace Panda {
 
 class AssetHandler;

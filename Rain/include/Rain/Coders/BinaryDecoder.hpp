@@ -4,6 +4,7 @@
 #include "Rain/Coders/BinaryCoder.hpp"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace Rain {
 

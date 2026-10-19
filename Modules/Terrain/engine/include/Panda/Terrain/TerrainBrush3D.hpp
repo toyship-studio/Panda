@@ -2,6 +2,7 @@
 
 #include "Panda/Terrain/TerrainData3D.hpp"
 
+#include <cstdint>
 #include <unordered_map>
 
 namespace Panda {

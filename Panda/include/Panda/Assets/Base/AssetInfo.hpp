@@ -7,6 +7,7 @@
 
 #include <Rain/Rain.hpp>
 #include <Miren/Miren.hpp>
+#include <cstdint>
 #include <variant>
 
 namespace Panda {

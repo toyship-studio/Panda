@@ -6,6 +6,7 @@
 #include "Panda/Terrain/TerrainData3D.hpp"
 #include "Panda/Terrain/TerrainLodGrid.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace Panda {

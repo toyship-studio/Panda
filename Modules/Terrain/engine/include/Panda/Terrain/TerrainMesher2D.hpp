@@ -3,6 +3,8 @@
 #include "Panda/Renderer/MeshData.hpp"
 #include "Panda/Terrain/TerrainData2D.hpp"
 
+#include <cstdint>
+
 namespace Panda {
 
 namespace TerrainMesher2D {

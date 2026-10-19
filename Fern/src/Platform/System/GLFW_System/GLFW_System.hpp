@@ -1,5 +1,6 @@
 #include "Fern/Platform/PlatformSystem.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 #include <GLFW/glfw3.h>
