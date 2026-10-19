@@ -50,6 +50,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -685,22 +686,14 @@ int main(int argc, const char **argv) {
         terrainComponent.physicsEnabled = false;
     }
     cubeEntity.getTransform().setPosition({0.f, 1.5f, 0.f});
-    // Let the terrain LOD grid build the chunks (background wave + budget), then measure.
-    cameraPosition = lookCamera;
-    viewProj = lowProjection * glm::lookAt(lookCamera, glm::vec3(-3.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
-    skyViewProj = viewProj;
-    for (int frame = 0; frame < 30; frame++) {
-        world->update(1.0 / 60.0, {.viewProj = viewProj, .skyViewProj = skyViewProj, .cameraPosition = cameraPosition});
-        Fern::pollEvents();
-        Miren::frame();
-    }
     // The ground height on the measurement line is known analytically (x + 48, z + 48 in local
     // space).
     const auto groundHeight = [](float worldX) {
         return 0.4f * std::sin((worldX + 48.f) * 0.31f) * std::cos(48.f * 0.23f);
     };
-    // The edge along x at y = h(x): projection of the points with the real surface height.
-    const auto terrainEdgeX = [&](const std::vector<uint8_t> &frame, const glm::mat4 &vp) {
+    // The edge along x at y = h(x): projection of the points with the real surface height. No
+    // crossing — no edge: the terrain is not on screen yet, or there is no shadow on it.
+    const auto terrainEdgeX = [&](const std::vector<uint8_t> &frame, const glm::mat4 &vp) -> std::optional<float> {
         const auto brightnessAt = [&](float x) { return sampleWorld(frame, vp, glm::vec3(x, groundHeight(x), 0.f)); };
         const float dark = brightnessAt(-2.5f);
         const float bright = brightnessAt(-4.5f);
@@ -716,8 +709,22 @@ int main(int argc, const char **argv) {
             }
             previous = current;
         }
-        return -2.6f;
+        return std::nullopt;
     };
+    // The LOD grid builds in a background wave plus a per-frame budget: wait until the receiver is
+    // on screen (the shadow edge is found on the terrain), with a cap. A slow machine (the CI
+    // runner) needs more than any fixed number of frames.
+    cameraPosition = lookCamera;
+    viewProj = lowProjection * glm::lookAt(lookCamera, glm::vec3(-3.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
+    skyViewProj = viewProj;
+    int warmupRounds = 0;
+    bool terrainOnScreen = false;
+    while (!terrainOnScreen && warmupRounds < 200) {
+        renderAndRead();
+        warmupRounds++;
+        terrainOnScreen = terrainEdgeX(pixels, viewProj).has_value();
+    }
+    check("terrain receiver built and on screen", terrainOnScreen, static_cast<float>(warmupRounds), 0.f, 0.f);
     constexpr int MOTION_FRAMES = 12;
     std::vector<std::vector<uint8_t>> motionFrames(MOTION_FRAMES, std::vector<uint8_t>(TARGET_SIZE * TARGET_SIZE * 4));
     std::vector<glm::mat4> motionViewProj(MOTION_FRAMES);
@@ -748,14 +755,24 @@ int main(int argc, const char **argv) {
     }
     edgeMin = 1e9f;
     edgeMax = -1e9f;
+    bool edgeInEveryFrame = true;
     for (int frame = 0; frame < MOTION_FRAMES; frame++) {
-        const float edge = terrainEdgeX(motionFrames[frame], motionViewProj[frame]);
-        std::printf("  frame %2d: edge x = %.3f\n", frame, edge);
-        edgeMin = std::min(edgeMin, edge);
-        edgeMax = std::max(edgeMax, edge);
+        const std::optional<float> edge = terrainEdgeX(motionFrames[frame], motionViewProj[frame]);
+        if (!edge) {
+            std::printf("  frame %2d: no shadow edge on the terrain\n", frame);
+            edgeInEveryFrame = false;
+            continue;
+        }
+        std::printf("  frame %2d: edge x = %.3f\n", frame, *edge);
+        edgeMin = std::min(edgeMin, *edge);
+        edgeMax = std::max(edgeMax, *edge);
     }
     check(
-        "terrain: edge stable under continuous motion", edgeMax - edgeMin < 0.01f, edgeMin, edgeMax, edgeMax - edgeMin
+        "terrain: edge stable under continuous motion",
+        edgeInEveryFrame && edgeMax - edgeMin < 0.01f,
+        edgeMin,
+        edgeMax,
+        edgeMax - edgeMin
     );
     world->getGraphicsSettings().shadows.tileSize = 1024;
 #endif
