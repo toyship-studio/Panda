@@ -1,5 +1,7 @@
 #include "Panda/Application/LayerStack.hpp"
 
+#include <algorithm>
+
 namespace Panda {
 
 LayerStack::~LayerStack() {

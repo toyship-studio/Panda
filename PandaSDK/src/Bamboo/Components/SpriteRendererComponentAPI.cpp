@@ -35,7 +35,7 @@ namespace SpriteRendererComponentAPI {
     TextureHandle getTexture(EntityHandle entity) {
         Panda::Handle handle = 0;
         Panda::ExternalCalls::spriteRendererComponent_GetTexture(entity.id, &handle);
-        return TextureHandle(handle);
+        return TextureHandle{handle};
     }
 } // namespace SpriteRendererComponentAPI
 

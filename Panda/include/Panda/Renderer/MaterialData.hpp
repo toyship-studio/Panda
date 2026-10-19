@@ -2,6 +2,10 @@
 
 #include "Panda/Serialization/AssetsDtos.hpp"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace Panda {
 
 struct MaterialField {
@@ -13,6 +17,14 @@ struct MaterialField {
     // shown in the inspector. Orthogonal to the type: a RUNTIME texture stays TEXTURE, a
     // vector — VEC4.
     bool runtime = false;
+
+    MaterialField() = default;
+
+    MaterialField(std::string name, MaterialFieldType type, MaterialFieldValue value, bool runtime = false)
+        : name(std::move(name))
+        , type(type)
+        , value(std::move(value))
+        , runtime(runtime) {}
 
     operator bool() const {
         return !name.empty();

@@ -21,7 +21,7 @@ namespace AssetManagerAPI {
         if (!Internal::requireMainThreadApi("AssetManagerAPI::createTextureRGBA8")) { return {}; }
         Panda::Handle textureHandle;
         Panda::ExternalCalls::texture_CreateRGBA8(width, height, &textureHandle);
-        return TextureHandle(textureHandle);
+        return TextureHandle{textureHandle}; // an aggregate: braces build on every compiler
     }
 
     void deleteTexture(TextureHandle texture) {
