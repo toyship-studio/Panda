@@ -75,9 +75,11 @@ forest comes from the Occlusion Volume.
 
 - Clamp-to-border is a device capability on Metal (Apple GPU family 7 and later, the Mac family of
   Intel and AMD): without it the backend clamps to the edge, and the shadow map beyond its atlas
-  reads the edge depth instead of "lit". The paravirtual GPU of the CI runners is such a device,
-  and the Metal validation layer there stops the process on a descriptor with a border color, so
-  the backend sets one only with the border mode (`MetalResources.mm`, `acquireSampler`).
+  reads the edge depth instead of "lit". The paravirtual GPU of the CI runners is such a device:
+  it reports the Mac family of its host, so `supportsFamily` cannot tell, and the backend
+  recognizes it by name ("Paravirtual"); the Metal validation layer there stops the process on a
+  descriptor with a border color, so the backend sets one only with the border mode
+  (`MetalResources.mm`, `supportsBorderColor` / `acquireSampler`).
 - `inverse(viewProj)` with far = 20000 is badly conditioned in float32: the cascade sphere
   breathed and shadows trembled in motion. The camera frustum is built from the SIDE planes of
   the matrix (`extractCameraRays`, rows 0/1/3); the orthographic case goes through the inverse.

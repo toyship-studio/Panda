@@ -87,19 +87,28 @@ namespace {
     }
 
     // Sampler border colors are a device capability: Apple GPU family 7 (A14, M1) and later, and the
-    // Mac family (Intel and AMD). The paravirtual GPU of a macOS virtual machine (the CI runners) has
-    // none, and the Metal validation layer stops the process on a descriptor that asks for one.
+    // Mac family (Intel and AMD). The paravirtual GPU of a macOS virtual machine (the CI runners)
+    // reports the Mac family of its host but has no border colors, and the Metal validation layer
+    // stops the process on a descriptor that asks for one; the only way to tell it apart is its name.
     bool supportsBorderColor(id<MTLDevice> device) {
+        static bool decided = false;
+        static bool supported = false;
+        if (decided) { return supported; }
+        decided = true;
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations" // Mac2: the Intel and AMD Macs the engine still runs on
-        static const bool supported =
-            [device supportsFamily:MTLGPUFamilyApple7] || [device supportsFamily:MTLGPUFamilyMac2];
+        const bool apple7 = [device supportsFamily:MTLGPUFamilyApple7];
+        const bool mac2 = [device supportsFamily:MTLGPUFamilyMac2];
 #    pragma clang diagnostic pop
-        static bool reported = false;
-        if (!supported && !reported) {
-            reported = true;
-            LOG_INFO("METAL: the device has no sampler border colors; clamp-to-border samplers clamp to the edge");
-        }
+        const bool paravirtual = [device.name containsString:@"Paravirtual"];
+        supported = (apple7 || mac2) && !paravirtual;
+        LOG_INFO(
+            "METAL: device %s (Apple7 %d, Mac2 %d): sampler border colors %s",
+            device.name.UTF8String,
+            apple7 ? 1 : 0,
+            mac2 ? 1 : 0,
+            supported ? "yes" : "no, clamp-to-border samplers clamp to the edge"
+        );
         return supported;
     }
 
