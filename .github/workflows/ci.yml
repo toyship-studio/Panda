@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "context/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (Metal, Debug)
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch_shader_tools.sh') }}
+      - name: Fetch the shader tools
+        run: sh scripts/fetch_shader_tools.sh
+      - name: Configure
+        run: sh scripts/configure_panda_debug.sh
+      - name: Build the editor, the smoke test and the SDK core package
+        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke PandaSDKCorePackage
+      - name: Smoke test
+        # The Apple Silicon runners have a logged-in session and a paravirtualized GPU: Metal works.
+        run: sh scripts/panda_run_smoke.sh
+        env:
+          PANDA_BUILD_PARALLEL: 4
+
+  macos-no-modules:
+    name: macOS without modules (the core knows no module by name)
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch_shader_tools.sh') }}
+      - name: Fetch the shader tools
+        run: sh scripts/fetch_shader_tools.sh
+      - name: Configure with every module off
+        run: cmake -S . -B cmake-build-nomodules -DCMAKE_BUILD_TYPE=Debug -DPANDA_MODULES=OFF
+      - name: Build the editor and the smoke test
+        run: cmake --build cmake-build-nomodules --parallel 4 --target PandaEditor PandaSmoke
+      - name: Smoke test
+        run: sh scripts/panda_run_smoke.sh
+        env:
+          PANDA_BUILD_DIR: ${{ github.workspace }}/cmake-build-nomodules
+          PANDA_BUILD_PARALLEL: 4
+
+  windows:
+    name: Windows (D3D11, Release)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ hashFiles('scripts/fetch_shader_tools.ps1') }}
+      - name: Fetch the shader tools
+        shell: pwsh
+        run: scripts/fetch_shader_tools.ps1
+      - name: Configure
+        shell: pwsh
+        run: scripts/configure_panda_release.ps1 -Generator VisualStudio
+      - name: Build
+        shell: pwsh
+        run: scripts/build_panda_release.ps1 -Parallel 4
+      # No smoke test here yet: the Windows runners have no GPU for a D3D11 device.
+
+  linux:
+    name: Linux (OpenGL, Debug)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the system packages
+        # The list of the README: X11 and GL for GLFW, GTK3 for the native dialogs.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config \
+            curl ca-certificates libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev libgl1-mesa-dev libgtk-3-dev
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch_shader_tools.sh') }}
+      - name: Fetch the shader tools
+        run: sh scripts/fetch_shader_tools.sh
+      - name: Configure
+        run: sh scripts/configure_panda_debug.sh -G Ninja
+      - name: Build the editor, the smoke test and the SDK core package
+        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke PandaSDKCorePackage
+      # No smoke test here: the Ubuntu runners have no GPU for an OpenGL context.

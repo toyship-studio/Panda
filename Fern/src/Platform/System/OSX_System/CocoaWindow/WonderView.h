@@ -1,0 +1,16 @@
+//
+//  GameViewController.h
+//
+//  Created by Andreichev Mikhail on 07.02.2025.
+//
+
+#import <Cocoa/Cocoa.h>
+
+@interface WonderView : NSView <NSTextInputClient> {
+    NSMutableAttributedString *markedText;
+}
+
+@property(nonatomic, assign) int ignoreMouseEvents;
+@property(nonatomic, assign) void *eventWindow;
+
+@end

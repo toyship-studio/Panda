@@ -1,0 +1,32 @@
+// Postprocess pass fragment shader. The engine feeds (declare only what you need):
+//   inputTexture    — frame from the previous pass (or the scene for the first pass),
+//   originalTexture — frame before the whole chain,
+//   emissiveTexture — scene emissive buffer (what glows and in which color),
+//   depthTexture    — scene depth (non-linear; linearize with cameraNearFar),
+//   POST_DATA       — resolutionTime.xy = pass target size px, .z = time sec; cameraNearFar.xy = near/far.
+// The chain runs in LINEAR HDR (values may exceed 1.0); the engine applies the final
+// tonemap + sRGB itself after the chain — do not gamma-correct here.
+// Any extra uniforms/textures you declare become editable material fields.
+cbuffer POST_DATA {
+    float4 resolutionTime;
+    float4 cameraNearFar;
+};
+
+Texture2D inputTexture;
+SamplerState inputTextureSampler;
+Texture2D originalTexture;
+SamplerState originalTextureSampler;
+
+// The PS input mirrors the VS output including SV_POSITION: DXBC links stages by register.
+struct PSInput {
+    float4 position : SV_POSITION;
+    float2 fragTexCoord : TEXCOORD0;
+};
+
+float4 main(PSInput input) : SV_Target0 {
+    float4 color = inputTexture.Sample(inputTextureSampler, input.fragTexCoord);
+    // Example effect: vignette. Replace with your own.
+    float2 centered = input.fragTexCoord - 0.5;
+    float vignette = 1.0 - dot(centered, centered) * 0.9;
+    return float4(color.rgb * vignette, color.a);
+}

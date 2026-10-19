@@ -1,0 +1,237 @@
+//
+// Created by Admin on 11.02.2022.
+//
+
+#include "OpenGLShader.hpp"
+#include "Foundation/Logger.hpp"
+#include "Miren/Base.hpp"
+#include "OpenGLBase.hpp"
+
+#include <Foundation/Defer.hpp>
+#include <sstream>
+#include <fstream>
+#include <string>
+
+namespace Miren {
+
+std::string OpenGLShader::getOpenGlUboName(const char *name) {
+    if (name == nullptr) { return {}; }
+    std::string result = name;
+    if (result.rfind("type_", 0) != 0) { result = "type_" + result; }
+    return result;
+}
+
+std::string OpenGLShader::getOpenGlTextureName(const char *name) {
+    if (name == nullptr) { return {}; }
+    std::string textureName = name;
+    if (textureName.rfind("SPIRV_Cross_Combined", 0) == 0) { return textureName; }
+    return "SPIRV_Cross_Combined" + textureName + textureName + "Sampler";
+}
+
+OpenGLShader::OpenGLShader()
+    : m_id(-1)
+    , m_uniformLocationCache()
+    , m_uboBindings()
+    , m_uboBuffers()
+    , m_uboIndices()
+    , m_textureBindings() {}
+
+void OpenGLShader::create(ProgramCreate create) {
+    DEFER({
+        create.m_vertexBinary.release();
+        create.m_fragmentBinary.release();
+    });
+    PND_ASSERT(m_id == -1, "PROGRAM ALREADY CREATED");
+    unsigned int vertex, fragment;
+    // vertex shader
+    vertex = glCreateShader(GL_VERTEX_SHADER);
+    // LOG_INFO("\n\nVERTEX CODE: {}\n\n", vertexCode);
+    // LOG_INFO("\n\nFRAGMENT CODE: {}\n\n", fragmentCode);
+    const char *vertexSource = reinterpret_cast<const char *>(create.m_vertexBinary.data);
+    const GLint vertexSourceLength = create.m_vertexBinarySize > 0 ? static_cast<GLint>(create.m_vertexBinarySize) : -1;
+    GL_CALL(glShaderSource(vertex, 1, &vertexSource, &vertexSourceLength));
+    GL_CALL(glCompileShader(vertex));
+    if (!checkCompileErrors(vertex, "VERTEX")) {
+        m_id = -1;
+        return;
+    }
+    // fragment Shader
+    fragment = glCreateShader(GL_FRAGMENT_SHADER);
+    const char *fragmentSource = reinterpret_cast<const char *>(create.m_fragmentBinary.data);
+    const GLint fragmentSourceLength =
+        create.m_fragmentBinarySize > 0 ? static_cast<GLint>(create.m_fragmentBinarySize) : -1;
+    GL_CALL(glShaderSource(fragment, 1, &fragmentSource, &fragmentSourceLength));
+    GL_CALL(glCompileShader(fragment));
+    if (!checkCompileErrors(fragment, "FRAGMENT")) {
+        GL_CALL(glDeleteShader(vertex));
+        m_id = -1;
+        return;
+    }
+    // shader Program
+    m_id = glCreateProgram();
+    GL_CALL(glAttachShader(m_id, vertex));
+    GL_CALL(glAttachShader(m_id, fragment));
+    GL_CALL(glLinkProgram(m_id));
+    if (!checkCompileErrors(m_id, "PROGRAM")) {
+        GL_CALL(glDeleteShader(vertex));
+        GL_CALL(glDeleteShader(fragment));
+        m_id = -1;
+        return;
+    }
+    // delete the shaders as they're linked into our program now and no longer necessary
+    GL_CALL(glDeleteShader(vertex));
+    GL_CALL(glDeleteShader(fragment));
+}
+
+void OpenGLShader::terminate() {
+    if (m_id != -1) { GL_CALL(glDeleteProgram(m_id)); }
+    m_id = -1;
+    m_textureBindings.clear();
+    m_uboIndices.clear();
+    m_uniformLocationCache.clear();
+    m_uboBindings.clear();
+    m_uboBuffers.clear();
+}
+
+bool OpenGLShader::checkCompileErrors(unsigned int shader, const std::string &type) {
+    GLint success;
+    GLchar infoLog[1024];
+    if (type != "PROGRAM") {
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (!success) {
+            glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
+            LOG_ERROR("SHADER COMPILATION ERROR of type: %s\n%s", type.c_str(), infoLog);
+            LOG_ERROR_EDITOR("SHADER COMPILATION ERROR of type: %s\n%s", type.c_str(), infoLog);
+        }
+    } else {
+        glGetProgramiv(shader, GL_LINK_STATUS, &success);
+        if (!success) {
+            glGetProgramInfoLog(shader, 1024, nullptr, infoLog);
+            LOG_ERROR("PROGRAM_LINKING_ERROR of type: %s\n%s", type.c_str(), infoLog);
+            LOG_ERROR_EDITOR("PROGRAM_LINKING_ERROR of type: %s\n%s", type.c_str(), infoLog);
+        }
+    }
+    return success;
+}
+
+uint32_t OpenGLShader::getUboIndex(const char *name) {
+    if (m_uboIndices.find(name) != m_uboIndices.end()) { return m_uboIndices[name]; }
+    GLuint blockIndex = glGetUniformBlockIndex(m_id, name);
+    if (blockIndex == GL_INVALID_INDEX) {
+        std::string openGlName = getOpenGlUboName(name);
+        blockIndex = glGetUniformBlockIndex(m_id, openGlName.c_str());
+    }
+    if (blockIndex == GL_INVALID_INDEX) { LOG_ERROR("SHADER UBO %s NOT FOUND", name); }
+    m_uboIndices[name] = blockIndex;
+    return blockIndex;
+}
+
+uint32_t OpenGLShader::getUboBinding(const char *name) {
+    if (m_uboBindings.find(name) != m_uboBindings.end()) { return m_uboBindings[name]; }
+    uint32_t binding = m_uboBindings.size();
+    m_uboBindings[name] = binding;
+    return binding;
+}
+
+int OpenGLShader::getTextureBinding(const char *name) {
+    if (m_textureBindings.find(name) != m_textureBindings.end()) { return m_textureBindings[name]; }
+    int binding = m_textureBindings.size();
+    m_textureBindings[name] = binding;
+    return binding;
+}
+
+int OpenGLShader::getTextureLocation(const char *name) {
+    if (m_uniformLocationCache.find(name) != m_uniformLocationCache.end()) { return m_uniformLocationCache[name]; }
+    int location = glGetUniformLocation(m_id, name);
+    if (location == -1) {
+        std::string openGlName = getOpenGlTextureName(name);
+        location = glGetUniformLocation(m_id, openGlName.c_str());
+    }
+    if (location == -1) { LOG_ERROR("SHADER TEXTURE %s NOT FOUND", name); }
+    m_uniformLocationCache[name] = location;
+    return location;
+}
+
+void OpenGLShader::bindAttributes(
+    VertexBufferLayoutData &layout, intptr_t baseVertex, uint32_t baseLocation, uint32_t divisor
+) {
+    intptr_t pointer = baseVertex;
+    for (int i = 0; i < layout.m_elementsCount; i++) {
+        const uint32_t location = baseLocation + i;
+        GL_CALL(glEnableVertexAttribArray(location));
+        // Always set the divisor: the location may have stayed per-instance after the previous draw.
+        GL_CALL(glVertexAttribDivisor(location, divisor));
+        int type;
+        switch (layout.m_elements[i].type) {
+            case BufferElementType::Float:
+                type = GL_FLOAT;
+                break;
+            case BufferElementType::UnsignedInt:
+                type = GL_UNSIGNED_INT;
+                break;
+            case BufferElementType::Int:
+                type = GL_INT;
+                break;
+            case BufferElementType::UnsignedByte:
+                type = GL_UNSIGNED_BYTE;
+                break;
+            default:
+                PND_ASSERT(false, "Buffer element type is undefined");
+                break;
+        }
+        if (type == GL_FLOAT || layout.m_elements[i].normalized) {
+            GL_CALL(glVertexAttribPointer(
+                location,
+                layout.m_elements[i].count,
+                type,
+                layout.m_elements[i].normalized ? GL_TRUE : GL_FALSE,
+                layout.m_stride,
+                reinterpret_cast<const void *>(pointer)
+            ));
+        } else {
+            GL_CALL(glVertexAttribIPointer(
+                location, layout.m_elements[i].count, type, layout.m_stride, reinterpret_cast<const void *>(pointer)
+            ));
+        }
+        pointer += layout.m_elements[i].count * VertexBufferElement::getSizeOfType(layout.m_elements[i].type);
+    }
+}
+
+bool OpenGLShader::isValid() {
+    return m_id != -1;
+}
+
+void OpenGLShader::bind() {
+    GL_CALL(glUseProgram(m_id));
+}
+
+void OpenGLShader::unbind() {
+    GL_CALL(glUseProgram(0));
+}
+
+void OpenGLShader::setTexture(const char *name, uint32_t textureId, uint32_t target) {
+    int binding = getTextureBinding(name);
+    GL_CALL(glActiveTexture(GL_TEXTURE0 + binding));
+    GL_CALL(glBindTexture(target, textureId));
+    int location = getTextureLocation(name);
+    if (location == -1) { return; }
+    GL_CALL(glUniform1iv(location, 1, &binding));
+}
+
+void OpenGLShader::setUbo(const char *name, void *value, size_t size) {
+    uint32_t index = getUboIndex(name);
+    if (index == GL_INVALID_INDEX) { return; }
+    uint32_t uboId;
+    if (m_uboBuffers.find(name) == m_uboBuffers.end()) {
+        GL_CALL(glGenBuffers(1, &uboId));
+        m_uboBuffers[name] = uboId;
+    }
+    uboId = m_uboBuffers.at(name);
+    uint32_t binding = getUboBinding(name);
+    GL_CALL(glUniformBlockBinding(m_id, index, binding));
+    GL_CALL(glBindBufferBase(GL_UNIFORM_BUFFER, binding, uboId));
+    GL_CALL(glBindBuffer(GL_UNIFORM_BUFFER, uboId));
+    GL_CALL(glBufferData(GL_UNIFORM_BUFFER, size, value, GL_DYNAMIC_DRAW));
+}
+
+} // namespace Miren

@@ -1,0 +1,26 @@
+{
+    "manifestVersion": 1,
+    "id": "dev.pandaengine.physics",
+    "name": "Physics",
+    "version": "0.1.0",
+    "authors": ["Andreichev Michail"],
+    "description": "Rigid body physics: 2D on box2d and 3D on box3d, colliders, joints, a kinematic character, ray casts and contact events for scripts.",
+    "category": "simulation",
+    "tags": ["physics", "rigidbody", "collider", "joint", "box2d", "box3d"],
+    "license": "LicenseRef-Panda-Engine-License-1.0",
+    "engine": "^0.1.0",
+    "platforms": [],
+    "parts": ["engine", "editor", "sdk"],
+    "dependencies": [],
+    "links": {
+        "homepage": "https://github.com/toyship-studio/Panda",
+        "repository": "https://github.com/toyship-studio/Panda/tree/main/Modules/Physics",
+        "issues": "https://github.com/toyship-studio/Panda/issues",
+        "documentation": "README.md",
+        "funding": ""
+    },
+    "media": { "icon": "", "screenshots": [] },
+    "readme": "README.md",
+    "changelog": "CHANGELOG.md",
+    "unlisted": false
+}

@@ -1,0 +1,81 @@
+//
+// Created by Admin on 14.03.2022.
+//
+
+#pragma once
+
+#include "Miren/RendererI.hpp"
+#include "Platform/RendererImpl/OpenGL/Extensions/OpenGLExtensions.hpp"
+#include "OpenGLFrameBuffer.hpp"
+#include "OpenGLShader.hpp"
+#include "OpenGLTexture.hpp"
+#include "OpenGLIndexBuffer.hpp"
+#include "OpenGLVertexBuffer.hpp"
+
+namespace Miren {
+
+class RendererOpenGL : public RendererI {
+public:
+    RendererOpenGL(Fern::GraphicsContext *ctx);
+    ~RendererOpenGL() override;
+    void createFrameBuffer(FrameBufferHandle handle, FrameBufferSpecification specification) override;
+    void readFrameBuffer(
+        Miren::FrameBufferHandle handle, int attachIndex, int x, int y, int width, int height, void *data
+    ) override;
+    void deleteFrameBuffer(FrameBufferHandle handle) override;
+    void createProgram(ProgramHandle handle, ProgramCreate create) override;
+    void deleteShader(ProgramHandle handle) override;
+    void createTexture(TextureHandle handle, TextureCreate create) override;
+    void updateTexture(TextureHandle handle, Foundation::Memory mem) override;
+    void updateTextureRegion(
+        TextureHandle handle, uint16_t x, uint16_t y, uint16_t z, uint16_t width, uint16_t height,
+        uint16_t depth, Foundation::Memory mem
+    ) override;
+    void resizeTexture(TextureHandle handle, uint32_t width, uint32_t height) override;
+    void generateTextureMipmaps(TextureHandle handle) override;
+    void deleteTexture(TextureHandle handle) override;
+    void createIndexBuffer(
+        IndexBufferHandle handle, Foundation::Memory indices, BufferElementType elementType, size_t count
+    ) override;
+    void createDynamicIndexBuffer(
+        IndexBufferHandle handle, Foundation::Memory indices, BufferElementType elementType, size_t count
+    ) override;
+    void updateDynamicIndexBuffer(IndexBufferHandle handle, Foundation::Memory indices, size_t count) override;
+    void deleteIndexBuffer(IndexBufferHandle handle) override;
+    void createVertexBuffer(
+        VertexBufferHandle handle, Foundation::Memory data, uint32_t size, VertexLayoutHandle layoutHandle
+    ) override;
+    void createDynamicVertexBuffer(
+        VertexBufferHandle handle, Foundation::Memory data, uint32_t size, VertexLayoutHandle layoutHandle
+    ) override;
+    void updateDynamicVertexBuffer(VertexBufferHandle handle, Foundation::Memory data, uint32_t size) override;
+    void deleteVertexBuffer(VertexBufferHandle handle) override;
+    void createVertexLayout(VertexLayoutHandle handle, VertexBufferLayoutData layout) override;
+    void deleteVertexLayout(VertexLayoutHandle handle) override;
+    void readTexture(Miren::TextureHandle handle, void *data) override;
+    void addInput(ProgramHandle program, const PassInput &input) override;
+    void submit(Frame *frame) override;
+    OpenGLTexture &getTexture(TextureHandle handle) {
+        return m_textures[handle.id];
+    }
+
+private:
+    Fern::GraphicsContext *selectContext(View &view);
+    void viewChanged(View &view);
+    void submit(RenderPass *draw);
+
+    Fern::GraphicsContext *m_defaultCtx;
+    Fern::GraphicsContext *m_ctx;
+    uint32_t m_uselessVao;
+    // The VAO is shared by every draw, so stale attribute arrays enabled by a
+    // previous draw with a wider layout must be disabled explicitly.
+    int m_enabledVertexAttributes;
+    OpenGLFrameBuffer m_frameBuffers[MAX_FRAME_BUFFERS];
+    OpenGLShader m_shaders[MAX_SHADERS];
+    OpenGLIndexBuffer m_indexBuffers[MAX_INDEX_BUFFERS];
+    VertexBufferLayoutData m_vertexLayouts[MAX_BUFFER_LAYOUTS];
+    OpenGLVertexBuffer m_vertexBuffers[MAX_VERTEX_BUFFERS];
+    OpenGLTexture m_textures[MAX_TEXTURES];
+};
+
+} // namespace Miren

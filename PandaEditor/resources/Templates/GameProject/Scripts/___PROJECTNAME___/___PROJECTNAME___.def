@@ -1,0 +1,3 @@
+LIBRARY ___PROJECTNAME___
+EXPORTS
+    pandaLoadPlugin

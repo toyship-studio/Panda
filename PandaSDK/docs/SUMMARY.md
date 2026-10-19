@@ -1,0 +1,22 @@
+# Summary
+
+[PandaSDK overview](sdk-overview.md)
+
+- [Scripting](scripting.md)
+- [Assets and the project registry](assets.md)
+- [The `.world` format](world-format.md)
+- [Working with Zed and coding agents](zed-and-agents.md)
+- [Writing a module](modules/README.md)
+  - [Layout, manifest and CMake](modules/layout.md)
+  - [The engine part](modules/engine-part.md)
+  - [Components](modules/components.md)
+  - [Asset kinds](modules/asset-kinds.md)
+  - [World systems](modules/world-systems.md)
+  - [Settings](modules/settings.md)
+  - [Static resources and shaders](modules/resources.md)
+  - [The script API](modules/script-api.md)
+  - [The editor part](modules/editor-part.md)
+  - [Data and compatibility](modules/data-and-compatibility.md)
+  - [Build, test and ship](modules/build-and-test.md)
+  - [Checklist](modules/checklist.md)
+  - [The samples](modules/samples.md)

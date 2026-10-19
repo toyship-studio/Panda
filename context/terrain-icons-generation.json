@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-12",
+  "tool": "built-in imagegen",
+  "transparent_background": true,
+  "final_directory": "Modules/Terrain/editor/resources/terrain-icons",
+  "final_size": [
+    128,
+    128
+  ],
+  "format": "White RGB with generated alpha, for theme tinting. Source alpha resized with aspect preserved; original generated files remain in the imagegen output directory.",
+  "prompts": [
+    {
+      "file": "flora-tuft.png",
+      "prompt": "Use case: logo-brand. Create one MINIMAL OUTLINE GRASS GLYPH for a professional UI toolbar. Simple flat 2D BLACK line art on a transparent background. Five elegant slightly curved grass strokes, central one tallest, all joined along one short straight baseline; only seven or fewer clean paths. Consistent medium rounded stroke, rounded joins; open spacious gaps. Icon should fill 80% of a square, centered, readable at 24px; use a 128x128 canvas if supported. Only pure opaque BLACK strokes, truly transparent empty pixels everywhere else. Crisp vector-like digital icon, not drawn with ink or brush. No textured strokes, noise, grey shading, plants rendering, color, three-dimensional volume, light, photo, ground, roots, frame, checkerboard, text or watermark."
+    },
+    {
+      "file": "flora-grass-mesh.png",
+      "prompt": "Use case: logo-brand. Create one MINIMAL OUTLINE GLYPH for a professional UI toolbar. Simple flat 2D BLACK line art on a transparent background. Consistent medium rounded stroke, rounded joins; open spacious gaps. Icon should fill 80% of a square, centered, readable at 24px; use a 128x128 canvas if supported. Only pure opaque BLACK strokes, truly transparent empty pixels everywhere else. Crisp vector-like digital icon, not drawn with ink or brush. No textured strokes, noise, grey shading, color, three-dimensional volume, light, photo, ground, roots, frame, checkerboard, text or watermark. Subject: a wildflower-meadow glyph: three simple curved grass blades at the base and one small five-petal flower on a slender upright stem, circular flower center with clean open spacing. The flower is a tiny recognizable symbol, not a detailed daisy; one flower only. No pot, soil, roots, extra decorative lines. Use black outlines, not white."
+    },
+    {
+      "file": "flora-bush.png",
+      "prompt": "Use case: logo-brand. Create one MINIMAL OUTLINE GLYPH for a professional UI toolbar. Simple flat 2D BLACK line art on a transparent background. Consistent medium rounded stroke, rounded joins; open spacious gaps. Icon should fill 80% of a square, centered, readable at 24px; use a 128x128 canvas if supported. Only pure opaque BLACK strokes, truly transparent empty pixels everywhere else. Crisp vector-like digital icon, not drawn with ink or brush. No textured strokes, noise, grey shading, color, three-dimensional volume, light, photo, ground, roots, frame, checkerboard, text or watermark. Subject: a low shrub glyph: one low wide rounded canopy contour with five broad rounded lobes, two short branching stems visible below canopy joined to one small base. Width clearly greater than height; a single continuous outline canopy and only two or three internal branch strokes. No individual leaves, veins, soil or roots. Use black outlines, not white."
+    },
+    {
+      "file": "flora-tree.png",
+      "prompt": "Use case: logo-brand. Create one MINIMAL OUTLINE GLYPH for a professional UI toolbar. Simple flat 2D BLACK line art on a transparent background. Consistent medium rounded stroke, rounded joins; open spacious gaps. Icon should fill 80% of a square, centered, readable at 24px; use a 128x128 canvas if supported. Only pure opaque BLACK strokes, truly transparent empty pixels everywhere else. Crisp vector-like digital icon, not drawn with ink or brush. No textured strokes, noise, grey shading, color, three-dimensional volume, light, photo, ground, roots, frame, checkerboard, text or watermark. Subject: a deciduous tree glyph: a rounded tree crown formed by five broad rounded lobes, a simple upright trunk below it, two short diagonal branch strokes inside the crown. Taller than wide, full unmistakable tree silhouette. Outline only, no individual leaves, fine branches, texture, roots or ground. Use black outlines, not white."
+    },
+    {
+      "file": "flora-rock.png",
+      "prompt": "Use case: logo-brand. Create one MINIMAL OUTLINE GLYPH for a professional UI toolbar. Simple flat 2D BLACK line art on a transparent background. Consistent medium rounded stroke, rounded joins; open spacious gaps. Icon should fill 80% of a square, centered, readable at 24px; use a 128x128 canvas if supported. Only pure opaque BLACK strokes, truly transparent empty pixels everywhere else. Crisp vector-like digital icon, not drawn with ink or brush. No textured strokes, noise, grey shading, color, three-dimensional volume, light, photo, ground, roots, frame, checkerboard, text or watermark. Subject: a rock glyph: one large irregular polygonal boulder beside one smaller boulder, broad angular rounded corners, simple two-dimensional outline. One short interior facet line in the larger rock is enough. No fine cracks, hatching, texture, shading, plants or ground. Use black outlines, not white."
+    }
+  ]
+}

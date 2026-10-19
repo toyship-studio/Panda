@@ -1,0 +1,10 @@
+# The documentation book (mdBook): the pages of docs/ as they ship inside the SDK package.
+# `mdbook build PandaSDK` writes the site into bin/docs; docs.yml publishes it.
+[book]
+title = "Panda"
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "../bin/docs"
+create-missing = false

@@ -1,0 +1,106 @@
+set(PANDA_BUNDLED_CMAKE_AVAILABLE FALSE)
+
+if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(PANDA_BUNDLED_CMAKE_HOST_PLATFORM "mac")
+elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    set(PANDA_BUNDLED_CMAKE_HOST_PLATFORM "linux")
+elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    set(PANDA_BUNDLED_CMAKE_HOST_PLATFORM "windows")
+else()
+    set(PANDA_BUNDLED_CMAKE_HOST_PLATFORM "")
+endif()
+
+if (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(PANDA_BUNDLED_CMAKE_HOST_ARCH "aarch64")
+elseif (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64" OR
+        CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x64" OR
+        CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(PANDA_BUNDLED_CMAKE_HOST_ARCH "x86_64")
+else()
+    set(PANDA_BUNDLED_CMAKE_HOST_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+endif()
+
+if (PANDA_BUNDLED_CMAKE_HOST_PLATFORM)
+    get_filename_component(PANDA_BUNDLED_CMAKE_SOURCE_EXECUTABLE "${CMAKE_COMMAND}" REALPATH)
+    get_filename_component(PANDA_BUNDLED_CMAKE_SOURCE_BIN_DIR "${PANDA_BUNDLED_CMAKE_SOURCE_EXECUTABLE}" DIRECTORY)
+    get_filename_component(PANDA_BUNDLED_CMAKE_SOURCE_PREFIX "${PANDA_BUNDLED_CMAKE_SOURCE_BIN_DIR}" DIRECTORY)
+
+    set(PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR "")
+    set(_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATES
+        "${PANDA_BUNDLED_CMAKE_SOURCE_PREFIX}/share/cmake"
+        "${PANDA_BUNDLED_CMAKE_SOURCE_PREFIX}/share/cmake-${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}"
+    )
+    foreach(_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE IN LISTS _PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATES)
+        if (EXISTS "${_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE}/Modules/CMakeDetermineSystem.cmake")
+            set(PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR "${_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE}")
+            break()
+        endif()
+    endforeach()
+    if (NOT PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR)
+        file(GLOB _PANDA_BUNDLED_CMAKE_SOURCE_SHARE_GLOB
+            LIST_DIRECTORIES true
+            "${PANDA_BUNDLED_CMAKE_SOURCE_PREFIX}/share/cmake-*"
+        )
+        list(SORT _PANDA_BUNDLED_CMAKE_SOURCE_SHARE_GLOB)
+        foreach(_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE IN LISTS _PANDA_BUNDLED_CMAKE_SOURCE_SHARE_GLOB)
+            if (EXISTS "${_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE}/Modules/CMakeDetermineSystem.cmake")
+                set(PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR "${_PANDA_BUNDLED_CMAKE_SOURCE_SHARE_CANDIDATE}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
+    if (PANDA_BUNDLED_CMAKE_HOST_PLATFORM STREQUAL "windows")
+        set(PANDA_BUNDLED_CMAKE_EXECUTABLE_NAME "cmake.exe")
+    else()
+        set(PANDA_BUNDLED_CMAKE_EXECUTABLE_NAME "cmake")
+    endif()
+
+    if (EXISTS "${PANDA_BUNDLED_CMAKE_SOURCE_EXECUTABLE}" AND
+        EXISTS "${PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR}/Modules/CMakeDetermineSystem.cmake")
+        set(PANDA_BUNDLED_CMAKE_AVAILABLE TRUE)
+        set(PANDA_BUNDLED_CMAKE_RELATIVE_DIR
+            "cmake/${PANDA_BUNDLED_CMAKE_HOST_PLATFORM}/${PANDA_BUNDLED_CMAKE_HOST_ARCH}"
+        )
+        set(PANDA_BUNDLED_CMAKE_RELATIVE_EXECUTABLE
+            "${PANDA_BUNDLED_CMAKE_RELATIVE_DIR}/bin/${PANDA_BUNDLED_CMAKE_EXECUTABLE_NAME}"
+        )
+    else()
+        message(WARNING "Cannot bundle CMake: unsupported CMake installation layout")
+    endif()
+endif()
+
+function(panda_bundled_cmake_copy_commands OUT_VAR DESTINATION_ROOT)
+    if (NOT PANDA_BUNDLED_CMAKE_AVAILABLE)
+        set(${OUT_VAR} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_DESTINATION_DIR "${DESTINATION_ROOT}/${PANDA_BUNDLED_CMAKE_RELATIVE_DIR}")
+    # The share directory name must be preserved: cmake locates CMAKE_ROOT by its
+    # compiled-in data dir name (e.g. share/cmake-4.1), not by a fixed "share/cmake".
+    get_filename_component(_PANDA_BUNDLED_CMAKE_SHARE_NAME "${PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR}" NAME)
+    set(_COMMANDS
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${DESTINATION_ROOT}/cmake"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_DESTINATION_DIR}/bin"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_DESTINATION_DIR}/share"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${PANDA_BUNDLED_CMAKE_SOURCE_EXECUTABLE}"
+            "${_DESTINATION_DIR}/bin/${PANDA_BUNDLED_CMAKE_EXECUTABLE_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${PANDA_BUNDLED_CMAKE_SOURCE_SHARE_DIR}"
+            "${_DESTINATION_DIR}/share/${_PANDA_BUNDLED_CMAKE_SHARE_NAME}"
+    )
+
+    set(${OUT_VAR} ${_COMMANDS} PARENT_SCOPE)
+endfunction()
+
+function(panda_add_bundled_cmake_copy_target TARGET_NAME DESTINATION_ROOT)
+    panda_bundled_cmake_copy_commands(_PANDA_BUNDLED_CMAKE_COPY_COMMANDS "${DESTINATION_ROOT}")
+    if (_PANDA_BUNDLED_CMAKE_COPY_COMMANDS)
+        add_custom_target(${TARGET_NAME} ${_PANDA_BUNDLED_CMAKE_COPY_COMMANDS}
+            COMMENT "Bundling CMake"
+            VERBATIM
+        )
+    endif()
+endfunction()
