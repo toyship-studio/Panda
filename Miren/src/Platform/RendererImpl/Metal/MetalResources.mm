@@ -86,11 +86,31 @@ namespace {
         return MTLSamplerMipFilterNotMipmapped;
     }
 
-    MTLSamplerAddressMode addressMode(TextureWrapMode wrap) {
+    // Sampler border colors are a device capability: Apple GPU family 7 (A14, M1) and later, and the
+    // Mac family (Intel and AMD). The paravirtual GPU of a macOS virtual machine (the CI runners) has
+    // none, and the Metal validation layer stops the process on a descriptor that asks for one.
+    bool supportsBorderColor(id<MTLDevice> device) {
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wdeprecated-declarations" // Mac2: the Intel and AMD Macs the engine still runs on
+        static const bool supported =
+            [device supportsFamily:MTLGPUFamilyApple7] || [device supportsFamily:MTLGPUFamilyMac2];
+#    pragma clang diagnostic pop
+        static bool reported = false;
+        if (!supported && !reported) {
+            reported = true;
+            LOG_INFO("METAL: the device has no sampler border colors; clamp-to-border samplers clamp to the edge");
+        }
+        return supported;
+    }
+
+    // Without border colors CLAMP_TO_BORDER degrades to clamp-to-edge: a shadow map beyond its atlas
+    // reads the edge depth instead of "lit" (Miren/Base.hpp, TextureWrapMode).
+    MTLSamplerAddressMode addressMode(TextureWrapMode wrap, bool borderColors) {
         switch (wrap) {
             case CLAMP: return MTLSamplerAddressModeClampToEdge;
             case REPEAT: return MTLSamplerAddressModeRepeat;
-            case CLAMP_TO_BORDER: return MTLSamplerAddressModeClampToBorderColor;
+            case CLAMP_TO_BORDER:
+                return borderColors ? MTLSamplerAddressModeClampToBorderColor : MTLSamplerAddressModeClampToEdge;
         }
         return MTLSamplerAddressModeRepeat;
     }
@@ -102,7 +122,7 @@ namespace {
         const MTLSamplerMinMagFilter mag =
             create.m_magFiltering == NEAREST ? MTLSamplerMinMagFilterNearest : MTLSamplerMinMagFilterLinear;
         const MTLSamplerMipFilter mip = mipFilter(create.m_minFiltering);
-        const MTLSamplerAddressMode address = addressMode(create.m_wrap);
+        const MTLSamplerAddressMode address = addressMode(create.m_wrap, supportsBorderColor(device));
         const bool compare = create.m_compare == COMPARE_LESS_EQUAL;
         static std::map<uint32_t, id<MTLSamplerState>> s_samplers;
         const uint32_t key = static_cast<uint32_t>(min) | (static_cast<uint32_t>(mag) << 4) |
@@ -117,8 +137,11 @@ namespace {
         descriptor.sAddressMode = address;
         descriptor.tAddressMode = address;
         descriptor.rAddressMode = address;
-        // The border is white: the shadow map beyond the edge reads as "lit".
-        descriptor.borderColor = MTLSamplerBorderColorOpaqueWhite;
+        // The border is white: the shadow map beyond the edge reads as "lit". Set only with the border
+        // mode: a device without border colors rejects the field under validation.
+        if (address == MTLSamplerAddressModeClampToBorderColor) {
+            descriptor.borderColor = MTLSamplerBorderColorOpaqueWhite;
+        }
         // Comparison sampler (shadow map): SampleCmp in HLSL → depth2d + compare in MSL.
         descriptor.compareFunction = compare ? MTLCompareFunctionLessEqual : MTLCompareFunctionNever;
         id<MTLSamplerState> sampler = [device newSamplerStateWithDescriptor:descriptor];

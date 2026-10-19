@@ -72,7 +72,8 @@ enum TextureFormat {
 };
 
 // CLAMP_TO_BORDER — white (1,1,1,1) beyond the texture edge: the shadow map outside the atlas
-// reads as "lit".
+// reads as "lit". Border colors are a device capability (Metal: Apple GPU family 7 and later, the
+// Mac family); a device without them clamps to the edge instead.
 enum TextureWrapMode { CLAMP, REPEAT, CLAMP_TO_BORDER };
 
 // Comparison sampler (shadow map): a sample returns the result of comparing ref with
