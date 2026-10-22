@@ -44,7 +44,8 @@ elseif(PLATFORM_MACOS)
                 # CMakeLists reads the version, the release workflow passes the build number).
                 MACOSX_BUNDLE_SHORT_VERSION_STRING "${PANDA_VERSION}"
                 MACOSX_BUNDLE_BUNDLE_VERSION "${PANDA_BUILD_NUMBER}"
-                # XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${PROJECT_SOURCE_DIR}/native/OSX/Panda.entitlements"
+                # Signing is not part of the build: the release workflow signs the bundle with
+                # native/OSX/PandaEditor.entitlements (scripts/release/sign_macos.sh).
                 XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
                 RESOURCE "${ASSETS}"
                 )

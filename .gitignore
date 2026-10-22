@@ -2,6 +2,9 @@
 bin
 bin-*
 
+# Release archives (scripts/release/package.py)
+dist
+
 cmake-build-*
 
 # Downloaded shader tools (scripts/fetch_shader_tools.sh)

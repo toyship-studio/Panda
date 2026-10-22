@@ -149,28 +149,55 @@ Workflows in the engine repository:
   `PandaSmoke`, `PandaSDKCorePackage`) and run `PandaSmoke` where the runner has a GPU (macOS;
   the Windows and Ubuntu runners have none, so they build only). Dependencies are cached (shader
   tools through `scripts/fetch_shader_tools`); the Linux job installs the packages of the README.
-- `release.yml` (run by hand or on a schedule for `preview`; later by a tag `vX.Y.Z` for `stable`):
-  - macOS: Release build, `PandaSDKPackage` and `PandaEditorEmbedSdk`, `codesign --options runtime`
-    with Developer ID, `hdiutil create` for the dmg, `notarytool submit --wait` and `stapler`.
+- `release.yml` (run by hand for `preview`; later by a tag `vX.Y.Z` for `stable`): three build
+  jobs and a publish job. The work is in `scripts/release/`, so every step also runs on a
+  developer machine:
+  - Every build job configures with `scripts/configure_panda_release.*`, builds only the
+    `PandaEditor` target and then the Release SDK (`scripts/build_panda_sdk_release.*`: a second
+    tree without the editor API), so the SDK is inside every build. The iOS SDK packages stay out
+    of the preview for now (`PANDA_SDK_IOS=0` for `build_panda_sdk_common.sh`; the switch leaves
+    the workflow when iOS joins).
   - The version of every build is `ENGINE_VERSION` of `Panda/include/Panda/Base/Version.hpp`
     (edited by hand on a release; the root CMakeLists reads it for the bundles and the manifest).
     The build number and the commit are `-DPANDA_BUILD_NUMBER=<run number>` and
     `-DPANDA_BUILD_COMMIT=<sha>` of the run, in the code `ENGINE_BUILD_NUMBER` and
     `ENGINE_BUILD_COMMIT` (a local build is 0 without a commit); the About window shows them.
-  - Windows: Release build (Visual Studio 2022), the `PandaEditor/` layout (exe, resources,
-    PandaSDK, `Tools/PandaUpdateHelper.exe`), zip. Authenticode signing is optional (without it
-    SmartScreen warns).
-  - Linux: Release build in an `ubuntu:22.04` container on a GitHub-hosted Ubuntu runner (the
-    oldest glibc the README promises, so the binary runs on Ubuntu 22.04 and newer), the
-    `PandaEditor/` layout as on Windows (binary, resources, PandaSDK), tar.gz. No signing.
+    `package.py` reads the header for the archive name.
+  - macOS (`macos-14`, arm64): `sign_macos.sh` signs the tools inside `Contents/Resources`
+    (slangc and its libraries, cmake) and then the bundle with the hardened runtime and
+    `PandaEditor/native/OSX/PandaEditor.entitlements` (library validation off: the editor dlopens
+    the script bundles it builds); `package.py` makes the dmg (`hdiutil`, an Applications link);
+    the dmg is signed, notarized (`notarytool submit --wait`, the image covers the bundle inside)
+    and stapled (`notarize_macos.sh`). Signing and notarization run only when the secrets are set;
+    without them the run produces an unsigned dmg, enough to test the pipeline before the
+    certificates exist.
+  - Windows (`windows-2022`): Visual Studio 2022 Release build, the `PandaEditor/` layout of `bin/`
+    (exe, resources, `Tools/`, `PandaSDK/`) as a zip. The SDK is copied by
+    `cmake/sync_panda_sdk.cmake`, the same script that embeds it into the macOS bundle, so every
+    platform carries the same SDK without its own `tools/` (the editor brings `Tools/`). Authenticode signing is optional (without it
+    SmartScreen warns). The update helper (`Tools/PandaUpdateHelper.exe`) arrives with the updater.
+  - Linux (`ubuntu-24.04` runner, `ubuntu:22.04` container): GCC 11 and the libraries of the
+    README, the oldest system the editor supports, so the binary runs on Ubuntu 22.04 and newer.
+    CMake is Kitware's portable build, pinned in the workflow: the cmake that configures the
+    engine is the one bundled into the editor (`cmake/bundled_cmake.cmake`), and the dynamically
+    linked cmake of the distribution would not run elsewhere. The same `PandaEditor/` layout as a
+    tar.gz. No signing.
+  - Publish (`ubuntu-24.04`): `publish.py` takes the archives of the three jobs (artifacts) and
+    does the storage work of the next sections: uploads, manifests, retention, the portal
+    registration; the job summary lists the addresses. At least one storage must be configured,
+    and the manifests are not touched when no storage took a file. Files go to the object storage
+    with the public-read ACL, as the portal backend uploads its public objects (the bucket also
+    holds private ones), and `docs.yml` uploads the documentation the same way. The aws cli sends
+    checksums only where the protocol requires them (`AWS_REQUEST_CHECKSUM_CALCULATION=when_required`):
+    its default ones are rejected by many S3-compatible storages.
 - `docs.yml` (push to `main` that touches `PandaSDK/docs/` or the book config): builds the
   documentation site with mdBook (always, so a broken page fails the run) and uploads it to the
   object storage (below) when the storage secrets are set.
 - Runners: standard GitHub-hosted runners (`macos-14` on Apple Silicon, `windows-2022`,
   `ubuntu-24.04`) are free for public repositories; larger runners are always billed. Code from
   external pull requests must never run on self-hosted machines. Backend and frontend deploy from
-  GitHub-hosted Ubuntu over SSH. The same build script (`scripts/build_panda_release.*`) runs on a
-  developer machine and in CI.
+  GitHub-hosted Ubuntu over SSH. The same configure scripts, CMake targets and release scripts run
+  on a developer machine and in CI.
 
 ### The preview channel is rolling
 
@@ -199,9 +226,12 @@ If one upload fails, the manifest lists only the storage that succeeded.
 
 ### Manifest
 
-One JSON file per channel. It lives in the object storage and as a file in `panda-builds`
-(a file in the repository, not a release asset: release assets cannot be read by a script from
-another domain, files of a repository can).
+One JSON file per channel: `builds/<channel>/manifest.json` in the object storage (addressed
+through the public base of the bucket: the endpoint and the bucket, or the repository variable
+`S3_PUBLIC_BASE_URL`, named as in the server `.env` of the portal) and `manifests/<channel>.json` in `panda-builds` (a file in the repository,
+not a release asset: release assets cannot be read by a script from another domain, files of a
+repository can; the raw address of GitHub serves it). `publish.py` writes both after the files,
+and sizes and hashes come from the archives it uploads, so a signed dmg is described as signed.
 
 ```json
 {

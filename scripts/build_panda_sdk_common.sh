@@ -50,7 +50,9 @@ panda_build_sdk() {
     local sdk_dir="$bin_dir/PandaSDK"
     panda_package_sdk "$host_build_dir" "$configuration" "$sdk_dir" "$host_platform"
 
-    if [ "$host_platform" = macos ]; then
+    # PANDA_SDK_IOS=0 skips the iOS packages (two more builds of the engine): the preview release
+    # builds only the macOS SDK for now.
+    if [ "$host_platform" = macos ] && [ "${PANDA_SDK_IOS:-1}" != 0 ]; then
         # iOS must use the shader tool compiled for the host, even in Debug builds.
         local shader_tool="$host_build_dir/MirenTools"
         if [ -n "$(panda_cache_value CMAKE_CONFIGURATION_TYPES)" ]; then
@@ -82,12 +84,13 @@ panda_build_sdk() {
                 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             panda_package_sdk "$ios_build_dir" "$configuration" "$sdk_dir" "$ios_platform" -- -quiet
         done
+    fi
 
-        if [ -d "$bin_dir/PandaEditor.app/Contents/Resources" ]; then
-            cmake -DPANDA_SDK_SOURCE="$sdk_dir" \
-                -DPANDA_SDK_DESTINATION="$bin_dir/PandaEditor.app/Contents/Resources/PandaSDK" \
-                -P "$root/cmake/sync_panda_sdk.cmake"
-        fi
+    # The editor bundle carries the SDK (the script builds of projects use it).
+    if [ "$host_platform" = macos ] && [ -d "$bin_dir/PandaEditor.app/Contents/Resources" ]; then
+        cmake -DPANDA_SDK_SOURCE="$sdk_dir" \
+            -DPANDA_SDK_DESTINATION="$bin_dir/PandaEditor.app/Contents/Resources/PandaSDK" \
+            -P "$root/cmake/sync_panda_sdk.cmake"
     fi
 
     echo "PandaSDK $configuration packaged at: $sdk_dir"

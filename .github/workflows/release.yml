@@ -1,0 +1,218 @@
+name: Release
+
+# The preview channel (context/infrastructure.md, "Engine CI and releases"): Release builds of the
+# editor with the SDK inside for macOS, Windows and Linux, signed and notarized on macOS when the
+# certificates are in the secrets, published to the object storage and to the rolling release
+# `preview` of panda-builds with the channel manifest, and registered in the portal when its token
+# is set. Run by hand; the run number is the build number of the version 0.1.0-preview.<build>.
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "Release notes (Markdown) for the manifest and the panda-builds release"
+        required: false
+        default: ""
+
+# A release in progress is never cancelled by the next one: its files may already be uploading.
+concurrency:
+  group: release-preview
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PANDA_CHANNEL: preview
+  PANDA_BUILD_PARALLEL: 4
+
+jobs:
+  macos:
+    name: macOS (Metal, arm64)
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
+      APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+      APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch_shader_tools.sh') }}
+      - name: Fetch the shader tools
+        run: sh scripts/fetch_shader_tools.sh
+      - name: Configure
+        run: sh scripts/configure_panda_release.sh -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7}
+      - name: Build the editor
+        run: cmake --build cmake-build-release --parallel 4 --target PandaEditor
+      - name: Build the SDK and embed it into the bundle
+        # The iOS packages stay out of the preview for now (PANDA_SDK_IOS, scripts/build_panda_sdk_common.sh).
+        run: PANDA_SDK_IOS=0 bash scripts/build_panda_sdk_release.sh
+      - name: Sign the bundle
+        if: env.MACOS_CERTIFICATE != ''
+        run: bash scripts/release/sign_macos.sh app bin/PandaEditor.app
+      - name: Warn about the unsigned build
+        if: env.MACOS_CERTIFICATE == ''
+        run: echo "::warning::MACOS_CERTIFICATE is not set; the macOS build is unsigned and Gatekeeper blocks it after a download"
+      - name: Package the dmg
+        run: python3 scripts/release/package.py --platform macos --channel "$PANDA_CHANNEL" --build ${{ github.run_number }} --commit ${GITHUB_SHA::7}
+      - name: Sign, notarize and staple the dmg
+        if: env.MACOS_CERTIFICATE != '' && env.APPLE_NOTARIZATION_KEY != ''
+        run: |
+          bash scripts/release/sign_macos.sh dmg dist/PandaEditor-*.dmg
+          bash scripts/release/notarize_macos.sh dist/PandaEditor-*.dmg
+      - name: Keep the archive for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+          # A re-run of the job replaces the archive of the failed attempt.
+          overwrite: true
+
+  windows:
+    name: Windows (D3D11, x86_64)
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      MSBUILDDISABLENODEREUSE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ hashFiles('scripts/fetch_shader_tools.ps1') }}
+      - name: Fetch the shader tools
+        shell: pwsh
+        run: scripts/fetch_shader_tools.ps1
+      - name: Configure
+        shell: pwsh
+        run: |
+          $commit = $env:GITHUB_SHA.Substring(0, 7)
+          scripts/configure_panda_release.ps1 -Generator VisualStudio -CMakeArgument "-DPANDA_BUILD_NUMBER=$env:GITHUB_RUN_NUMBER","-DPANDA_BUILD_COMMIT=$commit"
+      - name: Build the editor
+        shell: pwsh
+        run: cmake --build cmake-build-release --config Release --target PandaEditor --parallel 4 -- /nodeReuse:false
+      - name: Build the SDK
+        shell: pwsh
+        run: scripts/build_panda_sdk_release.ps1 -Generator VisualStudio
+      - name: Package the zip
+        shell: pwsh
+        run: |
+          $commit = $env:GITHUB_SHA.Substring(0, 7)
+          python scripts/release/package.py --platform windows --channel $env:PANDA_CHANNEL --build $env:GITHUB_RUN_NUMBER --commit $commit
+      - name: Keep the archive for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+          # A re-run of the job replaces the archive of the failed attempt.
+          overwrite: true
+
+  linux:
+    name: Linux (OpenGL, x86_64, Ubuntu 22.04)
+    runs-on: ubuntu-24.04
+    # The oldest system the editor supports (README): a binary built here runs on Ubuntu 22.04 and newer.
+    container: ubuntu:22.04
+    timeout-minutes: 180
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      # Kitware's portable CMake: the cmake that configures the engine is bundled into the editor
+      # (cmake/bundled_cmake.cmake) and must run on any Linux, which the dynamically linked cmake
+      # of the distribution would not.
+      CMAKE_VERSION: "4.4.4"
+      CMAKE_SHA256: "e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb"
+    steps:
+      - name: Install the system packages
+        # The toolchain of Ubuntu 22.04 (GCC 11) and the libraries of the README: X11 and GL for
+        # GLFW, GTK3 for the native dialogs.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ninja-build pkg-config git curl ca-certificates python3 \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev libgtk-3-dev
+      - name: Install CMake
+        run: |
+          curl -fsSL -o cmake.tar.gz "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
+          echo "${CMAKE_SHA256}  cmake.tar.gz" | sha256sum -c -
+          mkdir -p /opt/cmake
+          tar -xzf cmake.tar.gz -C /opt/cmake --strip-components=1
+          echo "/opt/cmake/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v4
+      - name: Cache the shader tools
+        uses: actions/cache@v4
+        with:
+          path: Vendor/tools
+          key: shader-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch_shader_tools.sh') }}
+      - name: Fetch the shader tools
+        run: sh scripts/fetch_shader_tools.sh
+      - name: Configure
+        run: sh scripts/configure_panda_release.sh -G Ninja -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7}
+      - name: Build the editor
+        run: cmake --build cmake-build-release --parallel 4 --target PandaEditor
+      - name: Build the SDK
+        run: bash scripts/build_panda_sdk_release.sh
+      - name: Package the tar.gz
+        run: python3 scripts/release/package.py --platform linux --channel "$PANDA_CHANNEL" --build ${{ github.run_number }} --commit ${GITHUB_SHA::7}
+      - name: Keep the archive for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+          # A re-run of the job replaces the archive of the failed attempt.
+          overwrite: true
+
+  publish:
+    name: Publish
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      # Optional: a custom domain of the bucket; <endpoint>/<bucket> by default (the portal's .env name).
+      S3_PUBLIC_BASE_URL: ${{ vars.S3_PUBLIC_BASE_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+      # Signs the requests; S3-compatible storages accept it whatever their own region is called.
+      AWS_DEFAULT_REGION: us-east-1
+      # The aws cli sends checksums that S3-compatible storages often reject; only where required.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      PANDA_BUILDS_REPO: toyship-studio/panda-builds
+      GH_TOKEN: ${{ secrets.PANDA_BUILDS_TOKEN }}
+      PANDA_REGISTRY_URL: ${{ vars.PANDA_REGISTRY_URL }}
+      PANDA_REGISTRY_CI_TOKEN: ${{ secrets.PANDA_REGISTRY_CI_TOKEN }}
+      PANDA_RELEASE_NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect the archives of the build jobs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Publish to the storages, switch the manifests, register in the portal
+        run: python3 scripts/release/publish.py --dist dist --channel "$PANDA_CHANNEL" --notes "$PANDA_RELEASE_NOTES"
+      - name: Keep the manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Not release-*: a re-run of this job downloads only the archives.
+          name: manifest
+          path: |
+            dist/manifest.json
+            dist/RELEASE_NOTES.md
+          retention-days: 30
+          if-no-files-found: ignore
+          overwrite: true

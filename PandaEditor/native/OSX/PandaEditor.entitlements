@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime entitlements of the signed editor (scripts/release/sign_macos.sh). The
+	     editor loads the script bundles it builds for a project (dlopen); they are not signed with
+	     the studio's Developer ID, which library validation would otherwise require. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

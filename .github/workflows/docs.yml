@@ -34,7 +34,11 @@ jobs:
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+      # Signs the requests; S3-compatible storages accept it whatever their own region is called.
       AWS_DEFAULT_REGION: us-east-1
+      # The aws cli sends checksums that S3-compatible storages often reject; only where required.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
     steps:
       - uses: actions/checkout@v4
       - name: Install mdBook
@@ -54,5 +58,6 @@ jobs:
           retention-days: 7
       - name: Publish to the object storage (preview)
         if: ${{ env.S3_BUCKET != '' }}
+        # Public pages: nginx of the portal reads them from the bucket without keys.
         run: |
-          aws s3 sync bin/docs "s3://${S3_BUCKET}/site/docs/preview" --endpoint-url "${S3_ENDPOINT}" --delete
+          aws s3 sync bin/docs "s3://${S3_BUCKET}/site/docs/preview" --endpoint-url "${S3_ENDPOINT}" --delete --acl public-read

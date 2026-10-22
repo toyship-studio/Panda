@@ -97,9 +97,10 @@ bash scripts/build_panda_sdk_release.sh
 ```
 
 On Linux these scripts package the native OpenGL SDK into `bin/PandaSDK/lib/linux`.
-On macOS they package macOS plus the iOS simulator and device libraries, using Metal by default.
-The OpenGL entry point selects OpenGL on desktop and OpenGLES on iOS. Xcode is needed only for
-the iOS builds on macOS. Game scripts use `bin/PandaSDK/lib/cmake/PandaSDK` as `PANDA_SDK_DIR`.
+On macOS they package macOS plus the iOS simulator and device libraries, using Metal by default;
+`PANDA_SDK_IOS=0` skips the iOS packages (the preview release does this for now). The OpenGL entry
+point selects OpenGL on desktop and OpenGLES on iOS. Xcode is needed only for the iOS builds on
+macOS. Game scripts use `bin/PandaSDK/lib/cmake/PandaSDK` as `PANDA_SDK_DIR`.
 
 Zed provides Configure/Build Panda Debug and Release tasks in `.zed/tasks.json`.
 
