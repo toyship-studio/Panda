@@ -189,7 +189,10 @@ Workflows in the engine repository:
     with the public-read ACL, as the portal backend uploads its public objects (the bucket also
     holds private ones), and `docs.yml` uploads the documentation the same way. The aws cli sends
     checksums only where the protocol requires them (`AWS_REQUEST_CHECKSUM_CALCULATION=when_required`):
-    its default ones are rejected by many S3-compatible storages.
+    its default ones are rejected by many S3-compatible storages. It also takes the root
+    certificates of the system (`AWS_CA_BUNDLE`): the list built into aws cli v2 lacks GlobalSign
+    Root CA - R6, which signs the certificate of the storage, and the upload fails with
+    "self-signed certificate in certificate chain".
 - `docs.yml` (push to `main` that touches `PandaSDK/docs/` or the book config): builds the
   documentation site with mdBook (always, so a broken page fails the run) and uploads it to the
   object storage (below) when the storage secrets are set.

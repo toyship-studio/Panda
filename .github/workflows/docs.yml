@@ -39,6 +39,9 @@ jobs:
       # The aws cli sends checksums that S3-compatible storages often reject; only where required.
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      # The aws cli ships its own list of root certificates without GlobalSign Root CA - R6, which
+      # signs the certificate of the storage (s3.regru.cloud); the system list of the runner has it.
+      AWS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
     steps:
       - uses: actions/checkout@v4
       - name: Install mdBook
