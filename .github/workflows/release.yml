@@ -124,6 +124,10 @@ jobs:
     # The oldest system the editor supports (README): a binary built here runs on Ubuntu 22.04 and newer.
     container: ubuntu:22.04
     timeout-minutes: 180
+    defaults:
+      run:
+        # Steps in a container run with sh by default; these use bash syntax like the macOS job.
+        shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
       # Kitware's portable CMake: the cmake that configures the engine is bundled into the editor
