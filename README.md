@@ -3,8 +3,9 @@
 Panda is a cross-platform 2D and 3D game engine with its own editor, written in C++20 and
 developed by Toyship.
 
-**Status: early development.** There are no releases yet. APIs and file formats change without
-backward compatibility.
+**Status: early development.** There is no release yet. Preview builds of the editor for macOS,
+Windows and Linux come out often at [pandaengine.dev/download](https://pandaengine.dev/download).
+APIs and file formats change without backward compatibility.
 
 <img src="PandaEngine.png" alt="Panda editor" style="width:1000px;"/>
 
@@ -30,8 +31,8 @@ backward compatibility.
   [Zed editor](https://zed.dev), which the editor itself is inspired by, and an `AGENTS.md` for
   coding agents (`PandaSDK/docs/zed-and-agents.md`).
 
-macOS, Windows and Linux are the desktop platforms, for the editor and for exported games.
-iOS is an export target; Android is planned.
+macOS, Windows and Linux are the desktop platforms, for the editor and for exported games; on macOS
+both need version 14 or newer on Apple Silicon. iOS is an export target; Android is planned.
 
 ## Repository layout
 
@@ -151,7 +152,11 @@ and applications made with Panda, plugins, modules, tools and assets for it, for
 distributed for free, paid services around it. The license is not an OSI-approved open source
 license; Panda is free and its source is public.
 
+The libraries that are useful on their own, `Foundation`, `Fern`, `Miren`, `Rain` and `PandaUI`,
+are licensed under the MIT License instead: the `LICENSE.txt` in each of these folders. The
+game engine condition does not apply to them.
+
 The license covers the code and the resources. It does not cover the Marks: the names Panda, Panda
 Engine, PandaEditor and Toyship, the panda logos, the app icons and the mascots identify the
-project and the studio and stay with them. Contributions are accepted under the same license,
-without a contributor agreement; see [CONTRIBUTING.md](CONTRIBUTING.md).
+project and the studio and stay with them. Contributions are accepted under the license of the
+folder they change, without a contributor agreement; see [CONTRIBUTING.md](CONTRIBUTING.md).

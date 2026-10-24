@@ -1,7 +1,9 @@
 # Third-party components
 
-Panda is licensed under the Panda Engine License (`LICENSE.txt`, `NOTICE`). The repository vendors
-the libraries below under their own licenses; the license text of each lives next to its sources.
+Panda is licensed under the Panda Engine License (`LICENSE.txt`, `NOTICE`), except its own libraries
+`Foundation`, `Fern`, `Miren`, `Rain` and `PandaUI`, which are MIT (the `LICENSE.txt` of each
+folder). The repository vendors the libraries below under their own licenses; the license text of
+each lives next to its sources.
 
 | Component | Where | License | License text |
 |---|---|---|---|

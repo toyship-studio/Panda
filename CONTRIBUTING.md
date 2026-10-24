@@ -31,9 +31,10 @@ Rain, Fern, Miren).
 
 ## License of contributions
 
-Every contribution is licensed under the Panda Engine License of the repository (`LICENSE.txt`,
-section 5), the same terms as the code it joins. There is no contributor license agreement to
-sign. By opening a pull request you confirm that the contribution is yours to give under those
-terms.
+Every contribution is licensed under the terms of the code it joins: the MIT License in
+`Foundation`, `Fern`, `Miren`, `Rain` and `PandaUI` (the `LICENSE.txt` of each folder), the Panda
+Engine License of the repository (`LICENSE.txt`, section 5) everywhere else. There is no
+contributor license agreement to sign. By opening a pull request you confirm that the contribution
+is yours to give under those terms.
 
 The names and the marks of the project are not part of the license: see "License" in README.md.

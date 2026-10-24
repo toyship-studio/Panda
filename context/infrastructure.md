@@ -369,7 +369,7 @@ Nothing the editor sends identifies a person.
     routing, one private repository, client-side rendering, English only) are recorded in
     `panda-portal/docs/architecture.md`.
 11. The engine is licensed under the Panda Engine License 1.0 (`LICENSE.txt`, `NOTICE`), copyright
-    Andreichev Mikhail. The text is derived from the Apache License 2.0, whose steward allows
+    Andreichev Mikhail, except the five libraries of decision 12, which are MIT. The text is derived from the Apache License 2.0, whose steward allows
     modified reuse as long as the result is not called Apache, with one added condition: the
     engine, the editor, the SDK and the runtime, original or modified, are not sold or otherwise
     commercialised as a game engine product. Games, extensions, free forks and paid services
@@ -383,13 +383,21 @@ Nothing the editor sends identifies a person.
     `scripts/third_party_notices.py`; it opens with the engine's own notice and license text, so an
     exported game meets the notice conditions without any step of its developer. The GPL tree tool
     of the studio is outside the repository (decision 7).
-12. One repository, no submodules. Libraries that are useful on their own (PandaUI first, then
-    Rain, Fern, Miren) are made buildable standalone (`cmake -S PandaUI -B build` on a checkout of
-    that folder alone, dependencies resolved through `find_package` or FetchContent when the
-    engine targets are absent) and published as read-only mirrors by CI with
-    `git subtree split` into `toyship-studio/PandaUI`, `Rain`, `Fern` and `Miren`, the same names
-    as the folders. Issues and pull requests go to the engine repository. A CI job builds every standalone library from its folder alone; the
-    mirror is published only while that job is green.
+12. One repository, no submodules. The libraries that are useful on their own, Foundation, Fern,
+    Miren, Rain and PandaUI, are licensed under the MIT License (the `LICENSE.txt` of each folder,
+    one and the same text; `scripts/third_party_notices.py` checks it), decided in October 2026 so
+    that they can be used anywhere; the game engine condition stays on the rest of the engine. They
+    are made buildable standalone: `cmake -S Rain -B build` on that folder alone, the samples or
+    examples and the smoke test built when the folder is the top-level project. Engine folders a
+    library needs come through FetchContent of their mirrors and third-party code through
+    FetchContent or `find_package`, both only when the engine targets are absent. The manual
+    workflow `Mirrors` (`.github/workflows/mirrors.yml`, nothing runs on a push) builds each
+    folder alone, as its mirror will see it, and only then publishes it with `git subtree split`
+    into `toyship-studio/<Folder>`, the same names as the folders. It pushes with the
+    `PANDA_MIRRORS_TOKEN` secret, or with `PANDA_BUILDS_TOKEN` when that fine-grained token also
+    covers the mirror repositories (Contents: read and write). A library joins the workflow when its
+    repository exists, in the order Rain, PandaUI, then Foundation, Fern and Miren (both build on
+    Foundation). Issues and pull requests go to the engine repository; the mirrors have Issues off.
 13. PandaUI is complete like Dear ImGui: `backends/` and `examples/` live inside `PandaUI/` and
     are compiled only when the folder is the top-level project (`PANDAUI_BUILD_BACKENDS`,
     `PANDAUI_BUILD_EXAMPLES` default to `PROJECT_IS_TOP_LEVEL`). The engine backend (Miren and

@@ -1,0 +1,56 @@
+name: Mirrors
+
+# Read-only mirrors of the libraries that are useful on their own (context/infrastructure.md,
+# decision 12). Run by hand: nothing runs on a push. For every library the folder is first built
+# alone, as the mirror will see it, and only then its history is split out with git subtree and
+# pushed to toyship-studio/<Folder>. A library joins the list when its repository exists.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: mirrors
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: ${{ matrix.library }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        library: [Rain]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: git subtree split rebuilds the history of the folder.
+          fetch-depth: 0
+          # The push below authenticates with the mirror token; the token of this run must not
+          # stay in the git configuration and take its place.
+          persist-credentials: false
+      - name: Build the folder alone
+        env:
+          LIBRARY: ${{ matrix.library }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/standalone"
+          cp -R "$LIBRARY" "$RUNNER_TEMP/standalone/$LIBRARY"
+          cmake -S "$RUNNER_TEMP/standalone/$LIBRARY" -B "$RUNNER_TEMP/build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/build" --parallel 4
+      - name: Publish the mirror
+        env:
+          LIBRARY: ${{ matrix.library }}
+          # A separate token, or the token of panda-builds when it also covers the mirror repositories.
+          MIRROR_TOKEN: ${{ secrets.PANDA_MIRRORS_TOKEN || secrets.PANDA_BUILDS_TOKEN }}
+        run: |
+          if [ -z "$MIRROR_TOKEN" ]; then
+            echo "::warning::Neither PANDA_MIRRORS_TOKEN nor PANDA_BUILDS_TOKEN is set: $LIBRARY was built but not published"
+            exit 0
+          fi
+          git subtree split --prefix="$LIBRARY" -b "mirror-$LIBRARY"
+          # Forced: the engine history may be rewritten, and the mirror follows it.
+          git push --force "https://x-access-token:${MIRROR_TOKEN}@github.com/toyship-studio/${LIBRARY}.git" "mirror-$LIBRARY:main"
+          echo "Published https://github.com/toyship-studio/$LIBRARY at $(git rev-parse --short "mirror-$LIBRARY")" >> "$GITHUB_STEP_SUMMARY"

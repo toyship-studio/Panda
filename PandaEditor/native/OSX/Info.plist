@@ -43,7 +43,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>12.0</string>
+	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>UILaunchStoryboardName</key>

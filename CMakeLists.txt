@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.22)
 
 set(CMAKE_CXX_STANDARD 20)
 
+# The oldest macOS the editor, the SDK and exported games run on (the export scripts of a game pass
+# the same value). It has to be known before project(); an explicit -DCMAKE_OSX_DEPLOYMENT_TARGET
+# wins, iOS builds pass their own, and a parent project that builds the engine decides for itself.
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS"
+        AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0")
+endif ()
+
 project("Panda")
 
 set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
