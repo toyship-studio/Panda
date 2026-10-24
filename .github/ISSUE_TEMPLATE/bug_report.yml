@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in the editor, the runtime or an exported game does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Questions and ideas go to [Discussions](https://github.com/toyship-studio/Panda/discussions). A security problem goes to a [private report](https://github.com/toyship-studio/Panda/security/advisories/new), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Help > About in the editor shows it, for example "Version 0.1.0, build 7 (abc1234)". For a build from source, the commit.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - iOS (an exported game)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and GPU
+      description: For example "macOS 15.4, M2" or "Windows 11, GeForce RTX 3060".
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a 3D project
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and attachments
+      description: The console output of the editor, a crash report, screenshots, or a small project that shows the problem.

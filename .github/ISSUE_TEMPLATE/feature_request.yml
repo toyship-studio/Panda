@@ -1,0 +1,27 @@
+name: Feature request
+description: A concrete change to the engine, the editor or the SDK.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An open idea is easier to shape in [Discussions](https://github.com/toyship-studio/Panda/discussions) first; an issue is for a concrete proposal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you do now instead, or other ways you considered.
