@@ -21,6 +21,7 @@ each lives next to its sources.
 | RapidJSON | `Rain/Vendor/rapidjson` | MIT (bundled msinttypes and json checker have their own notices in the same file) | `Rain/Vendor/rapidjson/license.txt` |
 | yaml-cpp | `Rain/Vendor/yaml-cpp` | MIT | `Rain/Vendor/yaml-cpp/LICENSE` |
 | Native File Dialog | `Vendor/nfd` | zlib | `Vendor/nfd/LICENSE` |
+| miniz 3.1.2, the zip archives of the plugin store and of the editor updater | `Vendor/miniz` | MIT | `Vendor/miniz/LICENSE` |
 | ImGuizmo, the origin of the viewport gizmo code | `PandaEditor/src/Viewport/Gizmo/Gizmo.cpp` | MIT | the header of the file |
 | Inter | `Panda/resources/default-fonts/Inter` | SIL Open Font License 1.1 | `Panda/resources/default-fonts/Inter/LICENSE.txt` |
 | JetBrains Mono | `Panda/resources/default-fonts/JetBrainsMono` | SIL Open Font License 1.1 | `Panda/resources/default-fonts/JetBrainsMono/LICENSE.txt` |

@@ -137,7 +137,9 @@ None of these exists in the tree today, and the editor auto-update needs the sam
 - HTTP, the first part of the network layer of Fern (`Fern::Net`, `context/networking.md`): GET,
   POST, PUT, multipart, a download into a file with progress, resume and a SHA-256 check, on the
   network stacks of the systems, asynchronous through PandaAsync.
-- ZIP unpacking: a small vendored library (miniz, MIT).
+- zip archives: `PandaEditor/src/Project/System/ZipArchive` on the vendored miniz (`Vendor/miniz`,
+  MIT): unpacking with a check that no entry leaves its folder, one entry read without unpacking
+  (`plugin.json`), packing a folder for Publish; the Windows updater unpacks its build with it.
 - SHA-256: a small implementation in Foundation; the network layer checks downloads with it while
   the bytes arrive.
 

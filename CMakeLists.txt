@@ -144,6 +144,9 @@ if (DESKTOP)
     add_subdirectory(Vendor/nfd)
     set_target_properties(nfd PROPERTIES LINKER_LANGUAGE CXX)
     panda_silence_target_warnings(nfd)
+    # zip archives of the editor (the plugin store, the updater on Windows).
+    add_subdirectory(Vendor/miniz)
+    panda_silence_target_warnings(miniz)
 endif ()
 # The applications of the engine tree. An application that builds the engine as a subproject
 # brings its own and gets none of these (a configured bundle target leaves an empty .app shell in

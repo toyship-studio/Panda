@@ -136,7 +136,7 @@ scripts\run_panda_editor.ps1
 ## Third-party libraries
 
 GLFW, glad with a Khronos header, GLM, EnTT, Yoga, Box2D, Box3D, cgltf, stb_image, stb_truetype,
-SPIRV-Cross, RapidJSON, yaml-cpp, Native File Dialog, dylib, the gizmo code derived from ImGuizmo,
+SPIRV-Cross, RapidJSON, yaml-cpp, Native File Dialog, dylib, miniz, the gizmo code derived from ImGuizmo,
 the Inter and JetBrains Mono fonts, and the bundled Slang compiler and CMake. Their licenses are in
 the respective folders, indexed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and assembled
 by `scripts/third_party_notices.py` into `THIRD_PARTY_NOTICES.txt`, which opens with the engine's

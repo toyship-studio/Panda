@@ -1,6 +1,7 @@
 #include "App/EditorUpdater.hpp"
 
 #include "Project/System/SystemTools.hpp"
+#include "Project/System/ZipArchive.hpp"
 
 #include <Fern/Fern.hpp>
 #include <Foundation/Hash/Sha256.hpp>
@@ -519,7 +520,9 @@ void EditorUpdater::install() {
             std::string output;
             auto collect = [&output](std::string_view line) { output += std::string(line) + "\n"; };
 #    if defined(PLATFORM_WINDOWS)
-            const bool unpacked = SystemTools::runCommand("tar.exe", {"-xf", archive.string(), "-C", stage.string()}, {}, collect);
+            std::string zipError;
+            const bool unpacked = ZipArchive::extract(archive, stage, zipError);
+            if (!unpacked) { output = zipError; }
 #    else
             const bool unpacked = SystemTools::runCommand("/usr/bin/tar", {"-xzf", archive.string(), "-C", stage.string()}, {}, collect);
 #    endif

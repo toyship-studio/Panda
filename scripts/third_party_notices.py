@@ -147,6 +147,7 @@ ENTRIES = [
      lambda: file_text("Rain/Vendor/rapidjson/license.txt")),
     ("yaml-cpp", "MIT", "Rain/Vendor/yaml-cpp", lambda: file_text("Rain/Vendor/yaml-cpp/LICENSE")),
     ("Native File Dialog", "zlib", "Vendor/nfd", lambda: file_text("Vendor/nfd/LICENSE")),
+    ("miniz", "MIT", "Vendor/miniz", lambda: file_text("Vendor/miniz/LICENSE")),
     ("ImGuizmo, the origin of the viewport gizmo code", "MIT", "PandaEditor/src/Viewport/Gizmo/Gizmo.cpp",
      lambda: line_comment_header("PandaEditor/src/Viewport/Gizmo/Gizmo.cpp")),
     ("Inter", "SIL Open Font License 1.1", "Panda/resources/default-fonts/Inter",

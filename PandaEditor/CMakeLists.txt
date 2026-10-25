@@ -199,6 +199,9 @@ target_link_libraries(PandaEditor MirenTools)
 # Dependencies - nfd (Vendor/nfd, added by the root)
 target_link_libraries(PandaEditor nfd)
 
+# Dependencies - miniz (Vendor/miniz, added by the root): zip archives (Project/System/ZipArchive)
+target_link_libraries(PandaEditor miniz)
+
 if (PLATFORM_LINUX)
     # The blocking save changes dialog uses GTK3 independently of the nfd backend (GTK or portal).
     find_package(PkgConfig REQUIRED)
