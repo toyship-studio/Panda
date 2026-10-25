@@ -118,21 +118,29 @@ public:
         }
         if (!open(*raw)) {
             DWORD error = GetLastError();
-            // Nothing is in flight: the handles close quietly and the transfer ends here.
-            closeHandles(*raw);
-            remove(raw);
-            transfer->finish(mapError(error, transfer->url().secure));
+            raw->error = error ? error : ERROR_WINHTTP_INTERNAL_ERROR;
+            if (raw->request) {
+                closeRequest(*raw); // HANDLE_CLOSING finishes the transfer with the error
+            } else {
+                if (raw->connect) { WinHttpCloseHandle(raw->connect); }
+                remove(raw);
+                transfer->finish(mapError(error, transfer->url().secure));
+            }
         }
     }
 
     void abort(Transfer &transfer) override {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        for (auto &[raw, state] : m_states) {
-            if (state->transfer.get() == &transfer) {
-                closeRequest(*state);
-                break;
+        HINTERNET handle = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (auto &[raw, state] : m_states) {
+                if (state->transfer.get() == &transfer) {
+                    handle = takeRequestToClose(*state);
+                    break;
+                }
             }
         }
+        if (handle) { WinHttpCloseHandle(handle); }
     }
 
     void shutdown() override {
@@ -176,6 +184,8 @@ private:
                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
                                            url.secure ? WINHTTP_FLAG_SECURE : 0);
         if (!state.request) { return false; }
+        DWORD_PTR context = reinterpret_cast<DWORD_PTR>(&state);
+        WinHttpSetOption(state.request, WINHTTP_OPTION_CONTEXT_VALUE, &context, sizeof(context));
 
         DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_ALL;
         WinHttpSetOption(state.request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
@@ -201,7 +211,8 @@ private:
         if (!request.uploadFile.empty()) {
             state.uploadFile = _wfopen(request.uploadFile.c_str(), L"rb");
             if (!state.uploadFile) {
-                SetLastError(ERROR_WINHTTP_INVALID_URL);
+                state.transfer->recordError(Error::FileError); // wins over the mapped error
+                SetLastError(ERROR_WINHTTP_INTERNAL_ERROR);
                 return false;
             }
             std::error_code ec;
@@ -216,32 +227,33 @@ private:
                                       reinterpret_cast<DWORD_PTR>(&state)) == TRUE;
         }
         const std::vector<uint8_t> &body = request.body;
+        LPVOID optional = body.empty() ? nullptr : static_cast<LPVOID>(const_cast<uint8_t *>(body.data()));
         return WinHttpSendRequest(state.request,
                                   WINHTTP_NO_ADDITIONAL_HEADERS,
                                   0,
-                                  body.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<uint8_t *>(body.data()),
+                                  optional,
                                   DWORD(body.size()),
                                   DWORD(body.size()),
                                   reinterpret_cast<DWORD_PTR>(&state)) == TRUE;
     }
 
     // Closing the request handle is how a transfer ends, with success, an error or a cancel: the
-    // HANDLE_CLOSING notification that follows is the last one and finishes the transfer.
-    void closeRequest(State &state) {
-        if (state.closing) { return; }
+    // HANDLE_CLOSING notification that follows is the last one and finishes the transfer. The
+    // callback may run on the closing thread, so the handle is closed outside the mutex: this
+    // marks the state under the mutex and hands the handle back to close.
+    HINTERNET takeRequestToClose(State &state) {
+        if (state.closing) { return nullptr; }
         state.closing = true;
-        if (state.request) { WinHttpCloseHandle(state.request); }
+        return state.request;
     }
 
-    void closeHandles(State &state) {
-        if (state.request) {
-            WinHttpCloseHandle(state.request);
-            state.request = nullptr;
+    void closeRequest(State &state) {
+        HINTERNET handle = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            handle = takeRequestToClose(state);
         }
-        if (state.connect) {
-            WinHttpCloseHandle(state.connect);
-            state.connect = nullptr;
-        }
+        if (handle) { WinHttpCloseHandle(handle); }
     }
 
     void remove(State *state) {
@@ -251,12 +263,10 @@ private:
 
     void fail(State &state, DWORD error) {
         state.error = error ? error : ERROR_WINHTTP_INTERNAL_ERROR;
-        std::lock_guard<std::mutex> lock(m_mutex);
         closeRequest(state);
     }
 
     void stop(State &state) {
-        std::lock_guard<std::mutex> lock(m_mutex);
         closeRequest(state);
     }
 

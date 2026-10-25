@@ -333,7 +333,7 @@ void Transfer::postProgress() {
     desc.group = m_group;
     m_client.scheduler.post(desc, [self] {
         self->m_progressQueued.store(false);
-        if (self->isCanceled() || self->isFinished()) { return; }
+        if (self->isCanceled()) { return; }
         Progress progress;
         progress.received = self->m_progressReceived.load();
         int64_t total = self->m_progressTotal.load();

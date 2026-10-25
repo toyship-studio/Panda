@@ -133,9 +133,11 @@ RequestHandle Client::Impl::send(Request request, CompleteFn complete, ProgressF
     if (early != Error::None) {
         // Reported like every other error: on the main thread, in processCompletions.
         transfer->recordError(early);
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_active.emplace(transfer.get(), transfer);
-        transfer->finish(early);
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_active.emplace(transfer.get(), transfer);
+        }
+        transfer->finish(early); // takes the mutex itself through transferFinished
         return RequestHandle(transfer);
     }
     {
