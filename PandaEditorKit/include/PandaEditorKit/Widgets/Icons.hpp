@@ -12,8 +12,9 @@ namespace Editor {
 // Icon tokens: semantic names = base names of the PNGs in
 // PandaEditor/resources/ui/editor-icons/<name>.png. The files are white alpha masks (rgb=1,
 // alpha=shape), the color comes from the ImageView tint. The library loads ALL png files of the
-// folder (EditorUI::loadEditorIcons): a new icon = a new file + a token here. Packages bring their
-// own folders (EditorExtensions::iconFolders) and keep the tokens on their side.
+// folder (EditorUI::loadEditorIcons): a new icon = a new file + a token here + a row in the author
+// guide (PandaSDK/docs/plugins/icons.md: icon plugins replace icons by these names). Packages bring
+// their own folders (EditorExtensions::iconFolders) and keep the tokens on their side.
 namespace Ic {
     inline constexpr const char *Undo = "undo";
     inline constexpr const char *Redo = "redo";

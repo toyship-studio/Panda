@@ -18,8 +18,8 @@ The author-facing guide is the book part `PandaSDK/docs/modules/` (`README.md` i
   They are enabled per project. Their purpose is clean architecture, code isolation and compile
   speed, not hosting third-party code.
 - **Plugin** (`plugin.json`): an editor extension for the user. Plugins are data only: themes
-  today; languages, templates and similar data later. They are shared by all projects, loaded
-  when the editor starts and never go into a game.
+  and icons today, editor localization later (the kinds below). They are shared by all projects,
+  installed and applied without a restart and never go into a game.
 - **User code is Bamboo only.** Components with fields, systems (scripts with `update`), meshes,
   materials, physics and UI are all scripts built into the project's script bundle (entry point
   `pandaLoadScriptBundle`). Gameplay is never written in modules, so Bamboo has to grow to cover
@@ -86,8 +86,25 @@ lives in the `.pmeta` next to the file, so references survive), scripts are copi
   sdk/                      the SDK part: include/Bamboo (packaged), src (compiled into PandaSDK)
   README.md, CHANGELOG.md, media/
                             package page (registry, editor)
-  data/                     plugin data: data/themes/*.json
+  data/                     plugin data: data/themes/*.json, data/icons/*.png
 ```
+
+## Plugin data kinds
+
+Decided 2026-10-25. A kind of plugin data is accepted only if the editor can load and unload it
+live, and only if it is data the editor reads (nothing executes). The author guide is the book
+chapter `PandaSDK/docs/plugins/`.
+
+| Kind | Folder | State |
+|---|---|---|
+| themes | `data/themes/*.json` | done: `EditorPlugins::loadTheme`, applied from the Plugins tab and the APPEARANCE section |
+| icons | `data/icons/<token>.png` | done: `EditorUI::applyIconOverrides` puts the pixels behind the existing texture handle of the token, so every icon on screen changes at once; a removed plugin restores the editor's file |
+| localization | `data/strings/…` | planned, after `tr()` across the editor (`context/roadmap.md`) |
+
+Not plugins: keyboard layouts (editor settings), script templates (scripts are written in an
+external editor, the editor creates none), project templates and samples (not for now; a template
+copies into a project rather than extending the editor), asset packs (dropped, see above), code of
+any kind (modules and Bamboo).
 
 ## Entry points and registration
 

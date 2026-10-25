@@ -20,3 +20,6 @@
   - [Build, test and ship](modules/build-and-test.md)
   - [Checklist](modules/checklist.md)
   - [The samples](modules/samples.md)
+- [Writing a plugin](plugins/README.md)
+  - [Themes](plugins/themes.md)
+  - [Icons](plugins/icons.md)

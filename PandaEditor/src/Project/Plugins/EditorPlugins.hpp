@@ -72,8 +72,10 @@ struct InstalledPlugin final {
     bool builtIn = false; // shipped in the editor resources: listed, never removed
     bool dev = false;     // a link to the developer's folder (Install Dev Plugin)
     std::vector<EditorTheme> themes;
+    // data/icons/<name>.png: editor icons by token name (white alpha masks, EditorUI::applyIconOverrides).
+    std::vector<path_t> icons;
 
-    // What the plugin provides, derived from its data folders ("themes").
+    // What the plugin provides, derived from its data folders ("themes", "icons").
     std::vector<std::string> provides() const;
 };
 

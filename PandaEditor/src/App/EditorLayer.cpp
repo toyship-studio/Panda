@@ -1108,10 +1108,21 @@ void EditorLayer::loadPlugins() {
         [this](const path_t &file) { return m_editorUI.loadImage(file); }
     );
     // An install, an update or a removal takes effect at once: the theme of the settings is read
-    // again (its files may have changed), or the editor falls back to the built-in dark one.
+    // again (its files may have changed), or the editor falls back to the built-in dark one; the
+    // icons of the plugins replace or release the editor's.
     m_pluginStore.setOnInstalledChanged([this] {
         applyTheme(m_loader.editorSettings().get<EditorAppearanceSettings>().theme);
+        applyIconPlugins();
     });
+    applyIconPlugins();
+}
+
+void EditorLayer::applyIconPlugins() {
+    std::vector<path_t> files; // install order: built-in plugins first, a later plugin wins a token
+    for (const InstalledPlugin &plugin : m_pluginStore.installed()) {
+        files.insert(files.end(), plugin.icons.begin(), plugin.icons.end());
+    }
+    m_editorUI.applyIconOverrides(files);
 }
 
 void EditorLayer::applyTheme(const std::string &themeId) {

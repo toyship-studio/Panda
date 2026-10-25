@@ -103,7 +103,7 @@ owned by `EditorLayer` and reaches the tab through `EngineBridge` (`pluginStore(
 `currentThemeId()`, `selectTheme(id)`, `installDevPlugin()`).
 
 - Installed plugins: `Resources/plugins/*` (built-in) and `<userdata>/Panda/Plugins/<id>`,
-  scanned by `EditorPlugins` (`InstalledPlugin {manifest, directory, builtIn, dev, themes}`). One
+  scanned by `EditorPlugins` (`InstalledPlugin {manifest, directory, builtIn, dev, themes, icons}`). One
   installed version per plugin; the folder name is the plugin id and `plugin.json` is the truth,
   so there is no separate list of installed plugins.
 - Catalog: `GET /api/v1/packages?kind=plugin&sort=downloads&engine=<ENGINE_VERSION>&page=&size=20`
@@ -155,7 +155,12 @@ when the set did not change — its files did. The tab needs no notification: it
 whose model changed on the next frame.
 
 - Every kind of plugin data has to be loadable and unloadable live before it is accepted into the
-  plugin format; today that is themes (`EditorPlugins::loadTheme`, `PandaUI::setTheme`).
+  plugin format; today that is themes (`EditorPlugins::loadTheme`, `PandaUI::setTheme`) and icons
+  (`EditorUI::applyIconOverrides`: the plugin PNG goes behind the texture handle the icon token
+  already has — `PandaUIImplMiren::replaceTexture` — so every view showing it changes on the next
+  frame; a token without an override goes back to the editor's file, a token the editor lacks
+  becomes a new icon). The kinds and their state are listed in `context/plugins.md`, "Plugin data
+  kinds".
 - Later themes are also chosen from a command palette, as in Zed and VS Code
   (`context/roadmap.md`).
 

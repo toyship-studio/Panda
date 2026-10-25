@@ -25,6 +25,10 @@ public:
     // shutdown does not delete it (the owner is the engine). Seam #1 of the migration: the live 3D
     // scene frame in the viewport panel. Call on FBO creation/resize.
     PandaUI::TextureHandle wrapNativeTexture(Miren::TextureHandle native, PandaUI::Size size);
+    // Puts new pixels behind an existing handle: every view holding the handle draws them from the
+    // next frame (icon plugins swap the editor icons live). The old native texture is deleted
+    // unless it is a wrapped foreign one. False — the handle is unknown or the pixels are empty.
+    bool replaceTexture(PandaUI::TextureHandle handle, Miren::TextureCreate create);
     void render(const PandaUI::DrawList &drawList, uint16_t viewId);
 
 private:

@@ -191,6 +191,7 @@ private:
     PluginStore m_pluginStore; // installed plugins, the catalog of the portal, the operations (the Plugins tab)
     void loadPlugins();
     void applyTheme(const std::string &themeId); // empty/unknown — the built-in dark one
+    void applyIconPlugins();                     // the icons of the installed plugins over the editor's
     // The APPEARANCE section of the editor settings chooses a theme by index.
     std::vector<std::string> themeNames();
     int currentThemeIndex();

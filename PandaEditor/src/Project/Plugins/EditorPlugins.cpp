@@ -21,14 +21,21 @@ namespace {
         return true;
     }
 
-    // "#RRGGBB" / "#RRGGBBAA" → Color; false — cannot be parsed.
+    // "#RRGGBB" / "#RRGGBBAA", or the short "#RGB" / "#RGBA" (every digit doubled) → Color; false —
+    // cannot be parsed. The same forms the portal validator accepts.
     bool parseColor(const std::string &text, PandaUI::Color &out) {
-        if (text.size() != 7 && text.size() != 9) { return false; }
-        if (text[0] != '#') { return false; }
+        if (text.empty() || text[0] != '#') { return false; }
+        std::string digits = text.substr(1);
+        if (digits.size() == 3 || digits.size() == 4) {
+            std::string expanded;
+            for (char c : digits) { expanded += std::string(2, c); }
+            digits = expanded;
+        }
+        if (digits.size() != 6 && digits.size() != 8) { return false; }
         char *end = nullptr;
-        const unsigned long value = std::strtoul(text.c_str() + 1, &end, 16);
+        const unsigned long value = std::strtoul(digits.c_str(), &end, 16);
         if (end == nullptr || *end != '\0') { return false; }
-        const uint32_t rgba = text.size() == 7 ? static_cast<uint32_t>((value << 8) | 0xFF) : static_cast<uint32_t>(value);
+        const uint32_t rgba = digits.size() == 6 ? static_cast<uint32_t>((value << 8) | 0xFF) : static_cast<uint32_t>(value);
         out = PandaUI::Color(rgba);
         return true;
     }
@@ -83,6 +90,7 @@ namespace {
 std::vector<std::string> InstalledPlugin::provides() const {
     std::vector<std::string> result;
     if (!themes.empty()) { result.push_back("themes"); }
+    if (!icons.empty()) { result.push_back("icons"); }
     return result;
 }
 
@@ -141,6 +149,12 @@ void EditorPlugins::scanFolder(const path_t &folder, bool builtIn) {
         plugin.themes.push_back(entry);
         m_themes.push_back(std::move(entry));
     }
+    // Plugin icons: data/icons/*.png, the file name is the icon token.
+    const path_t iconsDir = folder / "data" / "icons";
+    for (const auto &entry : std::filesystem::directory_iterator(iconsDir, error)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".png") { plugin.icons.push_back(entry.path()); }
+    }
+    std::sort(plugin.icons.begin(), plugin.icons.end());
     m_plugins.push_back(std::move(plugin));
 }
 

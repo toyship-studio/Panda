@@ -9,6 +9,8 @@
 
 #include <filesystem>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Fern {
@@ -43,6 +45,12 @@ public:
     // Folders of the packages' PNG icons (absolute paths; EditorExtensions::iconFolders) — into the same
     // library, on top of what is already loaded.
     void loadIconFolders(const std::vector<std::filesystem::path> &folders);
+    // The icons of the installed icon plugins (data/icons/<token>.png, in install order: a later file
+    // wins). A known token keeps its handle and gets the new pixels, so every icon already on screen
+    // changes at once; a token no plugin overrides any more goes back to its own file; a token the
+    // editor does not have becomes a new icon. Called at startup and after every change of the
+    // installed plugins.
+    void applyIconOverrides(const std::vector<std::filesystem::path> &files);
 
     PandaUI::Context &context() {
         return m_context;
@@ -74,6 +82,12 @@ private:
     // All PNGs of the folders (absolute paths) → a library: decoding on the scheduler, textures on
     // the main thread; blocks until ready.
     Editor::IconLibrary loadIconLibrary(const std::vector<std::filesystem::path> &folders);
+    void rememberIconSources(const std::vector<std::filesystem::path> &folders);
+    // token → the file of the editor or of a module (what an override goes back to)
+    std::unordered_map<std::string, std::filesystem::path> m_iconSources;
+    // token → the plugin file in place of the source right now
+    std::unordered_map<std::string, std::filesystem::path> m_iconOverrides;
+    std::vector<std::filesystem::path> m_iconOverrideFiles; // the last applyIconOverrides input
 };
 
 } // namespace Panda

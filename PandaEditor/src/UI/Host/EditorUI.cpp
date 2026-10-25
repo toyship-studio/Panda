@@ -113,10 +113,73 @@ void EditorUI::loadEditorIcons() {
         folders.push_back(Fern::getStaticResourcesPath() / folder);
     }
     Editor::setIcons(loadIconLibrary(folders));
+    rememberIconSources(folders);
 }
 
 void EditorUI::loadIconFolders(const std::vector<path_t> &folders) {
     Editor::addIcons(loadIconLibrary(folders));
+    rememberIconSources(folders);
+    // A plugin may override the icons of a module that arrived just now.
+    if (!m_iconOverrideFiles.empty()) { applyIconOverrides(m_iconOverrideFiles); }
+}
+
+void EditorUI::rememberIconSources(const std::vector<path_t> &folders) {
+    for (const path_t &folder : folders) {
+        std::error_code error;
+        for (const std::filesystem::directory_entry &file : std::filesystem::directory_iterator(folder, error)) {
+            if (file.path().extension() == ".png") { m_iconSources[file.path().stem().string()] = file.path(); }
+        }
+    }
+}
+
+void EditorUI::applyIconOverrides(const std::vector<path_t> &files) {
+    m_iconOverrideFiles = files;
+    std::unordered_map<std::string, path_t> wanted; // token → the plugin file that should show
+    for (const path_t &file : files) { wanted[file.stem().string()] = file; }
+
+    // What has to change: a token whose override differs from the one in place, and a token whose
+    // override went away (back to its source).
+    std::vector<std::pair<std::string, path_t>> changes;
+    for (const auto &[token, file] : wanted) {
+        const auto current = m_iconOverrides.find(token);
+        if (current == m_iconOverrides.end() || current->second != file) { changes.emplace_back(token, file); }
+    }
+    for (const auto &[token, file] : m_iconOverrides) {
+        if (wanted.count(token) == 0) {
+            const auto source = m_iconSources.find(token);
+            changes.emplace_back(token, source == m_iconSources.end() ? path_t() : source->second);
+        }
+    }
+    if (changes.empty()) { return; }
+
+    // Decoding in parallel like the startup load; the textures change on the main thread.
+    PandaAsync::Scheduler &scheduler = Panda::Application::get()->getScheduler();
+    Editor::IconLibrary added;
+    uint32_t count = 0;
+    for (const auto &[token, file] : changes) {
+        if (file.empty()) { continue; } // a plugin-only icon whose plugin is gone: nothing to go back to
+        count++;
+        scheduler.submit<Miren::TextureCreate>(
+            PandaAsync::JobDesc{"icon.decode"},
+            [file](PandaAsync::Context &) { return Panda::AssetImporterBase::load2DTextureFile(file); },
+            [this, &added, token](Miren::TextureCreate &&create) {
+                const PandaUI::TextureHandle existing = Editor::icons().get(token);
+                if (existing) {
+                    if (!m_renderer.replaceTexture(existing, std::move(create))) {
+                        LOG_ERROR_EDITOR("Icon %s could not be replaced", token.c_str());
+                    }
+                } else {
+                    added.set(token, m_renderer.createTextureFromDecoded(std::move(create)));
+                }
+            }
+        );
+    }
+    scheduler.waitAll();
+    scheduler.processCompletions(PandaAsync::CompletionBudget{count, 0.0});
+    Editor::addIcons(added);
+    m_iconOverrides.clear();
+    for (const auto &[token, file] : wanted) { m_iconOverrides[token] = file; }
+    LOG_INFO_EDITOR("Icons: %zu plugin icon(s) applied", wanted.size());
 }
 
 Editor::IconLibrary EditorUI::loadIconLibrary(const std::vector<path_t> &folders) {
