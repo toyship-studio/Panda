@@ -49,7 +49,7 @@ public:
     void setTitleFont(Font font) {
         m_title->setFont(font);
     }
-    void setTitleColor(Color color) {
+    void setTitleColor(ThemeColor color) {
         m_hasTitleColor = true;
         m_title->setTextColor(color);
     }
@@ -170,7 +170,7 @@ void CollapsibleSection::setTitleFont(Font font) {
     m_header->setTitleFont(font);
 }
 
-void CollapsibleSection::setTitleColor(Color color) {
+void CollapsibleSection::setTitleColor(ThemeColor color) {
     m_header->setTitleColor(color);
 }
 

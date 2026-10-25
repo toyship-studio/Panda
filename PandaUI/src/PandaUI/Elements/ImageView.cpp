@@ -10,7 +10,7 @@ namespace PandaUI {
 
 ImageView::ImageView()
     : m_texture()
-    , m_tintColor(0xFFFFFFFF)
+    , m_tintColor(Color(0xFFFFFFFF))
     , m_contentMode(ImageContentMode::Stretch) {
     setBackgroundColor(Color(0x00000000));
     setUsesIntrinsicContentSize(true);
@@ -29,7 +29,7 @@ void ImageView::setTexture(TextureHandle texture) {
     invalidateIntrinsicContentSize();
 }
 
-void ImageView::setTintColor(Color color) {
+void ImageView::setTintColor(ThemeColor color) {
     m_tintColor = color;
     setNeedsDisplay();
 }
@@ -110,7 +110,7 @@ void ImageView::draw(float offsetX, float offsetY) {
     UIRenderer::RectData rect;
     rect.center = {x + drawWidth * 0.5f, y + drawHeight * 0.5f, 0.f};
     rect.size = Size(drawWidth, drawHeight);
-    rect.color = m_tintColor;
+    rect.color = m_tintColor.resolve();
     rect.texture = m_texture;
     rect.textureCoords.origin = Point(u0, v1);
     rect.textureCoords.size = Size(u1 - u0, v0 - v1);

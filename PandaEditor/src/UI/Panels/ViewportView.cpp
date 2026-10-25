@@ -16,7 +16,7 @@ namespace {
 ViewportView::ViewportView(ViewportViewOutput *output)
     : m_output(output) {
     setFocusable(true); // focus on click → the 1/2/3 keys work
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
     layout().setFlexGrow(1.f);
     layout().setFlexDirection(FlexDirection::Column);
     layout().setJustifyContent(Justify::Center);

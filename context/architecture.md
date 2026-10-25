@@ -98,13 +98,14 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   (`Panda/include/Panda/GameLogic/SelectionContext.hpp`; entity selection and file selection are
   kept separately). It does not depend on the views.
 - **View**: a panel built on PandaUI (base class `Editor::EditorView`: `addSubviews` /
-  `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). A color an owner puts on a
-  plain view — a divider, a card, a tinted label, a fixed icon color — goes through
-  `View::setThemeStyle`, which runs again on every theme change after the view's own
-  `themeChanged`; list rows that bind theme colors are rebound from `setupStyle` (`reloadData`). A
-  view that was out of the tree during a theme change (the hidden start screen, a replaced tab
-  content) restyles itself when attached: every view carries the theme generation it was styled
-  under (`PandaUI::themeGeneration()`). A view is passive: it sends intentions out through its own
+  `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). Colors are
+  `PandaUI::ThemeColor`: a token of the theme (`ThemeColor::border`, the model of UIKit's dynamic
+  colors) is resolved every time the view draws, so a divider, a card or a tinted label follows a
+  theme change with no code — pass the token, not `theme().border` (a `Color` is a snapshot).
+  `themeChanged` is for state DERIVED from the theme (a rebuilt card, a cached texture). A view
+  that was out of the tree during a theme change (the hidden start screen, a replaced tab content)
+  catches up when attached: every view carries the theme generation it was styled under
+  (`PandaUI::themeGeneration()`). A view is passive: it sends intentions out through its own
   `Output` interface and receives data through setters (its input). It makes no decisions about the
   model.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every

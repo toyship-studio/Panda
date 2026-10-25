@@ -58,7 +58,7 @@ namespace {
             m_icon->layout().setDisplay(hidden ? Display::None : Display::Flex);
             if (!hidden) {
                 m_icon->setTexture(icons().get(name));
-                m_icon->setTintColor(theme().textMuted);
+                m_icon->setTintColor(ThemeColor::textMuted);
             }
         }
 
@@ -262,8 +262,7 @@ void HierarchyPanelView::setupLayout() {
 }
 
 void HierarchyPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_tree) { m_tree->reloadData(); } // the rows bind their icon tint from the theme
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Editor

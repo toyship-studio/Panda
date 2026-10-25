@@ -104,7 +104,7 @@ void addIcons(const IconLibrary &library); // package folders that arrived after
 const IconLibrary &icons();
 
 // An icon as an ImageView of the given size and color (tint). Without a color — theme().textMuted.
-std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size, PandaUI::Color color);
+std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size, PandaUI::ThemeColor color);
 std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size);
 // Icon button: a square Control with a tinted icon and a hover background (toolbar 28, headers 23).
 class IconButton final : public PandaUI::Control {
@@ -117,8 +117,8 @@ public:
     void setOnContextMenu(std::function<void()> callback); // RMB (context menu, e.g. Dock Left/Right)
     void setButtonSize(float width, float height);         // rectangular (e.g. transport 30×28)
     void setIconName(const std::string &name);     // change the icon (e.g. maximize ↔ restore)
-    void setIconColor(PandaUI::Color rest);        // icon color at rest (default textMuted)
-    void setFixedColor(PandaUI::Color color);      // constant color (play=teal/stop=pink): hover does not change it
+    void setIconColor(PandaUI::ThemeColor rest);   // icon color at rest (default ThemeColor::textMuted)
+    void setFixedColor(PandaUI::ThemeColor color); // constant color (play=teal/stop=pink): hover does not change it
     void setActive(bool active);                   // selected (gizmo tool/dock tab): accentSoft background + accentText
     void setCornerRadius(float radius);
 
@@ -132,9 +132,9 @@ private:
     std::shared_ptr<PandaUI::ImageView> m_icon;
     ClickCallback m_onClick;
     std::function<void()> m_onContextMenu;
-    PandaUI::Color m_restColor;
+    PandaUI::ThemeColor m_restColor;
     bool m_hasFixedColor = false;
-    PandaUI::Color m_fixedColor;
+    PandaUI::ThemeColor m_fixedColor;
     bool m_active = false;
 };
 

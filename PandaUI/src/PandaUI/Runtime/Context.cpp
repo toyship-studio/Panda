@@ -781,46 +781,60 @@ void Context::updateHoveredView(Point position, PointerEvent &event) {
     }
 }
 
+namespace {
+
+    // The responder chain from the target to the root, taken before the first handler runs and
+    // held alive for the whole dispatch: a handler may remove its own view (a button whose click
+    // rebuilds the list it sits in) without the chain being pulled from under us — as UIKit keeps
+    // the sender alive during an action.
+    struct ResponderChain {
+        std::vector<std::shared_ptr<View>> owners;
+        std::vector<View *> views;
+
+        explicit ResponderChain(View *target) {
+            for (View *view = target; view; view = view->getSuperview()) {
+                views.push_back(view);
+                if (std::shared_ptr<View> owner = view->weak_from_this().lock()) { owners.push_back(std::move(owner)); }
+            }
+        }
+
+        template<typename Event, typename Handler>
+        void dispatch(Event &event, Handler handler) const {
+            for (View *view : views) {
+                if (event.isHandled) { break; }
+                if (handler(view, event)) { event.isHandled = true; }
+            }
+        }
+    };
+
+} // namespace
+
 void Context::dispatchPointerDown(View *target, PointerEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->pointerDown(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, PointerEvent &e) { return view->pointerDown(e); });
 }
 
 void Context::dispatchPointerUp(View *target, PointerEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->pointerUp(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, PointerEvent &e) { return view->pointerUp(e); });
 }
 
 void Context::dispatchPointerMove(View *target, PointerEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->pointerMove(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, PointerEvent &e) { return view->pointerMove(e); });
 }
 
 void Context::dispatchScroll(View *target, ScrollEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->scroll(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, ScrollEvent &e) { return view->scroll(e); });
 }
 
 void Context::dispatchKeyDown(View *target, KeyEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->keyDown(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, KeyEvent &e) { return view->keyDown(e); });
 }
 
 void Context::dispatchKeyUp(View *target, KeyEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->keyUp(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, KeyEvent &e) { return view->keyUp(e); });
 }
 
 void Context::dispatchTextInput(View *target, TextInputEvent &event) {
-    for (View *view = target; view && !event.isHandled; view = view->getSuperview()) {
-        if (view->textInput(event)) { event.isHandled = true; }
-    }
+    ResponderChain(target).dispatch(event, [](View *view, TextInputEvent &e) { return view->textInput(e); });
 }
 
 } // namespace PandaUI

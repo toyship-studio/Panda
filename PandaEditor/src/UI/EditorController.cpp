@@ -1143,12 +1143,10 @@ void EditorController::showDisplayOptions(View *anchor) {
     sections->setTitleFilter([](const std::string &title) { return title == "VIEWPORT"; });
     sections->setStore(&settings(Panda::SettingsScope::Editor));
     auto card = std::make_shared<Panel>();
-    card->setThemeStyle([](View &view) {
-        view.setBackgroundColor(theme().surface);
-        view.surface().setBorderColor(theme().border);
-    });
+    card->setBackgroundColor(ThemeColor::surface);
     card->surface().setCornerRadius(9.f);
     card->surface().setBorderWidth(1.f);
+    card->surface().setBorderColor(ThemeColor::border);
     card->surface().setShadowColor(Color(0x00000066));
     card->surface().setShadowOffset(Point(0.f, 8.f));
     card->surface().setShadowRadius(22.f);

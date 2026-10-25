@@ -150,22 +150,21 @@ namespace {
 
         void bind(uint32_t id, const std::string &name, const std::string &type, const std::string &folder,
                   bool valid, bool loaded) {
-            const Theme &t = theme();
             m_id->setText(std::to_string(id));
             m_typeIcon->setTexture(icons().get(iconForAssetType(type)));
-            m_typeIcon->setTintColor(valid ? t.textMuted : t.textDisabled);
+            m_typeIcon->setTintColor(valid ? ThemeColor::textMuted : ThemeColor::textDisabled);
             m_type->setText(type);
             m_name->setText(name);
             m_path->setText(folder);
             m_name->setTextRole(valid ? TextRole::Primary : TextRole::Disabled);
-            m_validDot->setBackgroundColor(valid ? t.success : t.danger);
+            m_validDot->setBackgroundColor(valid ? ThemeColor::success : ThemeColor::danger);
             if (loaded) {
-                m_loadedDot->setBackgroundColor(t.accent);
+                m_loadedDot->setBackgroundColor(ThemeColor::accent);
                 m_loadedDot->surface().setBorderWidth(0.f);
             } else {
                 m_loadedDot->setBackgroundColor(Color(0x00000000));
                 m_loadedDot->surface().setBorderWidth(1.5f);
-                m_loadedDot->surface().setBorderColor(t.textDim);
+                m_loadedDot->surface().setBorderColor(ThemeColor::textDim);
             }
         }
 
@@ -358,11 +357,8 @@ void AssetManagerPanelView::setupLayout() {
 }
 
 void AssetManagerPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_table) {
-        m_table->setBackgroundColor(theme().windowBackground);
-        m_table->reloadData(); // the rows bind their colors from the theme
-    }
+    setBackgroundColor(ThemeColor::windowBackground);
+    if (m_table) { m_table->setBackgroundColor(ThemeColor::windowBackground); }
 }
 
 } // namespace Editor

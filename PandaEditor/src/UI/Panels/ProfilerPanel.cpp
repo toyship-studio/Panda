@@ -17,7 +17,7 @@ namespace {
         auto divider = std::make_shared<Panel>();
         divider->setUserInteractionEnabled(false);
         divider->layout().setHeight(Length::points(1.f));
-        divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
+        divider->setBackgroundColor(ThemeColor::borderFaint);
         return divider;
     }
 

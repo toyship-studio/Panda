@@ -26,9 +26,9 @@ public:
     TextureHandle getTexture() const {
         return m_texture;
     }
-    void setTintColor(Color color);
-    const Color &getTintColor() const {
-        return m_tintColor;
+    void setTintColor(ThemeColor color); // a token follows the theme (icons are white masks tinted here)
+    Color getTintColor() const {
+        return m_tintColor.resolve();
     }
     void setContentMode(ImageContentMode contentMode);
     ImageContentMode getContentMode() const {
@@ -47,7 +47,7 @@ protected:
 
 private:
     TextureHandle m_texture;
-    Color m_tintColor;
+    ThemeColor m_tintColor;
     ImageContentMode m_contentMode;
     bool m_flipVertical = false;
 };

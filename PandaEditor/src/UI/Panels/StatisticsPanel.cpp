@@ -18,14 +18,14 @@ namespace {
         auto divider = std::make_shared<Panel>();
         divider->setUserInteractionEnabled(false);
         divider->layout().setHeight(Length::points(1.f));
-        divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
+        divider->setBackgroundColor(ThemeColor::borderFaint);
         return divider;
     }
 
     // Table section title: quiet uppercase caps on a flat background (design Statistics/World Settings).
     void styleCapsSection(CollapsibleSection &section) {
         section.setTitleFont(Typo::SectionCaps);
-        section.setThemeStyle([](View &view) { static_cast<CollapsibleSection &>(view).setTitleColor(theme().textDim); });
+        section.setTitleColor(ThemeColor::textDim);
         section.setTitleLetterSpacing(Typo::SectionCapsTracking);
         section.setHeaderFill(false);
     }

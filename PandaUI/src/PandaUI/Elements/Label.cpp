@@ -17,8 +17,7 @@ Label::Label()
 
 Label::Label(std::string text)
     : m_text(std::move(text))
-    , m_textColor(theme().textPrimary)
-    , m_textColorIsCustom(false)
+    , m_textColor(ThemeColor::textPrimary)
     , m_textRole(TextRole::Primary)
     , m_numberOfLines(1)
     , m_lineSpacing(0.f)
@@ -44,43 +43,37 @@ void Label::setText(std::string text) {
     invalidateIntrinsicContentSize();
 }
 
-void Label::setTextColor(Color color) {
+void Label::setTextColor(ThemeColor color) {
     m_textColor = color;
-    m_textColorIsCustom = true;
     setNeedsDisplay();
 }
 
 void Label::setTextRole(TextRole role) {
     m_textRole = role;
-    m_textColorIsCustom = false;
-    m_textColor = roleColor();
+    m_textColor = roleColor(role);
     setNeedsDisplay();
 }
 
-Color Label::roleColor() const {
-    const Theme &t = theme();
-    switch (m_textRole) {
+ThemeColor Label::roleColor(TextRole role) {
+    switch (role) {
         case TextRole::Primary:
-            return t.textPrimary;
+            return ThemeColor::textPrimary;
         case TextRole::Secondary:
-            return t.textSecondary;
+            return ThemeColor::textSecondary;
         case TextRole::Muted:
-            return t.textMuted;
+            return ThemeColor::textMuted;
         case TextRole::Dim:
-            return t.textDim;
+            return ThemeColor::textDim;
         case TextRole::Disabled:
-            return t.textDisabled;
+            return ThemeColor::textDisabled;
         case TextRole::Accent:
-            return t.accent;
+            return ThemeColor::accent;
     }
-    return t.textPrimary;
+    return ThemeColor::textPrimary;
 }
 
 void Label::themeChanged() {
-    if (!m_textColorIsCustom) {
-        m_textColor = roleColor();
-        setNeedsDisplay();
-    }
+    setNeedsDisplay(); // the color resolves at draw; only the pixels are stale
 }
 
 void Label::setFont(Font font) {
@@ -234,7 +227,7 @@ void Label::draw(float offsetX, float offsetY) {
                                           : std::string_view(line.displayText);
         const float lineY = yOffset + (layout.lineHeight + layout.lineSpacing) * static_cast<float>(lineIndex);
         context->getRenderer().drawText(
-            *font, text, {offsetX + frame.origin.x + xOffset, offsetY + frame.origin.y + lineY}, m_textColor,
+            *font, text, {offsetX + frame.origin.x + xOffset, offsetY + frame.origin.y + lineY}, m_textColor.resolve(),
             m_font.size, m_letterSpacing, m_font.italic
         );
     }

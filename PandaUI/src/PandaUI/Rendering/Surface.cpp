@@ -20,19 +20,19 @@ Surface::Surface(View *owner)
     : m_owner(owner)
     // Transparent default: a regular View/Panel is a layout container, not a "plate".
     // An opaque white forced every wrapper to reset the background manually.
-    , m_backgroundColor(0.f, 0.f, 0.f, 0.f)
+    , m_backgroundColor(Color(0.f, 0.f, 0.f, 0.f))
     , m_opacity(1.f)
     , m_clipsToBounds(false)
     , m_cornerRadius(0.f)
     , m_borderWidth(0.f)
-    , m_borderColor(0.f, 0.f, 0.f, 0.f)
+    , m_borderColor(Color(0.f, 0.f, 0.f, 0.f))
     , m_shadow() {}
 
 void Surface::setOwner(View *owner) {
     m_owner = owner;
 }
 
-void Surface::setBackgroundColor(Color color) {
+void Surface::setBackgroundColor(ThemeColor color) {
     m_backgroundColor = color;
     invalidate();
 }
@@ -64,7 +64,7 @@ void Surface::setBorderWidth(float borderWidth) {
     invalidate();
 }
 
-void Surface::setBorderColor(Color color) {
+void Surface::setBorderColor(ThemeColor color) {
     m_borderColor = color;
     invalidate();
 }
@@ -109,13 +109,15 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
         renderer.drawShadow(rect, m_cornerRadius, shadow);
     }
 
-    if (m_backgroundColor.a > 0.f) {
-        rect.color = withOpacity(m_backgroundColor, m_opacity);
+    const Color background = m_backgroundColor.resolve(); // the theme of the moment
+    if (background.a > 0.f) {
+        rect.color = withOpacity(background, m_opacity);
         renderer.drawRoundedRect(rect, m_cornerRadius);
     }
 
-    if (m_borderWidth > 0.f && m_borderColor.a > 0.f) {
-        rect.color = withOpacity(m_borderColor, m_opacity);
+    const Color border = m_borderColor.resolve();
+    if (m_borderWidth > 0.f && border.a > 0.f) {
+        rect.color = withOpacity(border, m_opacity);
         renderer.drawRoundedRectBorder(rect, m_cornerRadius, m_borderWidth);
     }
 }

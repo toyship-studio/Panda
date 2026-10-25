@@ -74,7 +74,7 @@ struct Rect {
 struct Color {
     float r, g, b, a;
 
-    Color()
+    constexpr Color()
         : r(1)
         , g(0)
         , b(0)
@@ -86,25 +86,27 @@ struct Color {
         , b(c.z)
         , a(c.w) {}
 
-    Color(float r, float g, float b, float a)
+    constexpr Color(float r, float g, float b, float a)
         : r(r)
         , g(g)
         , b(b)
         , a(a) {}
 
-    Color(uint32_t rgba) {
-        uint8_t _r = rgba >> 24;
-        uint8_t _g = rgba >> 16;
-        uint8_t _b = rgba >> 8;
-        uint8_t _a = rgba >> 0;
-        r = (_r) / 255.f;
-        g = (_g) / 255.f;
-        b = (_b) / 255.f;
-        a = (_a) / 255.f;
-    }
+    constexpr Color(uint32_t rgba)
+        : r(static_cast<uint8_t>(rgba >> 24) / 255.f)
+        , g(static_cast<uint8_t>(rgba >> 16) / 255.f)
+        , b(static_cast<uint8_t>(rgba >> 8) / 255.f)
+        , a(static_cast<uint8_t>(rgba >> 0) / 255.f) {}
 
     operator glm::vec4() const {
         return {r, g, b, a};
+    }
+
+    constexpr bool operator==(const Color &other) const {
+        return r == other.r && g == other.g && b == other.b && a == other.a;
+    }
+    constexpr bool operator!=(const Color &other) const {
+        return !(*this == other);
     }
 };
 

@@ -26,6 +26,45 @@ uint64_t themeGeneration() {
     return s_generation;
 }
 
+// The tokens: pointers to the fields, constant-initialized (the constructors are constexpr), so
+// they are usable from any static initializer.
+const ThemeColor ThemeColor::windowBackground{&Theme::windowBackground};
+const ThemeColor ThemeColor::surface{&Theme::surface};
+const ThemeColor ThemeColor::surfaceVariant{&Theme::surfaceVariant};
+const ThemeColor ThemeColor::input{&Theme::input};
+const ThemeColor ThemeColor::inputDeep{&Theme::inputDeep};
+const ThemeColor ThemeColor::textPrimary{&Theme::textPrimary};
+const ThemeColor ThemeColor::textSecondary{&Theme::textSecondary};
+const ThemeColor ThemeColor::textMuted{&Theme::textMuted};
+const ThemeColor ThemeColor::textDim{&Theme::textDim};
+const ThemeColor ThemeColor::textDisabled{&Theme::textDisabled};
+const ThemeColor ThemeColor::accent{&Theme::accent};
+const ThemeColor ThemeColor::accentHover{&Theme::accentHover};
+const ThemeColor ThemeColor::accentPressed{&Theme::accentPressed};
+const ThemeColor ThemeColor::onAccent{&Theme::onAccent};
+const ThemeColor ThemeColor::accentSecondary{&Theme::accentSecondary};
+const ThemeColor ThemeColor::accentText{&Theme::accentText};
+const ThemeColor ThemeColor::accentSoft{&Theme::accentSoft};
+const ThemeColor ThemeColor::accentMutedSurface{&Theme::accentMutedSurface};
+const ThemeColor ThemeColor::accentMutedBorder{&Theme::accentMutedBorder};
+const ThemeColor ThemeColor::control{&Theme::control};
+const ThemeColor ThemeColor::controlHover{&Theme::controlHover};
+const ThemeColor ThemeColor::controlPressed{&Theme::controlPressed};
+const ThemeColor ThemeColor::border{&Theme::border};
+const ThemeColor ThemeColor::borderMed{&Theme::borderMed};
+const ThemeColor ThemeColor::borderSoft{&Theme::borderSoft};
+const ThemeColor ThemeColor::borderFaint{&Theme::borderFaint};
+const ThemeColor ThemeColor::borderStrong{&Theme::borderStrong};
+const ThemeColor ThemeColor::focusRing{&Theme::focusRing};
+const ThemeColor ThemeColor::knob{&Theme::knob};
+const ThemeColor ThemeColor::textSelection{&Theme::textSelection};
+const ThemeColor ThemeColor::selection{&Theme::selection};
+const ThemeColor ThemeColor::selectionInactive{&Theme::selectionInactive};
+const ThemeColor ThemeColor::rowHover{&Theme::rowHover};
+const ThemeColor ThemeColor::success{&Theme::success};
+const ThemeColor ThemeColor::warning{&Theme::warning};
+const ThemeColor ThemeColor::danger{&Theme::danger};
+
 void setThemeChangedHandler(std::function<void()> handler) {
     s_handler = std::move(handler);
 }

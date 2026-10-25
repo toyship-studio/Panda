@@ -41,24 +41,23 @@ public:
     }
 
     void bind(const std::string &text, LineKind kind) {
-        const Theme &t = theme();
         Font font = Typo::ValueSmall;
-        Color color = t.textSecondary;
+        ThemeColor color = ThemeColor::textSecondary;
         switch (kind) {
             case LineKind::Command:
                 font = font.withWeight(FontWeight::Medium);
-                color = t.textPrimary;
+                color = ThemeColor::textPrimary;
                 break;
             case LineKind::Plain: break;
-            case LineKind::Warning: color = t.warning; break;
-            case LineKind::Error: color = t.danger; break;
+            case LineKind::Warning: color = ThemeColor::warning; break;
+            case LineKind::Error: color = ThemeColor::danger; break;
             case LineKind::StatusOk:
                 font = font.withWeight(FontWeight::Medium);
-                color = t.success;
+                color = ThemeColor::success;
                 break;
             case LineKind::StatusFail:
                 font = font.withWeight(FontWeight::Medium);
-                color = t.danger;
+                color = ThemeColor::danger;
                 break;
         }
         m_text->setFont(font);
@@ -144,7 +143,7 @@ void CMakePanelView::addSubviews() {
     divider->setUserInteractionEnabled(false);
     divider->layout().setWidth(Length::points(1.f));
     divider->layout().setFlexShrink(0.f);
-    divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
+    divider->setBackgroundColor(ThemeColor::borderFaint);
     addSubview(divider);
 
     /* --- Main column: target tabs + configuration, the output below --- */
@@ -280,8 +279,7 @@ void CMakePanelView::setupLayout() {
 }
 
 void CMakePanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_list) { m_list->reloadData(); } // the lines bind their colors from the theme
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Editor

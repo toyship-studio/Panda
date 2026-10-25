@@ -32,7 +32,7 @@ public:
     const std::string &getText() const {
         return m_text;
     }
-    void setTextColor(Color color);
+    void setTextColor(ThemeColor color); // a token follows the theme; a role is a token too
     void setTextRole(TextRole role);
     TextRole getTextRole() const {
         return m_textRole;
@@ -76,11 +76,10 @@ private:
     const TextLayoutResult &getLayout(const FontAtlas &font, const TextLayoutOptions &options) const;
     void invalidateLayoutCache();
     void themeChanged() override;
-    Color roleColor() const;
+    static ThemeColor roleColor(TextRole role);
 
     std::string m_text;
-    Color m_textColor;
-    bool m_textColorIsCustom;
+    ThemeColor m_textColor;
     TextRole m_textRole;
     Font m_font;
     int m_numberOfLines;

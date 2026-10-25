@@ -1,6 +1,7 @@
 #pragma once
 #include "UI/Documents/PluginsDocument.hpp"
 
+#include <Foundation/RevisionWatcher.hpp>
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 
 #include <cstdint>
@@ -75,13 +76,11 @@ public:
 
 private:
     void rebuild();
-    void applyStyle();
-    void themeChanged() override;
 
     const PluginCardActions *m_actions;
     PluginCardModel m_model;
     bool m_built = false;
-    bool m_needsRebuild = false; // the subviews change on the next frame, never inside a click handler
+    bool m_needsRebuild = false; // the subviews are rebuilt once per frame, however many models arrived
 };
 
 // VIEW: the Plugins tab (Documents/PluginsDocument). The Extensions page of Zed: a title with
@@ -115,10 +114,10 @@ private:
     std::string m_search;   // the query sent to the store
     bool m_searchPending = false;
     double m_searchTimer = 0.0;
-    bool m_chipsDirty = false; // the chips and the list are rebuilt on the next frame: a click handler
-    bool m_listDirty = false;  // must not destroy the button it runs from
-    uint64_t m_shownRevision = 0;
-    uint64_t m_shownNotice = 0;
+    bool m_chipsDirty = false; // the chips and the list are rebuilt once per frame, after every change
+    bool m_listDirty = false;  // of the frame was applied
+    Foundation::RevisionWatcher m_storeWatcher;  // the store changed since the last rebuild
+    Foundation::RevisionWatcher m_noticeWatcher; // a new notice to show
 
     std::shared_ptr<PandaUI::Label> m_title;
     std::shared_ptr<PandaUI::Button> m_devButton;

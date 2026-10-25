@@ -22,10 +22,10 @@ namespace {
     // Dialog card: a surface with a border/rounding, a column with paddings.
     std::shared_ptr<Panel> makeCard() {
         auto card = std::make_shared<Panel>();
-        card->setBackgroundColor(theme().surface);
+        card->setBackgroundColor(ThemeColor::surface);
         card->surface().setCornerRadius(10.f);
         card->surface().setBorderWidth(1.f);
-        card->surface().setBorderColor(theme().border);
+        card->surface().setBorderColor(ThemeColor::border);
         card->layout().setFlexDirection(FlexDirection::Column);
         card->layout().setPadding(16.f);
         card->layout().setGap(12.f);

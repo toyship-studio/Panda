@@ -290,12 +290,10 @@ StartScreenView::makeLabel(const std::string &text, float fontSize, FontWeight w
 
 std::shared_ptr<Panel> StartScreenView::makeSectionCard() {
     auto card = std::make_shared<Panel>();
-    card->setThemeStyle([](View &view) {
-        view.setBackgroundColor(theme().surface);
-        view.surface().setBorderColor(theme().border);
-    });
+    card->setBackgroundColor(ThemeColor::surface);
     card->surface().setCornerRadius(12.f);
     card->surface().setBorderWidth(1.f);
+    card->surface().setBorderColor(ThemeColor::border);
     // No shadow: by design only popup layers have shadows; the card is flat, separated by a border.
     card->layout().setFlexDirection(FlexDirection::Column);
     card->layout().setPadding(16.f);
@@ -343,7 +341,7 @@ std::shared_ptr<View> StartScreenView::makeProjectRow(size_t index) {
 
 std::shared_ptr<Panel> StartScreenView::makeDivider() {
     auto divider = std::make_shared<Panel>();
-    divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
+    divider->setBackgroundColor(ThemeColor::borderFaint);
     divider->layout().setHeight(Length::points(1.f));
     divider->layout().setWidth(Length::percent(100.f));
     return divider;

@@ -130,11 +130,11 @@ namespace {
             } else {
                 m_icon->setTexture(icons().get(typed ? iconForType(type, folder) : Ic::FileGeneric));
                 m_icon->setFlipVertical(false);
-                m_icon->setTintColor(typed ? colorForType(type, folder) : theme().textDim);
+                m_icon->setTintColor(typed ? ThemeColor(colorForType(type, folder)) : ThemeColor::textDim);
                 m_icon->layout().setSize(folder ? Size(52.f, 52.f) : Size(46.f, 46.f));
             }
-            m_preview->setBackgroundColor(folder ? Color(0x00000000) : theme().input);
-            m_preview->surface().setBorderColor(folder ? Color(0x00000000) : theme().borderMed);
+            m_preview->setBackgroundColor(folder ? ThemeColor(Color(0x00000000)) : ThemeColor::input);
+            m_preview->surface().setBorderColor(folder ? ThemeColor(Color(0x00000000)) : ThemeColor::borderMed);
             m_label->setText(name);
             m_label->setTextRole(typed ? TextRole::Secondary : TextRole::Muted);
         }
@@ -451,7 +451,7 @@ void ContentBrowserView::rebuildBreadcrumb() {
     for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) { chain.push_back(node); }
     std::reverse(chain.begin(), chain.end());
     for (size_t i = 0; i < chain.size(); ++i) {
-        if (i > 0) { m_breadcrumb->addSubview(makeIcon(Ic::ChevronRight, 13.f, theme().textDim)); }
+        if (i > 0) { m_breadcrumb->addSubview(makeIcon(Ic::ChevronRight, 13.f, ThemeColor::textDim)); }
         Folder *node = chain[i];
         const bool current = (i + 1 == chain.size());
         m_breadcrumb->addSubview(std::make_shared<Crumb>(node->name, current, [this, node] { setCurrentFolder(node); }));
@@ -512,13 +512,9 @@ void ContentBrowserView::setupLayout() {
 }
 
 void ContentBrowserView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_tree) { m_tree->setBackgroundColor(theme().surface); }
-    if (m_grid) {
-        m_grid->setBackgroundColor(theme().windowBackground);
-        m_grid->reloadData(); // the cells bind their tints and plates from the theme
-    }
-    if (m_breadcrumb) { rebuildBreadcrumb(); } // the chevrons are tinted from the theme
+    setBackgroundColor(ThemeColor::windowBackground);
+    if (m_tree) { m_tree->setBackgroundColor(ThemeColor::surface); }
+    if (m_grid) { m_grid->setBackgroundColor(ThemeColor::windowBackground); }
 }
 
 } // namespace Editor

@@ -91,7 +91,9 @@ void View::notifyWillCalculateLayout() {
 void View::updateHierarchy(double deltaTime) {
     if (m_isHidden) { return; }
     update(deltaTime);
-    for (const auto &view : m_subviews) {
+    // By index, holding the child: an update() may add or remove siblings, or remove itself.
+    for (size_t i = 0; i < m_subviews.size(); ++i) {
+        const std::shared_ptr<View> view = m_subviews[i];
         view->updateHierarchy(deltaTime);
     }
 }
@@ -173,15 +175,9 @@ void View::setContext(Context *context) {
     if (m_context) { contextAttached(); }
 }
 
-void View::setThemeStyle(ThemeStyle style) {
-    m_themeStyle = std::move(style);
-    if (m_themeStyle) { m_themeStyle(*this); }
-}
-
 void View::restyle() {
     m_themeGeneration = themeGeneration();
-    themeChanged();                               // the class re-reads its own colors
-    if (m_themeStyle) { m_themeStyle(*this); }    // then the owner's choices win
+    themeChanged();
 }
 
 void View::resolveHierarchy() {
@@ -281,7 +277,8 @@ void View::setNeedsDisplay() {
 
 void View::propagateThemeChanged() {
     restyle();
-    for (const auto &subview : m_subviews) {
+    for (size_t i = 0; i < m_subviews.size(); ++i) { // a themeChanged() may rebuild a subtree
+        const std::shared_ptr<View> subview = m_subviews[i];
         subview->propagateThemeChanged();
     }
 }

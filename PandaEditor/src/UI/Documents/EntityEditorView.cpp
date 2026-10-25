@@ -72,7 +72,7 @@ namespace {
         auto divider = std::make_shared<Panel>();
         divider->setUserInteractionEnabled(false);
         divider->layout().setHeight(Length::points(1.f));
-        divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
+        divider->setBackgroundColor(ThemeColor::borderFaint);
         return divider;
     }
 
@@ -106,11 +106,8 @@ void EntityEditorView::addSubviews() {
     m_runtimeBanner = std::make_shared<Label>("Runtime world — Stop discards changes, Save bakes them");
     m_runtimeBanner->setFont(Typo::Caption);
     m_runtimeBanner->setTextAlignment(TextAlignment::Center);
-    m_runtimeBanner->setThemeStyle([](View &view) {
-        const Color warning = theme().warning;
-        static_cast<Label &>(view).setTextColor(warning);
-        view.setBackgroundColor(Color(warning.r, warning.g, warning.b, 0.12f));
-    });
+    m_runtimeBanner->setTextColor(ThemeColor::warning);
+    m_runtimeBanner->setBackgroundColor(ThemeColor::warning.withAlpha(0.12f));
     m_runtimeBanner->layout().setPadding(Edge::Horizontal, 8.f);
     m_runtimeBanner->layout().setPadding(Edge::Vertical, 4.f);
     m_runtimeBanner->setHidden(true);

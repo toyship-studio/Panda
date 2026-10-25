@@ -25,16 +25,15 @@ Tooltip::Tooltip(std::string text, Rect anchor)
     setUserInteractionEnabled(false); // passive: does not catch hover/clicks, hit-test skips it
     setBackgroundColor(Color(0x00000000));
 
-    const Theme &t = theme();
     m_bubble->setUserInteractionEnabled(false);
-    m_bubble->setBackgroundColor(t.surface);
+    m_bubble->setBackgroundColor(ThemeColor::surface);
     m_bubble->layout().setPositionType(PositionType::Absolute);
     m_bubble->layout().setMaxWidth(Length::points(MAX_WIDTH));
     m_bubble->layout().setPadding(Edge::Horizontal, PADDING_X);
     m_bubble->layout().setPadding(Edge::Vertical, PADDING_Y);
     m_bubble->surface().setCornerRadius(6.f);
     m_bubble->surface().setBorderWidth(1.f);
-    m_bubble->surface().setBorderColor(t.border);
+    m_bubble->surface().setBorderColor(ThemeColor::border);
     m_bubble->surface().setShadowColor(Color(0x00000055));
     m_bubble->surface().setShadowOffset(Point(0.f, 3.f));
     m_bubble->surface().setShadowRadius(12.f);

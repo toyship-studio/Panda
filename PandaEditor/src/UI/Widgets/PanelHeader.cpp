@@ -105,7 +105,7 @@ void PanelHeader::setupStyle() {
     // Transparent: the header lives on the panel background (windowBackground), separated by a thin
     // line at the bottom.
     setBackgroundColor(Color(0x00000000));
-    if (m_divider) { m_divider->setBackgroundColor(theme().borderSoft); }
+    if (m_divider) { m_divider->setBackgroundColor(ThemeColor::borderSoft); }
 }
 
 } // namespace Editor

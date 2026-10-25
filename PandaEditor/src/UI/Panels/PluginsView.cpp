@@ -106,10 +106,10 @@ namespace {
         tag->layout().setPadding(Edge::Horizontal, 10.f);
         tag->layout().setPadding(Edge::Vertical, 4.f);
         tag->surface().setCornerRadius(7.f);
-        tag->setBackgroundColor(accent ? theme().accentSoft : theme().control);
+        tag->setBackgroundColor(accent ? ThemeColor::accentSoft : ThemeColor::control);
         auto label = std::make_shared<Label>(text);
         label->setFont(Font(kChipFont, FontWeight::Medium));
-        label->setTextColor(accent ? theme().accentText : theme().textSecondary);
+        label->setTextColor(accent ? ThemeColor::accentText : ThemeColor::textSecondary);
         tag->addSubview(label);
         return tag;
     }
@@ -151,7 +151,8 @@ PluginCard::PluginCard(const PluginCardActions *actions)
     layout().setPadding(16.f);
     surface().setCornerRadius(kCardRadius);
     surface().setBorderWidth(1.f);
-    applyStyle();
+    setBackgroundColor(ThemeColor::surface);
+    surface().setBorderColor(ThemeColor::borderMed);
 }
 
 void PluginCard::setModel(const PluginCardModel &model) {
@@ -168,16 +169,6 @@ void PluginCard::update(double) {
     }
 }
 
-void PluginCard::themeChanged() {
-    applyStyle();
-    if (m_built) { m_needsRebuild = true; } // the custom colors (tags, the error line) follow the theme
-}
-
-void PluginCard::applyStyle() {
-    setBackgroundColor(theme().surface);
-    surface().setBorderColor(theme().borderMed);
-}
-
 void PluginCard::rebuild() {
     using Status = PluginCardModel::Status;
     removeAllSubviews();
@@ -191,7 +182,7 @@ void PluginCard::rebuild() {
     iconBox->layout().setJustifyContent(Justify::Center);
     iconBox->layout().setAlignItems(Align::Center);
     iconBox->surface().setCornerRadius(10.f);
-    iconBox->setBackgroundColor(theme().control);
+    iconBox->setBackgroundColor(ThemeColor::control);
     iconBox->setClipsToBounds(true);
     if (m.icon) {
         auto image = std::make_shared<ImageView>(m.icon);
@@ -288,7 +279,7 @@ void PluginCard::rebuild() {
 
     if (!m.error.empty()) {
         auto error = makeLabel(m.error, Font(kMetaFont), TextRole::Primary, 3);
-        error->setTextColor(theme().danger);
+        error->setTextColor(ThemeColor::danger);
         body->addSubview(error);
     }
 
@@ -449,7 +440,7 @@ void PluginsView::addSubviews() {
     addSubview(m_chips);
 
     m_notice = makeLabel("", Font(kMetaFont), TextRole::Primary, 2);
-    m_notice->setTextColor(theme().warning);
+    m_notice->setTextColor(ThemeColor::warning);
     m_notice->setHidden(true);
     addSubview(m_notice);
 
@@ -502,9 +493,7 @@ void PluginsView::setupLayout() {
 }
 
 void PluginsView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_notice) { m_notice->setTextColor(theme().warning); }
-    m_chipsDirty = true; // the selected chip is a solid accent: the colors follow the theme
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 std::shared_ptr<Button> PluginsView::makeChip(const std::string &title, bool selected, std::function<void()> onClick) {
@@ -563,15 +552,13 @@ void PluginsView::update(double deltaTime) {
         m_chipsDirty = false;
         rebuildChips();
     }
-    if (m_listDirty || store.revision() != m_shownRevision) {
+    if (m_storeWatcher.changed(store.revision()) || m_listDirty) {
         m_listDirty = false;
-        m_shownRevision = store.revision();
         rebuildList();
     }
     const Panda::PluginNotice &notice = store.notice();
-    if (notice.revision != m_shownNotice) {
-        m_shownNotice = notice.revision;
-        if (!notice.title.empty()) { showMessageDialog(getContext(), notice.title, notice.message); }
+    if (m_noticeWatcher.changed(notice.revision) && !notice.title.empty()) {
+        showMessageDialog(getContext(), notice.title, notice.message);
     }
     // The next page comes when the list is scrolled near its end.
     const Panda::CatalogState &catalog = store.catalog();

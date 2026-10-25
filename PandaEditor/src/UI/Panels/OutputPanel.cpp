@@ -26,9 +26,9 @@ namespace {
         return buf;
     }
 
-    Color levelColor(OutputPanelView::LogLevel level) {
-        if (level == OutputPanelView::LogLevel::Warning) { return theme().warning; }
-        if (level == OutputPanelView::LogLevel::Error) { return theme().danger; }
+    ThemeColor levelColor(OutputPanelView::LogLevel level) {
+        if (level == OutputPanelView::LogLevel::Warning) { return ThemeColor::warning; }
+        if (level == OutputPanelView::LogLevel::Error) { return ThemeColor::danger; }
         return Color(0x7FB2D6FF); // info — muted light blue (design)
     }
 
@@ -71,7 +71,7 @@ namespace {
             addSubview(m_icon);
             addSubview(m_message);
         }
-        void bind(const std::string &time, const std::string &icon, Color color, const std::string &message) {
+        void bind(const std::string &time, const std::string &icon, ThemeColor color, const std::string &message) {
             m_time->setText(time);
             m_icon->setTexture(icons().get(icon));
             m_icon->setTintColor(color);
@@ -89,8 +89,8 @@ namespace {
 // Clickable severity filter chip: count label + tinted bg; dim when its level is filtered out.
 class SeverityChip final : public Control {
 public:
-    explicit SeverityChip(std::function<Color()> color)
-        : m_color(std::move(color))
+    explicit SeverityChip(ThemeColor color)
+        : m_color(color)
         , m_label(std::make_shared<Label>("")) {
         setCursor(Cursor::PointingHand);
         setFocusable(false);
@@ -125,12 +125,11 @@ protected:
 private:
     void applyStyle() {
         // shown → tinted bg + colored text; filtered out → faint bg + dim text.
-        const Color color = m_color();
-        setBackgroundColor(Color(color.r, color.g, color.b, m_shown ? 0.12f : 0.04f));
-        m_label->setTextColor(m_shown ? color : theme().textDim);
+        setBackgroundColor(m_color.withAlpha(m_shown ? 0.12f : 0.04f));
+        m_label->setTextColor(m_shown ? m_color : ThemeColor::textDim);
     }
 
-    std::function<Color()> m_color; // read on every restyle: the theme colors change
+    ThemeColor m_color; // a token: the theme colors change under it
     std::shared_ptr<Label> m_label;
     bool m_shown = true;
     std::function<void()> m_onToggle;
@@ -181,13 +180,13 @@ void OutputPanelView::addSubviews() {
     copy->setOnClick([this] { copyAll(); });
     bar->addSubview(copy);
 
-    m_infoChip = std::make_shared<SeverityChip>([] { return Color(0x7FB2D6FF); });
+    m_infoChip = std::make_shared<SeverityChip>(Color(0x7FB2D6FF));
     m_infoChip->setOnToggle([this] { toggleLevel(LogLevel::Info); });
     bar->addSubview(m_infoChip);
-    m_warnChip = std::make_shared<SeverityChip>([] { return theme().warning; });
+    m_warnChip = std::make_shared<SeverityChip>(ThemeColor::warning);
     m_warnChip->setOnToggle([this] { toggleLevel(LogLevel::Warning); });
     bar->addSubview(m_warnChip);
-    m_errorChip = std::make_shared<SeverityChip>([] { return theme().danger; });
+    m_errorChip = std::make_shared<SeverityChip>(ThemeColor::danger);
     m_errorChip->setOnToggle([this] { toggleLevel(LogLevel::Error); });
     bar->addSubview(m_errorChip);
     addSubview(bar);
@@ -290,8 +289,7 @@ void OutputPanelView::setupLayout() {
 }
 
 void OutputPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
-    if (m_list) { m_list->reloadData(); } // the rows bind their level colors from the theme
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 void OutputPanelView::copyAll() {

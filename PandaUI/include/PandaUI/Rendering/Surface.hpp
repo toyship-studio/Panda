@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PandaUI/Core/Base.hpp"
+#include "PandaUI/Core/Theme.hpp"
 
 #include <glm/glm.hpp>
 
@@ -24,8 +25,13 @@ class Surface final {
 public:
     explicit Surface(View *owner = nullptr);
 
-    void setBackgroundColor(Color color);
-    const Color &backgroundColor() const {
+    // Colors are ThemeColor: a theme token is resolved every time the surface draws, a literal
+    // stays as given. backgroundColor() is the color of the moment.
+    void setBackgroundColor(ThemeColor color);
+    Color backgroundColor() const {
+        return m_backgroundColor.resolve();
+    }
+    const ThemeColor &backgroundThemeColor() const {
         return m_backgroundColor;
     }
 
@@ -49,9 +55,9 @@ public:
         return m_borderWidth;
     }
 
-    void setBorderColor(Color color);
-    const Color &borderColor() const {
-        return m_borderColor;
+    void setBorderColor(ThemeColor color);
+    Color borderColor() const {
+        return m_borderColor.resolve();
     }
 
     void setShadowColor(Color color);
@@ -69,12 +75,12 @@ private:
     void invalidate();
 
     View *m_owner;
-    Color m_backgroundColor;
+    ThemeColor m_backgroundColor;
     float m_opacity;
     bool m_clipsToBounds;
     float m_cornerRadius;
     float m_borderWidth;
-    Color m_borderColor;
+    ThemeColor m_borderColor;
     SurfaceShadow m_shadow;
 
     friend class View;

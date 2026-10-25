@@ -22,7 +22,7 @@ namespace PandaUI {
 class Context;
 struct ViewInternal;
 
-class View {
+class View : public std::enable_shared_from_this<View> {
 public:
     View();
     View(Rect frame);
@@ -95,10 +95,11 @@ public:
         return m_frame;
     }
     Rect getWorldFrame() const;
-    void setBackgroundColor(Color color) {
+    // A theme token (ThemeColor::surface) follows the theme by itself; a Color is a snapshot.
+    void setBackgroundColor(ThemeColor color) {
         m_surface.setBackgroundColor(color);
     }
-    const Color &getBackgroundColor() const {
+    Color getBackgroundColor() const {
         return m_surface.backgroundColor();
     }
     void setHidden(bool hidden);
@@ -215,15 +216,11 @@ public:
     virtual void enabledChanged(bool enabled) {}
     virtual void focusChanged(bool focused) {}
     virtual void interactionCancelled() {}
-    // Called when the theme changes; override to re-read the colors from theme().
+    // Called when the theme changes. Stored colors need nothing: a ThemeColor token resolves at
+    // draw time. Override for state DERIVED from the theme (a texture, a cached palette, a view
+    // rebuilt from its model).
     virtual void themeChanged() {}
-    // Colors set by the OWNER of a view rather than by its class (a divider panel, a tinted label,
-    // a card): the style runs now and again on every theme change, after themeChanged() so that it
-    // wins over the class defaults. The alternative — a subclass per colored panel — is what this
-    // replaces.
-    using ThemeStyle = std::function<void(View &)>;
-    void setThemeStyle(ThemeStyle style);
-    // Calls the theme style and themeChanged() for this view and its whole subtree.
+    // Calls themeChanged() for this view and its whole subtree.
     void propagateThemeChanged();
 
 protected:
@@ -238,7 +235,7 @@ protected:
 
 private:
     void setContext(Context *context);
-    void restyle(); // the theme style + themeChanged(), stamped with the current theme generation
+    void restyle(); // themeChanged(), stamped with the current theme generation
     void resolveHierarchy();
     void updateHierarchy(double deltaTime);
     void notifyWillCalculateLayout();
@@ -263,7 +260,6 @@ private:
     bool m_isHovered;
     Cursor m_cursor;
     std::string m_tooltip;
-    ThemeStyle m_themeStyle;
     uint64_t m_themeGeneration; // the theme this view was last styled under
     void render(float offsetX, float offsetY);
     friend class Layout;

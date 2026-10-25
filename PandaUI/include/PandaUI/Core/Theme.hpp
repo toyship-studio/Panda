@@ -72,6 +72,54 @@ void setTheme(const Theme &theme);
 // out of the tree during a change (a hidden root, a replaced tab) restyles itself when attached.
 uint64_t themeGeneration();
 
+// A color that follows the theme — the model of UIKit's dynamic colors. Either a literal, or a
+// field of the theme (`&Theme::border`) read anew every time the color is resolved, so a view that
+// stores a ThemeColor draws with the theme of the moment and needs no code to react to a change.
+// The fields are also named tokens: `divider->setBackgroundColor(ThemeColor::border)`. A plain
+// `Color` converts implicitly and stays a snapshot, as before; `withAlpha` tints a token (a 12 %
+// warning backing). `themeChanged()` is left for state that is derived from the theme, not stored.
+struct ThemeColor {
+    Color Theme::*token = nullptr;
+    Color literal{0.f, 0.f, 0.f, 0.f};
+    float alpha = -1.f; // >= 0: replaces the alpha of the resolved color
+
+    constexpr ThemeColor() = default;
+    constexpr ThemeColor(Color color)
+        : literal(color) {}
+    constexpr ThemeColor(Color Theme::*field)
+        : token(field) {}
+
+    constexpr ThemeColor withAlpha(float value) const {
+        ThemeColor copy = *this;
+        copy.alpha = value;
+        return copy;
+    }
+    Color resolve() const {
+        Color color = token ? theme().*token : literal;
+        if (alpha >= 0.f) { color.a = alpha; }
+        return color;
+    }
+    constexpr bool isLiteral() const {
+        return token == nullptr;
+    }
+    constexpr bool operator==(const ThemeColor &other) const {
+        return token == other.token && literal == other.literal && alpha == other.alpha;
+    }
+    constexpr bool operator!=(const ThemeColor &other) const {
+        return !(*this == other);
+    }
+
+    // The fields of Theme as tokens (defined in Theme.cpp, constant-initialized).
+    static const ThemeColor windowBackground, surface, surfaceVariant, input, inputDeep;
+    static const ThemeColor textPrimary, textSecondary, textMuted, textDim, textDisabled;
+    static const ThemeColor accent, accentHover, accentPressed, onAccent, accentSecondary, accentText, accentSoft,
+        accentMutedSurface, accentMutedBorder;
+    static const ThemeColor control, controlHover, controlPressed;
+    static const ThemeColor border, borderMed, borderSoft, borderFaint, borderStrong, focusRing;
+    static const ThemeColor knob, textSelection, selection, selectionInactive, rowHover;
+    static const ThemeColor success, warning, danger;
+};
+
 // The runtime layer installs a handler to update the contexts when the theme changes: PandaUI Core
 // does not depend on Context, so the link goes through this hook (as with the clipboard).
 void setThemeChangedHandler(std::function<void()> handler);

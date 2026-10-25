@@ -24,7 +24,7 @@ public:
         return m_title;
     }
     void setTitleFont(Font font);
-    void setTitleColor(Color color);
+    void setTitleColor(ThemeColor color); // a token (ThemeColor::textMuted) follows the theme
     void setTitleLetterSpacing(float spacing);
     void setHeaderFill(bool fill); // false — flat header without a backing (inspector components)
     void setHeaderAccessory(std::shared_ptr<View> view); // trailing widget in the header (e.g. a "..." menu)

@@ -35,7 +35,7 @@ const IconLibrary &icons() {
     return s_icons;
 }
 
-std::shared_ptr<ImageView> makeIcon(const std::string &name, float size, Color color) {
+std::shared_ptr<ImageView> makeIcon(const std::string &name, float size, ThemeColor color) {
     auto view = std::make_shared<ImageView>(icons().get(name));
     view->setTintColor(color);
     view->setContentMode(ImageContentMode::Fit);
@@ -50,7 +50,7 @@ std::shared_ptr<ImageView> makeIcon(const std::string &name, float size) {
 }
 
 IconButton::IconButton(const std::string &iconName, float iconSize, float buttonSize)
-    : m_restColor(theme().textMuted) {
+    : m_restColor(ThemeColor::textMuted) {
     setCursor(Cursor::PointingHand);
     setFocusable(false);
     layout().setSize({buttonSize, buttonSize});
@@ -83,7 +83,7 @@ void IconButton::setButtonSize(float width, float height) {
     layout().setSize({width, height});
 }
 
-void IconButton::setIconColor(Color rest) {
+void IconButton::setIconColor(ThemeColor rest) {
     m_restColor = rest;
     applyStyle();
 }
@@ -92,7 +92,7 @@ void IconButton::setIconName(const std::string &name) {
     if (m_icon) { m_icon->setTexture(icons().get(name)); } // the tint is preserved (set separately by applyStyle)
 }
 
-void IconButton::setFixedColor(Color color) {
+void IconButton::setFixedColor(ThemeColor color) {
     m_hasFixedColor = true;
     m_fixedColor = color;
     applyStyle();
@@ -117,25 +117,23 @@ void IconButton::performPrimaryAction() {
 }
 
 void IconButton::themeChanged() {
-    if (!m_hasFixedColor) { m_restColor = theme().textMuted; }
-    applyStyle();
+    applyStyle(); // the colors are tokens; the hover/active state picks between them
 }
 
 void IconButton::applyStyle() {
-    const Theme &t = theme();
     if (hasControlState(ControlState::Disabled)) {
         setBackgroundColor(Color(0x00000000));
-        if (m_icon) { m_icon->setTintColor(t.textDisabled); }
+        if (m_icon) { m_icon->setTintColor(ThemeColor::textDisabled); }
         return;
     }
     if (m_active) { // selected tool/tab: accent backing + accent icon
-        setBackgroundColor(t.accentSoft);
-        if (m_icon) { m_icon->setTintColor(t.accentText); }
+        setBackgroundColor(ThemeColor::accentSoft);
+        if (m_icon) { m_icon->setTintColor(ThemeColor::accentText); }
         return;
     }
     const bool hovered = hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted);
-    setBackgroundColor(hovered ? t.control : Color(0x00000000));
-    const Color iconColor = m_hasFixedColor ? m_fixedColor : (hovered ? t.textPrimary : m_restColor);
+    setBackgroundColor(hovered ? ThemeColor::control : ThemeColor(Color(0x00000000)));
+    const ThemeColor iconColor = m_hasFixedColor ? m_fixedColor : (hovered ? ThemeColor::textPrimary : m_restColor);
     if (m_icon) { m_icon->setTintColor(iconColor); }
 }
 
