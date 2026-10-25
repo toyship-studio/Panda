@@ -294,6 +294,21 @@ void testShutdownCancelsRunningJob() {
 
 } // namespace
 
+void testPost() {
+    std::printf("testPost\n");
+    PandaAsync::Scheduler scheduler;
+    scheduler.registerMainThread();
+    int ran = 0;
+    // Posted from another thread, run on the main thread; a canceled group drops its completion.
+    std::thread other([&] { scheduler.post(PandaAsync::JobDesc{"posted"}, [&] { ++ran; }); });
+    other.join();
+    PandaAsync::GroupId group = scheduler.createGroup();
+    scheduler.post(PandaAsync::JobDesc{"dropped", PandaAsync::Priority::Normal, group}, [&] { ran += 100; });
+    scheduler.cancelGroup(group);
+    scheduler.processCompletions(PandaAsync::CompletionBudget{16, 0.0});
+    check(ran == 1, "a posted completion runs, a canceled one is dropped");
+}
+
 int main() {
     testWorkAndComplete();
     testMoveOnlyResult();
@@ -303,6 +318,7 @@ int main() {
     testCancelGroup();
     testCanceledCompletionsRespectBudget();
     testShutdownCancelsRunningJob();
+    testPost();
 
     if (g_failures == 0) {
         std::printf("PandaAsync smoke: PASS\n");

@@ -32,12 +32,17 @@ jobs:
         run: sh scripts/fetch_shader_tools.sh
       - name: Configure
         run: sh scripts/configure_panda_debug.sh
-      - name: Build the editor, the smoke test and the SDK core package
+      - name: Build the editor, the smoke tests and the SDK core package
         # -k: keep going after a failure, so one run shows every error.
-        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke PandaSDKCorePackage -- -k
+        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke FernNetSmoke PandaSDKCorePackage -- -k
       - name: Smoke test
         # The Apple Silicon runners have a logged-in session and a paravirtualized GPU: Metal works.
         run: sh scripts/panda_run_smoke.sh
+        env:
+          PANDA_BUILD_PARALLEL: 4
+      - name: Network smoke test
+        # A loopback server inside the test: no internet is needed (context/networking.md).
+        run: sh scripts/fern_net_run_smoke.sh
         env:
           PANDA_BUILD_PARALLEL: 4
 
@@ -98,7 +103,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config \
             curl ca-certificates libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libxext-dev libgl1-mesa-dev libgtk-3-dev
+            libxext-dev libgl1-mesa-dev libgtk-3-dev libcurl4-openssl-dev
       - name: Cache the shader tools
         uses: actions/cache@v4
         with:
@@ -110,5 +115,5 @@ jobs:
         run: sh scripts/configure_panda_debug.sh -G Ninja
       - name: Build the editor, the smoke test and the SDK core package
         # -k 0: keep going after a failure, so one run shows every error.
-        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke PandaSDKCorePackage -- -k 0
+        run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke FernNetSmoke PandaSDKCorePackage -- -k 0
       # No smoke test here: the Ubuntu runners have no GPU for an OpenGL context.

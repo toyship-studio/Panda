@@ -51,6 +51,12 @@ public:
                      std::function<void(Context &)> work,
                      std::function<void()> complete = {});
 
+    // A completion without a worker job: queued from any thread, run by processCompletions on the
+    // main thread like the completion of a job, dropped when it or its group is canceled. For work
+    // that runs on threads the scheduler does not own (the network stacks of Fern) and only brings
+    // its result to the main thread.
+    JobHandle post(JobDesc desc, std::function<void()> complete);
+
     void cancel(JobId id);
     void cancelGroup(GroupId group);
     void cancelAll();

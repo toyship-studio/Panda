@@ -109,10 +109,10 @@ set_property(TARGET PandaSDK::PandaRuntime APPEND PROPERTY
 )
 
 if(WIN32)
-    # d3d11+dxgi — the Fern context, d3dcompiler+dxguid — the Miren D3D11 renderer.
-    # Always linked: system libs, no harm to a GL build.
+    # d3d11+dxgi — the Fern context, d3dcompiler+dxguid — the Miren D3D11 renderer, winhttp — the
+    # network layer of Fern. Always linked: system libs, no harm to a GL build.
     set_property(TARGET PandaSDK::PandaRuntime APPEND PROPERTY
-        INTERFACE_LINK_LIBRARIES opengl32 gdi32 user32 shell32 d3d11 dxgi d3dcompiler dxguid
+        INTERFACE_LINK_LIBRARIES opengl32 gdi32 user32 shell32 d3d11 dxgi d3dcompiler dxguid winhttp
     )
     if(_PANDA_SDK_SHADER_BACKEND STREQUAL "d3d11")
         # The libs are built with this define (Foundation::ACTIVE_GRAPHICS_API = D3D11) —
@@ -156,8 +156,9 @@ elseif(APPLE)
         )
     endif()
 elseif(UNIX)
+    # curl — the network layer of Fern (the libcurl of the system, context/networking.md).
     set_property(TARGET PandaSDK::PandaRuntime APPEND PROPERTY
-        INTERFACE_LINK_LIBRARIES GL X11 Xi Xcursor Xinerama Xrandr dl pthread m
+        INTERFACE_LINK_LIBRARIES GL X11 Xi Xcursor Xinerama Xrandr curl dl pthread m
     )
 endif()
 

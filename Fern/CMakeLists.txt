@@ -9,6 +9,22 @@ set(CMAKE_CXX_STANDARD 20)
 file(GLOB_RECURSE SOURCES src/Fern/*.cpp)
 file(GLOB_RECURSE INCLUDE src/Fern/*.hpp include/Fern/*.hpp)
 
+# The network layer (context/networking.md): the shared part and the backend of the platform.
+file(GLOB NET_SOURCES src/Net/*.cpp)
+file(GLOB NET_INCLUDE src/Net/*.hpp)
+list(APPEND SOURCES ${NET_SOURCES})
+list(APPEND INCLUDE ${NET_INCLUDE})
+if (PLATFORM_WIN32)
+    file(GLOB NET_PLATFORM_SOURCES src/Net/Windows/*.cpp)
+elseif (PLATFORM_LINUX)
+    file(GLOB NET_PLATFORM_SOURCES src/Net/Linux/*.cpp)
+elseif (PLATFORM_MACOS OR PLATFORM_IOS)
+    file(GLOB NET_PLATFORM_SOURCES src/Net/Apple/*.mm)
+    # The NSURLSession backend is written for ARC; the rest of Fern keeps manual retain/release.
+    set_source_files_properties(${NET_PLATFORM_SOURCES} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif ()
+list(APPEND SOURCES ${NET_PLATFORM_SOURCES})
+
 # Other platform specific realizations
 if (PLATFORM_WIN32)
     file(GLOB_RECURSE GLOB_RESULT_INCLUDE src/Platform/System/Win32_System/*.hpp src/Platform/System/Win32_System/*.h)
@@ -83,5 +99,26 @@ endif ()
 # Dependencies - Foundation
 target_link_libraries(Fern Foundation)
 
+# Dependencies - PandaAsync (the completions of the network layer)
+target_link_libraries(Fern PandaAsync)
+
+# The network stack of the system (context/networking.md, decision 1). Apple: NSURLSession of the
+# Foundation framework, already linked through Cocoa / Foundation above.
+if (PLATFORM_WIN32)
+    target_link_libraries(Fern winhttp)
+elseif (PLATFORM_LINUX)
+    find_package(CURL REQUIRED)
+    target_link_libraries(Fern CURL::libcurl)
+endif ()
+
 # Dependencies - Miren
 target_link_libraries(Fern Miren)
+
+# The smoke test of the network layer: a loopback server inside the test (context/networking.md).
+if (DESKTOP)
+    add_executable(FernNetSmoke Smoke/NetSmoke.cpp)
+    target_link_libraries(FernNetSmoke PRIVATE Fern Foundation PandaAsync)
+    if (PLATFORM_WIN32)
+        target_link_libraries(FernNetSmoke PRIVATE ws2_32)
+    endif ()
+endif ()

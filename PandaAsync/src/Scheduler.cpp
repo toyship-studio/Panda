@@ -178,6 +178,21 @@ JobHandle Scheduler::submitErased(JobDesc desc, ErasedWork run) {
     return JobHandle(id, std::move(state));
 }
 
+JobHandle Scheduler::post(JobDesc desc, std::function<void()> complete) {
+    if (!complete) { return JobHandle(); }
+    auto state = std::make_shared<JobState>();
+    state->group = desc.group;
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    if (m_impl->stopping) { return JobHandle(); }
+
+    JobId id = ++m_impl->nextJobId;
+    m_impl->index[id] = state;
+    m_impl->completionQueues[priorityIndex(desc.priority)].push_back(
+        CompletionEntry{id, std::move(complete), state});
+    return JobHandle(id, std::move(state));
+}
+
 void Scheduler::cancel(JobId id) {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto it = m_impl->index.find(id);

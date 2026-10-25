@@ -66,14 +66,15 @@ Linux (Ubuntu 22.04 or newer, x86_64):
 sudo apt update
 sudo apt install build-essential cmake ninja-build pkg-config curl ca-certificates \
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
-    libgl1-mesa-dev libgtk-3-dev
+    libgl1-mesa-dev libgtk-3-dev libcurl4-openssl-dev
 
 sh scripts/fetch_shader_tools.sh
 sh scripts/configure_panda_debug.sh -G Ninja
 sh scripts/build_panda_debug.sh
 ```
 
-Linux uses the vendored GLFW with X11 and the OpenGL renderer. GTK3 supplies native dialogs.
+Linux uses the vendored GLFW with X11 and the OpenGL renderer. GTK3 supplies native dialogs, and
+the libcurl of the system carries the network layer of the editor and of exported games.
 The editor binary and its resources are written to `bin/`. Set `PANDA_BUILD_PARALLEL` to limit
 build jobs (the default is 8). Release uses `configure_panda_release.sh` and
 `build_panda_release.sh`; `build_panda_opengl.sh` provides a separate OpenGL Debug build tree.
