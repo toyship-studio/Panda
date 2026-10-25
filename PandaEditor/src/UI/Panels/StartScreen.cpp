@@ -21,7 +21,7 @@ namespace {
             : m_onOpen(std::move(onOpen)) {
             setCursor(Cursor::PointingHand);
             setBackgroundColor(Color(0x00000000));
-            surface().setCornerRadius(10.f);
+            surface().setCornerRadius(Radius::md);
             layout().setFlexDirection(FlexDirection::Row);
             layout().setAlignItems(Align::Center);
             layout().setGap(12.f);
@@ -291,7 +291,7 @@ StartScreenView::makeLabel(const std::string &text, float fontSize, FontWeight w
 std::shared_ptr<Panel> StartScreenView::makeSectionCard() {
     auto card = std::make_shared<Panel>();
     card->setBackgroundColor(ThemeColor::surface);
-    card->surface().setCornerRadius(12.f);
+    card->surface().setCornerRadius(Radius::lg);
     card->surface().setBorderWidth(1.f);
     card->surface().setBorderColor(ThemeColor::border);
     // No shadow: by design only popup layers have shadows; the card is flat, separated by a border.
@@ -329,7 +329,7 @@ std::shared_ptr<View> StartScreenView::makeProjectRow(size_t index) {
     row->addSubview(textColumn);
 
     auto remove = std::make_shared<IconButton>(Ic::Trash, 15.f, 26.f);
-    remove->setCornerRadius(6.f);
+    remove->setCornerRadius(Radius::sm);
     remove->setTooltip("Remove from recent");
     remove->setOnClick([this, index] {
         if (m_output) { m_output->startScreenDidRequestRemoveRecentProject(index); }

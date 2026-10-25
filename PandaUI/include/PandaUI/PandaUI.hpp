@@ -13,6 +13,7 @@
 #include "PandaUI/Core/KeyboardEvent.hpp"
 #include "PandaUI/Core/PointerEvent.hpp"
 #include "PandaUI/Core/Profile.hpp"
+#include "PandaUI/Core/Style.hpp"
 #include "PandaUI/Core/Theme.hpp"
 #include "PandaUI/Core/TextureHandle.hpp"
 #include "PandaUI/Core/View.hpp"

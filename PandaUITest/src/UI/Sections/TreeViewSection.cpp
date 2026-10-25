@@ -96,7 +96,7 @@ void TreeViewSection::addSubviews() {
     m_tree = std::make_shared<TreeView>();
     m_tree->layout().setWidth(Length::points(360.f));
     m_tree->layout().setHeight(Length::points(260.f));
-    m_tree->surface().setCornerRadius(8.f);
+    m_tree->surface().setCornerRadius(Radius::md);
     m_tree->surface().setBorderWidth(1.f);
     m_tree->setSelectionMode(TreeSelectionMode::Multiple);
 

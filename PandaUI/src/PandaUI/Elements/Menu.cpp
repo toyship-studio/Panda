@@ -40,8 +40,8 @@ public:
         layout().setHeight(Length::points(ITEM_HEIGHT));
         layout().setFlexDirection(FlexDirection::Row);
         layout().setAlignItems(Align::Center);
-        layout().setPadding(Edge::Horizontal, 12.f);
-        surface().setCornerRadius(5.f);
+        layout().setPadding(Edge::Horizontal, Spacing::md);
+        surface().setCornerRadius(Radius::sm);
 
         m_label = std::make_shared<Label>(std::move(title));
         m_label->setFont(Font(16.f));
@@ -173,13 +173,9 @@ Menu::Menu()
     setFocusable(true); // when shown in a Popup the menu takes the keyboard (wantsFocusWhenPresented)
     layout().setFlexDirection(FlexDirection::Column);
     layout().setWidth(Length::points(MENU_WIDTH));
-    layout().setGap(2.f);
-    layout().setPadding(6.f);
-    surface().setCornerRadius(8.f);
-    surface().setBorderWidth(1.f);
-    surface().setShadowColor(Color(0x0000008C)); // popover shadow (design): rgba(0,0,0,.55)
-    surface().setShadowOffset(Point(0.f, 14.f));
-    surface().setShadowRadius(38.f);
+    layout().setGap(1.f);
+    layout().setPadding(Spacing::sm);
+    applyElevation(*this, Elevation::Popover);
     applyStyle();
 }
 

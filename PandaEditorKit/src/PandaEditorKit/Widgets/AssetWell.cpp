@@ -38,7 +38,7 @@ public:
         layout().setAlignItems(Align::Center);
         layout().setPadding(Edge::Horizontal, 7.f);
         layout().setGap(6.f);
-        surface().setCornerRadius(6.f);
+        surface().setCornerRadius(Radius::sm);
         surface().setBorderWidth(1.f);
     }
 
@@ -80,14 +80,14 @@ AssetWell::AssetWell(
     addSubview(m_main);
 
     auto replace = std::make_shared<IconButton>(Ic::More, Ic::RowSize, WELL_HEIGHT);
-    replace->setCornerRadius(6.f);
+    replace->setCornerRadius(Radius::sm);
     replace->setTooltip("Replace Asset");
     replace->setOnClick([this] { openPicker(); });
     m_replaceButton = replace;
     addSubview(replace);
 
     auto clear = std::make_shared<IconButton>(Ic::Clear, Ic::RowSize, WELL_HEIGHT);
-    clear->setCornerRadius(6.f);
+    clear->setCornerRadius(Radius::sm);
     clear->setTooltip("Clear Asset");
     clear->setOnClick([this] { setValue(0); });
     m_clearButton = clear;

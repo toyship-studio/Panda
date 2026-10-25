@@ -15,8 +15,8 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float CONTROL_HEIGHT = 32.f;
-    constexpr float BUTTON_WIDTH = 30.f;
+    constexpr float CONTROL_HEIGHT = 28.f; // the height of the fields and buttons
+    constexpr float BUTTON_WIDTH = 26.f;
     constexpr float VALUE_MIN_WIDTH = 44.f;
     constexpr float VALUE_FONT = 16.f;
     constexpr float SYMBOL_HALF = 5.f;   // half-length of a −/+ stroke
@@ -102,10 +102,10 @@ Stepper::Stepper()
     layout().setAlignItems(Align::Stretch);
     layout().setHeight(Length::points(CONTROL_HEIGHT));
     setClipsToBounds(true); // the rounded container clips the button backgrounds
-    setBackgroundColor(theme().input);
-    surface().setCornerRadius(6.f);
+    setBackgroundColor(ThemeColor::input);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
-    surface().setBorderColor(theme().borderMed);
+    surface().setBorderColor(ThemeColor::borderMed);
 
     m_minusButton = std::make_shared<StepperButton>(this, false);
     m_valueLabel = std::make_shared<Label>("0");

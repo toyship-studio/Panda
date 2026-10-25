@@ -22,8 +22,8 @@ enum class ButtonStyle {
 // content — there is no need to fix it from outside (layout().setHeight): padding that does not fit
 // into the given height squashes the title box.
 enum class ButtonSize {
-    Regular, // dialogs, forms, main flow: font size 16, height ~38
-    Small,   // inspector rows and dense panels: font size 14, height 24
+    Regular, // dialogs, forms, main flow: font size 16, height 28
+    Small,   // inspector rows and dense panels: font size 14, height 22
 };
 
 class Button : public Control {

@@ -69,6 +69,14 @@ void Surface::setBorderColor(ThemeColor color) {
     invalidate();
 }
 
+void Surface::setShadow(const ShadowStyle &shadow) {
+    m_shadow.color = shadow.color;
+    m_shadow.offset = shadow.offset;
+    m_shadow.radius = shadow.radius;
+    m_shadow.spread = shadow.spread;
+    invalidate();
+}
+
 void Surface::setShadowColor(Color color) {
     m_shadow.color = color;
     invalidate();

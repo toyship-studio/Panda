@@ -100,7 +100,7 @@ namespace {
             m_preview->layout().setSize({PREVIEW_SIDE, PREVIEW_SIDE}); // square: thumbnails are letterboxed
             m_preview->layout().setJustifyContent(Justify::Center);
             m_preview->layout().setAlignItems(Align::Center);
-            m_preview->surface().setCornerRadius(7.f);
+            m_preview->surface().setCornerRadius(Radius::md);
             m_preview->surface().setBorderWidth(1.f);
             m_icon = std::make_shared<ImageView>();
             m_icon->setContentMode(ImageContentMode::Fit);
@@ -461,7 +461,7 @@ void ContentBrowserView::rebuildBreadcrumb() {
     spacer->layout().setFlexGrow(1.f);
     m_breadcrumb->addSubview(spacer);
     auto refresh = std::make_shared<IconButton>(Ic::Reload, Ic::RowSize, 24.f);
-    refresh->setCornerRadius(5.f);
+    refresh->setCornerRadius(Radius::sm);
     refresh->setTooltip("Refresh");
     refresh->setOnClick([this] {
         if (m_output) { m_output->contentDidRequestRefresh(); } // registry rescan + panel rebuild

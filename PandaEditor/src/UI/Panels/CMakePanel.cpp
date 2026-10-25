@@ -89,7 +89,7 @@ void CMakePanelView::addSubviews() {
 
     auto makeRailButton = [](const char *icon, const char *tooltip) {
         auto button = std::make_shared<IconButton>(icon, Ic::RowSize, RAIL_BUTTON);
-        button->setCornerRadius(5.f);
+        button->setCornerRadius(Radius::sm);
         button->setTooltip(tooltip);
         return button;
     };

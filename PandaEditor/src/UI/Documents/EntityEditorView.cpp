@@ -343,7 +343,7 @@ void EntityEditorView::openScriptPicker(View *anchor, std::function<void(const s
 
 void EntityEditorView::addComponentHeaderMenu(CollapsibleSection &section, std::function<void()> onRemove) {
     auto more = std::make_shared<IconButton>(Ic::More, Ic::HeaderSize, 23.f);
-    more->setCornerRadius(5.f);
+    more->setCornerRadius(Radius::sm);
     more->setTooltip("Component Actions");
     IconButton *morePtr = more.get();
     more->setOnClick([this, morePtr, onRemove] {

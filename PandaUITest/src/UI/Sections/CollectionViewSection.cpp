@@ -51,7 +51,7 @@ namespace {
             layout().setFlexDirection(FlexDirection::Column);
             layout().setJustifyContent(Justify::Center);
             layout().setAlignItems(Align::Center);
-            surface().setCornerRadius(8.f);
+            surface().setCornerRadius(Radius::md);
             m_label = std::make_shared<Label>("");
             m_label->setFont(Font(17.f));
             addSubview(m_label);
@@ -69,7 +69,7 @@ namespace {
     std::shared_ptr<View> makeExampleBox(const std::shared_ptr<CollectionView> &collection, std::shared_ptr<Label> status) {
         collection->layout().setFlexGrow(1.f); // fill the card width
         collection->layout().setHeight(Length::points(BOX_HEIGHT));
-        collection->surface().setCornerRadius(8.f);
+        collection->surface().setCornerRadius(Radius::md);
         collection->surface().setBorderWidth(1.f);
         collection->surface().setBorderColor(theme().border);
         collection->setBackgroundColor(theme().surfaceVariant);

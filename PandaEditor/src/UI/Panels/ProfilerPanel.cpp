@@ -52,7 +52,7 @@ void ProfilerPanelView::addSubviews() {
     header->addSubview(m_frameLabel);
 
     auto copy = std::make_shared<IconButton>(Ic::Copy, Ic::RowSize, 24.f);
-    copy->setCornerRadius(5.f);
+    copy->setCornerRadius(Radius::sm);
     copy->setTooltip("Copy all");
     copy->setOnClick([this] { copyAll(); });
     header->addSubview(copy);

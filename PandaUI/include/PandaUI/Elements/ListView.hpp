@@ -20,7 +20,7 @@ enum class ListSelectionMode {
 // via addItem(), arbitrary ones via addRow().
 class ListView : public ScrollView {
 public:
-    static constexpr float kRowHeight = 34.f; // fixed row height (for size calculation)
+    static constexpr float kRowHeight = 30.f; // fixed row height (for size calculation)
 
     using SelectionChangedCallback = std::function<void(ListView &)>;
 

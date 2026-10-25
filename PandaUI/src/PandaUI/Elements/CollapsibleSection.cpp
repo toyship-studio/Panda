@@ -11,7 +11,7 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float HEADER_HEIGHT = 34.f;
+    constexpr float HEADER_HEIGHT = 30.f; // a list header of GPUI is 28; the bold 18 px title gets 2 more
     constexpr float HEADER_PAD_LEFT = 8.f;
     constexpr float DISCLOSURE_SIZE = 14.f;
     constexpr float LABEL_GAP = 4.f;
@@ -29,8 +29,8 @@ public:
         layout().setAlignItems(Align::Center);
         layout().setHeight(Length::points(HEADER_HEIGHT));
         layout().setPadding(Edge::Left, HEADER_PAD_LEFT + DISCLOSURE_SIZE + LABEL_GAP);
-        layout().setPadding(Edge::Right, 8.f);
-        surface().setCornerRadius(6.f);
+        layout().setPadding(Edge::Right, Spacing::md);
+        surface().setCornerRadius(Radius::sm);
 
         m_title = std::make_shared<Label>(std::move(title));
         m_title->setFont(Font(18.f, FontWeight::Bold)); // component header: larger than the body, bold

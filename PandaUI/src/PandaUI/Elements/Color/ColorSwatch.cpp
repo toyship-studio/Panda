@@ -14,7 +14,7 @@ ColorSwatch::ColorSwatch()
 ColorSwatch::ColorSwatch(Color color)
     : m_color(color) {
     layout().setSize({DEFAULT_SIZE, DEFAULT_SIZE});
-    surface().setCornerRadius(6.f);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     apply();
 }

@@ -20,7 +20,7 @@ Button::Button(std::string text)
     , m_pressedColor(theme().controlPressed)
     , m_disabledColor(theme().controlPressed) {
     setCursor(Cursor::PointingHand);
-    surface().setCornerRadius(7.f);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     // No shadow: by design only floating layers (popovers/dialogs) have shadows; buttons are flat.
     layout().setFlexDirection(FlexDirection::Row);
@@ -51,12 +51,13 @@ void Button::setSize(ButtonSize size) {
 }
 
 void Button::applySize() {
+    // The heights of GPUI's buttons: 28 for the regular one (Medium), 22 for the small one (Default).
     const bool small = m_size == ButtonSize::Small;
     m_titleLabel->setFont(m_titleLabel->getFont().withSize(small ? 14.f : 16.f));
-    layout().setPadding(Edge::Horizontal, small ? 12.f : 16.f);
-    layout().setPadding(Edge::Vertical, small ? 3.f : 9.f);
-    layout().setMinHeight(Length::points(small ? 24.f : 0.f));
-    surface().setCornerRadius(small ? 6.f : 7.f);
+    layout().setPadding(Edge::Horizontal, small ? Spacing::md : Spacing::lg);
+    layout().setPadding(Edge::Vertical, small ? Spacing::xs : 5.f);
+    layout().setMinHeight(Length::points(small ? 22.f : 28.f));
+    surface().setCornerRadius(Radius::sm);
 }
 
 void Button::setText(std::string text) {

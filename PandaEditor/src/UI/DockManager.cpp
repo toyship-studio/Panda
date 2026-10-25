@@ -92,7 +92,7 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_maximizeHost = std::make_shared<Panel>();
     m_maximizeHost->setBackgroundColor(ThemeColor::windowBackground);
     m_maximizeHost->setClipsToBounds(true);
-    m_maximizeHost->surface().setCornerRadius(8.f);
+    m_maximizeHost->surface().setCornerRadius(Radius::lg);
     m_maximizeHost->surface().setBorderWidth(1.f);
     m_maximizeHost->surface().setBorderColor(ThemeColor::border);
     m_maximizeHost->layout().setPositionType(PositionType::Absolute);

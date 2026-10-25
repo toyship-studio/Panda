@@ -25,7 +25,7 @@ ColorWell::ColorWell(Color color)
     , m_onColorChanged(nullptr) {
     setCursor(Cursor::PointingHand);
     layout().setSize({DEFAULT_WIDTH, DEFAULT_HEIGHT});
-    surface().setCornerRadius(6.f);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     apply();
 }
@@ -69,14 +69,8 @@ void ColorWell::openPicker() {
 
     // Popover card with a shadow, with a full-fledged ColorPicker inside.
     auto card = std::make_shared<Panel>();
-    card->setBackgroundColor(theme().surface);
-    card->layout().setPadding(12.f);
-    card->surface().setCornerRadius(8.f); // like the Menu / Combobox popovers
-    card->surface().setBorderWidth(1.f);
-    card->surface().setBorderColor(theme().border);
-    card->surface().setShadowColor(Color(0x00000066));
-    card->surface().setShadowOffset(Point(0.f, 6.f));
-    card->surface().setShadowRadius(18.f);
+    applyElevation(*card, Elevation::Popover);
+    card->layout().setPadding(Spacing::lg);
 
     auto picker = std::make_shared<ColorPicker>();
     picker->setColor(m_color);

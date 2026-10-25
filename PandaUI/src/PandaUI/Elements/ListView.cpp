@@ -11,7 +11,7 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float ROW_PADDING_X = 12.f;
+    constexpr float ROW_PADDING_X = Spacing::md;
 }
 
 // A single list row: a container Control with selection/hover shown through the background. For text

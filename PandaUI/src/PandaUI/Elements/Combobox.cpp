@@ -16,8 +16,8 @@ namespace PandaUI {
 
 namespace {
     constexpr float COMBO_HEIGHT = 28.f; // = height of text fields (TextField DEFAULT_HEIGHT)
-    constexpr float PADDING_LEFT = 12.f;
-    constexpr float PADDING_RIGHT = 28.f; // room for the chevron on the right
+    constexpr float PADDING_LEFT = Spacing::md;
+    constexpr float PADDING_RIGHT = 24.f; // room for the chevron on the right
     constexpr float CHEVRON_HALF = 4.f;
     constexpr float CHEVRON_DROP = 2.2f;
     constexpr float CHEVRON_THICKNESS = 1.6f;
@@ -33,7 +33,7 @@ Combobox::Combobox()
     layout().setHeight(Length::points(COMBO_HEIGHT));
     layout().setPadding(Edge::Left, PADDING_LEFT);
     layout().setPadding(Edge::Right, PADDING_RIGHT);
-    surface().setCornerRadius(6.f);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
 
     m_label->setFont(Font(16.f));
@@ -149,14 +149,8 @@ void Combobox::openDropdown() {
 
     // Popover card with a shadow, with a ListView inside (single selection, the current item is highlighted).
     auto card = std::make_shared<Panel>();
-    card->setBackgroundColor(theme().surface);
+    applyElevation(*card, Elevation::Popover);
     card->layout().setPadding(CARD_PADDING);
-    card->surface().setCornerRadius(8.f);
-    card->surface().setBorderWidth(1.f);
-    card->surface().setBorderColor(theme().border);
-    card->surface().setShadowColor(Color(0x0000008C)); // popover shadow (design): rgba(0,0,0,.55)
-    card->surface().setShadowOffset(Point(0.f, 14.f));
-    card->surface().setShadowRadius(38.f);
 
     auto list = std::make_shared<ListView>();
     list->setSelectionMode(ListSelectionMode::Single);

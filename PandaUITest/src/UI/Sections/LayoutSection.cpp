@@ -21,7 +21,7 @@ std::shared_ptr<Panel> LayoutSection::makeBlock(float width, float height) const
     auto block = std::make_shared<Panel>();
     block->layout().setSize({width, height});
     block->setBackgroundColor(theme().accent);
-    block->surface().setCornerRadius(6.f);
+    block->surface().setCornerRadius(Radius::sm);
     return block;
 }
 

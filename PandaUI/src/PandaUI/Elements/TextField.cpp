@@ -148,7 +148,7 @@ TextField::TextField(std::string text)
     , m_selectionColor(theme().textSelection)
     , m_numberOfLines(1)
     , m_lineSpacing(3.f)
-    , m_contentInsets(4.f, 12.f, 12.f, 4.f) // vertical is small → floor (DEFAULT_HEIGHT) sets height; text self-centers
+    , m_contentInsets(4.f, Spacing::md, Spacing::md, 4.f) // vertical is small → floor (DEFAULT_HEIGHT) sets height; text self-centers
     , m_caretIndex(m_text.size())
     , m_selectionAnchorIndex(m_caretIndex)
     , m_caretBlinkElapsed(0.0)
@@ -165,7 +165,7 @@ TextField::TextField(std::string text)
     setUsesIntrinsicContentSize(true);
     setClipsToBounds(true);
     layout().setFlexShrink(1.f);
-    surface().setCornerRadius(6.f); // uniform radius of input fields (like Combobox / Vector3 / ColorWell)
+    surface().setCornerRadius(Radius::sm); // the radius of every input (Combobox / Vector3 / ColorWell)
     surface().setBorderWidth(1.f);
     updateAppearance();
 }

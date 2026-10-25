@@ -38,7 +38,7 @@ void SidebarRow::setupLayout() {
 
 void SidebarRow::setupStyle() {
     const Theme &t = theme();
-    surface().setCornerRadius(7.f);
+    surface().setCornerRadius(Radius::sm);
     if (isSelected()) {
         setBackgroundColor(t.accent);
         m_label->setTextColor(t.onAccent);

@@ -105,9 +105,12 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   `themeChanged` is for state DERIVED from the theme (a rebuilt card, a cached texture). A view
   that was out of the tree during a theme change (the hidden start screen, a replaced tab content)
   catches up when attached: every view carries the theme generation it was styled under
-  (`PandaUI::themeGeneration()`). A view is passive: it sends intentions out through its own
-  `Output` interface and receives data through setters (its input). It makes no decisions about the
-  model.
+  (`PandaUI::themeGeneration()`). Geometry comes from `PandaUI/Core/Style.hpp` — the GPUI scale:
+  `Radius::sm` (4) for buttons, inputs, rows, chips and section headers, `Radius::md` (6) for small
+  plates, `Radius::lg` (8) for popovers, dialogs and cards, `Spacing::*` on a 4 px grid, and two
+  shadows, `Shadow::popover` and `Shadow::modal`, applied with `applyElevation(view, Elevation)`;
+  everything else is flat. A view is passive: it sends intentions out through its own `Output`
+  interface and receives data through setters (its input). It makes no decisions about the model.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
   the updates into the affected panels (retained mode: no subscriptions, no reactivity). Panels do

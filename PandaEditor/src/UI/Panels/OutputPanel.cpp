@@ -98,7 +98,7 @@ public:
         layout().setAlignItems(Align::Center);
         layout().setPadding(Edge::Horizontal, 9.f);
         layout().setPadding(Edge::Vertical, 3.f);
-        surface().setCornerRadius(6.f);
+        surface().setCornerRadius(Radius::sm);
         m_label->setFont(Typo::Meta);
         addSubview(m_label);
         applyStyle();
@@ -169,13 +169,13 @@ void OutputPanelView::addSubviews() {
     bar->layout().setPadding(Edge::Vertical, 4.f);
 
     auto clear = std::make_shared<IconButton>(Ic::Clear, Ic::RowSize, 24.f);
-    clear->setCornerRadius(5.f);
+    clear->setCornerRadius(Radius::sm);
     clear->setTooltip("Clear");
     clear->setOnClick([this] { clearLog(); });
     bar->addSubview(clear);
 
     auto copy = std::make_shared<IconButton>(Ic::Copy, Ic::RowSize, 24.f);
-    copy->setCornerRadius(5.f);
+    copy->setCornerRadius(Radius::sm);
     copy->setTooltip("Copy all");
     copy->setOnClick([this] { copyAll(); });
     bar->addSubview(copy);

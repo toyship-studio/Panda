@@ -134,7 +134,7 @@ void HierarchyPanelView::configureTree() {
     dataSource.idForItem = [](TreeItem item) { return static_cast<std::uint64_t>(toUuid(item)); };
     m_tree->setDataSource(dataSource);
     m_tree->setDragType("entity");
-    m_tree->setRowHeight(24.f);            // more compact than the default 34
+    m_tree->setRowHeight(24.f);            // more compact than the default 30
     m_tree->setExpanded(toItem(0), true); // the "World" root (the only container) is always expanded
 
     m_tree->setOnSelectionChanged([this](TreeView &tree) {

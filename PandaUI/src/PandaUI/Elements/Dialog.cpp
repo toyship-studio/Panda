@@ -13,16 +13,10 @@ namespace {
 
     std::shared_ptr<Panel> makeCard() {
         auto card = std::make_shared<Panel>();
-        card->setBackgroundColor(ThemeColor::surface);
-        card->surface().setCornerRadius(10.f);
-        card->surface().setBorderWidth(1.f);
-        card->surface().setBorderColor(ThemeColor::borderMed);
-        card->surface().setShadowColor(Color(0.f, 0.f, 0.f, 0.45f));
-        card->surface().setShadowOffset({0.f, 12.f});
-        card->surface().setShadowRadius(32.f);
+        applyElevation(*card, Elevation::Modal);
         card->layout().setFlexDirection(FlexDirection::Column);
-        card->layout().setPadding(20.f);
-        card->layout().setGap(14.f);
+        card->layout().setPadding(Spacing::xl);
+        card->layout().setGap(Spacing::lg);
         card->layout().setWidth(Length::points(DEFAULT_WIDTH));
         return card;
     }

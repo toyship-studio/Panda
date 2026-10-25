@@ -19,7 +19,7 @@ namespace {
     void configureBox(View &view) {
         view.layout().setWidth(Length::points(360.f));
         view.layout().setHeight(Length::points(200.f));
-        view.surface().setCornerRadius(8.f);
+        view.surface().setCornerRadius(Radius::md);
         view.surface().setBorderWidth(1.f);
     }
 }

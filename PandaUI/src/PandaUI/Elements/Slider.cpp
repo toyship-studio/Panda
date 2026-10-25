@@ -68,9 +68,7 @@ Slider::Slider()
     m_thumb->layout().setSize({THUMB_SIZE, THUMB_SIZE});
     m_thumb->surface().setCornerRadius(THUMB_SIZE * 0.5f);
     m_thumb->surface().setBorderWidth(1.f);
-    m_thumb->surface().setShadowColor(Color(0x00000055));
-    m_thumb->surface().setShadowOffset(Point(0.f, 1.f));
-    m_thumb->surface().setShadowRadius(4.f);
+    m_thumb->surface().setShadow(ShadowStyle{Color(0.f, 0.f, 0.f, 0.2f), Point(0.f, 1.f), 2.f});
     addSubview(m_thumb);
 
     applyThemeColors();

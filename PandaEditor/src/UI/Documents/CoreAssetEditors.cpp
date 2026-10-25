@@ -343,7 +343,7 @@ namespace {
 
             // "+" in the header — add a pass to the end.
             auto add = std::make_shared<IconButton>(Ic::Plus, Ic::HeaderSize, 23.f);
-            add->setCornerRadius(5.f);
+            add->setCornerRadius(Radius::sm);
             add->setTooltip("Add Pass");
             add->setOnClick([data, emit] {
                 data->push_back({});
@@ -401,7 +401,7 @@ namespace {
                 controls->addSubview(resolution);
 
                 auto up = std::make_shared<IconButton>(Ic::ChevronUp, Ic::RowSize, 22.f);
-                up->setCornerRadius(5.f);
+                up->setCornerRadius(Radius::sm);
                 up->setTooltip("Move Up");
                 up->setOnClick([data, emit, i] {
                     if (i == 0) { return; }
@@ -409,7 +409,7 @@ namespace {
                     emit();
                 });
                 auto remove = std::make_shared<IconButton>(Ic::Trash, Ic::RowSize, 22.f);
-                remove->setCornerRadius(5.f);
+                remove->setCornerRadius(Radius::sm);
                 remove->setTooltip("Remove Pass");
                 remove->setOnClick([data, emit, i] {
                     data->erase(data->begin() + static_cast<std::ptrdiff_t>(i));

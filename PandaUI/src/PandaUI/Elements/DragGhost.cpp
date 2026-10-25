@@ -23,12 +23,10 @@ DragGhost::DragGhost(std::string text)
     m_bubble->setBackgroundColor(t.accent);
     m_bubble->setOpacity(0.92f);
     m_bubble->layout().setPositionType(PositionType::Absolute);
-    m_bubble->layout().setPadding(Edge::Horizontal, 10.f);
-    m_bubble->layout().setPadding(Edge::Vertical, 5.f);
-    m_bubble->surface().setCornerRadius(6.f);
-    m_bubble->surface().setShadowColor(Color(0x00000066));
-    m_bubble->surface().setShadowOffset(Point(0.f, 3.f));
-    m_bubble->surface().setShadowRadius(12.f);
+    m_bubble->layout().setPadding(Edge::Horizontal, Spacing::md);
+    m_bubble->layout().setPadding(Edge::Vertical, Spacing::sm);
+    m_bubble->surface().setCornerRadius(Radius::md);
+    m_bubble->surface().setShadow(Shadow::popover);
 
     auto label = std::make_shared<Label>(std::move(text));
     label->setFont(Font(16.f));

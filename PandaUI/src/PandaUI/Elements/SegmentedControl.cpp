@@ -11,12 +11,12 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float CONTROL_HEIGHT = 32.f;
-    constexpr float TRACK_RADIUS = 7.f;
-    constexpr float SEGMENT_RADIUS = 5.f;
+    constexpr float CONTROL_HEIGHT = 28.f; // the height of the fields and buttons
+    constexpr float TRACK_RADIUS = Radius::sm;
+    constexpr float SEGMENT_RADIUS = Radius::xs; // nested: the track radius less its padding
     constexpr float TRACK_PADDING = 2.f;
     constexpr float SEGMENT_FONT = 16.f;
-    constexpr float SEGMENT_PADDING_X = 12.f; // breathing room around the label
+    constexpr float SEGMENT_PADDING_X = 10.f; // breathing room around the label
     constexpr float MIN_SEGMENT_WIDTH = 36.f;
 }
 

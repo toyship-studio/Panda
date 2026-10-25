@@ -96,7 +96,7 @@ void ToolbarPanelView::addSubviews() {
     capsule->layout().setAlignItems(Align::Center);
     capsule->layout().setGap(2.f);
     capsule->layout().setPadding(3.f);
-    capsule->surface().setCornerRadius(9.f);
+    capsule->surface().setCornerRadius(Radius::md);
     capsule->surface().setBorderWidth(1.f);
     capsule->surface().setBorderColor(ThemeColor::borderMed);
 

@@ -13,8 +13,8 @@ namespace PandaUI {
 namespace {
     constexpr float ANCHOR_GAP = 6.f;
     constexpr float MAX_WIDTH = 280.f;
-    constexpr float PADDING_X = 9.f;
-    constexpr float PADDING_Y = 6.f;
+    constexpr float PADDING_X = Spacing::md;
+    constexpr float PADDING_Y = Spacing::sm;
 }
 
 Tooltip::Tooltip(std::string text, Rect anchor)
@@ -26,17 +26,11 @@ Tooltip::Tooltip(std::string text, Rect anchor)
     setBackgroundColor(Color(0x00000000));
 
     m_bubble->setUserInteractionEnabled(false);
-    m_bubble->setBackgroundColor(ThemeColor::surface);
+    applyElevation(*m_bubble, Elevation::Popover);
     m_bubble->layout().setPositionType(PositionType::Absolute);
     m_bubble->layout().setMaxWidth(Length::points(MAX_WIDTH));
     m_bubble->layout().setPadding(Edge::Horizontal, PADDING_X);
     m_bubble->layout().setPadding(Edge::Vertical, PADDING_Y);
-    m_bubble->surface().setCornerRadius(6.f);
-    m_bubble->surface().setBorderWidth(1.f);
-    m_bubble->surface().setBorderColor(ThemeColor::border);
-    m_bubble->surface().setShadowColor(Color(0x00000055));
-    m_bubble->surface().setShadowOffset(Point(0.f, 3.f));
-    m_bubble->surface().setShadowRadius(12.f);
 
     // The starting position at the anchor is set right in the constructor: without it the bubble is
     // drawn at (0,0) — the top left corner — on the first frame, until viewDidCalculateLayout (which

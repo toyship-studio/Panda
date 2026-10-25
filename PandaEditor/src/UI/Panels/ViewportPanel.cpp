@@ -31,7 +31,7 @@ namespace {
             layout().setAlignItems(Align::Center);
             layout().setGap(3.f);
             layout().setPadding(4.f);
-            surface().setCornerRadius(9.f);
+            surface().setCornerRadius(Radius::lg);
             surface().setBorderWidth(1.f);
         }
 
@@ -361,20 +361,16 @@ void ViewportPanelView::setupStyle() {
         m_sidebar->surface().setBorderWidth(1.f);
     }
     if (m_overlay) {
-        m_overlay->setBackgroundColor(theme().surface);
-        m_overlay->surface().setBorderColor(theme().border);
-        // Floating layer → a soft shadow is allowed (design.md §3: 0 8 22 rgba(0,0,0,.4)).
-        m_overlay->surface().setShadowColor(Color(0x00000066));
-        m_overlay->surface().setShadowOffset(Point(0.f, 8.f));
-        m_overlay->surface().setShadowRadius(22.f);
+        // A floating layer: the popover elevation (a hairline shadow, like GPUI's elevated surfaces).
+        m_overlay->setBackgroundColor(ThemeColor::surface);
+        m_overlay->surface().setBorderColor(ThemeColor::border);
+        m_overlay->surface().setShadow(Shadow::popover);
     }
     if (m_editBanner) {
         // Same floating style; the accent border signals a special mode (paired with the panel border).
-        m_editBanner->setBackgroundColor(theme().surface);
-        m_editBanner->surface().setBorderColor(theme().accent);
-        m_editBanner->surface().setShadowColor(Color(0x00000066));
-        m_editBanner->surface().setShadowOffset(Point(0.f, 8.f));
-        m_editBanner->surface().setShadowRadius(22.f);
+        m_editBanner->setBackgroundColor(ThemeColor::surface);
+        m_editBanner->surface().setBorderColor(ThemeColor::accent);
+        m_editBanner->surface().setShadow(Shadow::popover);
     }
 }
 

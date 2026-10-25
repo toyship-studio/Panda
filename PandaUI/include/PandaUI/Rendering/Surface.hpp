@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PandaUI/Core/Base.hpp"
+#include "PandaUI/Core/Style.hpp"
 #include "PandaUI/Core/Theme.hpp"
 
 #include <glm/glm.hpp>
@@ -60,6 +61,7 @@ public:
         return m_borderColor.resolve();
     }
 
+    void setShadow(const ShadowStyle &shadow); // one of Shadow::* (Style.hpp)
     void setShadowColor(Color color);
     void setShadowOffset(Point offset);
     void setShadowRadius(float radius);

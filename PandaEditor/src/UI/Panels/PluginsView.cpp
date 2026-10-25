@@ -25,7 +25,7 @@ namespace {
     constexpr float kChipFont = 15.f;
     constexpr float kMetaFont = 16.f;
     constexpr float kIconSize = 56.f;
-    constexpr float kCardRadius = 12.f;
+    constexpr float kCardRadius = Radius::lg;
 
     std::string titleCase(const std::string &word) {
         if (word == "ui") { return "UI"; }
@@ -105,7 +105,7 @@ namespace {
         tag->layout().setAlignItems(Align::Center);
         tag->layout().setPadding(Edge::Horizontal, 10.f);
         tag->layout().setPadding(Edge::Vertical, 4.f);
-        tag->surface().setCornerRadius(7.f);
+        tag->surface().setCornerRadius(Radius::sm);
         tag->setBackgroundColor(accent ? ThemeColor::accentSoft : ThemeColor::control);
         auto label = std::make_shared<Label>(text);
         label->setFont(Font(kChipFont, FontWeight::Medium));
@@ -181,7 +181,7 @@ void PluginCard::rebuild() {
     iconBox->layout().setFlexShrink(0.f);
     iconBox->layout().setJustifyContent(Justify::Center);
     iconBox->layout().setAlignItems(Align::Center);
-    iconBox->surface().setCornerRadius(10.f);
+    iconBox->surface().setCornerRadius(Radius::md);
     iconBox->setBackgroundColor(ThemeColor::control);
     iconBox->setClipsToBounds(true);
     if (m.icon) {
@@ -406,7 +406,7 @@ void PluginsView::addSubviews() {
     m_searchField->setPlaceholder("Search plugins…");
     m_searchField->setFont(Font(16.f));
     m_searchField->layout().setFlexGrow(1.f);
-    m_searchField->layout().setHeight(Length::points(32.f));
+    m_searchField->layout().setHeight(Length::points(28.f)); // the height of the segmented control
     m_searchField->setOnTextChanged([this](TextField &) {
         m_searchPending = true;
         m_searchTimer = 0.0;

@@ -57,7 +57,7 @@ IconButton::IconButton(const std::string &iconName, float iconSize, float button
     layout().setFlexShrink(0.f);
     layout().setJustifyContent(Justify::Center);
     layout().setAlignItems(Align::Center);
-    surface().setCornerRadius(6.f);
+    surface().setCornerRadius(Radius::sm);
     m_icon = makeIcon(iconName, iconSize, m_restColor);
     addSubview(m_icon);
     applyStyle();

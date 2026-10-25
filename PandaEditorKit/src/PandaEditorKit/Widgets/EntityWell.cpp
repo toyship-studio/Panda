@@ -20,7 +20,7 @@ EntityWell::EntityWell(Panda::World &world, Panda::UUID initial, std::function<v
     layout().setAlignItems(Align::Center);
     layout().setJustifyContent(Justify::Center);
     layout().setPadding(Edge::Horizontal, 8.f);
-    surface().setCornerRadius(6.f);
+    surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     m_label = std::make_shared<Label>("");
     m_label->setFont(Font(15.f));

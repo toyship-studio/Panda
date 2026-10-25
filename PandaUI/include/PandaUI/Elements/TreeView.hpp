@@ -162,7 +162,7 @@ private:
     bool m_needsRebuild = true; // rebuild the flat list and rebind
     float m_lastOffsetY = -1.f;
     Size m_lastViewport = Size(-1.f, -1.f);
-    float m_rowHeight = 34.f; // row height (uniform); changed through setRowHeight
+    float m_rowHeight = 30.f; // row height (uniform); changed through setRowHeight
 
     // Drag-and-drop.
     std::string m_dragType = "treeview.nodes"; // payload.type of the dragged nodes

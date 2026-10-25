@@ -34,7 +34,7 @@ namespace {
             : m_onClick(std::move(onClick)) {
             setCursor(Cursor::PointingHand);
             layout().setSize({28.f, 28.f});
-            surface().setCornerRadius(6.f);
+            surface().setCornerRadius(Radius::sm);
             surface().setBorderWidth(1.f);
             applyStyle();
         }
@@ -179,7 +179,7 @@ ColorPicker::ColorPicker()
 
     m_swatch->setUserInteractionEnabled(false);
     m_swatch->layout().setSize({44.f, 28.f});
-    m_swatch->surface().setCornerRadius(6.f);
+    m_swatch->surface().setCornerRadius(Radius::sm);
     m_swatch->surface().setBorderWidth(1.f);
 
     row->addSubview(m_hexField);
