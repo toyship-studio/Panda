@@ -7,10 +7,12 @@
 //   PandaUpdateHelper.exe --wait <pid> --install <folder> --staged <folder> [--launch]
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #include <shellapi.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
