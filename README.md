@@ -152,8 +152,8 @@ and applications made with Panda, plugins, modules, tools and assets for it, for
 distributed for free, paid services around it. The license is not an OSI-approved open source
 license; Panda is free and its source is public.
 
-The libraries that are useful on their own, `Foundation`, `Fern`, `Miren`, `Rain` and `PandaUI`,
-are licensed under the MIT License instead: the `LICENSE.txt` in each of these folders. The
+The libraries that are useful on their own, `Foundation`, `PandaAsync`, `Fern`, `Miren`, `Rain` and
+`PandaUI`, are licensed under the MIT License instead: the `LICENSE.txt` in each of these folders. The
 game engine condition does not apply to them.
 
 The license covers the code and the resources. It does not cover the Marks: the names Panda, Panda
