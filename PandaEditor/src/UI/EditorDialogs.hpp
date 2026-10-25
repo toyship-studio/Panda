@@ -46,7 +46,28 @@ void showAssetPicker(
     PandaUI::Context *context, PandaUI::Point at, const std::string &kind,
     std::function<void(uint32_t)> onPick
 );
-// The "About" modal window.
-void showAboutDialog(PandaUI::Context *context);
+// The "About" modal window: the version, the build and the commit (the manifest of the release
+// workflow names the same build, context/infrastructure.md), the state of the updater, and the
+// actions of the Help menu. Copy puts the version line on the clipboard for a report.
+struct AboutInfo {
+    std::string version;      // "0.1.0-preview.7", or "0.1.0" for a local build
+    std::string channel;      // "preview", "stable", empty for a local build
+    uint32_t build = 0;       // 0 for a local build
+    std::string commit;       // short sha, empty for a local build
+    std::string platform;     // "macOS arm64"
+    std::string updateStatus; // one line of the updater, empty when idle
+    bool updatesEnabled = false;
+    std::function<void()> onCheckForUpdates;
+    std::function<void()> onReleaseNotes;
+};
+void showAboutDialog(PandaUI::Context *context, const AboutInfo &info);
+// A modal with a title, a message and OK.
+void showMessageDialog(PandaUI::Context *context, const std::string &title, const std::string &message);
+// A downloaded update: the version, its release notes (the plain text of the manifest), Restart
+// Now / Later / Release Notes.
+void showUpdateReadyDialog(
+    PandaUI::Context *context, const std::string &version, const std::string &notes,
+    std::function<void()> onRestart, std::function<void()> onReleaseNotes
+);
 
 } // namespace Editor

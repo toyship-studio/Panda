@@ -1315,6 +1315,18 @@ void EditorController::toolbarDidRedo() {
     redo();
 }
 
+void EditorController::setUpdateStatus(const UpdateIndicatorModel &model) {
+    if (m_toolbarView) { m_toolbarView->setUpdateStatus(model); }
+}
+
+void EditorController::toolbarDidActivateUpdate() {
+    if (m_bridge) { m_bridge->updateIndicatorAction(); }
+}
+
+void EditorController::toolbarDidDismissUpdate() {
+    if (m_bridge) { m_bridge->updateIndicatorDismiss(); }
+}
+
 void EditorController::toolbarDidNavigateBack() {
     if (m_editorTabs) { m_editorTabs->goBack(); }
 }

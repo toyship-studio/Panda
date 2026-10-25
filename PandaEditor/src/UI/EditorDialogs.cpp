@@ -263,39 +263,84 @@ void showAssetPicker(
     context->setFocusedView(search.get()); // focus on the search — filtering is possible right away
 }
 
-void showAboutDialog(Context *context) {
+void showAboutDialog(Context *context, const AboutInfo &info) {
     if (!context) { return; }
-    auto dialog = std::make_shared<Dialog>("Panda");
+    auto dialog = std::make_shared<Dialog>("Panda Editor");
     dialog->setMessage("Free 2D and 3D cross-platform game engine by Toyship.");
+    dialog->setContentWidth(500.f);
 
     auto body = std::make_shared<Panel>();
     body->setBackgroundColor(Color(0x00000000));
     body->layout().setFlexDirection(FlexDirection::Column);
     body->layout().setGap(6.f);
-    // The build of the release workflow names the exact code of a tester's report
-    // (context/infrastructure.md); a local build has no number.
-    std::string version = std::string("Version ") + Panda::ENGINE_VERSION;
-    if (Panda::ENGINE_BUILD_NUMBER != 0) {
-        version += ", build " + std::to_string(Panda::ENGINE_BUILD_NUMBER);
-        if (Panda::ENGINE_BUILD_COMMIT[0] != '\0') {
-            version += std::string(" (") + Panda::ENGINE_BUILD_COMMIT + ")";
-        }
-    } else {
-        version += ", local build";
-    }
-    for (const std::string &line :
-         {version,
-          std::string("Developer: Mikhail Andreichev"),
-          std::string("Inspired by the Zed editor, zed.dev"),
-          std::string("Panda Engine License 1.0, pandaengine.dev/license"),
-          std::string("https://github.com/toyship-studio/Panda")}) {
-        auto label = std::make_shared<Label>(line);
+    auto addLine = [body](const std::string &text, TextRole role) {
+        auto label = std::make_shared<Label>(text);
         label->setFont(Font(14.f));
-        label->setTextRole(TextRole::Muted);
+        label->setTextRole(role);
+        label->setNumberOfLines(0);
         body->addSubview(label);
+    };
+    // The build of the release workflow names the exact code of a tester's report; a local build
+    // has no number and no channel.
+    std::string channel = info.channel;
+    if (!channel.empty()) { channel[0] = char(std::toupper(static_cast<unsigned char>(channel[0]))); }
+    addLine(std::string("Version ") + info.version + (channel.empty() ? " (local build)" : " · " + channel), TextRole::Primary);
+    if (info.build != 0) {
+        addLine("Build " + std::to_string(info.build) + (info.commit.empty() ? "" : " · commit " + info.commit), TextRole::Muted);
+    }
+    addLine(info.platform, TextRole::Muted);
+    if (!info.updateStatus.empty()) { addLine(info.updateStatus, TextRole::Secondary); }
+    for (const char *line :
+         {"Developer: Mikhail Andreichev",
+          "Inspired by the Zed editor, zed.dev",
+          "Panda Engine License 1.0, pandaengine.dev/license",
+          "https://github.com/toyship-studio/Panda"}) {
+        addLine(line, TextRole::Muted);
     }
     dialog->setBody(body);
+
+    std::string report = "Panda Editor " + info.version;
+    if (info.build != 0) { report += " (build " + std::to_string(info.build) + (info.commit.empty() ? ")" : ", commit " + info.commit + ")"); }
+    report += ", " + info.platform;
+    dialog->addAction("Copy", DialogActionRole::Default, [report] { setClipboardText(report); });
+    if (info.onReleaseNotes) { dialog->addAction("Release Notes", DialogActionRole::Default, info.onReleaseNotes); }
+    if (info.onCheckForUpdates) {
+        dialog->addAction("Check for Updates", DialogActionRole::Default, info.onCheckForUpdates)->setEnabled(info.updatesEnabled);
+    }
     dialog->addAction("OK", DialogActionRole::Primary);
+    context->modals().present(dialog);
+}
+
+void showMessageDialog(Context *context, const std::string &title, const std::string &message) {
+    if (!context) { return; }
+    auto dialog = std::make_shared<Dialog>(title);
+    dialog->setMessage(message);
+    dialog->addAction("OK", DialogActionRole::Primary);
+    context->modals().present(dialog);
+}
+
+void showUpdateReadyDialog(
+    Context *context, const std::string &version, const std::string &notes, std::function<void()> onRestart,
+    std::function<void()> onReleaseNotes
+) {
+    if (!context) { return; }
+    auto dialog = std::make_shared<Dialog>("Panda " + version + " is ready");
+    dialog->setMessage("The update is installed. It runs after a restart of the editor; your work is saved first.");
+    dialog->setContentWidth(520.f);
+    if (!notes.empty()) {
+        auto body = std::make_shared<Panel>();
+        body->setBackgroundColor(Color(0x00000000));
+        body->layout().setFlexDirection(FlexDirection::Column);
+        auto label = std::make_shared<Label>(notes);
+        label->setFont(Font(14.f));
+        label->setTextRole(TextRole::Secondary);
+        label->setNumberOfLines(0);
+        body->addSubview(label);
+        dialog->setBody(body);
+    }
+    dialog->addAction("Later", DialogActionRole::Cancel);
+    if (onReleaseNotes) { dialog->addAction("Release Notes", DialogActionRole::Default, std::move(onReleaseNotes)); }
+    dialog->addAction("Restart Now", DialogActionRole::Primary, std::move(onRestart));
     context->modals().present(dialog);
 }
 

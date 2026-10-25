@@ -33,6 +33,7 @@ public:
     static void copyFolder(const path_t &sourcePath, const path_t &newPath);
     static void open(const path_t &path);
     static bool openWithDefaultApplication(const path_t &path);
+    static bool openUrl(const std::string &url); // the default browser
     static void show(const path_t &path);
     static void openCppProject(const path_t &path);
     // Restart of the editor: the UI sets the flag and closes the application through the usual
@@ -43,6 +44,10 @@ public:
     // Starts a new instance of this application (macOS: `open -n` on the bundle; Windows: the
     // executable of the process; Linux: /proc/self/exe). Returns false when it could not start.
     static bool relaunchApplication();
+    // Starts a program without waiting for it or wiring its pipes (the update helper, the new
+    // editor after an update).
+    static bool startDetached(const path_t &executable, const std::vector<std::string> &args);
+    static uint32_t currentProcessId();
     static std::optional<path_t> findCMakeExecutable();
     // slangc for compiling user shaders (MirenTools): editor bundle → PandaSDK.
     static std::optional<path_t> findSlangExecutable();

@@ -194,6 +194,30 @@ namespace {
     }
 
     ThemeProvider s_themes;
+    UpdateProvider s_updates;
+
+    // The editor updater (context/infrastructure.md, section 5): the one switch of Zed's
+    // `auto_update`; the channel belongs to the build.
+    void buildUpdates(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::EditorUpdateSettings>(store.get<Panda::EditorUpdateSettings>());
+        auto emit = [data] { commitSettings<Panda::EditorUpdateSettings>(SettingsScope::Editor, *data); };
+        addToggleRow(section, "Automatic Updates", data->autoUpdate, [data, emit](bool on) {
+            data->autoUpdate = on;
+            emit();
+        });
+        section.addContent(makeFormHint(
+            "Checks for a new build at startup and once an hour, downloads and installs it in the background, "
+            "and asks for a restart. Help → Check for Updates looks right away."
+        ));
+        if (s_updates.statusLine) { section.addContent(makeFormHint(s_updates.statusLine())); }
+        if (!s_updates.enabled) {
+            section.addContent(makeFormHint("Updates are off in a local build: this editor was not made by the release workflow."));
+        } else if (s_updates.check) {
+            section.addContent(makeFormButtonRow({makeFormButton("Check for Updates", ButtonStyle::Neutral, [] {
+                s_updates.check();
+            })}));
+        }
+    }
 
     // The look of the editor: the plugin themes (View → Theme lists the same ones).
     void buildAppearance(CollapsibleSection &section, Panda::TypeContext &) {
@@ -285,6 +309,10 @@ void setThemeProvider(ThemeProvider provider) {
     s_themes = std::move(provider);
 }
 
+void setUpdateProvider(UpdateProvider provider) {
+    s_updates = std::move(provider);
+}
+
 void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::World, "WORLD", buildLighting});
     extensions.settingsSections.push_back({SettingsScope::World, "SHADOWS", buildShadows});
@@ -292,6 +320,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::World, "WIND", buildWind});
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});
     extensions.settingsSections.push_back({SettingsScope::Editor, "APPEARANCE", buildAppearance});
+    extensions.settingsSections.push_back({SettingsScope::Editor, "UPDATES", buildUpdates});
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "MODULES", buildProjectModules});
 }

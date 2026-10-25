@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UI/Panels/UpdateIndicator.hpp"
+
 #include <PandaUI/PandaUI.hpp>
 
 #include <cstddef>
@@ -29,6 +31,7 @@ struct StartScreenModel {
     std::string statusText = "Select a project or create a new one.";
     std::string newProjectName = "UntitledGame";
     std::string newProjectLocation;
+    UpdateIndicatorModel update; // the editor updater, shown in the sidebar
 };
 
 // Start screen intents. Implemented by the coordinator; the View does not change the model directly.
@@ -43,6 +46,8 @@ public:
     virtual void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) = 0;
     virtual void startScreenDidCancelProjectCreation() = 0;
     virtual void startScreenDidRequestChooseProjectLocation() = 0;
+    virtual void startScreenDidActivateUpdate() = 0;
+    virtual void startScreenDidDismissUpdate() = 0;
 };
 
 // Intents of the start screen controller going outward, to the application host.
@@ -55,15 +60,20 @@ public:
     virtual void startScreenDidRequestRemoveRecentProject(size_t index) = 0;
     virtual void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) = 0;
     virtual void startScreenDidRequestChooseProjectLocation() = 0;
+    virtual void startScreenDidActivateUpdate() = 0;
+    virtual void startScreenDidDismissUpdate() = 0;
 };
 
 // VIEW: passive retained UI. Receives StartScreenModel through setModel(), sends out
 // only intents through StartScreenOutput.
-class StartScreenView final : public PandaUI::Panel {
+class StartScreenView final : public PandaUI::Panel, public UpdateIndicatorOutput {
 public:
     StartScreenView(PandaUI::TextureHandle logoTexture, StartScreenOutput *output);
 
     void setModel(const StartScreenModel &model);
+
+    void updateIndicatorDidActivate() override;
+    void updateIndicatorDidDismiss() override;
 
 private:
     void addSubviews();
@@ -90,6 +100,7 @@ private:
     std::shared_ptr<PandaUI::Panel> m_sidebar;
     std::shared_ptr<PandaUI::Panel> m_content;
     std::shared_ptr<PandaUI::Label> m_statusLabel;
+    std::shared_ptr<UpdateIndicatorView> m_update;
     // Creation form fields: live in m_content, updated in a targeted way (location from the
     // picker) — see setModel.
     std::shared_ptr<PandaUI::TextField> m_nameField;
@@ -110,6 +121,7 @@ public:
     void setStatus(std::string text);
     void setNewProjectDefaults(std::string name, std::string location);
     void setNewProjectLocation(std::string location);
+    void setUpdateStatus(const UpdateIndicatorModel &model);
     void showRecentProjects();
 
     void startScreenDidRequestNewProject() override;
@@ -119,6 +131,8 @@ public:
     void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) override;
     void startScreenDidCancelProjectCreation() override;
     void startScreenDidRequestChooseProjectLocation() override;
+    void startScreenDidActivateUpdate() override;
+    void startScreenDidDismissUpdate() override;
 
 private:
     void syncView();

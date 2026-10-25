@@ -112,6 +112,7 @@ public:
     void redo();
     void syncSelectionFromEngine();     // SelectionContext → panels (per frame; drives selection from the viewport)
     void updateChromeFromState(bool isEditMode); // per frame: toolbar enable/disable + scene tab dirty indicator
+    void setUpdateStatus(const UpdateIndicatorModel &model); // the editor updater → the toolbar indicator
     // Project build (Layer → CMake panel): cmake output once per frame + the change of the running state.
     void appendCMakeOutput(Panda::BuildTargetKind kind, const std::vector<std::string> &lines);
     void cmakeBuildStarted(Panda::BuildTargetKind kind);
@@ -220,6 +221,8 @@ public:
     void toolbarDidRedo() override;
     void toolbarDidNavigateBack() override;
     void toolbarDidNavigateForward() override;
+    void toolbarDidActivateUpdate() override;
+    void toolbarDidDismissUpdate() override;
 
     // CMakePanelOutput.
     void cmakeDidRequestScriptsBuild(Panda::BuildAction action, Panda::ScriptsBuildConfig config) override;

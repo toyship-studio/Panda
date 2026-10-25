@@ -28,6 +28,9 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId EditorSettings = 18;
     constexpr Fern::MenuCommandId ShowEditorSettingsFile = 19;
     constexpr Fern::MenuCommandId ShowProjectSettingsFile = 20;
+    constexpr Fern::MenuCommandId CheckForUpdates = 21;
+    constexpr Fern::MenuCommandId RestartToUpdate = 22;
+    constexpr Fern::MenuCommandId ReleaseNotes = 23;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
     constexpr Fern::MenuCommandId SelectThemeBase = 2000;
 } // namespace EditorMenuCommand
@@ -143,7 +146,13 @@ void EditorMenuBar::rebuild() {
         }
     }
 
+    // Help, the Zed way: the update check, the restart into a downloaded update while one waits,
+    // the release notes of the channel, About.
     auto &helpMenu = menuBar.addMenu("Help");
+    helpMenu.addItem("Check for Updates", EditorMenuCommand::CheckForUpdates);
+    if (m_output->menuBarUpdateReady()) { helpMenu.addItem("Restart to Update", EditorMenuCommand::RestartToUpdate); }
+    helpMenu.addItem("Release Notes", EditorMenuCommand::ReleaseNotes);
+    helpMenu.addSeparator();
     helpMenu.addItem("About", EditorMenuCommand::About);
 
     m_window->setMenuBar(menuBar);
@@ -234,6 +243,15 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
             break;
         case EditorMenuCommand::About:
             m_output->menuBarAbout();
+            break;
+        case EditorMenuCommand::CheckForUpdates:
+            m_output->menuBarCheckForUpdates();
+            break;
+        case EditorMenuCommand::RestartToUpdate:
+            m_output->menuBarRestartToUpdate();
+            break;
+        case EditorMenuCommand::ReleaseNotes:
+            m_output->menuBarViewReleaseNotes();
             break;
         default:
             break;

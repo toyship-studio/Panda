@@ -28,6 +28,7 @@ endif ()
 target_compile_definitions(Panda PUBLIC
     PANDA_BUILD_NUMBER=${PANDA_BUILD_NUMBER}
     PANDA_BUILD_COMMIT="${PANDA_BUILD_COMMIT}"
+    PANDA_RELEASE_CHANNEL="${PANDA_RELEASE_CHANNEL}"
 )
 
 # Dependencies - Foundation

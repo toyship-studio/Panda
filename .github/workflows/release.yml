@@ -47,7 +47,7 @@ jobs:
       - name: Fetch the shader tools
         run: sh scripts/fetch_shader_tools.sh
       - name: Configure
-        run: sh scripts/configure_panda_release.sh -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7}
+        run: sh scripts/configure_panda_release.sh -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7} -DPANDA_RELEASE_CHANNEL="$PANDA_CHANNEL"
       - name: Build the editor
         run: cmake --build cmake-build-release --parallel 4 --target PandaEditor
       - name: Build the SDK and embed it into the bundle
@@ -96,7 +96,7 @@ jobs:
         shell: pwsh
         run: |
           $commit = $env:GITHUB_SHA.Substring(0, 7)
-          scripts/configure_panda_release.ps1 -Generator VisualStudio -CMakeArgument "-DPANDA_BUILD_NUMBER=$env:GITHUB_RUN_NUMBER","-DPANDA_BUILD_COMMIT=$commit"
+          scripts/configure_panda_release.ps1 -Generator VisualStudio -CMakeArgument "-DPANDA_BUILD_NUMBER=$env:GITHUB_RUN_NUMBER","-DPANDA_BUILD_COMMIT=$commit","-DPANDA_RELEASE_CHANNEL=$env:PANDA_CHANNEL"
       - name: Build the editor
         shell: pwsh
         run: cmake --build cmake-build-release --config Release --target PandaEditor --parallel 4 -- /nodeReuse:false
@@ -160,7 +160,7 @@ jobs:
       - name: Fetch the shader tools
         run: sh scripts/fetch_shader_tools.sh
       - name: Configure
-        run: sh scripts/configure_panda_release.sh -G Ninja -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7}
+        run: sh scripts/configure_panda_release.sh -G Ninja -DPANDA_BUILD_NUMBER=${{ github.run_number }} -DPANDA_BUILD_COMMIT=${GITHUB_SHA::7} -DPANDA_RELEASE_CHANNEL="$PANDA_CHANNEL"
       - name: Build the editor
         run: cmake --build cmake-build-release --parallel 4 --target PandaEditor
       - name: Build the SDK

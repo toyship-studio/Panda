@@ -122,12 +122,33 @@ void ToolbarPanelView::addSubviews() {
 
     addSubview(capsule);
 
-    // RIGHT: an empty balancer — the same basis 0 + grow 1 pair as on the left.
+    // RIGHT: the same basis 0 + grow 1 pair as on the left, with the update indicator at its end.
     auto right = std::make_shared<Panel>();
     right->setBackgroundColor(Color(0x00000000));
+    right->layout().setFlexDirection(FlexDirection::Row);
+    right->layout().setAlignItems(Align::Center);
     right->layout().setFlexGrow(1.f);
     right->layout().setFlexBasis(0.f);
+    auto filler = std::make_shared<Panel>();
+    filler->setBackgroundColor(Color(0x00000000));
+    filler->layout().setFlexGrow(1.f);
+    right->addSubview(filler);
+    m_update = std::make_shared<UpdateIndicatorView>(this);
+    m_update->layout().setMargin(Edge::Horizontal, 8.f);
+    right->addSubview(m_update);
     addSubview(right);
+}
+
+void ToolbarPanelView::setUpdateStatus(const UpdateIndicatorModel &model) {
+    if (m_update) { m_update->setModel(model); }
+}
+
+void ToolbarPanelView::updateIndicatorDidActivate() {
+    m_output->toolbarDidActivateUpdate();
+}
+
+void ToolbarPanelView::updateIndicatorDidDismiss() {
+    m_output->toolbarDidDismissUpdate();
 }
 
 void ToolbarPanelView::setCanNavigate(bool back, bool forward) {

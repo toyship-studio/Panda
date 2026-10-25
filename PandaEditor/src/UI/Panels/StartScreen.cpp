@@ -71,6 +71,7 @@ void StartScreenView::setModel(const StartScreenModel &model) {
     const bool locationChanged = model.newProjectLocation != m_model.newProjectLocation;
     m_model = model;
     if (m_statusLabel) { m_statusLabel->setText(m_model.statusText); }
+    if (m_update) { m_update->setModel(m_model.update); }
     if (contentChanged) {
         rebuildContent();
         return;
@@ -129,6 +130,11 @@ void StartScreenView::addSubviews() {
     spacer->setBackgroundColor(Color(0x00000000));
     spacer->layout().setFlexGrow(1.f);
     m_sidebar->addSubview(spacer);
+
+    // The editor updater: a line above the status, hidden until there is something to say.
+    m_update = std::make_shared<UpdateIndicatorView>(this);
+    m_update->setModel(m_model.update);
+    m_sidebar->addSubview(m_update);
 
     m_statusLabel = makeLabel(m_model.statusText, 13.f, FontWeight::Medium, TextRole::Muted);
     m_statusLabel->setNumberOfLines(0);
@@ -361,6 +367,28 @@ void StartScreenController::setRecentProjects(std::vector<StartScreenRecentProje
     if (m_model.recentProjects == projects) { return; }
     m_model.recentProjects = std::move(projects);
     syncView();
+}
+
+void StartScreenView::updateIndicatorDidActivate() {
+    if (m_output) { m_output->startScreenDidActivateUpdate(); }
+}
+
+void StartScreenView::updateIndicatorDidDismiss() {
+    if (m_output) { m_output->startScreenDidDismissUpdate(); }
+}
+
+void StartScreenController::setUpdateStatus(const UpdateIndicatorModel &model) {
+    if (m_model.update == model) { return; }
+    m_model.update = model;
+    syncView();
+}
+
+void StartScreenController::startScreenDidActivateUpdate() {
+    if (m_output) { m_output->startScreenDidActivateUpdate(); }
+}
+
+void StartScreenController::startScreenDidDismissUpdate() {
+    if (m_output) { m_output->startScreenDidDismissUpdate(); }
 }
 
 void StartScreenController::setStatus(std::string text) {

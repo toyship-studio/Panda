@@ -1,5 +1,7 @@
 #pragma once
 
+#include "App/EditorUpdater.hpp"
+#include "UI/Panels/UpdateIndicator.hpp"
 #include "Camera/EditorCamera.hpp"
 #include "Camera/CameraController.hpp"
 #include "Viewport/EditorHelpersRenderer.hpp"
@@ -104,6 +106,8 @@ private:
     void setSceneState(Editor::SceneState state) override;
     void reloadFromDisk() override;
     void restartEditor() override;
+    void updateIndicatorAction() override;
+    void updateIndicatorDismiss() override;
     void setGizmoOperation(int mode) override;
     void setGizmoSpace(bool worldSpace) override;
     void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override; // seam #2
@@ -144,6 +148,10 @@ private:
     void menuBarReload() override;
     void menuBarCloseProject() override;
     void menuBarAbout() override;
+    void menuBarCheckForUpdates() override;
+    void menuBarRestartToUpdate() override;
+    void menuBarViewReleaseNotes() override;
+    bool menuBarUpdateReady() override;
     void menuBarExportGame() override;
     void menuBarOpenExportProject(ExportProjectTarget target) override;
     std::vector<std::string> menuBarThemeNames() override;
@@ -155,6 +163,15 @@ private:
     void startScreenDidRequestRemoveRecentProject(size_t index) override;
     void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) override;
     void startScreenDidRequestChooseProjectLocation() override;
+    void startScreenDidActivateUpdate() override;
+    void startScreenDidDismissUpdate() override;
+
+    // The editor updater (App/EditorUpdater): its state goes to the indicators of the toolbar and
+    // of the start screen and to the Help menu whenever it changes.
+    void checkForUpdates(bool manual);
+    void pushUpdateStatus();
+    Editor::UpdateIndicatorModel updateIndicatorModel() const;
+    std::string updateStatusLine() const;
 
     World m_editingWorld;
     World m_playingWorld;
@@ -162,6 +179,10 @@ private:
     SceneState m_sceneState;
     bool m_pendingStop = false; // script quit → Stop at the start of the next frame (not in the middle of update)
     ProjectLoader m_loader;
+    EditorUpdater m_updater;
+    uint64_t m_shownUpdateRevision = ~uint64_t(0);
+    bool m_shownUpdateDismissed = false;
+    bool m_shownUpdateReady = false;
     ProjectBuilder m_projectBuilder;
     // Editor plugins (data: themes) — built-in ones from the resources and the user folder;
     // read at startup, the theme from the settings is applied before the panels are built.

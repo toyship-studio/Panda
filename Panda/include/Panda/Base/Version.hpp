@@ -26,4 +26,12 @@ inline constexpr const char *ENGINE_BUILD_COMMIT = PANDA_BUILD_COMMIT;
 inline constexpr const char *ENGINE_BUILD_COMMIT = "";
 #endif
 
+// The release channel of this build ("preview", later "stable"): the channel the updater follows
+// (-DPANDA_RELEASE_CHANNEL of the release workflow). Empty for a local build: no updates.
+#ifdef PANDA_RELEASE_CHANNEL
+inline constexpr const char *ENGINE_RELEASE_CHANNEL = PANDA_RELEASE_CHANNEL;
+#else
+inline constexpr const char *ENGINE_RELEASE_CHANNEL = "";
+#endif
+
 } // namespace Panda

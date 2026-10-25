@@ -11,10 +11,11 @@ and background jobs (`PandaAsync`).
 
 - `Foundation`: the bottom layer shared by Fern, Miren and Panda — logging and the editor log
   callback, asserts, the allocator and the memory blob, the profiler, platform and graphics API
-  detection, the command buffer, a semaphore, thread names, a file reader.
+  detection, the command buffer, a semaphore, thread names, a file reader, SHA-256.
 - `Rain`: serialization (text coders for JSON and YAML, and a binary coder).
 - `Fern`: the platform layer: windows, OS events, input, graphics context, native menu,
-  application lifecycle.
+  application lifecycle, and the network layer `Fern::Net` on the stacks of the systems
+  (`context/networking.md`); it links PandaAsync for the completions of requests.
 - `Miren`: the renderer abstraction with Metal, Direct3D 11 and OpenGL/GLES backends. The backend
   is fixed at build time by the CMake option `PANDA_SHADER_BACKEND` (`cmake/shader_bake.cmake`):
   Metal is the default on macOS, D3D11 on Windows, OpenGL elsewhere (GLES on mobile targets). The
@@ -24,7 +25,8 @@ and background jobs (`PandaAsync`).
 - `Panda`: the engine core: application loop, world, ECS, assets, script host.
 - `PandaAsync`: the background job scheduler (see "Multithreading (PandaAsync)" below).
 - `PandaRuntime`: the minimal game runtime, without the editor.
-- `PandaEditor`: the editor; its UI is built on PandaUI.
+- `PandaEditor`: the editor; its UI is built on PandaUI. Its updater is `App/EditorUpdater`
+  (`context/infrastructure.md`, section 5).
 - `PandaEditorKit`: the editor layer for the editor parts of modules: form widgets, `EditorHost`,
   the `EditorExtensions` registries and the entry point of an editor part (`context/plugins.md`).
 - `PandaSDK`: the public C++ SDK for user scripts and exported games. The SDK package carries
@@ -412,7 +414,9 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
 
 `PandaAsync` (`PandaAsync/`; the API is in `PandaAsync/include/PandaAsync/`) is a separate
 library: a worker pool, priority queues, completion on the main thread and cooperative
-cancellation. It depends only on the C++ standard library. The engine `Scheduler` lives in
+cancellation. It depends only on the C++ standard library. `Scheduler::post` queues a completion
+without a worker job from any thread (the network stacks of Fern report through it); it is dropped
+like any completion when it or its group is canceled. The engine `Scheduler` lives in
 `Application` (`Application::getScheduler()`); `Application::tick` pumps `processCompletions`
 once per frame. Consumers: editor fonts and icons, the project build, the baking of occlusion
 volume chunks, the terrain build wave and the flora grain texture.

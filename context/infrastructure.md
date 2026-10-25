@@ -285,41 +285,51 @@ the built files in the object storage, like the builds.
 
 ## 5. Editor auto-update
 
-The model follows Zed (`crates/auto_update`): poll once an hour, compare with the running
-version, download to a temporary location with progress, install in the background, show
-"Restart to update". On macOS the dmg is mounted and copied over the running bundle with
-`rsync -a --delete`; on Windows a helper executable waits for the application to exit, swaps the
-files with a rollback and restarts it; on Linux the editor swaps the install directories itself
-before it restarts.
+The model follows Zed (`crates/auto_update`): a check at startup and once an hour, the download
+of a newer build in the background, the install in the background, "Restart to update". The code
+is `PandaEditor/src/App/EditorUpdater` on the HTTP of `Fern::Net` (`context/networking.md`).
 
-Panda (`PandaEditor/src/App/EditorUpdater`):
-
-- Check at startup and once an hour: read the channel manifest. The editor has two manifest
-  addresses built in (our domain and the file in `panda-builds`) and tries the second when the
-  first does not answer. It compares build numbers. Settings: `autoUpdate` (on or off) and the
-  channel (`stable` or `preview`). Menu: Help → Check for Updates, Release Notes.
-- Download: first through our download address `/dl/...?from=editor`, which counts the download
-  and redirects to the file; when that fails, the direct `urls` of the manifest in order. The
-  download resumes after a break (HTTP ranges) and the file is verified by sha256.
-- The update check passes the current version, the platform and the outcome of the previous
-  download (which storage served it, or the error), without any identifier.
-- Install in the background into `<userdata>/Panda/updates/`:
-  - macOS: mount the dmg, `rsync -a --delete` into the current `.app` (the signed bundle is
-    replaced as a whole, so the signature stays valid), unmount. The editor's own files
-    (`settings.json`, `session.json`) live in the user data directory, not in the bundle, so the
-    swap does not touch them.
-  - Windows: unpack the zip into `updates/` and restart through `Tools/PandaUpdateHelper.exe`,
-    which waits for the editor to exit, moves the current install to `old/`, moves `install/`
-    into place, rolls back on error and starts the new version. The install is per user
-    (`%LOCALAPPDATA%\Panda\Editor`), so no administrator rights are needed.
-  - Linux: unpack the tar.gz (the system `tar`) into `updates/` and swap it into the per-user
-    install (`~/.local/share/Panda/Editor`, the same shape as on Windows) on restart: the editor
-    moves the current install to `old/` and `install/` into place itself, since a running
-    executable may be replaced on Linux, then starts the new version; `old/` is the rollback. An
-    editor installed from a distribution package is updated by the distribution, and the updater
-    only shows that a new version exists.
-- UI: an "Update ready · Restart" indicator and the same action in Help. A click saves the state
-  and restarts. Without a click the update applies on the next start.
+- **A build knows its channel and its number.** `ENGINE_RELEASE_CHANNEL` (`-DPANDA_RELEASE_CHANNEL`
+  of the release workflow) and `ENGINE_BUILD_NUMBER`; a local build has neither, its updater is off
+  and Help → Check for Updates says why. The channel is a property of the build, not a setting,
+  as in Zed. The one setting is `autoUpdate` in the `updates` section of the editor scope (the
+  UPDATES section of the settings document: the switch, the state line, Check for Updates).
+- **The check** reads the channel manifest from the portal
+  (`/api/v1/releases/<channel>/latest?from=editor&current=<build>&os=&arch=`, with the outcome
+  of the previous download), and from `manifests/<channel>.json` in `panda-builds` when the portal
+  does not answer. A build number above the running one is an update. A manual check shows "up to
+  date" and errors; an automatic one stays quiet when it fails (offline), like Zed.
+- **The download** goes to `<user data>/Panda/updates/<file>`: first through the counted address
+  `/dl/<channel>/<os>/<arch>?from=editor` of the portal, then through the addresses of the manifest
+  in order; the size and the SHA-256 of the manifest are checked by `Fern::Net`, a broken download
+  resumes.
+- **The install** runs on a worker of the engine scheduler and is the same on every platform:
+  the new build is staged next to the user data, and the install folder is swapped when the
+  editor exits, so the running editor never reads a file of the new version (the SDK inside the
+  bundle, baked shaders and templates belong to the running binary until the restart).
+  - Staging: macOS mounts the dmg and copies the bundle with `ditto` (every attribute of the signed
+    bundle kept) into `updates/stage/PandaEditor.app`; Windows and Linux unpack the archive into
+    `updates/stage/PandaEditor`.
+  - The swap: the install folder is the one the editor runs from (the bundle, or the folder the
+    archive was unpacked into: there is no fixed install path). On exit the current folder moves
+    to `<folder>.old`, the staged one takes its place (a rename, or a copy across volumes), a
+    failed move is rolled back, `.old` is removed (or on the next start). macOS and Linux do the
+    swap themselves in `main()` after the teardown (`EditorUpdater::finishOnExit`), since the
+    folder of a running executable may move there; Windows cannot, so `Tools/PandaUpdateHelper.exe`
+    (built with the editor, copied to `updates/`) waits for the process to exit and does the same.
+    All start the new editor when a restart was asked (`open -n` on macOS). A quit without the
+    restart applies the update too, so the next start is the new version.
+  - `updates/pending.json` records the staged build; the next start of that build shows "Updated
+    to <version>" with the release notes one click away, and removes the leftovers.
+- **UI.** One indicator (`UI/Panels/UpdateIndicator`) in the toolbar and on the start screen:
+  checking, downloading with a progress bar, installing, "Update ready · Restart" (a click opens the
+  dialog with the release notes of the manifest and Restart Now), "Updated to …", "Update failed ·
+  Details"; a × hides it until the state changes (Zed's dismiss). Help: Check for Updates, Restart
+  to Update (while one is installed), Release Notes (the Download page of the portal), About. About
+  shows the version, the channel, the build and the commit, the platform and the updater's state,
+  with Copy for a report and the two actions.
+- **Restart** is the Quit flow with the unsaved-changes dialog, then `main()` starts the new
+  instance (`SystemTools::relaunchOnExit`), or the helper does on Windows.
 - After an update: script bundles are rebuilt against the new SDK (the editor prompts when a
   project was built with an older version); plugins are filtered by their `engine` range.
 - A build that crashes at startup cannot update itself; the tester downloads the newest build by

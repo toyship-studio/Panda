@@ -22,6 +22,7 @@
 #include <Panda/Serialization/WorldMapper.hpp>
 #include <Panda/WorldCommands/Impl/AddRemoveEntitiesCommand.hpp>
 #include <Foundation/GraphicsAPI.hpp>
+#include <Panda/Base/Version.hpp>
 #include <Foundation/PlatformDetection.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Events/WindowEvents.hpp>
@@ -166,6 +167,12 @@ void EditorLayer::onAttach() {
         [this] { return menuBarCurrentTheme(); },
         [this](int index) { selectTheme(index); },
     });
+    // The updater for the UPDATES section of the editor settings.
+    Editor::setUpdateProvider({
+        EditorUpdater::isEnabled(),
+        [this] { checkForUpdates(true); },
+        [this] { return updateStatusLine(); },
+    });
     loadEditorParts(); // parts host: the coordinator itself (since its creation) // project open at startup: module parts before layout (tab forms wait for them)
     m_editorController->applyDockLayout(m_loader.getDockLayout()); // saved dock layout (if any)
     m_viewportSettings = m_loader.editorSettings().get<EditorViewportSettings>();
@@ -175,6 +182,8 @@ void EditorLayer::onAttach() {
     } else {
         showStartScreen();
     }
+    // After the settings and the chrome: the first check runs at once when automatic updates are on.
+    m_updater.start(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
 
     LOG_INFO_EDITOR("EDITOR INITIALIZED");
 }
@@ -193,6 +202,8 @@ void EditorLayer::onDetach() {
 void EditorLayer::onUpdate(double deltaTime) {
     m_stripFrameCounter++;
     updateStripStatus(deltaTime);
+    m_updater.tick(deltaTime);
+    pushUpdateStatus();
     // Wind of the ACTIVE world (editing/playing) — every frame before the worlds and panels are
     // updated: Settings edits and world switches reach the system fields of materials.
     if (m_currentWorld) { SceneWind::apply(m_currentWorld->getWindSettings()); }
@@ -506,6 +517,7 @@ void EditorLayer::editorSettingsChanged() {
     // The editor scope applies at once and is written on every change.
     m_viewportSettings = m_loader.editorSettings().get<EditorViewportSettings>();
     m_cameraController.setMoveSpeed(m_viewportSettings.cameraSpeed);
+    m_updater.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_loader.saveEditorSettings();
 }
 
@@ -1133,7 +1145,162 @@ void EditorLayer::selectTheme(int index) {
 }
 
 void EditorLayer::menuBarAbout() {
-    Editor::showAboutDialog(&m_editorUI.context());
+    Editor::AboutInfo info;
+    info.version = EditorUpdater::versionString();
+    info.channel = ENGINE_RELEASE_CHANNEL;
+    info.build = ENGINE_BUILD_NUMBER;
+    info.commit = ENGINE_BUILD_COMMIT;
+    info.platform = EditorUpdater::platformString();
+    info.updatesEnabled = EditorUpdater::isEnabled();
+    if (m_updater.state().kind != UpdateState::Kind::Idle) { info.updateStatus = updateStatusLine(); }
+    info.onCheckForUpdates = [this] { checkForUpdates(true); };
+    info.onReleaseNotes = [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); };
+    Editor::showAboutDialog(&m_editorUI.context(), info);
+}
+
+void EditorLayer::menuBarCheckForUpdates() {
+    checkForUpdates(true);
+}
+
+void EditorLayer::menuBarRestartToUpdate() {
+    if (m_updater.hasReadyUpdate()) { restartEditor(); }
+}
+
+void EditorLayer::menuBarViewReleaseNotes() {
+    SystemTools::openUrl(m_updater.releaseNotesUrl());
+}
+
+bool EditorLayer::menuBarUpdateReady() {
+    return m_updater.hasReadyUpdate();
+}
+
+void EditorLayer::checkForUpdates(bool manual) {
+    if (!EditorUpdater::isEnabled()) {
+        if (manual) {
+            Editor::showMessageDialog(
+                &m_editorUI.context(), "Updates are off in a local build",
+                "This editor was built from the sources, not by the release workflow, so it follows no release "
+                "channel. Preview builds that update themselves come from pandaengine.dev/download."
+            );
+        }
+        return;
+    }
+    m_updater.check(manual);
+}
+
+void EditorLayer::updateIndicatorAction() {
+    const UpdateState &state = m_updater.state();
+    switch (state.kind) {
+        case UpdateState::Kind::Ready:
+            Editor::showUpdateReadyDialog(
+                &m_editorUI.context(), state.version, state.notes, [this] { restartEditor(); },
+                [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); }
+            );
+            break;
+        case UpdateState::Kind::Updated:
+            SystemTools::openUrl(m_updater.releaseNotesUrl());
+            m_updater.dismiss();
+            break;
+        case UpdateState::Kind::Error:
+            Editor::showMessageDialog(&m_editorUI.context(), "Update failed", state.message);
+            break;
+        case UpdateState::Kind::UpToDate:
+            m_updater.dismiss();
+            break;
+        default:
+            break;
+    }
+}
+
+void EditorLayer::updateIndicatorDismiss() {
+    m_updater.dismiss();
+}
+
+void EditorLayer::startScreenDidActivateUpdate() {
+    updateIndicatorAction();
+}
+
+void EditorLayer::startScreenDidDismissUpdate() {
+    m_updater.dismiss();
+}
+
+Editor::UpdateIndicatorModel EditorLayer::updateIndicatorModel() const {
+    using Kind = UpdateState::Kind;
+    using Shown = Editor::UpdateIndicatorKind;
+    Editor::UpdateIndicatorModel model;
+    const UpdateState &state = m_updater.state();
+    if (m_updater.isDismissed()) { return model; }
+    switch (state.kind) {
+        case Kind::Idle: break;
+        case Kind::Checking:
+            model.kind = Shown::Checking;
+            model.text = "Checking for updates…";
+            break;
+        case Kind::Downloading:
+            model.kind = Shown::Downloading;
+            model.progress = state.progress;
+            model.text = state.progress >= 0.f ? "Downloading update " + std::to_string(int(state.progress * 100.f)) + "%"
+                                               : "Downloading update…";
+            break;
+        case Kind::Installing:
+            model.kind = Shown::Installing;
+            model.text = "Installing update…";
+            break;
+        case Kind::Ready:
+            model.kind = Shown::Ready;
+            model.text = "Update ready · Restart";
+            model.clickable = true;
+            break;
+        case Kind::UpToDate:
+            model.kind = Shown::UpToDate;
+            model.text = "Panda is up to date";
+            break;
+        case Kind::Updated:
+            model.kind = Shown::Updated;
+            model.text = "Updated to " + state.version + " · Release notes";
+            model.clickable = true;
+            break;
+        case Kind::Error:
+            model.kind = Shown::Error;
+            model.text = "Update failed · Details";
+            model.clickable = true;
+            break;
+    }
+    return model;
+}
+
+std::string EditorLayer::updateStatusLine() const {
+    using Kind = UpdateState::Kind;
+    const UpdateState &state = m_updater.state();
+    std::string line = "Panda " + EditorUpdater::versionString();
+    if (ENGINE_BUILD_COMMIT[0] != '\0') { line += std::string(" (commit ") + ENGINE_BUILD_COMMIT + ")"; }
+    switch (state.kind) {
+        case Kind::Idle: return line;
+        case Kind::Checking: return line + ". Checking for updates…";
+        case Kind::Downloading: return line + ". Downloading " + state.version + "…";
+        case Kind::Installing: return line + ". Installing " + state.version + "…";
+        case Kind::Ready: return line + ". Update " + state.version + " is installed and runs after a restart.";
+        case Kind::UpToDate: return line + ". Up to date.";
+        case Kind::Updated: return line + ". Updated to " + state.version + ".";
+        case Kind::Error: return line + ". Update failed: " + state.message;
+    }
+    return line;
+}
+
+void EditorLayer::pushUpdateStatus() {
+    const UpdateState &state = m_updater.state();
+    const bool dismissed = m_updater.isDismissed();
+    if (state.revision == m_shownUpdateRevision && dismissed == m_shownUpdateDismissed) { return; }
+    m_shownUpdateRevision = state.revision;
+    m_shownUpdateDismissed = dismissed;
+    const Editor::UpdateIndicatorModel model = updateIndicatorModel();
+    if (m_editorController) { m_editorController->setUpdateStatus(model); }
+    if (m_startScreenController) { m_startScreenController->setUpdateStatus(model); }
+    const bool ready = m_updater.hasReadyUpdate();
+    if (ready != m_shownUpdateReady) {
+        m_shownUpdateReady = ready;
+        m_menuBar.rebuild(); // "Restart to Update" appears and goes with the installed update
+    }
 }
 
 void EditorLayer::menuBarExportGame() {

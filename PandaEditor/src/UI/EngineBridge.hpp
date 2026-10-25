@@ -33,6 +33,8 @@ public:
     // assets → script build → world, all by mtime (context/architecture.md).
     virtual void reloadFromDisk() = 0;
     virtual void restartEditor() = 0; // the Quit flow (the unsaved-changes dialog included), then a new instance
+    virtual void updateIndicatorAction() = 0;  // the update indicator was clicked (restart / details / notes)
+    virtual void updateIndicatorDismiss() = 0; // the update indicator was dismissed until the state changes
     virtual void setGizmoOperation(int mode) = 0;     // 0/1/2 = translate / rotate / scale
     virtual void setGizmoSpace(bool worldSpace) = 0;  // world / local
     virtual void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) = 0; // seam #2

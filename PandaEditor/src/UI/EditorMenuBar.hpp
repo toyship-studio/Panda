@@ -42,6 +42,12 @@ public:
     virtual void menuBarReload() = 0;
     virtual void menuBarCloseProject() = 0;
     virtual void menuBarAbout() = 0;
+    // The editor updater (App/EditorUpdater): a check on demand, the restart into a ready update
+    // (the item exists only while one is ready), the release notes of the channel in the browser.
+    virtual void menuBarCheckForUpdates() = 0;
+    virtual void menuBarRestartToUpdate() = 0;
+    virtual void menuBarViewReleaseNotes() = 0;
+    virtual bool menuBarUpdateReady() = 0;
     virtual void menuBarExportGame() = 0;
     virtual void menuBarOpenExportProject(ExportProjectTarget target) = 0;
     // Plugin themes (View → Theme): labels in list order, the current one — by index (-1 — none).

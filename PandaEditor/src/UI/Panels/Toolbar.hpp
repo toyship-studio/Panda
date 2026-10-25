@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UI/Panels/UpdateIndicator.hpp"
+
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 #include <PandaEditorKit/Widgets/Icons.hpp>
 
@@ -22,15 +24,18 @@ public:
     virtual void toolbarDidRedo() = 0;
     virtual void toolbarDidNavigateBack() = 0;    // selection history: back
     virtual void toolbarDidNavigateForward() = 0; // selection history: forward
+    virtual void toolbarDidActivateUpdate() = 0;  // the update indicator was clicked
+    virtual void toolbarDidDismissUpdate() = 0;   // the update indicator was dismissed
 };
 
 // VIEW: the top toolbar of the editor. On the left — the Edit/Play/Simulate scene mode and script
-// reload; on the right — Undo/Redo and About. Intents go out through ToolbarOutput; About is a
-// self-contained popup.
+// reload; on the right — the update indicator (UpdateIndicatorView). Intents go out through
+// ToolbarOutput.
 // (The Move/Rotate/Scale gizmo and the camera reset have moved to the viewport overlay toolbar.)
-class ToolbarPanelView final : public EditorView {
+class ToolbarPanelView final : public EditorView, public UpdateIndicatorOutput {
 public:
     explicit ToolbarPanelView(ToolbarOutput *output);
+    void setUpdateStatus(const UpdateIndicatorModel &model); // the updater state, driven by the coordinator
 
     // Input: button availability according to the editor state (driven by the coordinator every frame).
     void setCanUndo(bool canUndo);
@@ -39,6 +44,9 @@ public:
     void setCanPlay(bool canPlay);            // Play + Simulate (Edit mode AND scripting is loaded)
     void setCanStop(bool canStop);            // Stop (the world is running)
     void setCanReloadScripts(bool canReload); // Reload is available only in Edit
+
+    void updateIndicatorDidActivate() override;
+    void updateIndicatorDidDismiss() override;
 
 private:
     void addSubviews() override;
@@ -54,6 +62,7 @@ private:
     std::shared_ptr<IconButton> m_play;
     std::shared_ptr<IconButton> m_simulate;
     std::shared_ptr<IconButton> m_stop;
+    std::shared_ptr<UpdateIndicatorView> m_update;
 };
 
 } // namespace Editor

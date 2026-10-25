@@ -4,6 +4,7 @@
 //
 
 #include "App/EditorLayer.hpp"
+#include "App/EditorUpdater.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
 
@@ -29,8 +30,11 @@ int main(int argc, const char **argv) {
     delete assetHandler;
     Miren::terminate();
     Fern::disposeWindow(window);
-    // A restart asked from the UI (a changed module set): the new instance starts only now, after
-    // the settings of this one are written and its window is gone.
-    if (Panda::SystemTools::relaunchOnExit()) { Panda::SystemTools::relaunchApplication(); }
+    // A restart asked from the UI (a changed module set, an installed update): the new instance
+    // starts only now, after the settings of this one are written and its window is gone. An update
+    // staged by the updater is swapped in first (Linux here, Windows by the helper); it starts the
+    // new editor itself.
+    const bool relaunch = Panda::SystemTools::relaunchOnExit();
+    if (!Panda::EditorUpdater::finishOnExit(relaunch) && relaunch) { Panda::SystemTools::relaunchApplication(); }
     return 0;
 }

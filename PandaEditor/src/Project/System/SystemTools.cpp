@@ -16,6 +16,7 @@
 #    include <cstring>
 #    include <spawn.h>
 #    include <sys/wait.h>
+#    include <unistd.h>
 extern char **environ;
 #endif
 
@@ -23,6 +24,7 @@ extern char **environ;
 #    define WIN32_LEAN_AND_MEAN
 #    define NOMINMAX
 #    include <windows.h>
+#    include <shellapi.h>
 #endif
 
 namespace Panda {
@@ -615,6 +617,52 @@ namespace {
     }
 #endif
 } // namespace
+
+bool SystemTools::openUrl(const std::string &url) {
+#ifdef PLATFORM_MACOS
+    return spawnDetached("/usr/bin/open", {url});
+#elif defined(PLATFORM_LINUX)
+    return spawnDetached("/usr/bin/xdg-open", {url});
+#elif defined(PLATFORM_WINDOWS)
+    const std::wstring wide = path_t(url).wstring();
+    return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+#else
+    return false;
+#endif
+}
+
+bool SystemTools::startDetached(const path_t &executable, const std::vector<std::string> &args) {
+#ifdef PLATFORM_POSIX
+    return spawnDetached(executable.string(), args);
+#elif defined(PLATFORM_WINDOWS)
+    std::wstring commandLine;
+    appendArgvQuoted(commandLine, executable.wstring());
+    for (const std::string &arg : args) {
+        commandLine += L' ';
+        appendArgvQuoted(commandLine, path_t(arg).wstring());
+    }
+    STARTUPINFOW startupInfo = {};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo = {};
+    if (!CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, nullptr, &startupInfo, &processInfo)) {
+        LOG_ERROR("Failed to start %ls", executable.c_str());
+        return false;
+    }
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return true;
+#else
+    return false;
+#endif
+}
+
+uint32_t SystemTools::currentProcessId() {
+#ifdef PLATFORM_WINDOWS
+    return static_cast<uint32_t>(GetCurrentProcessId());
+#else
+    return static_cast<uint32_t>(getpid());
+#endif
+}
 
 void SystemTools::setRelaunchOnExit(bool relaunch) {
     s_relaunchOnExit = relaunch;
