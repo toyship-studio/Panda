@@ -50,10 +50,8 @@ public:
     virtual bool menuBarUpdateReady() = 0;
     virtual void menuBarExportGame() = 0;
     virtual void menuBarOpenExportProject(ExportProjectTarget target) = 0;
-    // Plugin themes (View → Theme): labels in list order, the current one — by index (-1 — none).
-    virtual std::vector<std::string> menuBarThemeNames() = 0;
-    virtual int menuBarCurrentTheme() = 0;
-    virtual void menuBarSelectTheme(int index) = 0;
+    // The Plugins tab (Window → Plugins): installing, updating and removing plugins, applying themes.
+    virtual void menuBarOpenPlugins() = 0;
 };
 
 class EditorMenuBar final {

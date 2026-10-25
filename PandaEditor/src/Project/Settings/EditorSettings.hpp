@@ -113,8 +113,9 @@ struct EditorViewportSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-/// "updates": the editor updater (App/EditorUpdater, context/infrastructure.md). The same single
-/// switch as Zed's `auto_update`: the channel is a property of the build, not a setting.
+/// "updates": the editor updater (App/EditorUpdater, context/infrastructure.md) and the plugin
+/// store (Project/Plugins/PluginStore): the same single switch as Zed's `auto_update` covers the
+/// editor build and the installed plugins; the channel is a property of the build, not a setting.
 struct EditorUpdateSettings final : public Rain::Codable {
     bool autoUpdate = true; // check at startup and every hour, download and install in the background
 

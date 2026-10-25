@@ -163,9 +163,9 @@ void EditorLayer::onAttach() {
     m_editorController->setBridge(this); // save / play-simulate-stop / reload / gizmo / rect-select — a single seam
     // The themes for the APPEARANCE section of the editor settings (the data plugins live here).
     Editor::setThemeProvider({
-        [this] { return menuBarThemeNames(); },
-        [this] { return menuBarCurrentTheme(); },
-        [this](int index) { selectTheme(index); },
+        [this] { return themeNames(); },
+        [this] { return currentThemeIndex(); },
+        [this](int index) { selectThemeIndex(index); },
     });
     // The updater for the UPDATES section of the editor settings.
     Editor::setUpdateProvider({
@@ -184,6 +184,7 @@ void EditorLayer::onAttach() {
     }
     // After the settings and the chrome: the first check runs at once when automatic updates are on.
     m_updater.start(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_pluginStore.start(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
 
     LOG_INFO_EDITOR("EDITOR INITIALIZED");
 }
@@ -518,6 +519,7 @@ void EditorLayer::editorSettingsChanged() {
     m_viewportSettings = m_loader.editorSettings().get<EditorViewportSettings>();
     m_cameraController.setMoveSpeed(m_viewportSettings.cameraSpeed);
     m_updater.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_pluginStore.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_loader.saveEditorSettings();
 }
 
@@ -1099,14 +1101,21 @@ void EditorLayer::menuBarCloseProject() {
 }
 
 void EditorLayer::loadPlugins() {
-    std::vector<path_t> directories = {Fern::getStaticResourcesPath() / "plugins"}; // built-in
-    const path_t userData = SystemTools::userDataDirectory();
-    if (!userData.empty()) { directories.push_back(userData / "Plugins"); }
-    m_plugins.scan(directories);
+    // Built-in plugins come from the editor resources, installed ones live next to the user data
+    // (the store uses Plugins/ and registry/ inside it). Icons become textures through the UI host.
+    m_pluginStore.initialize(
+        {Fern::getStaticResourcesPath() / "plugins"}, SystemTools::userDataDirectory(),
+        [this](const path_t &file) { return m_editorUI.loadImage(file); }
+    );
+    // An install, an update or a removal takes effect at once: the theme of the settings is read
+    // again (its files may have changed), or the editor falls back to the built-in dark one.
+    m_pluginStore.setOnInstalledChanged([this] {
+        applyTheme(m_loader.editorSettings().get<EditorAppearanceSettings>().theme);
+    });
 }
 
 void EditorLayer::applyTheme(const std::string &themeId) {
-    if (const EditorTheme *theme = m_plugins.findTheme(themeId)) {
+    if (const EditorTheme *theme = m_pluginStore.findTheme(themeId)) {
         if (std::optional<PandaUI::Theme> loaded = EditorPlugins::loadTheme(theme->file)) {
             PandaUI::setTheme(*loaded); // Context re-reads the colors of the whole tree
             return;
@@ -1116,14 +1125,14 @@ void EditorLayer::applyTheme(const std::string &themeId) {
     PandaUI::setTheme(PandaUI::Theme::dark());
 }
 
-std::vector<std::string> EditorLayer::menuBarThemeNames() {
+std::vector<std::string> EditorLayer::themeNames() {
     std::vector<std::string> names;
-    for (const EditorTheme &theme : m_plugins.themes()) { names.push_back(theme.name); }
+    for (const EditorTheme &theme : m_pluginStore.themes()) { names.push_back(theme.name); }
     return names;
 }
 
-int EditorLayer::menuBarCurrentTheme() {
-    const std::vector<EditorTheme> &themes = m_plugins.themes();
+int EditorLayer::currentThemeIndex() {
+    const std::vector<EditorTheme> &themes = m_pluginStore.themes();
     const std::string &current = m_loader.editorSettings().get<EditorAppearanceSettings>().theme;
     for (size_t i = 0; i < themes.size(); i++) {
         if (themes[i].id == current) { return static_cast<int>(i); }
@@ -1131,17 +1140,36 @@ int EditorLayer::menuBarCurrentTheme() {
     return -1;
 }
 
-void EditorLayer::menuBarSelectTheme(int index) {
-    selectTheme(index);
+void EditorLayer::selectThemeIndex(int index) {
+    const std::vector<EditorTheme> &themes = m_pluginStore.themes();
+    if (index < 0 || index >= static_cast<int>(themes.size())) { return; }
+    selectTheme(themes[static_cast<size_t>(index)].id);
 }
 
-void EditorLayer::selectTheme(int index) {
-    const std::vector<EditorTheme> &themes = m_plugins.themes();
-    if (index < 0 || index >= static_cast<int>(themes.size())) { return; }
-    m_loader.editorSettings().get<EditorAppearanceSettings>().theme = themes[static_cast<size_t>(index)].id;
+Panda::PluginStore &EditorLayer::pluginStore() {
+    return m_pluginStore;
+}
+
+std::string EditorLayer::currentThemeId() {
+    return m_loader.editorSettings().get<EditorAppearanceSettings>().theme;
+}
+
+void EditorLayer::selectTheme(const std::string &themeId) {
+    if (!m_pluginStore.findTheme(themeId)) { return; }
+    m_loader.editorSettings().get<EditorAppearanceSettings>().theme = themeId;
     m_loader.saveEditorSettings();
-    applyTheme(themes[static_cast<size_t>(index)].id);
-    m_menuBar.rebuild(); // checkmark of the current theme
+    applyTheme(themeId);
+}
+
+void EditorLayer::installDevPlugin() {
+    // The native folder dialog blocks: the store reports problems as a notice the tab shows.
+    std::optional<path_t> folder = SystemTools::openFolderDialog();
+    if (!folder.has_value()) { return; }
+    m_pluginStore.installDev(*folder);
+}
+
+void EditorLayer::menuBarOpenPlugins() {
+    if (m_editorController) { m_editorController->openPlugins(); }
 }
 
 void EditorLayer::menuBarAbout() {

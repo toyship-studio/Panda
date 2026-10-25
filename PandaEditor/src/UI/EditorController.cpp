@@ -4,6 +4,7 @@
 
 #include "Preview/ThumbnailsManager.hpp"
 #include "UI/Documents/CoreAssetEditors.hpp"
+#include "UI/Documents/PluginsDocument.hpp"
 #include "UI/Documents/SettingsDocuments.hpp"
 #include "UI/EditorDialogs.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
@@ -89,6 +90,7 @@ namespace {
 
     constexpr const char *PROJECT_SETTINGS_DOCUMENT = "projectSettings";
     constexpr const char *EDITOR_SETTINGS_DOCUMENT = "editorSettings";
+    constexpr const char *PLUGINS_DOCUMENT = "plugins";
 
 } // namespace
 
@@ -186,6 +188,23 @@ void EditorController::registerDocumentTypes() {
         );
     };
     editorExtensions().documentTypes.add(std::move(editor));
+
+    // The Plugins tab: the store and the theme live in the application layer, behind the bridge.
+    DocumentType plugins;
+    plugins.id = PLUGINS_DOCUMENT;
+    plugins.title = "Plugins";
+    plugins.icon = Ic::Plugins;
+    plugins.create = [] {
+        PluginsHost host;
+        if (EngineBridge *bridge = s_controller->m_bridge) {
+            host.store = &bridge->pluginStore();
+            host.currentTheme = [bridge] { return bridge->currentThemeId(); };
+            host.selectTheme = [bridge](const std::string &id) { bridge->selectTheme(id); };
+            host.installDevPlugin = [bridge] { bridge->installDevPlugin(); };
+        }
+        return std::unique_ptr<Document>(std::make_unique<PluginsDocument>(std::move(host)));
+    };
+    editorExtensions().documentTypes.add(std::move(plugins));
 }
 
 Panda::DockLayoutState EditorController::captureDockLayout() const {
@@ -1180,6 +1199,10 @@ void EditorController::commitSettings(Panda::SettingsScope scope, Foundation::Sh
             return;
         }
     }
+}
+
+void EditorController::openPlugins() {
+    if (m_editorTabs) { m_editorTabs->openDocumentType(PLUGINS_DOCUMENT, Dock::Center); }
 }
 
 void EditorController::openSettings(Panda::SettingsScope scope, const std::string &section) {

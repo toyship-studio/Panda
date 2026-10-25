@@ -80,49 +80,75 @@ namespace {
 
 } // namespace
 
-void EditorPlugins::scan(const std::vector<path_t> &directories) {
+std::vector<std::string> InstalledPlugin::provides() const {
+    std::vector<std::string> result;
+    if (!themes.empty()) { result.push_back("themes"); }
+    return result;
+}
+
+void EditorPlugins::scan(const std::vector<path_t> &builtInDirectories, const path_t &userDirectory) {
     m_plugins.clear();
     m_themes.clear();
-    for (const path_t &root : directories) {
+    auto folders = [](const path_t &root) {
+        std::vector<path_t> result;
         std::error_code error;
-        if (!std::filesystem::is_directory(root, error)) { continue; }
-        std::vector<path_t> folders;
+        if (!std::filesystem::is_directory(root, error)) { return result; }
         for (const auto &entry : std::filesystem::directory_iterator(root, error)) {
-            if (entry.is_directory() && std::filesystem::exists(entry.path() / "plugin.json")) {
-                folders.push_back(entry.path());
+            // A dev plugin is a link: directory_iterator follows it for is_directory.
+            if (entry.is_directory(error) && std::filesystem::exists(entry.path() / "plugin.json", error)) {
+                result.push_back(entry.path());
             }
         }
-        std::sort(folders.begin(), folders.end());
-        for (const path_t &folder : folders) {
-            Plugin plugin;
-            if (!readJson(folder / "plugin.json", plugin.manifest) || plugin.manifest.id.empty()) {
-                LOG_ERROR_EDITOR("Plugin manifest is missing or invalid: %s", folder.string().c_str());
-                continue;
-            }
-            const bool duplicate = std::any_of(m_plugins.begin(), m_plugins.end(), [&](const Plugin &known) {
-                return known.manifest.id == plugin.manifest.id;
-            });
-            if (duplicate) { continue; } // a user folder does not override a built-in with the same id
-            plugin.directory = folder;
-            // Plugin themes: data/themes/*.json, in alphabetical order of the files.
-            std::vector<path_t> themeFiles;
-            const path_t themesDir = folder / "data" / "themes";
-            for (const auto &entry : std::filesystem::directory_iterator(themesDir, error)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".json") { themeFiles.push_back(entry.path()); }
-            }
-            std::sort(themeFiles.begin(), themeFiles.end());
-            for (const path_t &file : themeFiles) {
-                ThemeFile theme;
-                if (!readJson(file, theme)) { continue; }
-                EditorTheme entry;
-                entry.id = plugin.manifest.id + "/" + file.stem().string();
-                entry.name = theme.name.empty() ? file.stem().string() : theme.name;
-                entry.file = file;
-                m_themes.push_back(std::move(entry));
-            }
-            m_plugins.push_back(std::move(plugin));
-        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+    for (const path_t &root : builtInDirectories) {
+        for (const path_t &folder : folders(root)) { scanFolder(folder, true); }
     }
+    if (!userDirectory.empty()) {
+        for (const path_t &folder : folders(userDirectory)) { scanFolder(folder, false); }
+    }
+}
+
+void EditorPlugins::scanFolder(const path_t &folder, bool builtIn) {
+    InstalledPlugin plugin;
+    if (!readManifest(folder / "plugin.json", plugin.manifest) || plugin.manifest.id.empty()) {
+        LOG_ERROR_EDITOR("Plugin manifest is missing or invalid: %s", folder.string().c_str());
+        return;
+    }
+    const bool duplicate = std::any_of(m_plugins.begin(), m_plugins.end(), [&](const InstalledPlugin &known) {
+        return known.manifest.id == plugin.manifest.id;
+    });
+    if (duplicate) { return; } // a user folder does not override a built-in with the same id
+    plugin.directory = folder;
+    plugin.builtIn = builtIn;
+    plugin.dev = !builtIn && isDevLink(folder);
+    // Plugin themes: data/themes/*.json, in alphabetical order of the files.
+    std::error_code error;
+    std::vector<path_t> themeFiles;
+    const path_t themesDir = folder / "data" / "themes";
+    for (const auto &entry : std::filesystem::directory_iterator(themesDir, error)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".json") { themeFiles.push_back(entry.path()); }
+    }
+    std::sort(themeFiles.begin(), themeFiles.end());
+    for (const path_t &file : themeFiles) {
+        ThemeFile theme;
+        if (!readJson(file, theme)) { continue; }
+        EditorTheme entry;
+        entry.id = plugin.manifest.id + "/" + file.stem().string();
+        entry.name = theme.name.empty() ? file.stem().string() : theme.name;
+        entry.file = file;
+        plugin.themes.push_back(entry);
+        m_themes.push_back(std::move(entry));
+    }
+    m_plugins.push_back(std::move(plugin));
+}
+
+const InstalledPlugin *EditorPlugins::find(const std::string &id) const {
+    for (const InstalledPlugin &plugin : m_plugins) {
+        if (plugin.manifest.id == id) { return &plugin; }
+    }
+    return nullptr;
 }
 
 const EditorTheme *EditorPlugins::findTheme(const std::string &id) const {
@@ -130,6 +156,18 @@ const EditorTheme *EditorPlugins::findTheme(const std::string &id) const {
         if (theme.id == id) { return &theme; }
     }
     return nullptr;
+}
+
+bool EditorPlugins::readManifest(const path_t &file, PluginManifest &out) {
+    return readJson(file, out);
+}
+
+bool EditorPlugins::isDevLink(const path_t &folder) {
+    std::error_code error;
+    if (std::filesystem::is_symlink(folder, error)) { return true; }
+    // Windows: a junction is not reported as a symbolic link by every runtime; the store leaves a
+    // marker next to it (<Plugins>/.dev/<id>).
+    return std::filesystem::exists(folder.parent_path() / ".dev" / folder.filename(), error);
 }
 
 std::optional<PandaUI::Theme> EditorPlugins::loadTheme(const path_t &file) {

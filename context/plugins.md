@@ -204,21 +204,24 @@ model of the tabs is described in `context/architecture.md`, "Editor UI".
 
 ## Plugins (data)
 
-`PandaEditor/src/Project/Plugins/EditorPlugins`: the manifest `plugin.json` (`PluginManifest`),
+`PandaEditor/src/Project/Plugins/EditorPlugins`: the manifest `plugin.json` (`PluginManifest`: id,
+name, version, authors, description, category, tags, license, engine, parts, links, unlisted),
 themes in `data/themes/*.json` (`ThemeFile {name, base: dark|light, colors: {PandaUI::Theme field
-name: "#RRGGBB[AA]"}}`). The editor scans `Resources/plugins/*` (the built-in
-`dev.pandaengine.themes`: Panda Dark, Panda Light) and `<userdata>/Panda/Plugins/*`
-(`SystemTools::userDataDirectory()`: macOS `~/Library/Application Support/Panda`, Windows
-`%APPDATA%/Panda`, Linux `$XDG_DATA_HOME` or `~/.local/share/Panda`). View → Theme lists the themes;
-the choice is stored in the `appearance` section of the editor settings (`EditorAppearanceSettings.theme`,
-`settings.json` in the user data directory) and applied before the panels are built.
-Plugins contain no code.
+name: "#RRGGBB[AA]"}}`), and the scan of the folders into `InstalledPlugin {manifest, directory,
+builtIn, dev, themes}`: `Resources/plugins/*` (the built-in `dev.pandaengine.themes`: Panda Dark,
+Panda Light) and `<userdata>/Panda/Plugins/<id>` (`SystemTools::userDataDirectory()`: macOS
+`~/Library/Application Support/Panda`, Windows `%APPDATA%/Panda`, Linux `$XDG_DATA_HOME` or
+`~/.local/share/Panda`). The theme in use is stored in the `appearance` section of the editor
+settings (`EditorAppearanceSettings.theme`, `settings.json` in the user data directory) and applied
+before the panels are built. Plugins contain no code.
 
-Today the folders are scanned once, at editor startup. The plan is a Plugins tab that installs,
-updates and removes plugins from the registry and applies them without a restart; every kind of
-plugin data must therefore be loadable and unloadable live. Themes will be applied from that tab
-and later from a command palette; the View → Theme menu goes away then. The design is in
-`context/infrastructure.md`, "Plugins in the editor".
+The plugin store (`Project/Plugins/PluginStore`) installs, updates and removes plugins from the
+registry and links dev plugins; the Plugins tab (Window → Plugins, `UI/Documents/PluginsDocument`)
+is its view, and themes are applied from the cards of installed plugins (the APPEARANCE section of
+the editor settings offers the same list). Changes take effect without a restart: every kind of
+plugin data must therefore be loadable and unloadable live. The design and the contract are in
+`context/infrastructure.md`, "Plugins in the editor". Later themes are also chosen from a command
+palette.
 
 ## Existing modules
 

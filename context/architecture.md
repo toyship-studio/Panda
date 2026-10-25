@@ -136,16 +136,20 @@ The documents:
   the file;
 - the **editor settings** (`EditorSettingsDocument`): the sections of the editor scope, applied
   and saved by every edit — no dirty state, no undo. The VIEWPORT section is also the Display
-  popover of the viewport overlay.
+  popover of the viewport overlay;
+- the **Plugins tab** (`PluginsDocument`, `PluginsView`): the Extensions page of Zed over the
+  plugin store (`Project/Plugins/PluginStore`, `context/infrastructure.md` section 3) — search,
+  filters, the catalog of the portal in pages, one card per plugin with its action; everything
+  applies at once, no dirty state.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). The documents of `EditorExtensions::documentTypes` (the two settings
-documents; modules may add theirs) open from the "+" of any dock and from the menu bar, one
-instance per type, and are restored with the layout. The menu follows Zed: File → Settings holds
+documents and the Plugins tab; modules may add theirs) open from the "+" of any dock and from the
+menu bar, one instance per type, and are restored with the layout. The menu follows Zed: File → Settings holds
 Open Settings (Cmd+,) and Open Project Settings — the documents — and Show Settings File / Show
 Project Settings File, which reveal `settings.json` and `.Panda/project.json` in the file manager
 (the editor has no text editor; a file never written is written first). Window → World Settings
-toggles the viewport sidebar. Undo/redo go to the document of the tab
+toggles the viewport sidebar, Window → Plugins opens the Plugins tab. Undo/redo go to the document of the tab
 with the focus; a side dock without a document (Hierarchy) means the world; a viewport editing
 session (the terrain brush) means the document of its asset.
 

@@ -56,6 +56,7 @@ namespace Ic {
     inline constexpr const char *Audio = "audio";
     inline constexpr const char *Trash = "trash";
     inline constexpr const char *Configure = "tune";          // settings (sliders)
+    inline constexpr const char *Plugins = "plugins";         // the Plugins tab (a puzzle piece)
     inline constexpr const char *CMakeConfigure = "configure"; // CMake: regeneration — two arrows in a circle
     inline constexpr const char *Build = "hammer";             // CMake: build
     // Docks (visibility strip): visibility toggles of the editor zones.

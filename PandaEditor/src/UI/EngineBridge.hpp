@@ -5,8 +5,10 @@
 #include <PandaUI/Core/Base.hpp> // PandaUI::Point
 
 #include <cstdint>
+#include <string>
 
 namespace Panda {
+class PluginStore; // full type — Project/Plugins/PluginStore.hpp
 enum class BuildAction; // full type — Project/Build/ProjectBuilder.hpp
 enum class ScriptsBuildConfig;
 enum class BuildTargetKind;          // tab of the CMake panel: Scripts | Export
@@ -54,6 +56,12 @@ public:
     virtual void editorSettingsChanged() = 0; // the editor scope was edited: apply (viewport options) and save
     virtual bool saveProjectSettings() = 0;   // project.json; false — the write failed
     virtual void revertProjectSettings() = 0; // the store rereads project.json
+    // The Plugins tab (UI/Documents/PluginsDocument): the store of the application layer, the theme
+    // in use (a setting of the editor scope) and the native folder dialog of Install Dev Plugin.
+    virtual Panda::PluginStore &pluginStore() = 0;
+    virtual std::string currentThemeId() = 0;            // EditorAppearanceSettings.theme
+    virtual void selectTheme(const std::string &id) = 0; // applies and saves
+    virtual void installDevPlugin() = 0;
 };
 
 } // namespace Editor

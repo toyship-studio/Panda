@@ -12,7 +12,7 @@
 #include "UI/EngineBridge.hpp"
 #include "Project/Build/ProjectBuilder.hpp"
 #include "Project/Loader/ProjectLoader.hpp"
-#include "Project/Plugins/EditorPlugins.hpp"
+#include "Project/Plugins/PluginStore.hpp"
 #include "Viewport/SceneGrid.hpp"
 #include "UI/Host/EditorUI.hpp"
 #include "UI/Panels/StartScreen.hpp"
@@ -121,6 +121,10 @@ private:
     void editorSettingsChanged() override;
     bool saveProjectSettings() override;
     void revertProjectSettings() override;
+    Panda::PluginStore &pluginStore() override;
+    std::string currentThemeId() override;
+    void selectTheme(const std::string &id) override; // the Plugins tab: store, apply, save
+    void installDevPlugin() override;
     // Editor parts of the project modules (context/plugins.md, stage 2): registered once both an
     // open project and the coordinator (the parts host) exist; new icon folders go into the
     // library, panels with contribution sections are rebuilt.
@@ -154,9 +158,7 @@ private:
     bool menuBarUpdateReady() override;
     void menuBarExportGame() override;
     void menuBarOpenExportProject(ExportProjectTarget target) override;
-    std::vector<std::string> menuBarThemeNames() override;
-    int menuBarCurrentTheme() override;
-    void menuBarSelectTheme(int index) override;
+    void menuBarOpenPlugins() override;
 
     void startScreenDidRequestOpenProjectDialog() override;
     void startScreenDidRequestOpenRecentProject(size_t index) override;
@@ -186,10 +188,13 @@ private:
     ProjectBuilder m_projectBuilder;
     // Editor plugins (data: themes) — built-in ones from the resources and the user folder;
     // read at startup, the theme from the settings is applied before the panels are built.
-    EditorPlugins m_plugins;
+    PluginStore m_pluginStore; // installed plugins, the catalog of the portal, the operations (the Plugins tab)
     void loadPlugins();
     void applyTheme(const std::string &themeId); // empty/unknown — the built-in dark one
-    void selectTheme(int index);                 // the menu and the APPEARANCE section: store, apply, save
+    // The APPEARANCE section of the editor settings chooses a theme by index.
+    std::vector<std::string> themeNames();
+    int currentThemeIndex();
+    void selectThemeIndex(int index);
     EditorViewportSettings m_viewportSettings;
     AssetId m_pendingWorldLoad;
     EditorCamera m_editorCamera;

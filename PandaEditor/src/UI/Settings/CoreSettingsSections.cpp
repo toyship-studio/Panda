@@ -207,7 +207,8 @@ namespace {
         });
         section.addContent(makeFormHint(
             "Checks for a new build at startup and once an hour, downloads and installs it in the background, "
-            "and asks for a restart. Help → Check for Updates looks right away."
+            "and asks for a restart. Help → Check for Updates looks right away. Installed plugins are updated "
+            "the same way, without a restart."
         ));
         if (s_updates.statusLine) { section.addContent(makeFormHint(s_updates.statusLine())); }
         if (!s_updates.enabled) {
@@ -219,7 +220,7 @@ namespace {
         }
     }
 
-    // The look of the editor: the plugin themes (View → Theme lists the same ones).
+    // The look of the editor: the plugin themes (the Plugins tab applies the same ones from the cards).
     void buildAppearance(CollapsibleSection &section, Panda::TypeContext &) {
         if (!s_themes.names) {
             section.addContent(makeFormHint("No themes are available."));

@@ -1,5 +1,6 @@
 #include "App/EditorUpdater.hpp"
 
+#include "Project/System/Portal.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "Project/System/ZipArchive.hpp"
 
@@ -25,9 +26,9 @@ namespace {
 
     constexpr double kPollIntervalSeconds = 60.0 * 60.0;
     constexpr double kUpToDateSeconds = 6.0;
-    constexpr const char *kPortalApi = "https://pandaengine.dev/api/v1";
-    constexpr const char *kPortalDownloads = "https://pandaengine.dev/dl";
-    constexpr const char *kPortalDownloadPage = "https://pandaengine.dev/download";
+    constexpr const char *kPortalApi = Portal::kApi;
+    constexpr const char *kPortalDownloads = Portal::kDownloads;
+    constexpr const char *kPortalDownloadPage = Portal::kDownloadPage;
     constexpr const char *kFallbackManifests = "https://raw.githubusercontent.com/toyship-studio/panda-builds/main/manifests";
 
     // The channel manifest (context/infrastructure.md, "Manifest").

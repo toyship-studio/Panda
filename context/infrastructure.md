@@ -49,101 +49,133 @@ on the site is by a one-time code sent by email; GitHub is linked in the account
 Requirement: plugins are found, downloaded, installed, updated and removed inside the editor, in
 a dedicated Plugins tab, and take effect WITHOUT restarting the editor. The reference is the
 Extensions page of Zed (`crates/extensions_ui` for the page, `crates/extension_host` for the
-store).
+store). Code: `PandaEditor/src/Project/Plugins/PluginStore` (the store), `UI/Documents/PluginsDocument`
+and `UI/Panels/PluginsView` (the tab).
 
 ### The Plugins tab
 
-A single dock tab opened by Window → Plugins. It is a passive view over the plugin store, like
-every editor panel. Installing, applying and removing all happen here; there is no separate theme
-menu.
+A document of the center dock (Window → Plugins, the "+" menu of the dock; the tab id is
+`plugins`). It is a passive view over the plugin store: it reads the store every frame (the
+store's revision grows with every change) and asks for operations. Installing, applying a theme
+and removing all happen here; there is no theme menu (the APPEARANCE section of the editor
+settings offers the same themes).
 
-- Header: a search field (requests are debounced), the filter All / Installed / Updates, and
-  category chips by what a plugin provides (Themes now; languages and templates later).
-- One card per plugin: icon, name, publisher, version, one-line description, download count,
-  what it provides, a link to its page on the portal, and one action button.
-- An installed plugin with themes lists them on its card, each with Apply; the active theme is
-  marked.
-- A details view: description, versions and the changelog as plain text. The README opens on the
-  portal (PandaUI has no markdown renderer yet).
-- Secondary actions: Install Dev Plugin..., Check for Updates, the auto-update toggle,
-  Publish Plugin....
-- Built-in plugins (shipped in the editor resources) are listed as installed and cannot be
-  removed.
-- Offline: installed plugins are always listed from the local folders; the catalog shows the
-  cached index with a notice.
+- Header: the title and Install Dev Plugin; the search field (requests are debounced by 300 ms)
+  and the filter All / Installed / Not Installed; the category chips (All and the categories of the
+  manifest table in `context/plugins.md`). The portal filters by `q` and `category`; the editor
+  only pages.
+- The list. All: the dev plugins first (as in Zed), then installed plugins the catalog does not
+  list (built-in ones, or the registry is unreachable), then the catalog in portal order
+  (downloads). Installed: the local set filtered by the search and the category. Not Installed:
+  the catalog without the installed ids. Pages of 20 (`GET /packages?…&page=&size=20`) load as the
+  list is scrolled near its end; a Load more button with "Showing N of M plugins" sits under the
+  list.
+- One card per plugin: the icon (`iconUrl` of the catalog cached in `registry/icons/<id>.png`, or
+  the plugin's own `icon.png`, or its initial), the name, the latest version and the installed one
+  when they differ, the Built in / Dev / Update available marks, the author or the owner, downloads
+  and the update date, the description, tags for what it provides, the category, the manifest
+  tags, the license, the engine range and the id, the themes of an installed plugin (one button
+  each, the active one marked), the error of the last failed operation, links (the page on the
+  portal, the repository, Copy ID) and the action buttons. Nothing on the page is set below 15 px.
+- Empty states: "Loading plugins…", the failure line with Try again, "No plugins match your
+  search.", "No installed plugins.", "Every plugin is installed."; when the portal does not answer
+  and the saved catalog is shown, a line above the list says so.
+- A problem that belongs to no card (Install Dev Plugin on a folder without plugin.json) is a
+  message dialog.
 
-The button follows the status of the plugin:
+The buttons follow the status of the plugin:
 
-| Status | Button |
+| Status | Buttons |
 |---|---|
 | not installed | Install |
-| installing, updating, removing | progress, disabled |
-| installed | Remove; every theme of the plugin has Apply |
-| update available | Update |
-| incompatible with this engine version | disabled, with the reason |
-| failed | the error text and Retry |
-| dev plugin | Reload, Remove |
+| installing, updating, removing | the operation name, disabled; a progress bar under the header while downloading |
+| installed, latest | Uninstall; every theme of the plugin has a button, the active one is marked |
+| update available | Update to vX, Uninstall |
+| built-in | none ("Built in") |
+| dev | Reload, Uninstall ("Dev") |
+| catalog entry whose id is installed as a dev plugin | Install, disabled ("Overridden by a dev plugin") |
+| failed | the message in red; the buttons work again, the next attempt clears it |
 
 ### The plugin store
 
-`PandaEditor/src/Project/Plugins/PluginStore` holds the state and is the only code that changes
-the plugin folders.
+`Panda::PluginStore` holds the state and is the only code that changes the plugin folders. It is
+owned by `EditorLayer` and reaches the tab through `EngineBridge` (`pluginStore()`,
+`currentThemeId()`, `selectTheme(id)`, `installDevPlugin()`).
 
-- Catalog: `GET /api/v1/packages?kind=plugin&q=&provides=&engine=<ENGINE_VERSION>&page=`, cached
-  in `<userdata>/Panda/registry/index.json`.
-- Installed plugins: `Resources/plugins/*` (built-in) and `<userdata>/Panda/Plugins/*`. One
+- Installed plugins: `Resources/plugins/*` (built-in) and `<userdata>/Panda/Plugins/<id>`,
+  scanned by `EditorPlugins` (`InstalledPlugin {manifest, directory, builtIn, dev, themes}`). One
   installed version per plugin; the folder name is the plugin id and `plugin.json` is the truth,
   so there is no separate list of installed plugins.
-- One operation per plugin id at a time (install, update or remove); a second request for the
-  same id is ignored, and the tab shows the operation as the status. Operations run on PandaAsync
-  workers and their results are applied on the main thread.
+- Catalog: `GET /api/v1/packages?kind=plugin&sort=downloads&engine=<ENGINE_VERSION>&page=&size=20`
+  plus `q` and `category` (`CatalogState {query, items, total, nextPage, loading, failed,
+  fromCache, error}`). With `engine` the portal lists only packages that have a compatible
+  version. The first page of the empty query is saved as `<userdata>/Panda/registry/index.json`
+  and shown when the portal does not answer.
+- Versions: `GET /api/v1/packages/updates?ids=&engine=` gives the latest compatible version of
+  each id with its size and sha256. An install resolves its version through it, and the update
+  check (at startup and after every change of the installed set) compares it with the installed
+  version (`Project/Plugins/Semver`). With automatic updates on (`EditorUpdateSettings.autoUpdate`,
+  the switch of the editor update) newer versions are installed at once.
+- One operation per plugin id at a time (`PluginOperation {kind, version, progress}`); a second
+  request for the same id is ignored. The network goes through `Fern::Net` (completions on the
+  main thread), the file work runs on PandaAsync workers, and the result is applied on the main
+  thread.
 - Install and update:
-  1. download the archive through the API (the download is counted) into
-     `<userdata>/Panda/Plugins/.staging/`;
-  2. verify the size and the sha256 against the version metadata;
-  3. unpack into a temporary folder inside `.staging`, rejecting paths that leave the folder,
-     symbolic links and executables;
-  4. validate `plugin.json`: the id and the version are the requested ones, `parts` is `data`,
-     the `engine` range matches;
-  5. swap: remove the old folder and rename the temporary one to `Plugins/<id>`;
-  6. reload.
-- Remove: unload the contributions of the plugin, delete its folder, reload.
-- Updates: checked at startup and together with the engine update check,
-  `GET /api/v1/packages/updates?ids=&engine=`. With auto-update on (the default) updates are
-  installed in the background and applied live; otherwise the Updates filter shows them.
-- Dev plugin: Install Dev Plugin... creates a symbolic link `Plugins/<id>` to the developer's
-  folder. It is marked as dev, overrides the registry version with the same id and is never
-  auto-updated. Reload rescans it. A file watcher can replace the button later.
+  1. the version through the updates endpoint (no compatible version — the error on the card);
+  2. `GET /api/v1/packages/{id}/versions/{version}/download?from=editor` (counted by the portal)
+     into `<userdata>/Panda/Plugins/.staging/<id>-<version>.zip`, the size and the sha256 checked
+     by the network layer while the bytes arrive;
+  3. on a worker: the entry names are checked (one root folder, no entry outside it, no executable
+     or library by extension), the archive is unpacked into `.staging/<id>-<version>/`, and
+     `plugin.json` is validated (`manifestVersion` 1, the id and the version are the requested
+     ones, `parts` is `["data"]`, the `engine` range holds `ENGINE_VERSION`);
+  4. swap: the old folder is removed and the unpacked one renamed to `Plugins/<id>` (a dev link
+     with that id refuses the install); the archive and the staging folder are deleted;
+  5. rescan and notify.
+- Remove: `remove_all` of `Plugins/<id>` on a worker; a dev plugin only loses its link (and its
+  marker), the developer's folder stays. Built-in plugins cannot be removed.
+- Dev plugin: Install Dev Plugin opens the folder dialog; the folder's `plugin.json` names the id
+  (it must be a data plugin whose `engine` range holds this editor). Whatever has that id in
+  `Plugins/` gives way, and a symbolic link `Plugins/<id>` → the folder is created (Windows without
+  developer mode: a junction through `mklink /J`); a marker `Plugins/.dev/<id>` names the source
+  and tells a junction from a folder. A dev plugin is never auto-updated; Reload rescans the
+  folders.
+- Icons: `icon(id, iconUrl, localFile)` returns the texture from the cache, or downloads the
+  address into `registry/icons/<id>.png` and reports through the revision when it arrived; the
+  textures are created by the UI host (`EditorUI::loadImage`) on the main thread.
+- `.staging` is wiped at startup (a download or an unpack that did not finish).
 
 ### Reload without a restart
 
-After every operation the store rescans the folders and compares the old and the new set of
-plugins by id and version. Contributions of removed and changed plugins are unloaded, those of
-new and changed plugins are loaded (the same diff as `extensions_updated` in Zed). Nothing else is
-touched.
+After every operation the store rescans the folders; when the set of ids and versions changed it
+calls the host (`setOnInstalledChanged`), which applies the theme of the settings again: the files
+of a changed plugin are read anew, a removed theme falls back to the built-in dark one (the
+setting keeps the id, so a reinstall brings the theme back). Reload of a dev plugin notifies even
+when the set did not change — its files did. The tab needs no notification: it rebuilds the cards
+whose model changed on the next frame.
 
-- Every kind of plugin data has a loader with `load` and `unload`. A kind of data is accepted into
-  the plugin format only if it can be loaded and unloaded live.
-- Themes are applied from the Plugins tab. If the active theme has changed, it is applied again;
-  if it was removed, the editor falls back to the built-in default.
-- There is no theme menu to rebuild. The View → Theme submenu that exists today is removed when
-  the Plugins tab arrives; until then it stays, because it is the only way to switch a theme.
-  Later themes are chosen from a command palette, as in Zed and VS Code (`context/roadmap.md`).
+- Every kind of plugin data has to be loadable and unloadable live before it is accepted into the
+  plugin format; today that is themes (`EditorPlugins::loadTheme`, `PandaUI::setTheme`).
+- Later themes are also chosen from a command palette, as in Zed and VS Code
+  (`context/roadmap.md`).
 
-### What the engine needs first
+### What the engine needed first
 
-None of these exists in the tree today, and the editor auto-update needs the same three:
+All three exist now, and the editor auto-update (section 5) uses the same ones:
 
 - HTTP, the first part of the network layer of Fern (`Fern::Net`, `context/networking.md`): GET,
   POST, PUT, multipart, a download into a file with progress, resume and a SHA-256 check, on the
   network stacks of the systems, asynchronous through PandaAsync.
 - zip archives: `PandaEditor/src/Project/System/ZipArchive` on the vendored miniz (`Vendor/miniz`,
-  MIT): unpacking with a check that no entry leaves its folder, one entry read without unpacking
-  (`plugin.json`), packing a folder for Publish; the Windows updater unpacks its build with it.
-- SHA-256: a small implementation in Foundation; the network layer checks downloads with it while
-  the bytes arrive.
+  MIT): unpacking with a check that no entry leaves its folder, one entry read without unpacking,
+  the entry list, packing a folder for Publish; the Windows updater unpacks its build with it.
+- SHA-256: `Foundation/Hash/Sha256`; the network layer checks downloads with it while the bytes
+  arrive.
 
-Compatibility is the package's `engine` range against `ENGINE_VERSION`.
+Compatibility is the package's `engine` range against `ENGINE_VERSION` (`Project/Plugins/Semver`:
+the npm grammar of the portal's `SemverRange` — `1.2.3`, `^1.2.3`, `~1.2`, `>=1.0.0 <2.0.0`,
+`1.x`, `*`, alternatives with `||`; the pre-release tag of the engine version is ignored, so
+`0.1.0-preview.142` satisfies `^0.1.0`).
 
 ## 4. Engine CI and releases
 

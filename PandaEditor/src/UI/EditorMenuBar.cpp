@@ -31,8 +31,8 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId CheckForUpdates = 21;
     constexpr Fern::MenuCommandId RestartToUpdate = 22;
     constexpr Fern::MenuCommandId ReleaseNotes = 23;
+    constexpr Fern::MenuCommandId Plugins = 24;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
-    constexpr Fern::MenuCommandId SelectThemeBase = 2000;
 } // namespace EditorMenuCommand
 
 Fern::MenuShortcut primaryShortcut(Fern::Key key) {
@@ -132,18 +132,8 @@ void EditorMenuBar::rebuild() {
 
         auto &windowMenu = menuBar.addMenu("Window");
         windowMenu.addItem("World Settings", EditorMenuCommand::WorldSettings); // the viewport sidebar
-    }
-
-    // Themes are data plugins (Project/Plugins/EditorPlugins): the host holds the list and the current one.
-    const std::vector<std::string> themeNames = m_output->menuBarThemeNames();
-    if (!themeNames.empty()) {
-        auto &viewMenu = menuBar.addMenu("View");
-        auto &themeMenu = viewMenu.addSubmenu("Theme");
-        const int current = m_output->menuBarCurrentTheme();
-        for (size_t i = 0; i < themeNames.size(); ++i) {
-            themeMenu.addItem(themeNames[i], EditorMenuCommand::SelectThemeBase + static_cast<Fern::MenuCommandId>(i))
-                .setChecked(static_cast<int>(i) == current);
-        }
+        windowMenu.addSeparator();
+        windowMenu.addItem("Plugins", EditorMenuCommand::Plugins); // the Plugins tab (themes are applied there)
     }
 
     // Help, the Zed way: the update check, the restart into a downloaded update while one waits,
@@ -172,10 +162,6 @@ bool EditorMenuBar::handleEvent(Fern::Event *event, bool modalPresented) {
 
 void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
     const std::vector<RecentProject> &recentProjects = m_output->menuBarGetRecentProjectsList();
-    if (commandId >= EditorMenuCommand::SelectThemeBase) {
-        m_output->menuBarSelectTheme(static_cast<int>(commandId - EditorMenuCommand::SelectThemeBase));
-        return;
-    }
     if (commandId >= EditorMenuCommand::OpenRecentProjectBase &&
         commandId < EditorMenuCommand::OpenRecentProjectBase + recentProjects.size()) {
         const size_t index = static_cast<size_t>(commandId - EditorMenuCommand::OpenRecentProjectBase);
@@ -252,6 +238,9 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
             break;
         case EditorMenuCommand::ReleaseNotes:
             m_output->menuBarViewReleaseNotes();
+            break;
+        case EditorMenuCommand::Plugins:
+            m_output->menuBarOpenPlugins();
             break;
         default:
             break;
