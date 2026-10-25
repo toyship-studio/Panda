@@ -89,8 +89,8 @@ namespace {
 // Clickable severity filter chip: count label + tinted bg; dim when its level is filtered out.
 class SeverityChip final : public Control {
 public:
-    explicit SeverityChip(Color color)
-        : m_color(color)
+    explicit SeverityChip(std::function<Color()> color)
+        : m_color(std::move(color))
         , m_label(std::make_shared<Label>("")) {
         setCursor(Cursor::PointingHand);
         setFocusable(false);
@@ -125,11 +125,12 @@ protected:
 private:
     void applyStyle() {
         // shown → tinted bg + colored text; filtered out → faint bg + dim text.
-        setBackgroundColor(Color(m_color.r, m_color.g, m_color.b, m_shown ? 0.12f : 0.04f));
-        m_label->setTextColor(m_shown ? m_color : theme().textDim);
+        const Color color = m_color();
+        setBackgroundColor(Color(color.r, color.g, color.b, m_shown ? 0.12f : 0.04f));
+        m_label->setTextColor(m_shown ? color : theme().textDim);
     }
 
-    Color m_color;
+    std::function<Color()> m_color; // read on every restyle: the theme colors change
     std::shared_ptr<Label> m_label;
     bool m_shown = true;
     std::function<void()> m_onToggle;
@@ -180,13 +181,13 @@ void OutputPanelView::addSubviews() {
     copy->setOnClick([this] { copyAll(); });
     bar->addSubview(copy);
 
-    m_infoChip = std::make_shared<SeverityChip>(Color(0x7FB2D6FF));
+    m_infoChip = std::make_shared<SeverityChip>([] { return Color(0x7FB2D6FF); });
     m_infoChip->setOnToggle([this] { toggleLevel(LogLevel::Info); });
     bar->addSubview(m_infoChip);
-    m_warnChip = std::make_shared<SeverityChip>(theme().warning);
+    m_warnChip = std::make_shared<SeverityChip>([] { return theme().warning; });
     m_warnChip->setOnToggle([this] { toggleLevel(LogLevel::Warning); });
     bar->addSubview(m_warnChip);
-    m_errorChip = std::make_shared<SeverityChip>(theme().danger);
+    m_errorChip = std::make_shared<SeverityChip>([] { return theme().danger; });
     m_errorChip->setOnToggle([this] { toggleLevel(LogLevel::Error); });
     bar->addSubview(m_errorChip);
     addSubview(bar);
@@ -290,6 +291,7 @@ void OutputPanelView::setupLayout() {
 
 void OutputPanelView::setupStyle() {
     setBackgroundColor(theme().windowBackground);
+    if (m_list) { m_list->reloadData(); } // the rows bind their level colors from the theme
 }
 
 void OutputPanelView::copyAll() {

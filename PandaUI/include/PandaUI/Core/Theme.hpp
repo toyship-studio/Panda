@@ -2,6 +2,7 @@
 
 #include "PandaUI/Core/Base.hpp"
 
+#include <cstdint>
 #include <functional>
 
 namespace PandaUI {
@@ -67,6 +68,9 @@ struct Theme {
 
 const Theme &theme();
 void setTheme(const Theme &theme);
+// Grows with every setTheme. A view remembers the generation it was styled under: one that was
+// out of the tree during a change (a hidden root, a replaced tab) restyles itself when attached.
+uint64_t themeGeneration();
 
 // The runtime layer installs a handler to update the contexts when the theme changes: PandaUI Core
 // does not depend on Context, so the link goes through this hook (as with the clipboard).

@@ -47,7 +47,7 @@ namespace {
         divider->setUserInteractionEnabled(false);
         divider->layout().setSize({1.f, 18.f});
         divider->layout().setMargin(Edge::Horizontal, 3.f);
-        divider->setBackgroundColor(theme().borderMed);
+        divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderMed); });
         return divider;
     }
 
@@ -216,7 +216,7 @@ void ViewportPanelView::addSubviews() {
     banner->addSubview(m_editBannerLabel);
     auto stop = std::make_shared<IconButton>(Ic::Stop, Ic::GizmoSize, 28.f);
     stop->setTooltip("Stop Editing");
-    stop->setFixedColor(theme().danger);
+    stop->setThemeStyle([](View &view) { static_cast<IconButton &>(view).setFixedColor(theme().danger); });
     stop->setOnClick([this] { m_output->viewportDidRequestStopEditing(); });
     banner->addSubview(stop);
     m_editBanner = banner;

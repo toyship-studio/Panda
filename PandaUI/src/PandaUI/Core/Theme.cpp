@@ -8,6 +8,7 @@ namespace {
 
     Theme s_theme = Theme::dark();
     std::function<void()> s_handler;
+    uint64_t s_generation = 1;
 
 } // namespace
 
@@ -17,7 +18,12 @@ const Theme &theme() {
 
 void setTheme(const Theme &theme) {
     s_theme = theme;
+    ++s_generation;
     if (s_handler) { s_handler(); }
+}
+
+uint64_t themeGeneration() {
+    return s_generation;
 }
 
 void setThemeChangedHandler(std::function<void()> handler) {

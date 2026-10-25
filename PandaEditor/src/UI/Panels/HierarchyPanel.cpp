@@ -263,6 +263,7 @@ void HierarchyPanelView::setupLayout() {
 
 void HierarchyPanelView::setupStyle() {
     setBackgroundColor(theme().windowBackground);
+    if (m_tree) { m_tree->reloadData(); } // the rows bind their icon tint from the theme
 }
 
 } // namespace Editor

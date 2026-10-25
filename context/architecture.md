@@ -98,9 +98,15 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   (`Panda/include/Panda/GameLogic/SelectionContext.hpp`; entity selection and file selection are
   kept separately). It does not depend on the views.
 - **View**: a panel built on PandaUI (base class `Editor::EditorView`: `addSubviews` /
-  `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). A view is passive: it sends
-  intentions out through its own `Output` interface and receives data through setters (its input).
-  It makes no decisions about the model.
+  `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). A color an owner puts on a
+  plain view — a divider, a card, a tinted label, a fixed icon color — goes through
+  `View::setThemeStyle`, which runs again on every theme change after the view's own
+  `themeChanged`; list rows that bind theme colors are rebound from `setupStyle` (`reloadData`). A
+  view that was out of the tree during a theme change (the hidden start screen, a replaced tab
+  content) restyles itself when attached: every view carries the theme generation it was styled
+  under (`PandaUI::themeGeneration()`). A view is passive: it sends intentions out through its own
+  `Output` interface and receives data through setters (its input). It makes no decisions about the
+  model.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
   the updates into the affected panels (retained mode: no subscriptions, no reactivity). Panels do

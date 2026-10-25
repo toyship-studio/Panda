@@ -1,4 +1,5 @@
 #include "PandaUI/Core/View.hpp"
+#include "PandaUI/Core/Theme.hpp"
 #include "PandaUI/Runtime/Context.hpp"
 #include "PandaUI/Rendering/UIRenderer.hpp"
 #include "PandaUI/Core/ViewInternal.hpp"
@@ -62,7 +63,8 @@ View::View(Rect frame)
     , m_isFocused(false)
     , m_isUserInteractionEnabled(true)
     , m_isHovered(false)
-    , m_cursor(Cursor::Inherit) {
+    , m_cursor(Cursor::Inherit)
+    , m_themeGeneration(themeGeneration()) { // built against the current theme
     m_internal->ref = YGNodeNew();
     configureYogaNode();
     if (frame.size.width != 0.f || frame.size.height != 0.f) { layoutSetSize(frame.size); }
@@ -162,10 +164,24 @@ void View::addSubview(std::shared_ptr<View> view) {
 void View::setContext(Context *context) {
     if (m_context == context) { return; }
     m_context = context;
+    // The theme changed while this view was out of the tree (a hidden root, a replaced tab content):
+    // it catches up now, before anyone sees it. Each subview checks itself in the recursion.
+    if (m_context && m_themeGeneration != themeGeneration()) { restyle(); }
     for (const auto &subview : m_subviews) {
         if (subview) { subview->setContext(context); }
     }
     if (m_context) { contextAttached(); }
+}
+
+void View::setThemeStyle(ThemeStyle style) {
+    m_themeStyle = std::move(style);
+    if (m_themeStyle) { m_themeStyle(*this); }
+}
+
+void View::restyle() {
+    m_themeGeneration = themeGeneration();
+    themeChanged();                               // the class re-reads its own colors
+    if (m_themeStyle) { m_themeStyle(*this); }    // then the owner's choices win
 }
 
 void View::resolveHierarchy() {
@@ -264,7 +280,7 @@ void View::setNeedsDisplay() {
 }
 
 void View::propagateThemeChanged() {
-    themeChanged();
+    restyle();
     for (const auto &subview : m_subviews) {
         subview->propagateThemeChanged();
     }

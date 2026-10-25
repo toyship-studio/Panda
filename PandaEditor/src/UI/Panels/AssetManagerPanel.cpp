@@ -87,7 +87,7 @@ namespace {
         void addColumn(const std::string &text, float width, float grow, bool center) {
             auto label = std::make_shared<Label>(text);
             label->setFont(Typo::Meta);
-            label->setTextColor(theme().textDim);
+            label->setTextRole(TextRole::Dim);
             label->setLetterSpacing(0.4f);
             label->setNumberOfLines(1);
             label->setClipsToBounds(true);
@@ -359,7 +359,10 @@ void AssetManagerPanelView::setupLayout() {
 
 void AssetManagerPanelView::setupStyle() {
     setBackgroundColor(theme().windowBackground);
-    if (m_table) { m_table->setBackgroundColor(theme().windowBackground); }
+    if (m_table) {
+        m_table->setBackgroundColor(theme().windowBackground);
+        m_table->reloadData(); // the rows bind their colors from the theme
+    }
 }
 
 } // namespace Editor

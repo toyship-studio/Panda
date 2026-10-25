@@ -90,11 +90,13 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_maximizeRoot->addSubview(backdrop);
 
     m_maximizeHost = std::make_shared<Panel>();
-    m_maximizeHost->setBackgroundColor(theme().windowBackground);
+    m_maximizeHost->setThemeStyle([](View &view) {
+        view.setBackgroundColor(theme().windowBackground);
+        view.surface().setBorderColor(theme().border);
+    });
     m_maximizeHost->setClipsToBounds(true);
     m_maximizeHost->surface().setCornerRadius(8.f);
     m_maximizeHost->surface().setBorderWidth(1.f);
-    m_maximizeHost->surface().setBorderColor(theme().border);
     m_maximizeHost->layout().setPositionType(PositionType::Absolute);
     m_maximizeHost->layout().setPosition(Edge::Left, Length::points(MAXIMIZE_MARGIN));
     m_maximizeHost->layout().setPosition(Edge::Top, Length::points(MAXIMIZE_MARGIN));
@@ -105,7 +107,8 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_strip = std::make_shared<VisibilityStripView>(this);
 
     m_root = std::make_shared<Panel>();
-    m_root->setBackgroundColor(theme().windowBackground); // editor window root → carries the base background
+    // editor window root → carries the base background (and follows the theme)
+    m_root->setThemeStyle([](View &view) { view.setBackgroundColor(theme().windowBackground); });
     m_root->layout().setFlexDirection(FlexDirection::Column);
     m_root->layout().setFlexGrow(1.f);
     m_root->addSubview(std::move(toolbar));

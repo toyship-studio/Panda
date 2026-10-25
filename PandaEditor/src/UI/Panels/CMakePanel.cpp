@@ -144,7 +144,7 @@ void CMakePanelView::addSubviews() {
     divider->setUserInteractionEnabled(false);
     divider->layout().setWidth(Length::points(1.f));
     divider->layout().setFlexShrink(0.f);
-    divider->setBackgroundColor(theme().borderFaint);
+    divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().borderFaint); });
     addSubview(divider);
 
     /* --- Main column: target tabs + configuration, the output below --- */
@@ -281,6 +281,7 @@ void CMakePanelView::setupLayout() {
 
 void CMakePanelView::setupStyle() {
     setBackgroundColor(theme().windowBackground);
+    if (m_list) { m_list->reloadData(); } // the lines bind their colors from the theme
 }
 
 } // namespace Editor

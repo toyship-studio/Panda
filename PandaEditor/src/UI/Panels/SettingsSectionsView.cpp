@@ -13,7 +13,7 @@ namespace {
     std::shared_ptr<CollapsibleSection> capsSection(const std::string &title) {
         auto section = std::make_shared<CollapsibleSection>(title);
         section->setTitleFont(Typo::ComponentTitle);
-        section->setTitleColor(theme().textMuted);
+        section->setThemeStyle([](View &view) { static_cast<CollapsibleSection &>(view).setTitleColor(theme().textMuted); });
         section->setTitleLetterSpacing(Typo::ComponentTitleTracking);
         section->setHeaderFill(false);
         return section;

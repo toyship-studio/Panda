@@ -14,7 +14,7 @@ using namespace PandaUI;
 
 void styleComponentSection(CollapsibleSection &section) {
     section.setTitleFont(Typo::ComponentTitle);
-    section.setTitleColor(theme().textMuted);
+    section.setThemeStyle([](View &view) { static_cast<CollapsibleSection &>(view).setTitleColor(theme().textMuted); });
     section.setTitleLetterSpacing(Typo::ComponentTitleTracking);
     section.setHeaderFill(false);
 }

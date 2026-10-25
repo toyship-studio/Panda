@@ -514,7 +514,11 @@ void ContentBrowserView::setupLayout() {
 void ContentBrowserView::setupStyle() {
     setBackgroundColor(theme().windowBackground);
     if (m_tree) { m_tree->setBackgroundColor(theme().surface); }
-    if (m_grid) { m_grid->setBackgroundColor(theme().windowBackground); }
+    if (m_grid) {
+        m_grid->setBackgroundColor(theme().windowBackground);
+        m_grid->reloadData(); // the cells bind their tints and plates from the theme
+    }
+    if (m_breadcrumb) { rebuildBreadcrumb(); } // the chevrons are tinted from the theme
 }
 
 } // namespace Editor

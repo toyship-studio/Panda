@@ -30,11 +30,12 @@ VisibilityStripView::VisibilityStripView(VisibilityStripDelegate *delegate)
     layout().setFlexDirection(FlexDirection::Column);
     layout().setHeight(Length::points(STRIP_HEIGHT));
     layout().setFlexShrink(0.f);
-    setBackgroundColor(theme().surfaceVariant); // bg/chrome #191918
+    setThemeStyle([](View &view) { view.setBackgroundColor(theme().surfaceVariant); }); // bg/chrome #191918
 
     auto topBorder = std::make_shared<Panel>();
     topBorder->setUserInteractionEnabled(false);
-    topBorder->setBackgroundColor(theme().border); // separates the strip from the bottom dock
+    // separates the strip from the bottom dock
+    topBorder->setThemeStyle([](View &view) { view.setBackgroundColor(theme().border); });
     topBorder->layout().setHeight(Length::points(1.f));
     topBorder->layout().setFlexShrink(0.f);
     addSubview(topBorder);
@@ -60,7 +61,7 @@ VisibilityStripView::VisibilityStripView(VisibilityStripDelegate *delegate)
     // content is updated by the owner (DockManager::setStatusText).
     m_statusLabel = std::make_shared<PandaUI::Label>("");
     m_statusLabel->setFont(PandaUI::Font(14.f));
-    m_statusLabel->setTextColor(theme().textMuted);
+    m_statusLabel->setTextRole(PandaUI::TextRole::Muted);
     m_statusLabel->setUserInteractionEnabled(false);
     m_statusLabel->layout().setMargin(PandaUI::Edge::Right, 12.f);
     row->addSubview(m_statusLabel);
@@ -98,7 +99,9 @@ void VisibilityStripView::setItems(const std::vector<StripItem> &items) {
 std::shared_ptr<IconButton> VisibilityStripView::makeButton(const StripItem &item) {
     auto btn = std::make_shared<IconButton>(item.icon, ICON, BTN_H);
     btn->setButtonSize(BTN_W, BTN_H);
-    if (!item.open) { btn->setIconColor(theme().textDim); } // a closed panel — a muted icon
+    if (!item.open) { // a closed panel — a dim icon (re-read with the theme)
+        btn->setThemeStyle([](View &view) { static_cast<IconButton &>(view).setIconColor(theme().textDim); });
+    }
     btn->setActive(item.active);
     const std::string id = item.id;
     btn->setOnClick([this, id] { m_delegate->stripDidActivatePanel(id); });

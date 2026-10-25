@@ -12,6 +12,7 @@
 #include "PandaUI/Core/PointerEvent.hpp"
 #include "PandaUI/Rendering/Surface.hpp"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -216,7 +217,13 @@ public:
     virtual void interactionCancelled() {}
     // Called when the theme changes; override to re-read the colors from theme().
     virtual void themeChanged() {}
-    // Calls themeChanged() for this view and its whole subtree.
+    // Colors set by the OWNER of a view rather than by its class (a divider panel, a tinted label,
+    // a card): the style runs now and again on every theme change, after themeChanged() so that it
+    // wins over the class defaults. The alternative — a subclass per colored panel — is what this
+    // replaces.
+    using ThemeStyle = std::function<void(View &)>;
+    void setThemeStyle(ThemeStyle style);
+    // Calls the theme style and themeChanged() for this view and its whole subtree.
     void propagateThemeChanged();
 
 protected:
@@ -231,6 +238,7 @@ protected:
 
 private:
     void setContext(Context *context);
+    void restyle(); // the theme style + themeChanged(), stamped with the current theme generation
     void resolveHierarchy();
     void updateHierarchy(double deltaTime);
     void notifyWillCalculateLayout();
@@ -255,6 +263,8 @@ private:
     bool m_isHovered;
     Cursor m_cursor;
     std::string m_tooltip;
+    ThemeStyle m_themeStyle;
+    uint64_t m_themeGeneration; // the theme this view was last styled under
     void render(float offsetX, float offsetY);
     friend class Layout;
     friend class Context;

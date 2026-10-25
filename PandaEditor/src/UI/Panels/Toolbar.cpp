@@ -18,7 +18,7 @@ namespace {
         divider->setUserInteractionEnabled(false);
         divider->layout().setSize({1.f, 20.f});
         divider->layout().setMargin(Edge::Horizontal, 4.f);
-        divider->setBackgroundColor(theme().border);
+        divider->setThemeStyle([](View &view) { view.setBackgroundColor(theme().border); });
         return divider;
     }
 } // namespace
@@ -89,33 +89,38 @@ void ToolbarPanelView::addSubviews() {
 
     // CENTER: the Play / Simulate / Stop transport capsule (recessed track, colored icons).
     auto capsule = std::make_shared<Panel>();
-    capsule->setBackgroundColor(theme().inputDeep);
+    capsule->setThemeStyle([](View &view) {
+        view.setBackgroundColor(theme().inputDeep);
+        view.surface().setBorderColor(theme().borderMed);
+    });
     capsule->layout().setFlexDirection(FlexDirection::Row);
     capsule->layout().setAlignItems(Align::Center);
     capsule->layout().setGap(2.f);
     capsule->layout().setPadding(3.f);
     capsule->surface().setCornerRadius(9.f);
     capsule->surface().setBorderWidth(1.f);
-    capsule->surface().setBorderColor(theme().borderMed);
 
-    auto makeTransport = [](const char *icon, Color fixed) {
+    // fixed: the theme color of the icon (success, danger), re-read on a theme change; nullptr — neutral.
+    auto makeTransport = [](const char *icon, Color Theme::*fixed) {
         auto button = std::make_shared<IconButton>(icon, Ic::ToolbarSize, TRANSPORT_W);
         button->setButtonSize(TRANSPORT_W, TRANSPORT_H);
-        if (fixed.a > 0.f) { button->setFixedColor(fixed); }
+        if (fixed) {
+            button->setThemeStyle([fixed](View &view) { static_cast<IconButton &>(view).setFixedColor(theme().*fixed); });
+        }
         return button;
     };
 
-    m_play = makeTransport(Ic::Play, theme().success);
+    m_play = makeTransport(Ic::Play, &Theme::success);
     m_play->setTooltip("Play");
     m_play->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Play); });
     capsule->addSubview(m_play);
 
-    m_simulate = makeTransport(Ic::Simulate, Color(0x00000000)); // neutral (muted → hover primary)
+    m_simulate = makeTransport(Ic::Simulate, nullptr); // neutral (muted → hover primary)
     m_simulate->setTooltip("Simulate");
     m_simulate->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Simulate); });
     capsule->addSubview(m_simulate);
 
-    m_stop = makeTransport(Ic::Stop, theme().danger);
+    m_stop = makeTransport(Ic::Stop, &Theme::danger);
     m_stop->setTooltip("Stop");
     m_stop->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Edit); });
     capsule->addSubview(m_stop);
