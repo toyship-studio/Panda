@@ -30,6 +30,11 @@ public:
     void windowClosed(PandaUI::WindowHandle handle);
     void reset();
     std::vector<PandaUI::WindowHandle> snapshotHandles() const;
+    // Fonts registered by the script (Bamboo::UI::registerFont): one face per family, one atlas
+    // shared by every window — the ones that exist and the ones created later. Characters the face
+    // lacks come from the default font.
+    bool registerFont(PandaUI::FontFamily family, std::vector<unsigned char> data);
+    bool hasFont(PandaUI::FontFamily family) const;
 
     // RAII dispatch scope: inside it window closing is deferred so as not to break the
     // iteration/context during event processing, and is flushed on exit.
@@ -66,6 +71,7 @@ private:
     Platform &m_platform;
     std::unordered_map<PandaUI::WindowHandle, std::unique_ptr<WindowState>> m_windows;
     std::map<float, std::shared_ptr<PandaUI::FontAtlas>> m_defaultFonts;
+    std::unordered_map<uint32_t, std::shared_ptr<PandaUI::FontAtlas>> m_scriptFonts; // by family id
     std::vector<PandaUI::WindowHandle> m_pendingCloseWindows;
     int m_dispatchDepth = 0;
 };

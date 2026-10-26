@@ -25,6 +25,7 @@ struct AssetType final {
     static const AssetType IMPORTED_MESH;
     static const AssetType WORLD;
     static const AssetType POSTPROCESSING;
+    static const AssetType FONT;
 };
 
 inline const AssetType AssetType::NONE{0};
@@ -36,6 +37,7 @@ inline const AssetType AssetType::RUNTIME_MESH{5};
 inline const AssetType AssetType::IMPORTED_MESH{6};
 inline const AssetType AssetType::WORLD{7};
 inline const AssetType AssetType::POSTPROCESSING{8};
+inline const AssetType AssetType::FONT{11}; // 9 and 10 are the terrain kinds of the Terrain module
 
 using AssetId = UUID;
 

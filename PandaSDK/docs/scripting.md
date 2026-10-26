@@ -62,8 +62,8 @@ REGISTER_SCRIPT(MoveScript)
 
 `PANDA_FIELD(name)` publishes a class member: it appears in the editor's inspector and gets its
 value from the world (`scriptFields`). Supported: `int`, `float`, references to an
-entity/texture/material/world (the id types `EntityHandle`, `TextureHandle`, `MaterialHandle`,
-`WorldHandle`).
+entity/texture/material/world/font (the id types `EntityHandle`, `TextureHandle`, `MaterialHandle`,
+`WorldHandle`, `FontHandle`).
 
 The world is the only source of a published field: when Play starts the engine writes every field
 of the script from the world, and a field the world does not list is written as zero. The
@@ -75,6 +75,18 @@ in `update` can be tuned while the game runs; a value used only in `start` has t
 again by the script. Play runs on a copy of the world: Stop brings the values back, and Save
 (Cmd+S) during Play saves the world being edited, not the copy. A value found in Play is typed in
 again after Stop.
+
+## Fonts in the UI
+
+A font of the project (`.ttf`, `.otf` or `.ttc` under `Assets/`) reaches a script through a
+`FontHandle` field, chosen in the inspector like a texture. `Bamboo::UI::font(handle, size)`
+(`Bamboo/UI/FontAPI.hpp`) gives a `PandaUI::Font` for any label or button of the script's
+windows; `Bamboo::UI::registerFont(handle)` returns the family itself for a `PandaUI::Font` built
+by hand. The face is rasterized once per script load and shared by every window, the ones that
+exist and the ones opened later; a character the font lacks is drawn with the built-in UI font;
+one file is one weight (Medium and Bold of the family resolve to the same face). An unset or wrong
+handle gives the built-in Sans. `Bamboo::FontAPI::readData(handle)` (`Bamboo/Assets/FontAPI.hpp`)
+hands out the bytes of the file for anything else.
 
 ## Manifest for tools: `.Panda/scripts-manifest.json`
 

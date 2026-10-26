@@ -197,6 +197,28 @@ void EditorUI::loadCustomFamily(FontRole &role, const std::string &family) {
     }
 }
 
+PandaUI::FontFamily EditorUI::fontFamilyForAsset(uint32_t assetId, const std::vector<uint8_t> &bytes) {
+    const PandaUI::FontFamily family = PandaUI::fontFamily("asset:" + std::to_string(assetId));
+    uint64_t hash = 1469598103934665603ull; // FNV-1a
+    for (uint8_t byte : bytes) { hash = (hash ^ byte) * 1099511628211ull; }
+    auto it = m_assetFonts.find(assetId);
+    if (it != m_assetFonts.end() && it->second.hash == hash) {
+        return it->second.atlas ? family : PandaUI::FontFamily::Sans;
+    }
+    const bool replacing = it != m_assetFonts.end();
+    std::vector<FontJob> jobs(1);
+    jobs[0].bytes.assign(bytes.begin(), bytes.end());
+    std::shared_ptr<PandaUI::FontAtlas> atlas;
+    jobs[0].targets.push_back(&atlas);
+    rasterizeFonts(jobs);
+    m_assetFonts[assetId] = {hash, atlas};
+    if (!atlas) { return PandaUI::FontFamily::Sans; } // a color or variable face the rasterizer does not read
+    atlas->setFallback(m_sansRole.bundled[0]); // the bundled UI font stands in for the glyphs the face lacks
+    m_context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, family);
+    if (replacing) { m_context.fontsChanged(); } // the texts drawn with the old face re-measure
+    return family;
+}
+
 void EditorUI::bindFonts() {
     for (int w = 0; w < kWeightCount; ++w) {
         const std::shared_ptr<PandaUI::FontAtlas> &sans = m_sansRole.custom[w] ? m_sansRole.custom[w] : m_sansRole.bundled[w];

@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 29;
+constexpr uint32_t SCRIPT_ABI_VERSION = 30;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -113,6 +113,10 @@ using MaterialSetTextureValueFn = void (*)(Handle materialHandle, const char *na
 
 using TextureReadPixelsRGBA8Fn =
     uint32_t (*)(Handle textureHandle, uint32_t *width, uint32_t *height, void *destination, uint32_t destinationSize);
+
+// The bytes of a font asset (.ttf / .otf as it lies in the project) for the UI of the script, the
+// "return the size / fill the buffer" pattern of ui_LoadStaticResource.
+using FontReadDataFn = uint32_t (*)(Handle fontHandle, void *destination, uint32_t destinationSize);
 
 // Runtime textures (dynamic: lightmaps, minimaps) — a mirror of runtime meshes.
 using TextureCreateRGBA8Fn = void (*)(uint32_t width, uint32_t height, Handle *handle);
@@ -260,6 +264,8 @@ struct ScriptHostApi final {
     TextureDeleteFn texture_Delete = nullptr;
     // v24: named contribution tables (contribution functions moved from this table into their own).
     HostApiTableFindFn hostApiTable_Find = nullptr;
+    // v30: font assets (FontHandle fields, Bamboo::UI::registerFont).
+    FontReadDataFn font_ReadData = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

@@ -7,7 +7,7 @@ namespace Panda::Scripting {
 using Handle = uint32_t;
 using FieldHandle = uint32_t;
 
-enum class ScriptFieldType { INTEGER, FLOAT, ENTITY, TEXTURE, MATERIAL, WORLD, UNKNOWN };
+enum class ScriptFieldType { INTEGER, FLOAT, ENTITY, TEXTURE, MATERIAL, WORLD, FONT, UNKNOWN };
 
 // v28: the manifest of a script bundle crosses the ABI as flat arrays, like the rest of the ABI.
 // The arrays and the strings belong to the bundle and stay valid until the next getManifest call

@@ -25,6 +25,7 @@ BAMBOO_HANDLE(TextureHandle);
 BAMBOO_HANDLE(MaterialHandle);
 BAMBOO_HANDLE(MeshHandle);
 BAMBOO_HANDLE(WorldHandle);
+BAMBOO_HANDLE(FontHandle); // a font asset (.ttf / .otf): Bamboo::UI::font puts it into a PandaUI::Font
 
 struct Vec2 {
     union {

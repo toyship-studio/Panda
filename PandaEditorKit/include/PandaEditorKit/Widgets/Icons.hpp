@@ -58,6 +58,7 @@ namespace Ic {
     inline constexpr const char *Trash = "trash";
     inline constexpr const char *Configure = "tune";          // settings (sliders)
     inline constexpr const char *Plugins = "plugins";         // the Plugins tab (a puzzle piece)
+    inline constexpr const char *Font = "font";               // a font asset (an "A")
     inline constexpr const char *CMakeConfigure = "configure"; // CMake: regeneration — two arrows in a circle
     inline constexpr const char *Build = "hammer";             // CMake: build
     // Docks (visibility strip): visibility toggles of the editor zones.
@@ -78,6 +79,7 @@ namespace Ic {
     inline constexpr const char *AssetWorld = "asset-world";
     inline constexpr const char *Prefab = "prefab";
     inline constexpr const char *FileGeneric = "file";
+    inline constexpr const char *FileFont = "file-font";
 
     // Icon sizes by context (design.md §4).
     inline constexpr float ToolbarSize = 17.f;

@@ -79,6 +79,7 @@ namespace ExternalCalls {
     Texture_CreateRGBA8 texture_CreateRGBA8 = nullptr;
     Texture_UpdateRGBA8 texture_UpdateRGBA8 = nullptr;
     Texture_Delete texture_Delete = nullptr;
+    Font_ReadData font_ReadData = nullptr;
     HostApiTable_Find hostApiTable_Find = nullptr;
     Console_Log console_Log = nullptr;
     UI_GetMainWindow ui_GetMainWindow = nullptr;
@@ -263,6 +264,7 @@ namespace {
         texture_CreateRGBA8 = hostApi.texture_CreateRGBA8;
         texture_UpdateRGBA8 = hostApi.texture_UpdateRGBA8;
         texture_Delete = hostApi.texture_Delete;
+        font_ReadData = hostApi.font_ReadData;
         hostApiTable_Find = hostApi.hostApiTable_Find;
         console_Log = hostApi.console_Log;
         ui_GetMainWindow = hostApi.ui_GetMainWindow;

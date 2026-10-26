@@ -198,7 +198,8 @@ struct ScriptFieldDto : public Rain::Codable {
             case ScriptFieldType::ENTITY:
             case ScriptFieldType::TEXTURE:
             case ScriptFieldType::MATERIAL:
-            case ScriptFieldType::WORLD: {
+            case ScriptFieldType::WORLD:
+            case ScriptFieldType::FONT: {
                 UUID value = std::get<UUID>(data.value);
                 encoder->encode("value", value);
                 break;
@@ -232,7 +233,8 @@ struct ScriptFieldDto : public Rain::Codable {
             case ScriptFieldType::MATERIAL:
             case ScriptFieldType::TEXTURE:
             case ScriptFieldType::ENTITY:
-            case ScriptFieldType::WORLD: {
+            case ScriptFieldType::WORLD:
+            case ScriptFieldType::FONT: {
                 UUID value = 0;
                 decoder->decode("value", value);
                 data.value = value;

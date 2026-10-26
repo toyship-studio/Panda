@@ -45,6 +45,7 @@ namespace {
 
     const char *iconForAssetType(const std::string &type) {
         if (type == "texture") { return Ic::Sprite; }
+        if (type == "font") { return Ic::Font; }
         if (type == "material") { return Ic::Material; }
         if (type == "mesh") { return Ic::Mesh; }
         if (type == "scene") { return Ic::Globe; }

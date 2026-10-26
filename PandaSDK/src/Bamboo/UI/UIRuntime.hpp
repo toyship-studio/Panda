@@ -2,6 +2,10 @@
 
 #include <PandaUI/Core/Event.hpp>
 
+namespace Bamboo::UI {
+class WindowRegistry;
+}
+
 namespace Bamboo::UIRuntime {
 
 // Entry points of the SDK's UI runtime. Their addresses are passed to the engine through the ABI
@@ -12,6 +16,7 @@ void shutdown();
 void reset();
 
 namespace Internal {
+    UI::WindowRegistry &registry(); // the windows and the fonts of the script (Bamboo::UI::registerFont)
     void update(float deltaTime);
     bool handleEvent(const PandaUI::Event *event);
     void windowClosed(PandaUI::WindowHandle windowHandle);

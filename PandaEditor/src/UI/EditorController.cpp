@@ -782,6 +782,10 @@ PandaUI::TextureHandle EditorController::assetThumbnail(Panda::AssetId id) {
     return thumbnails ? thumbnails->thumbnailFor(id) : PandaUI::TextureHandle{};
 }
 
+PandaUI::FontFamily EditorController::assetFont(Panda::AssetId id) {
+    return m_bridge ? m_bridge->fontFamilyForAsset(static_cast<uint32_t>(id)) : PandaUI::FontFamily::Sans;
+}
+
 void EditorController::pickAsset(
     PandaUI::Context *context, PandaUI::Point at, const std::string &kind, std::function<void(uint32_t)> onPick
 ) {

@@ -19,7 +19,10 @@
 #include <Panda/WorldCommands/Impl/EditAssetCommands.hpp>
 #include <Panda/WorldCommands/Impl/SetMeshSlotMaterialCommand.hpp>
 
+#include <Fern/Fonts/FontCatalog.hpp>
+
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <utility>
@@ -507,6 +510,68 @@ namespace {
         AssetEditorContext m_context;
     };
 
+    /* ------------------------------ Font ------------------------------ */
+
+    // A font has nothing to edit: the tab shows what the file declares (its name tables) and the
+    // face itself at a few sizes, drawn by the editor's own UI from the bytes of the asset
+    // (EditorHost::assetFont). A glyph the face lacks comes from the UI font — as it will in a game.
+    class FontEditor final : public AssetEditor {
+    public:
+        explicit FontEditor(const AssetEditorContext &context)
+            : m_context(context) {}
+
+        void build(View &container) override {
+            const Panda::AssetId id = m_context.asset;
+            Panda::AssetHandlerEditor *handler = assetHandler();
+            if (!handler) { return; }
+            const std::filesystem::path file = handler->getProjectPath() / handler->assetPath(id);
+            const std::vector<Fern::Fonts::Face> faces = Fern::Fonts::facesOf(file);
+
+            auto info = makeFormSection("FONT");
+            const auto addText = [&info](const char *title, std::string text, bool muted) {
+                auto label = std::make_shared<Label>(std::move(text));
+                label->setFont(Typo::Body);
+                if (muted) { label->setTextRole(TextRole::Secondary); }
+                info->addContent(std::make_shared<PropertyRow>(title, label));
+            };
+            if (faces.empty()) {
+                addText("Family", "Not a readable font file", true);
+            } else {
+                const Fern::Fonts::Face &face = faces.front();
+                addText("Family", face.family, false);
+                addText("Style", face.style.empty() ? "Regular" : face.style, false);
+                addText("Weight", std::to_string(face.weight) + (face.italic ? " Italic" : ""), false);
+                if (faces.size() > 1) { // a collection: the hosts draw the first face
+                    addText("Faces", std::to_string(faces.size()) + " (the first one is used)", true);
+                }
+            }
+            addText("File", file.filename().string(), true);
+            container.addSubview(info);
+
+            // The face at the sizes a game UI uses; the last line is Cyrillic and symbols — what a
+            // Latin-only decorative font hands over to the fallback.
+            auto preview = makeFormSection("PREVIEW");
+            const FontFamily family = editorHost().assetFont(id);
+            const char *samples[] = {
+                "The quick brown fox jumps over the lazy dog",
+                "Sphinx of black quartz, judge my vow 0123456789",
+                "Съешь же ещё этих мягких французских булок — «да» & ✓",
+            };
+            const float sizes[] = {28.f, 20.f, 15.f};
+            for (int i = 0; i < 3; ++i) {
+                auto label = std::make_shared<Label>(samples[i]);
+                label->setFont(Font(sizes[i], FontWeight::Regular, family));
+                label->setNumberOfLines(0); // wraps to the tab width
+                label->layout().setPadding(Edge::Vertical, 4.f);
+                preview->addContent(label);
+            }
+            container.addSubview(preview);
+        }
+
+    private:
+        AssetEditorContext m_context;
+    };
+
     std::unique_ptr<AssetEditor> createTextureEditor(const AssetEditorContext &context) {
         return std::make_unique<TextureEditor>(context);
     }
@@ -519,6 +584,9 @@ namespace {
     std::unique_ptr<AssetEditor> createMeshEditor(const AssetEditorContext &context) {
         return std::make_unique<MeshEditor>(context);
     }
+    std::unique_ptr<AssetEditor> createFontEditor(const AssetEditorContext &context) {
+        return std::make_unique<FontEditor>(context);
+    }
 
 } // namespace
 
@@ -529,6 +597,7 @@ void registerCoreAssetKinds(EditorExtensions &extensions) {
     extensions.assetKinds.add({"material", Ic::Material, Color(0x57B894FF), createMaterialEditor});
     extensions.assetKinds.add({"postfx", Ic::Sprite, Color(0xD16FA8FF), createPostprocessingEditor});
     extensions.assetKinds.add({"mesh", Ic::Mesh, Color(0x8B7FD1FF), createMeshEditor});
+    extensions.assetKinds.add({"font", Ic::FileFont, Color(0xE0B35AFF), createFontEditor});
 }
 
 } // namespace Editor

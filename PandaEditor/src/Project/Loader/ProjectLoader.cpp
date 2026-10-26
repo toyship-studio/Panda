@@ -258,6 +258,7 @@ namespace {
             case Scripting::ScriptFieldType::TEXTURE: return "texture";
             case Scripting::ScriptFieldType::MATERIAL: return "material";
             case Scripting::ScriptFieldType::WORLD: return "world";
+            case Scripting::ScriptFieldType::FONT: return "font";
             case Scripting::ScriptFieldType::UNKNOWN: break;
         }
         return "unknown";

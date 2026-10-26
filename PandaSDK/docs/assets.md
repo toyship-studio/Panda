@@ -12,7 +12,7 @@ the project tree.
 - `id` — a random uint32, the stable identity of the asset: worlds (`importedMesh`, script
   fields) and materials (`value` of texture fields) refer to it.
 - `type`: 1 TEXTURE, 2 CUBE_MAP, 3 SHADER, 4 MATERIAL, 5 RUNTIME_MESH, 6 IMPORTED_MESH, 7 WORLD,
-  8 POSTPROCESSING, 9 TERRAIN_2D, 10 TERRAIN_3D (9 and 10 belong to the Terrain module).
+  8 POSTPROCESSING, 9 TERRAIN_2D, 10 TERRAIN_3D (9 and 10 belong to the Terrain module), 11 FONT.
 - `meta` — depends on the type. Texture: `srgb` (role: color true / data false), filters
   (`minFiltering`, `magFiltering`), `numMips`. Material: `shader`. Mesh: slot materials. A world
   has no `meta`. Paths are not stored: an asset is located by where its file lies.
@@ -30,7 +30,10 @@ sRGB off in the texture inspector). `.hdr` — textures with linear data (enviro
 `.gltf` — meshes: textures are imported according to their roles in the glTF spec, and for every
 glTF material a file `<material-name>.mat` is created next to the mesh (materials are shared by
 name within a folder — LOD variants of one object share one `.mat`). `.world`, `.mat`, `.hlsl`,
-`.postfx`, `.terrain` are registered as is.
+`.postfx`, `.terrain` are registered as is. `.ttf`, `.otf`, `.ttc` — fonts: registered as is (no
+`meta`, the file is the asset; the export copies it into `Fonts/`), shown in the editor with a
+preview of the face; a script takes one through a `FontHandle` field (scripting.md, "Fonts in the
+UI").
 
 ## Material `.mat`
 

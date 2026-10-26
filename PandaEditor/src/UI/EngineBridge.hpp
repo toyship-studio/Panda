@@ -3,6 +3,7 @@
 #include <Panda/Base/TypeContext.hpp>
 #include <Panda/Extensions/Settings.hpp>
 #include <PandaUI/Core/Base.hpp> // PandaUI::Point
+#include <PandaUI/Rendering/TextLayout.hpp> // PandaUI::FontFamily
 
 #include <cstdint>
 #include <string>
@@ -62,6 +63,9 @@ public:
     virtual std::string currentThemeId() = 0;            // EditorAppearanceSettings.theme
     virtual void selectTheme(const std::string &id) = 0; // applies and saves
     virtual void installDevPlugin() = 0;
+    // The face of a font asset for the editor's own UI (the preview of the font tab): rasterized once
+    // by the UI host from the bytes of the asset; Sans when it cannot be read.
+    virtual PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId) = 0;
 };
 
 } // namespace Editor

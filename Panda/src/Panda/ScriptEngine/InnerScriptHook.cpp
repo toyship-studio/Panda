@@ -5,6 +5,7 @@
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Rain/TypeName.hpp"
 #include "Panda/GameLogic/World.hpp"
+#include "Panda/Assets/FontAsset.hpp"
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Extensions/Extensions.hpp"
 
@@ -558,6 +559,18 @@ namespace InternalCalls {
         return requiredSize;
     }
 
+    /// FONT
+
+    uint32_t font_ReadData(Handle fontHandle, void *destination, uint32_t destinationSize) {
+        if (!fontHandle || !GameContext::getAssetHandler()) { return 0; }
+        AssetRef<FontAsset> ref{AssetId(fontHandle)};
+        const FontAsset *font = ref.get();
+        if (!font || font->isEmpty() || font->data().size() > UINT32_MAX) { return 0; }
+        const uint32_t size = static_cast<uint32_t>(font->data().size());
+        if (destination && destinationSize >= size) { std::memcpy(destination, font->data().data(), size); }
+        return size;
+    }
+
     /// MESH
 
     void mesh_Create(Handle *handle) {
@@ -761,6 +774,7 @@ namespace {
         s_hostApi.texture_UpdateRGBA8 = InternalCalls::texture_UpdateRGBA8;
         s_hostApi.texture_Delete = InternalCalls::texture_Delete;
         s_hostApi.hostApiTable_Find = InternalCalls::hostApiTable_Find;
+        s_hostApi.font_ReadData = InternalCalls::font_ReadData;
         s_hostApi.console_Log = InternalCalls::console_Log;
         PandaUIImpl::bindHostApi(s_hostApi);
 

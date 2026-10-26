@@ -50,6 +50,7 @@ public:
         if constexpr (std::is_same_v<T, Bamboo::TextureHandle>) { return ScriptFieldType::TEXTURE; }
         if constexpr (std::is_same_v<T, Bamboo::MaterialHandle>) { return ScriptFieldType::MATERIAL; }
         if constexpr (std::is_same_v<T, Bamboo::WorldHandle>) { return ScriptFieldType::WORLD; }
+        if constexpr (std::is_same_v<T, Bamboo::FontHandle>) { return ScriptFieldType::FONT; }
         return ScriptFieldType::UNKNOWN;
     }
 
@@ -143,6 +144,14 @@ public:
             }
             case ScriptFieldType::WORLD: {
                 using FieldType = Bamboo::WorldHandle;
+                uint32_t *id = (uint32_t *)value;
+                FieldType value = FieldType(*id);
+                FieldType *field = static_cast<FieldType *>(fieldPtr);
+                *field = value;
+                break;
+            }
+            case ScriptFieldType::FONT: {
+                using FieldType = Bamboo::FontHandle;
                 uint32_t *id = (uint32_t *)value;
                 FieldType value = FieldType(*id);
                 FieldType *field = static_cast<FieldType *>(fieldPtr);

@@ -19,6 +19,7 @@ namespace {
         if (kind == "material") { return Ic::Material; }
         if (kind == "mesh") { return Ic::Mesh; }
         if (kind == "postfx") { return Ic::Sprite; }
+        if (kind == "font") { return Ic::Font; }
         return Ic::FileGeneric;
     }
 

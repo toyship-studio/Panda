@@ -39,6 +39,10 @@ void reset() {
 
 namespace Internal {
 
+    UI::WindowRegistry &registry() {
+        return s_registry;
+    }
+
     void update(float deltaTime) {
         PANDA_UI_PROFILE_SCOPE_N("Bamboo::UIRuntime::update");
         UI::WindowRegistry::DispatchScope scope(s_registry);

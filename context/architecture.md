@@ -116,7 +116,9 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   bundled Inter Display and JetBrains Mono by default; a glyph the chosen face lacks is drawn from
   the bundled one (the fallback chain of `FontAtlas`), the size scales every text through
   `Context::textScale`, and a change re-measures the tree like a theme change
-  (`Context::fontsChanged`). A view is passive: it sends intentions out through its own `Output`
+  (`Context::fontsChanged`). A font of the project is an asset (`FontAsset`): the font tab draws it
+  with an atlas of its own (`EditorHost::assetFont`), games take it through `Bamboo::UI::font`
+  ("SDK API" below). A view is passive: it sends intentions out through its own `Output`
   interface and receives data through setters (its input). It makes no decisions about the model.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
@@ -370,12 +372,14 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (28 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (30 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
   `ScriptBundleInfo`, flat arrays owned by the bundle; the engine copies them into its own
-  `ScriptBundleManifest` (strings and vectors) right after the bind.
+  `ScriptBundleManifest` (strings and vectors) right after the bind. `font_ReadData` (v30) hands
+  the SDK the bytes of a font asset (the `FontHandle` fields) in the "return the size / fill the
+  buffer" pattern of `ui_LoadStaticResource`.
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity
@@ -428,6 +432,16 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   into the instance. Nothing is read back: a value the script changes itself is not shown.
 - PandaUI is used in the SDK directly (it is not duplicated in Bamboo). Only events, draw data
   and handles cross the ABI, not the object model.
+- Fonts of the project in the UI of a script: a font file is an asset (`FontAsset`, the file-based
+  kind `font`, `AssetType::FONT` = 11: the editor and the runtime read the `.ttf` as it is, the
+  export copies it into `Fonts/`); a script publishes a `FontHandle` field
+  (`ScriptFieldType::FONT`, picked in the inspector like a texture) and turns it into a
+  `PandaUI::Font` with `Bamboo::UI::font` / `registerFont`. The SDK's `WindowRegistry` reads the
+  bytes through `font_ReadData`, rasterizes the face once per family (`fontFamily("asset:<id>")`)
+  with the built-in font as the fallback and sets the atlas into every window, present and future;
+  the asset is the data only, which sizes and windows get an atlas is the host's business. The
+  editor previews the face the same way from the asset bytes (`EditorHost::assetFont` →
+  `EditorUI::fontFamilyForAsset`, cached by the hash of the bytes so a Reload shows the new face).
 - Rain is the serialization library. `Rain::UUID` must be written fully qualified (it conflicts
   with the platform `UUID` on MSVC). The binary coder is for cooked runtime data.
 

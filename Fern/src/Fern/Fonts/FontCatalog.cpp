@@ -289,6 +289,12 @@ std::optional<Face> find(std::string_view family, int weight, bool italic) {
     return *best;
 }
 
+std::vector<Face> facesOf(const std::filesystem::path &file) {
+    std::vector<Face> result;
+    readFile(file, result);
+    return result;
+}
+
 void rescan() {
     std::lock_guard<std::mutex> lock(s_mutex);
     s_catalog = scan();

@@ -41,6 +41,7 @@ namespace {
     Color colorForType(const std::string &type, bool folder) {
         if (folder) { return Color(0xC9A45FFF); }
         if (type == "texture") { return Color(0x12B69DFF); }
+        if (type == "font") { return Color(0xE0B35AFF); }
         if (type == "material") { return Color(0x57B894FF); }
         if (type == "mesh") { return Color(0x8B7FD1FF); }
         if (type == "scene") { return Color(0x6FC1FFFF); }
@@ -55,6 +56,7 @@ namespace {
     const char *iconForType(const std::string &type, bool folder) {
         if (folder) { return Ic::Folder; }
         if (type == "texture") { return Ic::FilePng; }
+        if (type == "font") { return Ic::FileFont; }
         if (type == "material") { return Ic::Material; }
         if (type == "mesh") { return Ic::Mesh; }
         if (type == "scene") { return Ic::AssetWorld; }

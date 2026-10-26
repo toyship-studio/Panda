@@ -41,6 +41,9 @@ public:
     virtual void selectAsset(Panda::AssetId id) = 0; // selection in the editor → the asset's editor tab
     // Asset thumbnail (material — a sphere, texture — a picture); invalid — none or still baking.
     virtual PandaUI::TextureHandle assetThumbnail(Panda::AssetId id) = 0;
+    // The face of a font asset in the editor's own UI (the preview of the font tab); Sans when the
+    // asset cannot be read.
+    virtual PandaUI::FontFamily assetFont(Panda::AssetId id) = 0;
     // Asset Picker at point at: project assets of kind kind (AssetKind::name); onPick(id) on selection.
     virtual void pickAsset(
         PandaUI::Context *context, PandaUI::Point at, const std::string &kind, std::function<void(uint32_t)> onPick

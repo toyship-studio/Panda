@@ -26,6 +26,7 @@ namespace {
             case ScriptFieldType::TEXTURE:
             case ScriptFieldType::MATERIAL:
             case ScriptFieldType::WORLD:
+            case ScriptFieldType::FONT:
                 return UUID(0);
             case ScriptFieldType::UNKNOWN:
                 break;

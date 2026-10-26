@@ -34,6 +34,8 @@ const std::vector<Face> &faces();
 std::optional<Face> find(std::string_view family, int weight = 400, bool italic = false);
 // Reads the folders again (a font was installed while the application runs).
 void rescan();
+// The faces of one font file (a project asset): the same tables, no catalog involved.
+std::vector<Face> facesOf(const std::filesystem::path &file);
 // The folders scanned: the system's, then the user's.
 std::vector<std::filesystem::path> directories();
 

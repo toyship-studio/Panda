@@ -143,6 +143,8 @@ namespace ExternalCalls {
     extern Texture_UpdateRGBA8 texture_UpdateRGBA8;
     using Texture_Delete = Scripting::TextureDeleteFn;
     extern Texture_Delete texture_Delete;
+    using Font_ReadData = Scripting::FontReadDataFn;
+    extern Font_ReadData font_ReadData;
 
     // Named tables of host contributions (plugins): by name and version, nullptr — no contribution.
     using HostApiTable_Find = Scripting::HostApiTableFindFn;

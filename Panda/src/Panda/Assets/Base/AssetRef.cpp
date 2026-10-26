@@ -1,4 +1,5 @@
 #include "Panda/Assets/Base/AssetRefImpl.hpp"
+#include "Panda/Assets/FontAsset.hpp"
 #include "Panda/Assets/MaterialAsset.hpp"
 #include "Panda/Assets/PostprocessingAsset.hpp"
 #include "Panda/Assets/RuntimeMeshAsset.hpp"
@@ -15,5 +16,6 @@ template class AssetRef<TextureAsset>;
 template class AssetRef<RuntimeMeshAsset>;
 template class AssetRef<ImportedMeshAsset>;
 template class AssetRef<PostprocessingAsset>;
+template class AssetRef<FontAsset>;
 
 } // namespace Panda

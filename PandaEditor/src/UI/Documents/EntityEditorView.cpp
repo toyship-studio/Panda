@@ -679,9 +679,12 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
             }
             case Panda::ScriptFieldType::TEXTURE:
             case Panda::ScriptFieldType::MATERIAL:
-            case Panda::ScriptFieldType::WORLD: {
-                const char *kind = field.type == Panda::ScriptFieldType::TEXTURE ? "texture"
-                                 : field.type == Panda::ScriptFieldType::MATERIAL ? "material" : "scene";
+            case Panda::ScriptFieldType::WORLD:
+            case Panda::ScriptFieldType::FONT: {
+                const char *kind = field.type == Panda::ScriptFieldType::TEXTURE  ? "texture"
+                                 : field.type == Panda::ScriptFieldType::MATERIAL ? "material"
+                                 : field.type == Panda::ScriptFieldType::FONT     ? "font"
+                                                                                  : "scene";
                 addAssetRow(*section, name.c_str(), kind, static_cast<uint32_t>(std::get<Panda::UUID>(field.value)),
                             [this, scriptIndex, name](uint32_t id) {
                                 m_output->entityDidEditScriptField(scriptIndex, name, Panda::ScriptFieldValue(Panda::UUID(id)));

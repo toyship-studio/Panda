@@ -53,6 +53,9 @@ public:
     };
     void loadFonts(const FontSettings &settings); // blocks: the fonts are needed by the first frame
     void applyFonts(const FontSettings &settings);     // a settings change: reloads what differs, the texts re-measure
+    // The face of a font asset of the project in the chrome (the preview of the font tab): rasterized
+    // once from the bytes, registered as the family "asset:<id>" with the bundled Sans as the fallback.
+    PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId, const std::vector<uint8_t> &bytes);
     void loadEditorIcons(); // editor-icons + file-icons → the global Editor::IconLibrary (panel icons)
     // Folders of the packages' PNG icons (absolute paths; EditorExtensions::iconFolders) — into the same
     // library, on top of what is already loaded.
@@ -97,6 +100,11 @@ private:
     struct FontJob;
     FontRole m_sansRole, m_monoRole;
     FontSettings m_fontSettings;
+    struct AssetFont {
+        uint64_t hash = 0; // of the bytes: a reimported font (Reload) gets a fresh atlas under the same family
+        std::shared_ptr<PandaUI::FontAtlas> atlas; // null — the bytes are not a face the rasterizer reads
+    };
+    std::unordered_map<uint32_t, AssetFont> m_assetFonts; // by asset id
     bool m_bundledFontsLoaded = false;
     void loadBundledFonts();
     void loadCustomFamily(FontRole &role, const std::string &family);

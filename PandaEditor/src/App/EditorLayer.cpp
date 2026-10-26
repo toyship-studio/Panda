@@ -25,6 +25,7 @@
 #include <Panda/Base/Version.hpp>
 #include <Foundation/PlatformDetection.hpp>
 #include <Fern/Fonts/FontCatalog.hpp>
+#include <Panda/Assets/FontAsset.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Events/WindowEvents.hpp>
 #include <Fern/Events/Key.hpp>
@@ -1192,6 +1193,13 @@ void EditorLayer::installDevPlugin() {
     std::optional<path_t> folder = SystemTools::openFolderDialog();
     if (!folder.has_value()) { return; }
     m_pluginStore.installDev(*folder);
+}
+
+PandaUI::FontFamily EditorLayer::fontFamilyForAsset(uint32_t assetId) {
+    AssetRef<FontAsset> ref{AssetId(assetId)};
+    const FontAsset *font = ref.get();
+    if (!font || font->isEmpty()) { return PandaUI::FontFamily::Sans; }
+    return m_editorUI.fontFamilyForAsset(assetId, font->data());
 }
 
 void EditorLayer::menuBarOpenPlugins() {

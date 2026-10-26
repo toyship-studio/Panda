@@ -175,6 +175,7 @@ public:
     void clearAssetUndoStack(Panda::AssetId id) override;
     void selectAsset(Panda::AssetId id) override;
     PandaUI::TextureHandle assetThumbnail(Panda::AssetId id) override;
+    PandaUI::FontFamily assetFont(Panda::AssetId id) override;
     void pickAsset(
         PandaUI::Context *context, PandaUI::Point at, const std::string &kind, std::function<void(uint32_t)> onPick
     ) override;

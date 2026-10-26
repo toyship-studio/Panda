@@ -19,13 +19,14 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `Components/` — access to engine components from scripts (transform, camera, directional
   light, mesh, sprite renderer; rigid bodies and the wheel joint — motor, steering, suspension —
   come with the Physics module).
-- `Assets/` — working with assets by id.
+- `Assets/` — working with assets by id (textures, materials, meshes, the bytes of a font).
 - `Physics3DAPI.hpp` — queries against the 3D physics world: ray cast (entity, point, normal,
   distance and friction of the hit surface); provided by the Physics module.
 - `CharacterMoverAPI.hpp` — character movement on top of physics; provided by the Physics
   module. Without the module the physics calls do nothing and return zeros.
 - `TerrainAPI.hpp` — terrain queries (height etc.); provided by the Terrain module.
-- `UI/` — PandaUI from scripts.
+- `UI/` — PandaUI from scripts; `UI/FontAPI.hpp` — a font of the project (a `FontHandle`
+  field) in that UI.
 - `Async.hpp` — background jobs (the work/complete model).
 - `Math.hpp`, `Logger.hpp` (`LOG_INFO/...`), `Allocator.hpp`, `Base.hpp`.
 - `ApplicationAPI.hpp` — the application (time, quit, etc.).

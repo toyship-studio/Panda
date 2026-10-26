@@ -7,6 +7,7 @@ namespace Bamboo::UI {
 namespace {
 
     constexpr float DEFAULT_FONT_PIXEL_SIZE = 18.f;
+    constexpr float SCRIPT_FONT_PIXEL_SIZE = 40.f; // the fonts of the script serve titles too: rasterized larger, scaled down
 
 } // namespace
 
@@ -24,6 +25,9 @@ WindowRegistry::WindowState &WindowRegistry::ensureWindow(PandaUI::WindowHandle 
 
     auto state = std::make_unique<WindowState>(handle, ownsNativeWindow);
     state->context.setFontAtlas(getDefaultFont(DEFAULT_FONT_PIXEL_SIZE)); // Sans Regular (base)
+    for (const auto &[family, atlas] : m_scriptFonts) { // the fonts the script registered before this window
+        state->context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, static_cast<PandaUI::FontFamily>(family));
+    }
     syncViewport(*state);
 
     WindowState &result = *state;
@@ -90,6 +94,26 @@ void WindowRegistry::reset() {
         if (owns) { m_platform.destroyWindow(handle); }
     }
     m_defaultFonts.clear();
+    m_scriptFonts.clear();
+}
+
+bool WindowRegistry::registerFont(PandaUI::FontFamily family, std::vector<unsigned char> data) {
+    if (data.empty()) { return false; }
+    std::shared_ptr<PandaUI::FontAtlas> atlas = PandaUI::FontAtlas::createFromMemory(
+        data.data(), static_cast<uint32_t>(data.size()), SCRIPT_FONT_PIXEL_SIZE, fontAtlasTextureThunk, &m_platform
+    );
+    if (!atlas) { return false; }
+    atlas->setFallback(getDefaultFont(DEFAULT_FONT_PIXEL_SIZE));
+    m_scriptFonts[static_cast<uint32_t>(family)] = atlas;
+    for (auto &entry : m_windows) {
+        entry.second->context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, family);
+    }
+    if (!m_windows.empty()) { m_windows.begin()->second->context.fontsChanged(); } // texts already built re-measure
+    return true;
+}
+
+bool WindowRegistry::hasFont(PandaUI::FontFamily family) const {
+    return m_scriptFonts.contains(static_cast<uint32_t>(family));
 }
 
 std::vector<PandaUI::WindowHandle> WindowRegistry::snapshotHandles() const {

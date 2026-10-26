@@ -125,6 +125,7 @@ private:
     std::string currentThemeId() override;
     void selectTheme(const std::string &id) override; // the Plugins tab: store, apply, save
     void installDevPlugin() override;
+    PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId) override;
     // Editor parts of the project modules (context/plugins.md, stage 2): registered once both an
     // open project and the coordinator (the parts host) exist; new icon folders go into the
     // library, panels with contribution sections are rebuilt.
