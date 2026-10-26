@@ -8,6 +8,7 @@
 #include "Bamboo/Script.hpp"
 #include "Bamboo/Internal/MainThread.hpp"
 #include "Bamboo/Async.hpp"
+#include "Bamboo/Net.hpp"
 
 #include "Bamboo/UI/UIRuntime.hpp"
 
@@ -176,6 +177,24 @@ namespace InternalCalls {
 
 namespace {
 
+    // The network runtime of the bundle rides on the hooks of Bamboo::Async (context/networking.md,
+    // section 7): the sockets report before the completions of the same frame (HTTP answers,
+    // resolve), Stop closes everything, and the HTTP client goes before the scheduler it posts to.
+    void asyncUpdate(uint32_t maxCompletions, double maxMilliseconds) {
+        Bamboo::Net::Internal::update();
+        Bamboo::Async::Internal::update(maxCompletions, maxMilliseconds);
+    }
+
+    void asyncCancelAll() {
+        Bamboo::Net::Internal::cancelAll();
+        Bamboo::Async::Internal::cancelAllJobs();
+    }
+
+    void asyncWaitAll() {
+        Bamboo::Net::Internal::shutdown();
+        Bamboo::Async::Internal::waitAllJobs();
+    }
+
     ScriptPluginApi s_pluginApi = {
         .abiVersion = Scripting::SCRIPT_ABI_VERSION,
         .clear = InternalCalls::clear,
@@ -193,9 +212,9 @@ namespace {
         .ui_Update = Bamboo::UIRuntime::Internal::update,
         .ui_HandleEvent = Bamboo::UIRuntime::Internal::handleEvent,
         .ui_WindowClosed = Bamboo::UIRuntime::Internal::windowClosed,
-        .async_Update = Bamboo::Async::Internal::update,
-        .async_CancelAll = Bamboo::Async::Internal::cancelAllJobs,
-        .async_WaitAll = Bamboo::Async::Internal::waitAllJobs,
+        .async_Update = asyncUpdate,
+        .async_CancelAll = asyncCancelAll,
+        .async_WaitAll = asyncWaitAll,
         .invokeFixedUpdateAtScript = InternalCalls::invokeFixedUpdateAtScript,
     };
 

@@ -105,7 +105,7 @@ target_link_libraries(Fern PandaAsync)
 # The network stack of the system (context/networking.md, decision 1). Apple: NSURLSession of the
 # Foundation framework, already linked through Cocoa / Foundation above.
 if (PLATFORM_WIN32)
-    target_link_libraries(Fern winhttp)
+    target_link_libraries(Fern winhttp ws2_32) # ws2_32: the sockets (Fern/Net/Socket.hpp)
 elseif (PLATFORM_LINUX)
     find_package(CURL REQUIRED)
     target_link_libraries(Fern CURL::libcurl)

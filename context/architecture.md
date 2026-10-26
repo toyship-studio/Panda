@@ -432,6 +432,10 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   into the instance. Nothing is read back: a value the script changes itself is not shown.
 - PandaUI is used in the SDK directly (it is not duplicated in Bamboo). Only events, draw data
   and handles cross the ABI, not the object model.
+- `Bamboo::Net` (`PandaSDK/include/Bamboo/Net.hpp`): HTTP, TCP and UDP for scripts, a thin layer
+  over `Fern::Net` inside the bundle that uses the Fern types as they are; nothing of it crosses
+  the ABI — the runtime rides on the three hooks of Bamboo::Async (`context/networking.md`,
+  section 7).
 - Fonts of the project in the UI of a script: a font file is an asset (`FontAsset`, the file-based
   kind `font`, `AssetType::FONT` = 11: the editor and the runtime read the `.ttf` as it is, the
   export copies it into `Fonts/`); a script publishes a `FontHandle` field
@@ -507,6 +511,9 @@ The engine calls them through `InnerScriptHook` (`updateScriptAsync` /
 - `ScriptSystem::shutdown` (called by `World::finishRunning`) cancels and waits BEFORE `clear()`:
   workers and deferred completions hold references to script instances.
 - `ScriptEngine::terminate` cancels and waits BEFORE `clear()` and before the library is unloaded.
+- The three hooks are composed in `OuterScriptHook` (`asyncUpdate`, `asyncCancelAll`,
+  `asyncWaitAll`): `Bamboo::Net` goes first in each — its sockets report before the completions
+  of the frame, Stop closes them, and its HTTP client is destroyed before the scheduler it posts to.
 
 `async_WaitAll` destroys the scheduler of the bundle (it joins the workers and drops the
 completion queue). After it returns no code of the bundle is running anywhere; the scheduler is

@@ -34,6 +34,10 @@ const char *errorName(Error error) {
         case Error::TooLarge: return "too large";
         case Error::IntegrityFailed: return "integrity failed";
         case Error::FileError: return "file error";
+        case Error::InvalidAddress: return "invalid address";
+        case Error::AddressInUse: return "address in use";
+        case Error::ConnectionRefused: return "connection refused";
+        case Error::Unavailable: return "unavailable";
         case Error::Protocol: return "protocol error";
     }
     return "unknown";

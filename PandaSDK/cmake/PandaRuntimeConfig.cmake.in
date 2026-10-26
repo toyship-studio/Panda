@@ -112,7 +112,7 @@ if(WIN32)
     # d3d11+dxgi — the Fern context, d3dcompiler+dxguid — the Miren D3D11 renderer, winhttp — the
     # network layer of Fern. Always linked: system libs, no harm to a GL build.
     set_property(TARGET PandaSDK::PandaRuntime APPEND PROPERTY
-        INTERFACE_LINK_LIBRARIES opengl32 gdi32 user32 shell32 d3d11 dxgi d3dcompiler dxguid winhttp
+        INTERFACE_LINK_LIBRARIES opengl32 gdi32 user32 shell32 d3d11 dxgi d3dcompiler dxguid winhttp ws2_32
     )
     if(_PANDA_SDK_SHADER_BACKEND STREQUAL "d3d11")
         # The libs are built with this define (Foundation::ACTIVE_GRAPHICS_API = D3D11) —

@@ -28,6 +28,8 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `UI/` — PandaUI from scripts; `UI/FontAPI.hpp` — a font of the project (a `FontHandle`
   field) in that UI.
 - `Async.hpp` — background jobs (the work/complete model).
+- `Net.hpp` — networking: HTTP requests, TCP connections and servers, UDP datagrams
+  (`docs/net.md`).
 - `Math.hpp`, `Logger.hpp` (`LOG_INFO/...`), `Allocator.hpp`, `Base.hpp`.
 - `ApplicationAPI.hpp` — the application (time, quit, etc.).
 
@@ -36,6 +38,7 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `docs/world-format.md` — the `.world` format (edited as text).
 - `docs/assets.md` — the asset registry, `.mat`, import.
 - `docs/scripting.md` — scripts, fields, the manifest, building.
+- `docs/net.md` — networking from scripts: HTTP, TCP, UDP.
 - `docs/modules/` — writing an engine module: the layout and the build, the registries page by
   page, the editor and SDK parts, data compatibility, the tests, a checklist, the samples.
 

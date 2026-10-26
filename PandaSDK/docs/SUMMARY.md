@@ -3,6 +3,7 @@
 [PandaSDK overview](sdk-overview.md)
 
 - [Scripting](scripting.md)
+- [Networking from scripts](net.md)
 - [Assets and the project registry](assets.md)
 - [The `.world` format](world-format.md)
 - [Working with Zed and coding agents](zed-and-agents.md)

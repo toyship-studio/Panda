@@ -87,7 +87,7 @@ target_include_directories(PandaSDK PUBLIC
 foreach (_DIR ${PANDA_SDK_MODULE_INCLUDE_DIRS} ${PANDA_SDK_MODULE_ENGINE_INCLUDE_DIRS})
     target_include_directories(PandaSDK PUBLIC $<BUILD_INTERFACE:${_DIR}>)
 endforeach ()
-target_link_libraries(PandaSDK PUBLIC PandaUI PandaAsync)
+target_link_libraries(PandaSDK PUBLIC PandaUI PandaAsync Fern) # Fern: the network layer of Bamboo::Net
 
 # ---- Configure CMake package configs ----
 configure_file(

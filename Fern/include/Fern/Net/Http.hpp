@@ -14,6 +14,7 @@
 // `<path>.part`, is hashed while it arrives, and takes its name only after the size and the
 // SHA-256 the caller expects have matched; `resume` continues a `.part` with Range / If-Range.
 
+#include <Fern/Net/Error.hpp>
 #include <Foundation/Hash/Sha256.hpp>
 #include <PandaAsync/PandaAsync.hpp>
 
@@ -31,21 +32,7 @@ namespace Fern::Net {
 enum class Method : uint8_t { Get, Head, Post, Put, Patch, Delete };
 const char *methodName(Method method);
 
-enum class Error : uint8_t {
-    None,
-    InvalidUrl,       // the address cannot be parsed
-    InsecureUrl,      // http:// without allowInsecure, or a redirect from HTTPS to HTTP
-    Offline,          // the system reports no network
-    HostNotFound,
-    ConnectionFailed, // refused, reset, unreachable, or the connection broke
-    TlsFailed,        // the handshake failed or the certificate did not verify
-    Timeout,
-    TooLarge,         // more than maxBodyBytes into memory
-    IntegrityFailed,  // the size or the SHA-256 is not the expected one
-    FileError,        // the target file cannot be written or renamed
-    Protocol,         // a malformed answer, too many redirects
-};
-const char *errorName(Error error);
+// Error and errorName: Fern/Net/Error.hpp (shared with the sockets).
 
 struct Header {
     std::string name;

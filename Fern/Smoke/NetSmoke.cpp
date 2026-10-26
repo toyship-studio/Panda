@@ -1,15 +1,19 @@
-// Smoke test of Fern::Net HTTP (context/networking.md, decision 11): a loopback HTTP server inside
-// the test, no internet. Checks a request into memory, the HTTP status, a POST body, a download into
-// a file with a broken connection and its resume with a SHA-256 check, an integrity failure,
-// cancellation, the refused insecure address and the client destructor with a request in flight.
-// Returns non-zero on failure.
+// Smoke test of Fern::Net (context/networking.md, decision 11): a loopback HTTP server inside the
+// test, no internet. Checks a request into memory, the HTTP status, a POST body, a download into a
+// file with a broken connection and its resume with a SHA-256 check, an integrity failure,
+// cancellation, the refused insecure address and the client destructor with a request in flight;
+// then the sockets: addresses, resolve, UDP and TCP over loopback. Returns non-zero on failure.
 
 #include <Fern/Net/Http.hpp>
+#include <Fern/Net/Socket.hpp>
 #include <Foundation/Hash/Sha256.hpp>
 #include <PandaAsync/PandaAsync.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <optional>
+#include <span>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -447,6 +451,156 @@ void testDestructorInFlight(TestServer &server, PandaAsync::Scheduler &scheduler
     check(!completed, "no completion after the client is gone");
 }
 
+std::span<const uint8_t> bytesOf(std::string_view text) {
+    return {reinterpret_cast<const uint8_t *>(text.data()), text.size()};
+}
+
+std::string textOf(const std::vector<uint8_t> &bytes) {
+    return std::string(bytes.begin(), bytes.end());
+}
+
+// Polls until the condition holds or the time is up.
+bool waitFor(const std::function<bool()> &done, std::chrono::milliseconds timeout = 5s) {
+    auto start = std::chrono::steady_clock::now();
+    while (!done()) {
+        if (std::chrono::steady_clock::now() - start > timeout) { return false; }
+        std::this_thread::sleep_for(1ms);
+    }
+    return true;
+}
+
+void testSockets(PandaAsync::Scheduler &scheduler) {
+    using namespace Fern::Net;
+    using State = TcpStream::State;
+
+    // Addresses
+    std::optional<Address> v4 = Address::parse("192.168.1.5:7777");
+    check(v4 && v4->family == Address::Family::IPv4 && v4->port == 7777 && v4->toString() == "192.168.1.5:7777",
+          "an IPv4 address with a port parses and prints");
+    std::optional<Address> bare4 = Address::parse("10.0.0.1");
+    check(bare4 && bare4->port == 0 && bare4->ipString() == "10.0.0.1", "an IPv4 address without a port parses");
+    std::optional<Address> v6 = Address::parse("[::1]:8080");
+    check(v6 && v6->family == Address::Family::IPv6 && v6->port == 8080 && v6->isLoopback() && v6->toString() == "[::1]:8080",
+          "an IPv6 address with a port parses and prints");
+    std::optional<Address> bare6 = Address::parse("fe80::1%4");
+    check(bare6 && bare6->family == Address::Family::IPv6 && bare6->port == 0 && bare6->scope == 4,
+          "a bare IPv6 address with a scope parses");
+    check(!Address::parse("example.com:80") && !Address::parse("1.2.3.4:99999") && !Address::parse("1.2.3.4:") &&
+              !Address::parse(""),
+          "names, bad ports and empty text are not addresses");
+    check(Address::loopback(1).isLoopback() && Address::any(0).isAny() && !Address::loopback(1).isAny(), "loopback and any");
+
+    // resolve: a numeric address and localhost (no internet)
+    {
+        bool done = false;
+        std::vector<Address> addresses;
+        Error error = Error::None;
+        resolve(scheduler, "127.0.0.1", 7777, [&](std::vector<Address> &&result, Error e) {
+            addresses = std::move(result);
+            error = e;
+            done = true;
+        });
+        check(pump(scheduler, [&] { return done; }), "resolve of a numeric address completed");
+        check(error == Error::None && addresses.size() == 1 && addresses[0].isLoopback() && addresses[0].port == 7777,
+              "a numeric address resolves to itself");
+        done = false;
+        addresses.clear();
+        resolve(scheduler, "localhost", 80, [&](std::vector<Address> &&result, Error e) {
+            addresses = std::move(result);
+            error = e;
+            done = true;
+        });
+        check(pump(scheduler, [&] { return done; }), "resolve of localhost completed");
+        check(error == Error::None && !addresses.empty() &&
+                  std::all_of(addresses.begin(), addresses.end(), [](const Address &a) { return a.isLoopback() && a.port == 80; }),
+              "localhost resolves to loopback addresses");
+    }
+
+    // UDP
+    {
+        Error error = Error::None;
+        UdpSocket a = UdpSocket::bind(Address::loopback(0), false, &error);
+        check(a.isOpen() && error == Error::None && a.localAddress().port != 0 && a.localAddress().isLoopback(),
+              "a UDP socket binds to a free port");
+        UdpSocket b = UdpSocket::bind(Address::loopback(0));
+        check(b.isOpen() && !b.receive(), "a UDP socket has nothing before a send");
+        check(a.sendTo(b.localAddress(), bytesOf("ping")), "a datagram is sent");
+        std::optional<Datagram> got;
+        waitFor([&] {
+            got = b.receive();
+            return got.has_value();
+        });
+        check(got && textOf(got->bytes) == "ping" && got->from == a.localAddress(), "the datagram arrives with the sender's address");
+        UdpSocket busy = UdpSocket::bind(a.localAddress(), false, &error);
+        check(!busy.isOpen() && error == Error::AddressInUse, "a taken port is AddressInUse");
+        UdpSocket broadcaster = UdpSocket::bind(Address::any(0), true, &error);
+        check(broadcaster.isOpen() && error == Error::None, "a broadcast socket binds");
+        UdpSocket moved = std::move(a);
+        check(moved.isOpen() && !a.isOpen(), "a UDP socket moves"); // NOLINT(bugprone-use-after-move): the point of the check
+        moved.close();
+        check(!moved.isOpen() && !moved.sendTo(b.localAddress(), bytesOf("x")), "a closed UDP socket sends nothing");
+    }
+
+    // TCP
+    {
+        Error error = Error::None;
+        TcpListener listener = TcpListener::bind(Address::loopback(0), &error);
+        check(listener.isOpen() && error == Error::None && listener.localAddress().port != 0, "a TCP listener binds");
+        check(!listener.accept(), "accept has nothing before a connect");
+        TcpStream client = TcpStream::connect(listener.localAddress(), &error);
+        check(error == Error::None && client.isOpen(), "a TCP connect starts");
+        std::optional<TcpStream> server;
+        waitFor([&] {
+            server = listener.accept();
+            return server.has_value();
+        });
+        check(server.has_value(), "the listener accepts the connection");
+        waitFor([&] { return client.state() == State::Connected; });
+        check(client.state() == State::Connected && client.remoteAddress() == listener.localAddress(),
+              "the client is connected to the listener");
+        check(server && server->state() == State::Connected && server->remoteAddress() == client.localAddress(),
+              "the accepted stream knows its peer");
+        check(client.send(bytesOf("hello server")), "a TCP send is accepted");
+        std::vector<uint8_t> got;
+        waitFor([&] {
+            std::vector<uint8_t> chunk = server->receive();
+            got.insert(got.end(), chunk.begin(), chunk.end());
+            return got.size() >= 12;
+        });
+        check(textOf(got) == "hello server", "the server receives the bytes");
+        // A megabyte in one send: it leaves in pieces as the system takes them and arrives in order.
+        const std::vector<uint8_t> big = payload();
+        check(server->send(big), "a large send is queued");
+        std::vector<uint8_t> received;
+        waitFor(
+            [&] {
+                server->update();
+                std::vector<uint8_t> chunk = client.receive();
+                received.insert(received.end(), chunk.begin(), chunk.end());
+                return received.size() >= big.size();
+            },
+            10s
+        );
+        check(received == big, "a megabyte arrives whole and in order");
+        check(server->pendingSendBytes() == 0, "the send queue drained");
+        server->close();
+        waitFor([&] {
+            client.receive();
+            return client.state() == State::Closed;
+        });
+        check(client.state() == State::Closed && client.error() == Error::None, "the peer's close ends the stream without an error");
+        check(!client.send(bytesOf("x")) && client.receive().empty(), "a closed stream sends and receives nothing");
+        // Nothing listens any more: the connect fails.
+        const Address closedPort = listener.localAddress();
+        listener.close();
+        TcpStream refused = TcpStream::connect(closedPort, &error);
+        waitFor([&] { return refused.state() == State::Closed; });
+        check(refused.state() == State::Closed &&
+                  (refused.error() == Error::ConnectionRefused || refused.error() == Error::ConnectionFailed),
+              "a connect to a closed port fails");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -462,6 +616,7 @@ int main() {
     }
     PandaAsync::Scheduler scheduler;
     scheduler.registerMainThread();
+    testSockets(scheduler);
     {
         Fern::Net::Client client(scheduler);
         testRequests(server, scheduler, client);

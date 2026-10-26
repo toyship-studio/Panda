@@ -1,8 +1,8 @@
 # Networking: the network layer of Fern
 
 The one network layer that the editor, the engine and games share: HTTP, WebSocket, UDP and TCP
-sockets, and the state of the network. HTTP exists (section 3, the contract); the rest is the
-plan. The editor auto-update is the first consumer (`infrastructure.md`, section 5), the plugin
+sockets, and the state of the network. HTTP (section 3), the sockets (5) and `Bamboo::Net` (7)
+exist — those sections are the contract; WebSocket and the state of the network are the plan. The editor auto-update is the first consumer (`infrastructure.md`, section 5), the plugin
 store the second (`infrastructure.md`, section 3, "What the engine needs first").
 
 ## 1. Scope
@@ -105,8 +105,10 @@ handle on a thread of the client). Foundation has `Hash/Sha256.hpp`, PandaAsync 
   `expectedSize`, `expectedSha256`, `maxBodyBytes` (16 MB), `Timeouts{connect 15 s, idle 30 s,
   total 0}`, `allowInsecure`. `Response`: `error`, `status`, `headers`, `body`, `finalUrl`,
   `ok()`, `header(name)`, `bodyText()`. `Progress{received, total}`. `Multipart` builds a form
-  body. `Error`: InvalidUrl, InsecureUrl, Offline, HostNotFound, ConnectionFailed, TlsFailed,
-  Timeout, TooLarge, IntegrityFailed, FileError, Protocol.
+  body. `Error` (`Fern/Net/Error.hpp`, one list for HTTP and the sockets): InvalidUrl,
+  InsecureUrl, Offline, HostNotFound, ConnectionFailed, TlsFailed, Timeout, TooLarge,
+  IntegrityFailed, FileError, Protocol, and for the sockets InvalidAddress, AddressInUse,
+  ConnectionRefused, Unavailable.
 - The client owns a launch thread: `send` only validates the address and queues; the thread opens
   the sink of a download (hashing an existing `.part` on a resume) and hands the request to the
   stack, so the main thread never waits for a file. The stack reports on its own threads to a
@@ -160,35 +162,41 @@ WebSocket openWebSocket(std::string url, WebSocketCallbacks callbacks,
   (Windows 8). libcurl has its WebSocket API since 7.86, while Ubuntu 22.04, the oldest Linux the
   editor supports, ships 7.81: open item.
 
-## 5. Sockets
+## 5. Sockets (implemented)
 
-```cpp
-struct Address {                          // IPv4 or IPv6 and a port
-    static std::optional<Address> parse(std::string_view text);
-    std::string toString() const;
-};
+`Fern/include/Fern/Net/Socket.hpp`, `Fern/src/Net/Socket.cpp`: one file over BSD sockets and
+Winsock 2 (the differences are a few lines, unlike the HTTP stacks).
 
-// getaddrinfo blocks, so resolving is a job of the scheduler.
-PandaAsync::JobHandle resolve(PandaAsync::Scheduler &scheduler, std::string host, uint16_t port,
-                              std::function<void(std::vector<Address> &&, Error)> complete);
-
-class UdpSocket {
-public:
-    static std::optional<UdpSocket> bind(const Address &local, bool broadcast = false);
-    bool sendTo(const Address &to, std::span<const uint8_t> bytes);
-    std::optional<Datagram> receive();    // never blocks; empty when nothing waits
-};
-
-class TcpListener;                        // bind, accept without blocking
-class TcpStream;                          // connect in the background, then send and receive
-```
-
-- Sockets are polled by their owner, without callbacks: a game drains them in its own tick, where
-  latency matters more than convenience. Only `resolve` and connecting a `TcpStream` work in the
-  background.
-- IPv4 and IPv6, dual stack where the system allows it. UDP broadcast for finding games in a local
-  network.
-- No TLS on raw sockets: HTTPS and WSS cover TLS, and a netcode module protects its own packets.
+- `Address{family, ip[16], port, scope}`: `parse` ("192.168.1.5:7777", "[::1]:7777", a bare
+  address with port 0, "fe80::1%4"; a host name is not an address), `toString`, `ipString`,
+  `any`, `loopback`, `broadcast`, `isAny`, `isLoopback`. `resolve(scheduler, host, port,
+  complete, group)` is a job of the scheduler (getaddrinfo blocks): the addresses of the name,
+  IPv4 first, each once, on the main thread; a numeric address comes back without a lookup; an
+  unknown name is `HostNotFound`.
+- Sockets never block and own no thread; the owner polls them in its tick. `UdpSocket::bind(local,
+  broadcast, &error)`, `sendTo` (one datagram of at most 65507 bytes; a full buffer drops it),
+  `receive` (the next datagram, or nothing), `localAddress` (the port after bind(0)).
+  `TcpStream::connect(remote, &error)` starts a non-blocking connect; `state()` polls it (`poll` on
+  POSIX, `select` with the exception set on Windows, then `SO_ERROR`), `send` queues and flushes
+  what the system takes, `receive` returns what has arrived (the peer's end of the stream makes it
+  `Closed` with `Error::None`), `update` flushes for an owner that only sends; `close` ends it.
+  `TcpListener::bind(local, &error, backlog)`, `accept` (a `Connected` stream, or nothing).
+- Rules: a stream's send queue over 4 MB closes it with `TooLarge` (a peer that does not read is
+  gone). `TCP_NODELAY` is on by default (small game messages leave at once; `setNoDelay(false)`
+  for bulk). An IPv6 socket is dual stack (`IPV6_V6ONLY` off); an IPv4 peer of it is reported as
+  IPv4 (the mapped address is unmapped), an IPv4 destination through it goes mapped, an IPv6
+  destination through an IPv4 socket is refused. `SO_NOSIGPIPE` / `MSG_NOSIGNAL`: a send to a
+  closed peer is an error, never a signal. `SO_REUSEADDR` on POSIX listeners (a server restarts
+  on its port during TIME_WAIT; on Windows the flag means something else and is not set).
+  Winsock is started lazily, once per process, by the first socket call.
+- Errors map from the system's: `AddressInUse`, `ConnectionRefused`, `Timeout`, `InvalidAddress`
+  (EADDRNOTAVAIL, EINVAL), `Unavailable` (no IPv6, out of descriptors, no permission),
+  `Offline` (ENETDOWN), everything else `ConnectionFailed`.
+- No TLS on raw sockets: HTTPS covers TLS, and a netcode module protects its own packets.
+- `FernNetSmoke` covers the sockets too, over loopback: address parsing, resolve of a numeric
+  address and of localhost, UDP send/receive with the sender's address and `AddressInUse`, a TCP
+  listener, connect and accept, a megabyte sent in one call and received whole in pieces, the
+  peer's close as `Closed` without an error, a connect to a closed port.
 
 ## 6. The state of the network
 
@@ -217,21 +225,41 @@ expensive connection without asking.
   feed and the telemetry (`infrastructure.md`, section 6).
 - **The engine core.** Nothing. `Panda` and `PandaRuntime` create no client; the editor's client
   runs on the engine scheduler, which `Application::tick` pumps.
-- **Games.** `Bamboo::Net` (`PandaSDK/include/Bamboo/Net.hpp`): a thin layer over `Fern::Net`
-  inside the script bundle, in the manner of `Bamboo::Async`. The client of the bundle is created
-  lazily with the scheduler of the bundle; the engine drives it through the hooks of
-  `Bamboo::Async`: the completions of requests are drained with those of jobs (the same budget),
-  `async_CancelAll` also aborts the requests and closes the WebSockets and sockets of the bundle,
-  and `async_WaitAll` destroys the client before the scheduler. The API: `get`, `send`,
-  `download`, WebSocket and sockets as those parts arrive; a `Bamboo::Async::Group` held by a
-  script also cancels the requests sent with its id. It is always in the SDK, like
-  `Bamboo::Async`; a game that never calls it pays nothing but the libcurl link on Linux. Its page
-  in `PandaSDK/docs/` comes with the first phase that exposes it.
+- **Games.** `Bamboo::Net` (`PandaSDK/include/Bamboo/Net.hpp`, `PandaSDK/src/Bamboo/Net.cpp`;
+  the page `PandaSDK/docs/net.md`): a thin layer over `Fern::Net` inside the script bundle, in the
+  manner of `Bamboo::Async`, which uses the Fern types as they are (`Request`, `Response`,
+  `Address`, `Datagram`, `Error`). Three doors, named after what the user needs: `Http` (`get`,
+  `post`, `send`, `download`, `cancelAll`, `setUserAgent`), `TcpConnection::connect` and
+  `TcpServer::listen`, `UdpSocket::open`; plus `resolve` for UDP.
+  - Everything is main-thread-only (`requireMainThreadApi`) and never blocks; every callback runs
+    once per frame, before the `update()` of the scripts. The runtime rides on the hooks of
+    `Bamboo::Async`: `OuterScriptHook` composes `async_Update` (`Net::Internal::update` pumps the
+    sockets, then the completions — HTTP answers and resolve — of the same frame),
+    `async_CancelAll` (requests aborted, every socket closed, no callbacks) and `async_WaitAll`
+    (`Net::Internal::shutdown` destroys the HTTP client before the scheduler it posts to).
+  - The HTTP client of the bundle is created with the first request on the scheduler of
+    `Bamboo::Async`. Handles are shared (`shared_ptr` inside): a connection, a server or a socket
+    lives while a handle exists and the last handle gone closes it, so a socket kept as a script
+    field dies with the script; the runtime holds only weak references and drives the live ones
+    over a snapshot, so a callback may open or close objects.
+  - `TcpConnection::connect(host, port, callbacks)`: a numeric address connects at once, a name
+    goes through `resolve`; every address is tried in order, 15 s each; bytes sent before
+    `connected` are queued and go with the connection that opens (kept for a retry on the next
+    address). Nothing is reported from inside the call that caused it: `connected`, `received`
+    (whatever arrived since the last frame) and `closed` (once; `None` when the peer ended it, not
+    after the script's own `close()`) all come from the pump. `TcpServer::listen(port)` binds
+    `[::]:port` dual stack and falls back to `0.0.0.0` when IPv6 is unavailable; its clients are
+    `TcpConnection` handles passed to `connected`, `received(client, bytes)`, `disconnected(client,
+    error)`; the server pumps its clients itself. `UdpSocket::open(port, received, broadcast)` binds
+    IPv4 any (or one address through the overload); `received` once per datagram, at most 512 per
+    frame; `broadcast(port, bytes)` to 255.255.255.255.
+  - A game that never calls it pays nothing but the libcurl link on Linux.
 
 ## 8. Build
 
 - macOS and iOS: the system frameworks Foundation (NSURLSession) and Network (`NWPathMonitor`).
-- Windows: `winhttp`, `ws2_32` and, for the network state, `ole32`.
+- Windows: `winhttp` and `ws2_32` (linked by Fern and by the runtime config of the games) and,
+  for the network state, `ole32` later.
 - Linux: `find_package(CURL)` in Fern, `curl` in the link libraries of the SDK config. The CI and
   release jobs install `libcurl4-openssl-dev` (the mirror job of Fern will too); the editor archive
   and every Linux game need `libcurl4` at run time, written into the requirements of the README
@@ -240,10 +268,10 @@ expensive connection without asking.
 ## 9. Phases
 
 1. HTTP: done (section 3). Its first consumer is the editor updater.
-2. `Bamboo::Net` for HTTP and its page in `PandaSDK/docs/`.
-3. WebSocket.
-4. Sockets and `resolve`.
-5. The state of the network.
+2. Sockets and `resolve` (section 5) and `Bamboo::Net` for HTTP, TCP and UDP with its page
+   `PandaSDK/docs/net.md` (section 7): done.
+3. WebSocket (section 4), then its door in `Bamboo::Net`.
+4. The state of the network (section 6).
 
 A finished phase turns its part of this document into a compact contract; the plan of the rest
 stays.
