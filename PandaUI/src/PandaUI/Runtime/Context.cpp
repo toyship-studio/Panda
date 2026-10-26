@@ -89,17 +89,30 @@ Context::~Context() {
 }
 
 void Context::setFontAtlas(std::shared_ptr<FontAtlas> atlas, FontWeight weight, FontFamily family) {
-    m_fonts[static_cast<int>(family)][static_cast<int>(weight)] = std::move(atlas);
+    m_fonts[static_cast<uint32_t>(family)][static_cast<int>(weight)] = std::move(atlas);
 }
 
 std::shared_ptr<FontAtlas> Context::getFontAtlas(FontWeight weight, FontFamily family) {
-    const int f = static_cast<int>(family);
     const int w = static_cast<int>(weight);
-    if (m_fonts[f][w]) { return m_fonts[f][w]; }
-    // Fallback: the same family Regular, then the base Sans Regular.
     const int regular = static_cast<int>(FontWeight::Regular);
-    if (m_fonts[f][regular]) { return m_fonts[f][regular]; }
-    return m_fonts[static_cast<int>(FontFamily::Sans)][regular];
+    if (const auto it = m_fonts.find(static_cast<uint32_t>(family)); it != m_fonts.end()) {
+        if (it->second[w]) { return it->second[w]; }
+        if (it->second[regular]) { return it->second[regular]; } // the family without this weight
+    }
+    // The base family: the weight, then Regular.
+    if (const auto sans = m_fonts.find(static_cast<uint32_t>(FontFamily::Sans)); sans != m_fonts.end()) {
+        if (sans->second[w]) { return sans->second[w]; }
+        return sans->second[regular];
+    }
+    return nullptr;
+}
+
+void Context::setTextScale(float scale) {
+    m_textScale = scale > 0.f ? scale : 1.f;
+}
+
+void Context::fontsChanged() {
+    notifyAppearanceChanged(); // every context restyles: the texts re-measure with the new atlases
 }
 
 bool Context::update(double deltaTime) {

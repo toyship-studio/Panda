@@ -68,9 +68,13 @@ struct Theme {
 
 const Theme &theme();
 void setTheme(const Theme &theme);
-// Grows with every setTheme. A view remembers the generation it was styled under: one that was
-// out of the tree during a change (a hidden root, a replaced tab) restyles itself when attached.
+// Grows with every change of the appearance — setTheme, or the fonts of a context
+// (notifyAppearanceChanged). A view remembers the generation it was styled under: one that was out of
+// the tree during a change (a hidden root, a replaced tab) restyles itself when attached.
 uint64_t themeGeneration();
+// Something every view reads changed outside the theme (the font atlases): the generation grows and
+// every context restyles its tree, exactly as after setTheme.
+void notifyAppearanceChanged();
 
 // A color that follows the theme — the model of UIKit's dynamic colors. Either a literal, or a
 // field of the theme (`&Theme::border`) read anew every time the color is resolved, so a view that

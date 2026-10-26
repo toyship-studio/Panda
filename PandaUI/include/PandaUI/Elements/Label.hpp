@@ -76,6 +76,7 @@ private:
     const TextLayoutResult &getLayout(const FontAtlas &font, const TextLayoutOptions &options) const;
     void invalidateLayoutCache();
     void themeChanged() override;
+    float effectiveFontSize() const; // the point size times the text scale of the context
     static ThemeColor roleColor(TextRole role);
 
     std::string m_text;

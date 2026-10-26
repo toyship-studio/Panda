@@ -109,7 +109,14 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   `Radius::sm` (4) for buttons, inputs, rows, chips and section headers, `Radius::md` (6) for small
   plates, `Radius::lg` (8) for popovers, dialogs and cards, `Spacing::*` on a 4 px grid, and two
   shadows, `Shadow::popover` and `Shadow::modal`, applied with `applyElevation(view, Elevation)`;
-  everything else is flat. A view is passive: it sends intentions out through its own `Output`
+  everything else is flat. Fonts are two roles, `FontFamily::Sans` (the UI text) and `Mono`
+  (numbers, paths, code), plus any name through `fontFamily("…")`; the editor binds the roles from
+  the APPEARANCE settings (`EditorAppearanceSettings::uiFont`, `monoFont`, `uiFontSize`) — any
+  family installed on the machine (`Fern::Fonts`, the catalog of the system font folders), the
+  bundled Inter Display and JetBrains Mono by default; a glyph the chosen face lacks is drawn from
+  the bundled one (the fallback chain of `FontAtlas`), the size scales every text through
+  `Context::textScale`, and a change re-measures the tree like a theme change
+  (`Context::fontsChanged`). A view is passive: it sends intentions out through its own `Output`
   interface and receives data through setters (its input). It makes no decisions about the model.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes

@@ -10,6 +10,7 @@
 #include "PandaUI/Rendering/UICamera.hpp"
 #include "PandaUI/Core/View.hpp"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -125,11 +126,21 @@ public:
 
     UIRenderer &getRenderer();
     const DrawList &getDrawList() const;
-    // Single point for working with fonts: family × weight. The default is the base Sans Regular, which is
-    // also the fallback. A missing pair falls back: the requested one → the same family Regular →
-    // Sans Regular. Headings — Bold, small text — Medium, body — Regular; numbers/paths/IDs — Mono.
+    // Single point for working with fonts: family × weight. Sans Regular is the base and the last
+    // fallback. A missing pair falls back: the requested one → the same family Regular → Sans of the
+    // weight → Sans Regular. Headings — Bold, small text — Medium, body — Regular; numbers/paths/IDs —
+    // Mono. A family is a role or a name (fontFamily("Cinzel")); the host decides which face plays it.
     void setFontAtlas(std::shared_ptr<FontAtlas> atlas, FontWeight weight = FontWeight::Regular, FontFamily family = FontFamily::Sans);
     std::shared_ptr<FontAtlas> getFontAtlas(FontWeight weight = FontWeight::Regular, FontFamily family = FontFamily::Sans);
+    // The scale of every text size: the UI font size setting over the 16 the UI is designed at.
+    // Geometry is not scaled; controls with a minimum height grow with their text.
+    void setTextScale(float scale);
+    float textScale() const {
+        return m_textScale;
+    }
+    // The atlases or the scale were replaced: every text measures and draws itself anew — the whole
+    // tree of every context, like a theme change.
+    void fontsChanged();
 
     static Context &current();
     static bool hasCurrent() {
@@ -192,10 +203,10 @@ private:
     std::unique_ptr<UIRenderer> m_renderer;
     std::unique_ptr<ModalManager> m_modals;
     UICamera m_camera;
-    // Fonts by [family][weight]; the indices are the FontFamily/FontWeight values (declared from 0).
-    static constexpr int kFontFamilyCount = 2; // Sans, Mono
+    // Fonts by family id, each with its three weights (the FontWeight values index the array).
     static constexpr int kFontWeightCount = 3; // Regular, Medium, Bold
-    std::shared_ptr<FontAtlas> m_fonts[kFontFamilyCount][kFontWeightCount];
+    std::unordered_map<uint32_t, std::array<std::shared_ptr<FontAtlas>, kFontWeightCount>> m_fonts;
+    float m_textScale = 1.f;
     Size m_viewportSize;
     Size m_dpiScale;
     EdgeInsets m_safeAreaInsets;

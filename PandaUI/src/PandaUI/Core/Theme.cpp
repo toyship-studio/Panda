@@ -18,6 +18,10 @@ const Theme &theme() {
 
 void setTheme(const Theme &theme) {
     s_theme = theme;
+    notifyAppearanceChanged();
+}
+
+void notifyAppearanceChanged() {
     ++s_generation;
     if (s_handler) { s_handler(); }
 }

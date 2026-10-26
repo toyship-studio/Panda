@@ -73,7 +73,16 @@ ThemeColor Label::roleColor(TextRole role) {
 }
 
 void Label::themeChanged() {
-    setNeedsDisplay(); // the color resolves at draw; only the pixels are stale
+    // The color resolves at draw. The fonts may have changed with the appearance: the layout and
+    // the measured size are made anew.
+    invalidateLayoutCache();
+    invalidateIntrinsicContentSize();
+    setNeedsDisplay();
+}
+
+float Label::effectiveFontSize() const {
+    const Context *context = getContext();
+    return m_font.size * (context ? context->textScale() : 1.f);
 }
 
 void Label::setFont(Font font) {
@@ -138,7 +147,7 @@ Size Label::intrinsicContentSize(Size availableSize) const {
 
 TextLayoutOptions Label::makeLayoutOptions(float maxWidth) const {
     TextLayoutOptions options;
-    options.fontSize = m_font.size;
+    options.fontSize = effectiveFontSize();
     options.maxWidth = maxWidth;
     options.numberOfLines = m_numberOfLines;
     options.lineSpacing = m_lineSpacing;
@@ -228,7 +237,7 @@ void Label::draw(float offsetX, float offsetY) {
         const float lineY = yOffset + (layout.lineHeight + layout.lineSpacing) * static_cast<float>(lineIndex);
         context->getRenderer().drawText(
             *font, text, {offsetX + frame.origin.x + xOffset, offsetY + frame.origin.y + lineY}, m_textColor.resolve(),
-            m_font.size, m_letterSpacing, m_font.italic
+            effectiveFontSize(), m_letterSpacing, m_font.italic
         );
     }
 }

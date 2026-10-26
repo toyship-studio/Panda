@@ -126,10 +126,16 @@ struct EditorUpdateSettings final : public Rain::Codable {
 
 /// "appearance": the look of the editor.
 struct EditorAppearanceSettings final : public Rain::Codable {
-    std::string theme; // plugin theme id ("<plugin>/<file>"); empty or not found — the built-in dark one
+    std::string theme;      // plugin theme id ("<plugin>/<file>"); empty or not found — the built-in dark one
+    std::string uiFont;     // a family installed on this machine for the UI text; empty — Inter Display
+    std::string monoFont;   // the same for numbers, paths and code; empty — JetBrains Mono
+    float uiFontSize = 16.f; // the body size; the editor is designed at 16, every text scales with it
 
     RAIN_FIELDS_BEGIN(EditorAppearanceSettings)
     RAIN_FIELD(theme)
+    RAIN_FIELD(uiFont)
+    RAIN_FIELD(monoFont)
+    RAIN_FIELD(uiFontSize)
     RAIN_FIELDS_END
 };
 

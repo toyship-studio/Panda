@@ -8,6 +8,7 @@
 #include <PandaUI/Runtime/Context.hpp>
 
 #include <filesystem>
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -40,7 +41,18 @@ public:
     void update(double deltaTime);        // runs layout/animation + submits the draw-list to Miren (every frame)
     bool handleEvent(Fern::Event *event); // Fern → Context
 
-    void loadFonts();       // Inter Display + JetBrains Mono (Regular/Medium/Bold) into Context — like UITestLayer
+    // The fonts of the chrome. uiFamily / monoFamily: a family installed on this machine (Fern::Fonts)
+    // that plays the Sans / Mono role; empty — the bundled Inter Display / JetBrains Mono. uiSize: the
+    // body size; the UI is designed at 16 and every text scales by uiSize / 16. A glyph the chosen face
+    // lacks comes from the bundled one (the fallback chain of the atlases).
+    struct FontSettings {
+        std::string uiFamily;
+        std::string monoFamily;
+        float uiSize = 16.f;
+        bool operator==(const FontSettings &other) const = default;
+    };
+    void loadFonts(const FontSettings &settings); // blocks: the fonts are needed by the first frame
+    void applyFonts(const FontSettings &settings);     // a settings change: reloads what differs, the texts re-measure
     void loadEditorIcons(); // editor-icons + file-icons → the global Editor::IconLibrary (panel icons)
     // Folders of the packages' PNG icons (absolute paths; EditorExtensions::iconFolders) — into the same
     // library, on top of what is already loaded.
@@ -75,9 +87,21 @@ private:
     Miren::ViewId m_viewId = 0;
     bool m_initialized = false;
 
-    // The font atlases are kept alive as long as the Context is alive.
-    std::shared_ptr<PandaUI::FontAtlas> m_fontRegular, m_fontMedium, m_fontBold;
-    std::shared_ptr<PandaUI::FontAtlas> m_monoRegular, m_monoMedium, m_monoBold;
+    // The font atlases are kept alive as long as the Context is alive: the bundled faces of a role and,
+    // when a setting names an installed family, its faces (by weight: Regular, Medium, Bold).
+    struct FontRole {
+        std::array<std::shared_ptr<PandaUI::FontAtlas>, 3> bundled;
+        std::array<std::shared_ptr<PandaUI::FontAtlas>, 3> custom;
+        std::string family; // the installed family loaded into custom; empty — none
+    };
+    struct FontJob;
+    FontRole m_sansRole, m_monoRole;
+    FontSettings m_fontSettings;
+    bool m_bundledFontsLoaded = false;
+    void loadBundledFonts();
+    void loadCustomFamily(FontRole &role, const std::string &family);
+    void rasterizeFonts(std::vector<FontJob> &jobs); // on the scheduler; blocks until the atlases exist
+    void bindFonts();                                 // the roles into the Context, the text scale
 
     // All PNGs of the folders (absolute paths) → a library: decoding on the scheduler, textures on
     // the main thread; blocks until ready.

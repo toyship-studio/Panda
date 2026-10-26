@@ -5,7 +5,9 @@
 #include "Project/Settings/EditorSettings.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
 
+#include <Fern/Fonts/FontCatalog.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
+#include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/SettingsCommands.hpp>
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 
@@ -14,6 +16,7 @@
 #include <Panda/Renderer/SceneWind.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <memory>
 
@@ -220,17 +223,54 @@ namespace {
         }
     }
 
-    // The look of the editor: the plugin themes (the Plugins tab applies the same ones from the cards).
-    void buildAppearance(CollapsibleSection &section, Panda::TypeContext &) {
-        if (!s_themes.names) {
+    // The look of the editor: the plugin themes (the Plugins tab applies the same ones from the cards)
+    // and the fonts — any family installed on this machine (Fern::Fonts), the bundled ones by default,
+    // the size of the UI text relative to the 16 the editor is designed at.
+    void buildAppearance(CollapsibleSection &section, Panda::TypeContext &store) {
+        if (s_themes.names) {
+            const std::vector<std::string> names = s_themes.names();
+            const int current = s_themes.current ? s_themes.current() : -1;
+            addComboRow(section, "Theme", names, current, [](int index) {
+                if (s_themes.select) { s_themes.select(index); }
+            });
+        } else {
             section.addContent(makeFormHint("No themes are available."));
-            return;
         }
-        const std::vector<std::string> names = s_themes.names();
-        const int current = s_themes.current ? s_themes.current() : -1;
-        addComboRow(section, "Theme", names, current, [](int index) {
-            if (s_themes.select) { s_themes.select(index); }
+
+        const Panda::EditorAppearanceSettings appearance = store.get<Panda::EditorAppearanceSettings>();
+        const std::vector<std::string> installed = Fern::Fonts::families();
+        // A font row: the bundled face first, then every installed family; the choice is written into the
+        // appearance settings as the family name (empty — bundled), read anew at commit time so that a
+        // theme chosen meanwhile is kept.
+        auto fontRow = [&section, &installed](
+                           const char *title, const char *bundledName, const std::string &chosen,
+                           std::function<void(Panda::EditorAppearanceSettings &, const std::string &)> assign
+                       ) {
+            std::vector<std::string> items;
+            items.push_back(std::string(bundledName) + " (default)");
+            items.insert(items.end(), installed.begin(), installed.end());
+            int selected = 0;
+            for (size_t i = 0; i < installed.size(); ++i) {
+                if (installed[i] == chosen) { selected = static_cast<int>(i) + 1; }
+            }
+            addComboRow(section, title, items, selected, [installed, assign](int index) {
+                auto data = editorHost().settings(SettingsScope::Editor).get<Panda::EditorAppearanceSettings>();
+                assign(data, index <= 0 ? std::string() : installed[static_cast<size_t>(index) - 1]);
+                commitSettings<Panda::EditorAppearanceSettings>(SettingsScope::Editor, data);
+            });
+        };
+        fontRow("UI Font", "Inter Display", appearance.uiFont, [](Panda::EditorAppearanceSettings &data, const std::string &family) {
+            data.uiFont = family;
         });
+        fontRow("Mono Font", "JetBrains Mono", appearance.monoFont, [](Panda::EditorAppearanceSettings &data, const std::string &family) {
+            data.monoFont = family;
+        });
+        addNumberRow(section, "UI Font Size", 12.f, 20.f, appearance.uiFontSize, [](float value) {
+            auto data = editorHost().settings(SettingsScope::Editor).get<Panda::EditorAppearanceSettings>();
+            data.uiFontSize = std::round(value);
+            commitSettings<Panda::EditorAppearanceSettings>(SettingsScope::Editor, data);
+        });
+        section.addContent(makeFormHint("Any font installed on this computer. A character the font lacks is drawn with the bundled one."));
     }
 
     /* ------------------------------ Project scope ------------------------------ */

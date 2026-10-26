@@ -413,7 +413,7 @@ Size TextField::intrinsicContentSize(Size availableSize) const {
                                   : 0.f;
     const std::string_view measuredText = m_text.empty() ? std::string_view(m_placeholder) : std::string_view(m_text);
     Size textSize = layoutText(*font, measuredText, isMultiline() ? availableTextWidth : 0.f).size;
-    if (textSize.height <= 0.f) { textSize.height = font->getLineHeight() * (m_font.size / font->getPixelSize()); }
+    if (textSize.height <= 0.f) { textSize.height = font->getLineHeight() * (effectiveFontSize() / font->getPixelSize()); }
 
     return {
         textSize.width + m_contentInsets.left + m_contentInsets.right,
@@ -457,7 +457,7 @@ void TextField::draw(float offsetX, float offsetY) {
         const std::string_view lineText =
             line.displayText.empty() ? bodyText.substr(line.start, line.length) : std::string_view(line.displayText);
         const float lineY = textY + (bodyLayout.lineHeight + bodyLayout.lineSpacing) * static_cast<float>(lineIndex);
-        context->getRenderer().drawText(*font, lineText, {textX, lineY}, visibleColor, m_font.size);
+        context->getRenderer().drawText(*font, lineText, {textX, lineY}, visibleColor, effectiveFontSize());
     }
 
     if (!isFocused() || !isEnabled() || hasSelection() || !m_caretVisible) { return; }
@@ -482,7 +482,7 @@ void TextField::controlStateChanged(ControlState, ControlState) {
 
 TextLayoutOptions TextField::makeLayoutOptions(float maxWidth) const {
     TextLayoutOptions options;
-    options.fontSize = m_font.size;
+    options.fontSize = effectiveFontSize();
     options.maxWidth = maxWidth;
     options.numberOfLines = m_numberOfLines;
     options.lineSpacing = m_lineSpacing;
@@ -520,7 +520,14 @@ void TextField::applyThemeColors() {
 void TextField::themeChanged() {
     applyThemeColors();
     updateAppearance();
+    invalidateTextLayout(); // the fonts may have changed with the appearance
+    invalidateIntrinsicContentSize();
     setNeedsDisplay();
+}
+
+float TextField::effectiveFontSize() const {
+    const Context *context = getContext();
+    return m_font.size * (context ? context->textScale() : 1.f);
 }
 
 void TextField::updateAppearance() {
@@ -704,7 +711,7 @@ void TextField::moveCaretVertically(int direction, bool extendsSelection) {
     float x = 0.f;
     for (size_t index = nextLine.start; index < nextLineEnd;) {
         const size_t next = nextUtf8Boundary(m_text, index);
-        x += widthOfTextRange(*font, m_text, index, next, m_font.size);
+        x += widthOfTextRange(*font, m_text, index, next, effectiveFontSize());
         const float distance = std::abs(x - caretX);
         if (distance < bestDistance) {
             bestDistance = distance;
@@ -836,7 +843,7 @@ size_t TextField::closestTextIndexAt(Point localContentPosition) const {
     float x = 0.f;
     for (size_t index = line.start; index < lineEnd;) {
         const size_t next = nextUtf8Boundary(m_text, index);
-        x += widthOfTextRange(*font, m_text, index, next, m_font.size);
+        x += widthOfTextRange(*font, m_text, index, next, effectiveFontSize());
         const float distance = std::abs(x - localX);
         if (distance < bestDistance) {
             bestDistance = distance;
@@ -903,7 +910,7 @@ TextField::SelectionRange TextField::lineRangeAt(size_t textIndex) const {
 
 float TextField::caretXInLine(const FontAtlas &font, const TextLine &line, size_t caretIndex) const {
     caretIndex = std::clamp(caretIndex, line.start, line.start + line.length);
-    return widthOfTextRange(font, m_text, line.start, caretIndex, m_font.size);
+    return widthOfTextRange(font, m_text, line.start, caretIndex, effectiveFontSize());
 }
 
 float TextField::contentWidth(Size frameSize) const {

@@ -190,6 +190,7 @@ private:
     // read at startup, the theme from the settings is applied before the panels are built.
     PluginStore m_pluginStore; // installed plugins, the catalog of the portal, the operations (the Plugins tab)
     void loadPlugins();
+    EditorUI::FontSettings fontSettings();       // the fonts of the APPEARANCE settings for the UI host
     void applyTheme(const std::string &themeId); // empty/unknown — the built-in dark one
     void applyIconPlugins();                     // the icons of the installed plugins over the editor's
     // The APPEARANCE section of the editor settings chooses a theme by index.

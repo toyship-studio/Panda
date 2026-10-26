@@ -316,14 +316,14 @@ float OutputPanelView::measureRowHeight(int index, float width) {
     if (atlas == nullptr) { return ROW_HEIGHT; }
     if (m_timeColumnWidth <= 0.f) {
         TextLayoutOptions timeOptions;
-        timeOptions.fontSize = Typo::ValueSmall.size;
+        timeOptions.fontSize = Typo::ValueSmall.size * context->textScale();
         timeOptions.maxWidth = 10000.f;
         m_timeColumnWidth = TextLayout::measure(*atlas, "00:00:00", timeOptions).width;
     }
     const float textWidth = width - 10.f * 2.f - m_timeColumnWidth - 14.f - 8.f * 2.f;
     if (textWidth <= 20.f) { return ROW_HEIGHT; }
     TextLayoutOptions options;
-    options.fontSize = Typo::Value.size;
+    options.fontSize = Typo::Value.size * context->textScale();
     options.maxWidth = textWidth;
     options.numberOfLines = 0;
     options.overflowMode = TextOverflowMode::Clip;

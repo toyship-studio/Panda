@@ -24,6 +24,7 @@
 #include <Foundation/GraphicsAPI.hpp>
 #include <Panda/Base/Version.hpp>
 #include <Foundation/PlatformDetection.hpp>
+#include <Fern/Fonts/FontCatalog.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Events/WindowEvents.hpp>
 #include <Fern/Events/Key.hpp>
@@ -133,7 +134,11 @@ void EditorLayer::onAttach() {
     // coordinator is Editor::EditorController.
     installSystemColorSampler(); // ColorPicker eyedropper (macOS: NSColorSampler; otherwise no-op)
     m_editorUI.initialize(m_window, Views::GLOBAL_VIEW);
-    m_editorUI.loadFonts();
+    m_editorUI.loadFonts(fontSettings());
+    // The list of installed fonts for the APPEARANCE section is scanned once, off the main thread.
+    Application::get()->getScheduler().submit(
+        PandaAsync::JobDesc{"fonts.scan", PandaAsync::Priority::Background}, [](PandaAsync::Context &) { Fern::Fonts::families(); }
+    );
     m_editorUI.loadEditorIcons();
     loadPlugins();
     // Before the controller: panels read the theme while being built.
@@ -520,6 +525,7 @@ void EditorLayer::editorSettingsChanged() {
     m_cameraController.setMoveSpeed(m_viewportSettings.cameraSpeed);
     m_updater.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_pluginStore.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_editorUI.applyFonts(fontSettings()); // a changed font or size: the atlases reload and the texts re-measure
     m_loader.saveEditorSettings();
 }
 
@@ -1123,6 +1129,15 @@ void EditorLayer::applyIconPlugins() {
         files.insert(files.end(), plugin.icons.begin(), plugin.icons.end());
     }
     m_editorUI.applyIconOverrides(files);
+}
+
+EditorUI::FontSettings EditorLayer::fontSettings() {
+    const EditorAppearanceSettings &appearance = m_loader.editorSettings().get<EditorAppearanceSettings>();
+    EditorUI::FontSettings settings;
+    settings.uiFamily = appearance.uiFont;
+    settings.monoFamily = appearance.monoFont;
+    settings.uiSize = appearance.uiFontSize;
+    return settings;
 }
 
 void EditorLayer::applyTheme(const std::string &themeId) {

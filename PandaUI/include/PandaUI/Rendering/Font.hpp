@@ -52,17 +52,37 @@ public:
         bool valid = false;
     };
 
+    // faceIndex: the face inside a collection (.ttc); 0 for a plain .ttf / .otf.
     static std::shared_ptr<FontAtlas> createFromMemory(
-        const void *data, uint32_t size, float pixelSize, CreateAtlasTextureFn createTexture, void *userData
+        const void *data, uint32_t size, float pixelSize, CreateAtlasTextureFn createTexture, void *userData,
+        int faceIndex = 0
     );
 
     // Two-phase build for parallel loading: rasterizeFromMemory — pure CPU (thread-safe, no GPU),
     // createFromCpuAtlas — texture upload on the main thread. createFromMemory = the two glued together.
-    static CpuAtlas rasterizeFromMemory(const void *data, uint32_t size, float pixelSize);
+    static CpuAtlas rasterizeFromMemory(const void *data, uint32_t size, float pixelSize, int faceIndex = 0);
     static std::shared_ptr<FontAtlas>
     createFromCpuAtlas(CpuAtlas &&cpu, CreateAtlasTextureFn createTexture, void *userData);
 
+    // The glyph of this face alone; a missing character is the face's '?'.
     const Glyph *findGlyph(uint32_t codepoint) const;
+    // A glyph and the atlas that holds it: this face, or the fallback chain when the face lacks the
+    // character (a decorative font without Cyrillic, a system font without ✓ or …). The renderer
+    // binds that atlas and scales the glyph by ITS pixel size.
+    struct GlyphRef {
+        const Glyph *glyph = nullptr;
+        const FontAtlas *atlas = nullptr;
+    };
+    GlyphRef resolveGlyph(uint32_t codepoint) const;
+    // The advance of a codepoint at fontSize, through the fallback chain.
+    float advance(uint32_t codepoint, float fontSize) const;
+    // The face whose glyphs stand in for the missing ones (the bundled UI font); it may have its own.
+    void setFallback(std::shared_ptr<FontAtlas> fallback) {
+        m_fallback = std::move(fallback);
+    }
+    const std::shared_ptr<FontAtlas> &fallback() const {
+        return m_fallback;
+    }
     Size measureText(std::string_view text, float fontSize = 0.f) const;
 
     TextureHandle getTexture() const {
@@ -94,6 +114,7 @@ private:
     float m_descent = 0.f;
     float m_lineHeight = 0.f;
     uint32_t m_fallbackCodepoint = '?';
+    std::shared_ptr<FontAtlas> m_fallback;
 };
 
 // Lightweight font value DESCRIPTOR (like UIFont): family + weight + point size. This is what a widget

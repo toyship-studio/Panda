@@ -61,13 +61,14 @@ namespace {
         return codepoint == ' ' || codepoint == '\t';
     }
 
-    float advanceForCodepoint(const FontAtlas &font, uint32_t codepoint, float scale) {
+    // A glyph the face lacks comes from its fallback chain, scaled by that atlas: the advance asks the
+    // atlas itself.
+    float advanceForCodepoint(const FontAtlas &font, uint32_t codepoint, float fontSize) {
         if (isNewline(codepoint)) { return 0.f; }
-        const FontAtlas::Glyph *glyph = font.findGlyph(codepoint);
-        return glyph ? glyph->advanceX * scale : 0.f;
+        return font.advance(codepoint, fontSize);
     }
 
-    std::vector<TextRun> buildRuns(const FontAtlas &font, std::string_view text, float scale, float letterSpacing) {
+    std::vector<TextRun> buildRuns(const FontAtlas &font, std::string_view text, float fontSize, float letterSpacing) {
         std::vector<TextRun> runs;
         runs.reserve(text.size());
 
@@ -79,7 +80,7 @@ namespace {
             run.byteStart = byteStart;
             run.byteEnd = index;
             run.codepoint = codepoint;
-            run.advance = advanceForCodepoint(font, codepoint, scale);
+            run.advance = advanceForCodepoint(font, codepoint, fontSize);
             if (!isNewline(codepoint)) { run.advance += letterSpacing; } // tracking is part of the glyph width
             runs.push_back(run);
         }
@@ -95,11 +96,11 @@ namespace {
         return width;
     }
 
-    float widthOfText(const FontAtlas &font, std::string_view text, float scale, float letterSpacing) {
+    float widthOfText(const FontAtlas &font, std::string_view text, float fontSize, float letterSpacing) {
         float width = 0.f;
         for (size_t index = 0; index < text.size();) {
             const uint32_t codepoint = decodeUtf8(text, index);
-            width += advanceForCodepoint(font, codepoint, scale);
+            width += advanceForCodepoint(font, codepoint, fontSize);
             if (!isNewline(codepoint)) { width += letterSpacing; }
         }
         return width;
@@ -197,12 +198,12 @@ namespace {
         LineSlice slice,
         float maxWidth,
         float lineHeight,
-        float scale,
+        float fontSize,
         float letterSpacing
     ) {
         const size_t begin = slice.begin;
         size_t end = trimTrailingWhitespace(runs, begin, slice.end);
-        const float ellipsisWidth = widthOfText(font, ELLIPSIS, scale, letterSpacing);
+        const float ellipsisWidth = widthOfText(font, ELLIPSIS, fontSize, letterSpacing);
 
         if (std::isfinite(maxWidth)) {
             const float availableWidth = std::max(0.f, maxWidth);
@@ -217,7 +218,7 @@ namespace {
         line.length = end > begin ? runs[end - 1].byteEnd - line.start : 0;
         line.displayText = textForRuns(text, runs, begin, end);
         line.displayText += ELLIPSIS;
-        line.size = {widthOfText(font, line.displayText, scale, letterSpacing), lineHeight};
+        line.size = {widthOfText(font, line.displayText, fontSize, letterSpacing), lineHeight};
         return line;
     }
 
@@ -238,7 +239,7 @@ TextLayoutResult TextLayout::layout(const FontAtlas &font, std::string_view text
     const float lineHeight = font.getLineHeight() * scale;
     const float lineSpacing = std::max(0.f, options.lineSpacing);
     const float maxWidth = options.maxWidth > 0.f ? options.maxWidth : std::numeric_limits<float>::infinity();
-    const std::vector<TextRun> runs = buildRuns(font, text, scale, options.letterSpacing);
+    const std::vector<TextRun> runs = buildRuns(font, text, fontSize, options.letterSpacing);
     const std::vector<LineSlice> slices = buildLineSlices(runs, text, maxWidth);
 
     result.lineHeight = lineHeight;
@@ -255,7 +256,7 @@ TextLayoutResult TextLayout::layout(const FontAtlas &font, std::string_view text
                                      options.overflowMode == TextOverflowMode::TailEllipsis;
         addLine(
             result,
-            shouldEllipsize ? makeEllipsizedLine(font, text, runs, slices[index], maxWidth, lineHeight, scale, options.letterSpacing)
+            shouldEllipsize ? makeEllipsizedLine(font, text, runs, slices[index], maxWidth, lineHeight, fontSize, options.letterSpacing)
                             : makeLine(text, runs, slices[index], lineHeight, options.trimsTrailingWhitespace)
         );
     }

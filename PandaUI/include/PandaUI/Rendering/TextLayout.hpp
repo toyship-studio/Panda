@@ -3,6 +3,7 @@
 #include "PandaUI/Core/Base.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,13 +27,28 @@ enum class FontWeight {
     Bold,
 };
 
-// Font family. Sans — the main UI font (Inter Display); Mono — monospaced (JetBrains Mono) for
-// numbers, paths, identifiers, axes, FPS, hotkeys. The context holds one Font per
-// (family, weight) pair; a missing pair falls back: Mono without the weight → Mono Regular → Sans.
-enum class FontFamily {
-    Sans,
-    Mono,
+// The id of a font family: FNV-1a of its name.
+constexpr uint32_t fontFamilyId(std::string_view name) {
+    uint32_t hash = 2166136261u;
+    for (char c : name) {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+// Font family. The two ROLES the UI is designed with — Sans, the UI font, and Mono for numbers,
+// paths, identifiers, code — and any family registered under its own name: fontFamily("Cinzel").
+// Which real font plays a role is the host's decision (the editor: a setting; the bundled Inter
+// Display and JetBrains Mono by default). The context holds an atlas per (family, weight); a
+// missing pair falls back: the family's Regular → Sans of the same weight → Sans Regular.
+enum class FontFamily : uint32_t {
+    Sans = fontFamilyId("sans"),
+    Mono = fontFamilyId("mono"),
 };
+constexpr FontFamily fontFamily(std::string_view name) {
+    return static_cast<FontFamily>(fontFamilyId(name));
+}
 
 enum class TextVerticalAlignment {
     Top,

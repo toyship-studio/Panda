@@ -119,6 +119,7 @@ private:
     float textOriginX(const TextLayoutResult &layout, Size frameSize) const; // alignment offset (single-line)
     float clampedScrollOffsetX(const FontAtlas &font, const TextLayoutResult &layout, Size frameSize) const;
     std::shared_ptr<FontAtlas> resolveFont() const; // active font of the field (takes FontFamily into account)
+    float effectiveFontSize() const;                // the point size times the text scale of the context
 
     std::string m_text;
     std::string m_placeholder;

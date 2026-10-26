@@ -76,9 +76,9 @@ namespace {
 } // namespace
 
 std::shared_ptr<FontAtlas> FontAtlas::createFromMemory(
-    const void *data, uint32_t size, float pixelSize, CreateAtlasTextureFn createTexture, void *userData
+    const void *data, uint32_t size, float pixelSize, CreateAtlasTextureFn createTexture, void *userData, int faceIndex
 ) {
-    return createFromCpuAtlas(rasterizeFromMemory(data, size, pixelSize), createTexture, userData);
+    return createFromCpuAtlas(rasterizeFromMemory(data, size, pixelSize, faceIndex), createTexture, userData);
 }
 
 std::shared_ptr<FontAtlas>
@@ -101,12 +101,12 @@ FontAtlas::createFromCpuAtlas(CpuAtlas &&cpu, CreateAtlasTextureFn createTexture
     return font;
 }
 
-FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t size, float pixelSize) {
+FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t size, float pixelSize, int faceIndex) {
     CpuAtlas cpu;
     if (!data || size == 0) { return cpu; }
 
     const auto *ttfData = static_cast<const unsigned char *>(data);
-    const int fontOffset = stbtt_GetFontOffsetForIndex(ttfData, 0);
+    const int fontOffset = stbtt_GetFontOffsetForIndex(ttfData, faceIndex);
     stbtt_fontinfo fontInfo;
     if (fontOffset < 0 || !stbtt_InitFont(&fontInfo, ttfData, fontOffset)) { return cpu; }
 
@@ -142,7 +142,7 @@ FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t si
         if (!stbtt_PackBegin(&packContext, alphaPixels.data(), candidate, candidate, 0, 1, nullptr)) { continue; }
         stbtt_PackSetOversampling(&packContext, 1, 1);
         const int packed =
-            stbtt_PackFontRanges(&packContext, ttfData, 0, ranges.data(), static_cast<int>(ranges.size()));
+            stbtt_PackFontRanges(&packContext, ttfData, faceIndex, ranges.data(), static_cast<int>(ranges.size()));
         stbtt_PackEnd(&packContext);
         if (packed) {
             atlasDim = candidate;
@@ -196,6 +196,23 @@ const FontAtlas::Glyph *FontAtlas::findGlyph(uint32_t codepoint) const {
     return nullptr;
 }
 
+FontAtlas::GlyphRef FontAtlas::resolveGlyph(uint32_t codepoint) const {
+    const FontAtlas *atlas = this;
+    for (int depth = 0; atlas && depth < 8; ++depth) {
+        const auto it = atlas->m_glyphs.find(codepoint);
+        if (it != atlas->m_glyphs.end()) { return {&it->second, atlas}; }
+        atlas = atlas->m_fallback.get();
+    }
+    const Glyph *own = findGlyph(codepoint); // nobody has it: this face's '?'
+    return {own, own ? this : nullptr};
+}
+
+float FontAtlas::advance(uint32_t codepoint, float fontSize) const {
+    const GlyphRef ref = resolveGlyph(codepoint);
+    if (!ref.glyph || ref.atlas->m_pixelSize <= 0.f) { return 0.f; }
+    return ref.glyph->advanceX * (fontSize / ref.atlas->m_pixelSize);
+}
+
 Size FontAtlas::measureText(std::string_view text, float fontSize) const {
     if (fontSize <= 0.f) { fontSize = m_pixelSize; }
     const float scale = fontSize / m_pixelSize;
@@ -211,9 +228,7 @@ Size FontAtlas::measureText(std::string_view text, float fontSize) const {
             ++lines;
             continue;
         }
-
-        const Glyph *glyph = findGlyph(codepoint);
-        if (glyph) { lineWidth += glyph->advanceX * scale; }
+        lineWidth += advance(codepoint, fontSize);
     }
 
     maxWidth = std::max(maxWidth, lineWidth);

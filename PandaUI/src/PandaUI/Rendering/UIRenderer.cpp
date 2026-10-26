@@ -327,9 +327,10 @@ void UIRenderer::drawText(
     float baselineY = position.y + font.getAscent() * scale;
 
     // Glyphs are axis-aligned in screen coordinates: the corners are computed directly, without matrices.
-    // The texture and clip do not change within a single drawText, so the batch state is
-    // synchronized once, and every glyph is written into the already open batch.
+    // The clip does not change within a single drawText; the texture is the face's, and only a glyph
+    // taken from the fallback chain (a character the face lacks) switches to that atlas and back.
     syncCurrentBatchState(texture, DrawPrimitive::Textured);
+    TextureHandle boundTexture = texture;
     const glm::vec4 vertexColor = color;
 
     for (size_t i = 0; i < text.size();) {
@@ -340,14 +341,21 @@ void UIRenderer::drawText(
             continue;
         }
 
-        const FontAtlas::Glyph *glyph = font.findGlyph(codepoint);
-        if (!glyph) { continue; }
+        const FontAtlas::GlyphRef ref = font.resolveGlyph(codepoint);
+        if (!ref.glyph || !ref.atlas || ref.atlas->getPixelSize() <= 0.f) { continue; }
+        const FontAtlas::Glyph *glyph = ref.glyph;
+        const float glyphScale = fontSize / ref.atlas->getPixelSize();
+        const TextureHandle glyphTexture = ref.atlas->getTexture();
+        if (glyphTexture != boundTexture) {
+            syncCurrentBatchState(glyphTexture, DrawPrimitive::Textured);
+            boundTexture = glyphTexture;
+        }
 
-        const float x0 = penX + glyph->x0 * scale;
-        const float y0 = baselineY + glyph->y0 * scale;
-        const float x1 = penX + glyph->x1 * scale;
-        const float y1 = baselineY + glyph->y1 * scale;
-        penX += glyph->advanceX * scale + letterSpacing; // tracking between glyphs (uppercase headers)
+        const float x0 = penX + glyph->x0 * glyphScale;
+        const float y0 = baselineY + glyph->y0 * glyphScale;
+        const float x1 = penX + glyph->x1 * glyphScale;
+        const float y1 = baselineY + glyph->y1 * glyphScale;
+        penX += glyph->advanceX * glyphScale + letterSpacing; // tracking between glyphs (uppercase headers)
 
         if (x1 <= x0 || y1 <= y0) { continue; }
 
