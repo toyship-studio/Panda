@@ -222,7 +222,18 @@ Workflows in the engine repository:
     CMake is Kitware's portable build, pinned in the workflow: the cmake that configures the
     engine is the one bundled into the editor (`cmake/bundled_cmake.cmake`), and the dynamically
     linked cmake of the distribution would not run elsewhere. The same `PandaEditor/` layout as a
-    tar.gz. No signing.
+    tar.gz, plus `share/applications/dev.pandaengine.PandaEditor.desktop` and
+    `share/icons/hicolor/512x512/apps/dev.pandaengine.PandaEditor.png` from `PandaEditor/native/Linux`
+    (`package.py`). No signing. The install on Linux is the model of Zed: `curl -f
+    https://pandaengine.dev/install.sh | sh` (the script lives in the portal frontend, `public/install.sh`)
+    downloads the build of the channel through `/dl/<channel>/linux/<arch>?from=install`, unpacks it
+    into `~/.local/panda-editor`, links `~/.local/bin/panda-editor`, writes the desktop entry with the
+    absolute paths into `~/.local/share/applications` and the icon into the hicolor theme, and
+    reminds about PATH; `sh -s -- --uninstall` removes all of it and keeps the user data
+    (`~/.local/share/PandaEditor`). The windows carry the identity `PandaEditor` /
+    `dev.pandaengine.PandaEditor` (`Fern::setDesktopIdentity`: the X11 class and the Wayland app id),
+    so the launcher groups them under the icon. The updater keeps working: it swaps the install
+    folder in place, so the link and the entry stay valid.
   - Publish (`ubuntu-24.04`): `publish.py` takes the archives of the three jobs (artifacts) and
     does the storage work of the next sections: uploads, manifests, retention, the portal
     registration; the job summary lists the addresses. At least one storage must be configured,

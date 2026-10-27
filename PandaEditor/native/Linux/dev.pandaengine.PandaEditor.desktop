@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Panda Editor
+GenericName=Game Engine Editor
+Comment=The editor of the Panda game engine
+Exec=PandaEditor
+Icon=dev.pandaengine.PandaEditor
+Terminal=false
+Categories=Development;IDE;
+Keywords=game;engine;editor;panda;
+StartupNotify=true
+StartupWMClass=PandaEditor

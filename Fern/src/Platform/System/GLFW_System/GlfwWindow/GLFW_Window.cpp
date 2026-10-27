@@ -4,6 +4,8 @@
 
 #include "GraphicsContext/GLFW_GLContext.hpp"
 #include "GLFW_Window.hpp"
+
+#include <Fern/Fern.hpp>
 #include "Fern/Events/EventQueue.hpp"
 
 #include <Foundation/PlatformDetection.hpp>
@@ -427,6 +429,14 @@ GLFW_Window::GLFW_Window(
     m_title = title ? title : "";
     m_isModified = false;
     glfwDefaultWindowHints();
+    // The desktop identity of the application (Fern::setDesktopIdentity): the X11 WM_CLASS the
+    // StartupWMClass of a .desktop entry matches, and the Wayland app id the compositor maps to
+    // <app id>.desktop. Without it GLFW derives both from the title, which varies per window.
+    if (const char *windowClass = getDesktopWindowClass(); windowClass && *windowClass) {
+        glfwWindowHintString(GLFW_X11_CLASS_NAME, windowClass);
+        glfwWindowHintString(GLFW_X11_INSTANCE_NAME, windowClass);
+    }
+    if (const char *appId = getDesktopAppId(); appId && *appId) { glfwWindowHintString(GLFW_WAYLAND_APP_ID, appId); }
     // Window sizes are treated as logical units (like points on macOS). On platforms
     // where window coordinates are raw pixels (Windows, X11) let GLFW scale the
     // requested size by the monitor content scale; macOS ignores this hint.

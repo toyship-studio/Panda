@@ -14,6 +14,8 @@
 
 int main(int argc, const char **argv) {
     Fern::initialize();
+    // The desktop identity on Linux: the class of the .desktop entry the install script writes.
+    Fern::setDesktopIdentity("PandaEditor", "dev.pandaengine.PandaEditor");
     Fern::Rect rect = Fern::Rect(0, 0, 1400, 800);
     Fern::Window *window = Fern::createWindow("Panda Editor", rect, Fern::WindowState::WindowStateNormal);
     Miren::initialize(window->getDrawingContext());

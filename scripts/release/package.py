@@ -7,7 +7,9 @@
 macOS: a dmg of bin/PandaEditor.app with an Applications link (sign the bundle before, sign and
 notarize the dmg after: sign_macos.sh, notarize_macos.sh). Windows: a zip of the bin/ layout under
 PandaEditor/, with the SDK copied by cmake/sync_panda_sdk.cmake exactly as the macOS bundle embeds
-it (without the SDK's own tools/: the editor brings Tools/). Linux: the same layout as a tar.gz. The archive name carries the version, ENGINE_VERSION
+it (without the SDK's own tools/: the editor brings Tools/). Linux: the same layout as a tar.gz, plus
+share/applications and share/icons from PandaEditor/native/Linux (the install script of the portal
+puts them where the desktop looks). The archive name carries the version, ENGINE_VERSION
 of Panda/include/Panda/Base/Version.hpp, and on a rolling channel the build:
 PandaEditor-0.1.0-preview.142-macos-arm64.dmg.
 
@@ -131,6 +133,23 @@ def make_zip(staging: Path, archive: Path) -> None:
             zip_file.write(path, name + "/" if path.is_dir() else name)
 
 
+def stage_linux_desktop(staging: Path) -> None:
+    """The desktop entry and the icon in the XDG layout under the archive root: the install script
+    (pandaengine.dev/install.sh) copies them into ~/.local/share with the absolute paths filled in."""
+    native = ROOT / "PandaEditor" / "native" / "Linux"
+    app_id = "dev.pandaengine.PandaEditor"
+    desktop = native / f"{app_id}.desktop"
+    icon = native / "PandaEditor.png"
+    if not desktop.is_file() or not icon.is_file():
+        fail(f"the Linux desktop files are missing in {native}")
+    applications = staging / "share" / "applications"
+    icons = staging / "share" / "icons" / "hicolor" / "512x512" / "apps"
+    applications.mkdir(parents=True)
+    icons.mkdir(parents=True)
+    shutil.copy2(desktop, applications / desktop.name)
+    shutil.copy2(icon, icons / f"{app_id}.png")
+
+
 def make_tar_gz(staging: Path, archive: Path) -> None:
     # tarfile keeps the permissions, so the executable stays executable.
     with tarfile.open(archive, "w:gz", compresslevel=6) as tar:
@@ -195,6 +214,7 @@ def main() -> None:
             if args.platform == "windows":
                 make_zip(staging, archive)
             else:
+                stage_linux_desktop(staging)
                 make_tar_gz(staging, archive)
 
     entry = {

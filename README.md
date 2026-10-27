@@ -4,7 +4,8 @@ Panda is a cross-platform 2D and 3D game engine with its own editor, written in 
 developed by Toyship.
 
 **Status: early development.** There is no release yet. Preview builds of the editor for macOS,
-Windows and Linux come out often at [pandaengine.dev/download](https://pandaengine.dev/download).
+Windows and Linux come out often at [pandaengine.dev/download](https://pandaengine.dev/download). On
+Linux one line installs the editor with its launcher entry: `curl -f https://pandaengine.dev/install.sh | sh`.
 APIs and file formats change without backward compatibility.
 
 <img src="PandaEngine.png" alt="Panda editor" style="width:1000px;"/>

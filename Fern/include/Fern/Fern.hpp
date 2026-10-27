@@ -13,6 +13,13 @@ using FrameCallback = void (*)(double deltaTime, void *userData);
 
 void initialize();
 void terminate();
+/// How the desktop tells the application's windows apart from others, set before the first window:
+/// the X11 WM_CLASS (StartupWMClass of the .desktop entry) and the Wayland app id (the name of the
+/// .desktop file without the extension), so the launcher groups the windows under the right icon.
+/// Only Linux reads it; the other platforms take the identity from the bundle or the executable.
+void setDesktopIdentity(const char *windowClass, const char *appId);
+const char *getDesktopWindowClass(); // empty — not set
+const char *getDesktopAppId();       // empty — not set
 /// The window is created with a context of the build's active graphics API
 /// (Foundation::ACTIVE_GRAPHICS_API; selected by the PANDA_SHADER_BACKEND CMake option).
 /// Never explicitly delete the window, use disposeWindow() instead.
