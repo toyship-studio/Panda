@@ -123,9 +123,15 @@ public:
     };
     void setAddMenuItemsProvider(std::function<std::vector<AddMenuItem>()> provider);
 
-    // Saving/restoring the layout: panels+order, dock visibility, split weights, active tabs.
+    // Saving/restoring the layout: panels+order, dock visibility, split weights, active tabs, the
+    // focused dock.
     Panda::DockLayoutState captureLayout() const;
     void applyLayout(const Panda::DockLayoutState &state); // an invalid (empty) state is ignored
+    // The active tab of every dock from the state, again: the pinned editor tabs are restored after
+    // applyLayout and each one selects itself as it opens — the saved selection is put back on top.
+    void applySelection(const Panda::DockLayoutState &state);
+    // The keyboard focus into the active tab of the dock (the saved focused dock after a restore).
+    void focusDock(Dock dock);
 
     // Shows a panel WITHOUT a toggle (navigation/jumps from the UI): a closed one is reopened,
     // a hidden dock is revealed, the tab is selected; an already active one gets the focus.

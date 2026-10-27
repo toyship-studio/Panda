@@ -218,6 +218,14 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
     // Pinned editor tabs: restored after the layout (the world is already set —
     // EditorLayer calls setWorld before applyDockLayout; dead targets are skipped).
     if (m_editorTabs) { m_editorTabs->restorePinned(state.pinnedTabs); }
+    if (state.isValid()) {
+        // Every restored tab selected itself as it opened: the active tabs of the session go back on
+        // top, and the keyboard returns to the dock it was in (the active document of undo).
+        m_dockManager->applySelection(state);
+        if (state.focusedDock >= 0 && state.focusedDock <= 3) {
+            m_dockManager->focusDock(static_cast<Dock>(state.focusedDock));
+        }
+    }
     setWorldSettingsVisible(state.worldSettingsVisible);
 }
 

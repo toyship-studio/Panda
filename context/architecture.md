@@ -83,7 +83,10 @@ and background jobs (`PandaAsync`).
   outside version control. The editor's own files are in the user data directory
   (`SystemTools::userDataDirectory()`): `settings.json`, the editor scope (`viewport`,
   `appearance`, the sections of modules), written on every change, and `session.json` (recent
-  projects, the window, the dock layout). `ProjectLoader` owns the stores (`TypeContext`) of
+  projects, the window, the dock layout: the panels and their docks, the split weights, the active
+  tab of every dock including the center, the pinned editor tabs and the dock that had the keyboard
+  focus — restored after the pinned tabs are reopened, since each one selects itself as it opens).
+  `ProjectLoader` owns the stores (`TypeContext`) of
   both scopes and reads and writes them with `SettingsMapper`.
 - Several worlds (scenes) are part of the project model. The scene list is still ahead (see
   "Multiple worlds / scene management" in `context/roadmap.md`).

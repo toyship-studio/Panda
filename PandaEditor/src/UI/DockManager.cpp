@@ -426,6 +426,15 @@ Panda::DockLayoutState DockManager::captureLayout() const {
     state.selectedLeft = selectedPanelId(Dock::Left);
     state.selectedRight = selectedPanelId(Dock::Right);
     state.selectedBottom = selectedPanelId(Dock::Bottom);
+    state.selectedCenter = selectedPanelId(Dock::Center);
+    // The dock whose content has the keyboard focus: the active document of the session.
+    state.focusedDock = -1;
+    if (Context *context = m_root->getContext()) {
+        Dock focused = Dock::Center;
+        if (context->getFocusedView() && dockContaining(context->getFocusedView(), focused)) {
+            state.focusedDock = static_cast<int>(focused);
+        }
+    }
     return state;
 }
 
@@ -466,14 +475,25 @@ void DockManager::applyLayout(const Panda::DockLayoutState &state) {
     if (state.centerWeight > 0.f) { m_centerColumn->setPaneWeight(0, state.centerWeight); }
     if (state.bottomWeight > 0.f) { m_centerColumn->setPaneWeight(1, state.bottomWeight); }
 
-    const Dock docks[] = {Dock::Left, Dock::Right, Dock::Bottom};
-    const std::string *selectedIds[] = {&state.selectedLeft, &state.selectedRight, &state.selectedBottom};
-    for (int i = 0; i < 3; ++i) {
+    applySelection(state);
+}
+
+void DockManager::applySelection(const Panda::DockLayoutState &state) {
+    const Dock docks[] = {Dock::Left, Dock::Right, Dock::Bottom, Dock::Center};
+    const std::string *selectedIds[] = {
+        &state.selectedLeft, &state.selectedRight, &state.selectedBottom, &state.selectedCenter
+    };
+    for (int i = 0; i < 4; ++i) {
         if (selectedIds[i]->empty()) { continue; }
         const int idx = tabIndexOf(*selectedIds[i]);
         if (idx >= 0) { dockTabView(docks[i])->setSelectedIndex(idx); }
     }
     refreshStrip();
+}
+
+void DockManager::focusDock(Dock dock) {
+    if (!isVisible(dock)) { return; }
+    if (const auto tv = dockTabView(dock)) { tv->focusSelectedContent(); }
 }
 
 std::shared_ptr<View> DockManager::makeDockTrailing(Dock dock) {

@@ -74,6 +74,8 @@ struct DockLayoutState final : public Rain::Codable {
     std::string selectedLeft; // id of the active tab of each dock (empty = do not change)
     std::string selectedRight;
     std::string selectedBottom;
+    std::string selectedCenter;
+    int focusedDock = -1; // Editor::Dock whose active tab had the keyboard focus; -1 = unknown (leave the focus alone)
     bool worldSettingsVisible = false; // the world settings sidebar of the viewport
 
     bool isValid() const {
@@ -93,6 +95,8 @@ struct DockLayoutState final : public Rain::Codable {
     RAIN_FIELD(selectedLeft)
     RAIN_FIELD(selectedRight)
     RAIN_FIELD(selectedBottom)
+    RAIN_FIELD(selectedCenter)
+    RAIN_FIELD(focusedDock)
     RAIN_FIELD(pinnedTabs)
     RAIN_FIELD(worldSettingsVisible)
     RAIN_FIELDS_END
