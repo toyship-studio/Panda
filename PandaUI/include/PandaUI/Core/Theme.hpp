@@ -7,9 +7,12 @@
 
 namespace PandaUI {
 
-// Semantic color scheme of the UI. Controls and applications read colors from here instead of
-// hardcoding them. The theme can be changed at runtime (setTheme), e.g. from a menu/scheme
-// picker window or from an engine plugin; PandaUI notifies the contexts and re-reads the colors.
+// Semantic color scheme of the UI: the VALUES of the current theme. The way to use a color of the
+// theme is a token, `ThemeColor::accent` (below): it is stored by the views and resolves to the
+// value of the moment every time it draws, so a theme change needs no code. This struct is for
+// defining a theme (dark(), light(), a theme plugin) and for `setTheme`; `Theme::current()` is a
+// snapshot of the values for the rare whole-theme reads (a scheme editor, a color derived from
+// several). Do not store a value of it in a view — store the token.
 struct Theme {
     // Surfaces (backgrounds) — a layered background in the spirit of Zed: different tones for
     // chrome / panels / fields.
@@ -64,9 +67,10 @@ struct Theme {
 
     static Theme dark();
     static Theme light();
+    // The values of the moment. A view does not store these: it stores a ThemeColor token.
+    static const Theme &current();
 };
 
-const Theme &theme();
 void setTheme(const Theme &theme);
 // Grows with every change of the appearance — setTheme, or the fonts of a context
 // (notifyAppearanceChanged). A view remembers the generation it was styled under: one that was out of
@@ -76,12 +80,14 @@ uint64_t themeGeneration();
 // every context restyles its tree, exactly as after setTheme.
 void notifyAppearanceChanged();
 
-// A color that follows the theme — the model of UIKit's dynamic colors. Either a literal, or a
-// field of the theme (`&Theme::border`) read anew every time the color is resolved, so a view that
-// stores a ThemeColor draws with the theme of the moment and needs no code to react to a change.
-// The fields are also named tokens: `divider->setBackgroundColor(ThemeColor::border)`. A plain
-// `Color` converts implicitly and stays a snapshot, as before; `withAlpha` tints a token (a 12 %
-// warning backing). `themeChanged()` is left for state that is derived from the theme, not stored.
+// A color that follows the theme — the model of UIKit's dynamic colors, and THE way to name a
+// color of the theme: `divider->setBackgroundColor(ThemeColor::border)`. Either a literal, or a
+// field of the theme read anew every time the color is resolved, so a view that stores a ThemeColor
+// draws with the theme of the moment and needs no code to react to a change. Where a plain `Color`
+// is needed right now (a draw primitive, a computation) the token is resolved explicitly:
+// `ThemeColor::textDim.resolve()`. A plain `Color` converts implicitly and stays a snapshot;
+// `withAlpha` tints a token (a 12 % warning backing), `withShade` lightens or darkens it.
+// `themeChanged()` is left for state that is derived from the theme, not stored.
 struct ThemeColor {
     Color Theme::*token = nullptr;
     Color literal{0.f, 0.f, 0.f, 0.f};
@@ -105,7 +111,7 @@ struct ThemeColor {
         return copy;
     }
     Color resolve() const {
-        Color color = token ? theme().*token : literal;
+        Color color = token ? Theme::current().*token : literal;
         if (shade != 0.f) {
             const float target = shade > 0.f ? 1.f : 0.f;
             const float amount = shade > 0.f ? shade : -shade;

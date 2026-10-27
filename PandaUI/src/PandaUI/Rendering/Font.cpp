@@ -16,6 +16,17 @@ namespace {
     // The "General Punctuation" range (U+2010..U+2027): dashes – —, quotes ‘ ’ “ ”, ellipsis …, bullet •.
     constexpr uint32_t PUNCTUATION_FIRST = 0x2010;
     constexpr uint32_t PUNCTUATION_LAST = 0x2027;
+    // The UI symbols outside those ranges: the arrows and key glyphs of hints and hotkeys, a few
+    // shapes, the marks of active items (✓ in the theme cards). Inter and JetBrains Mono have them
+    // all; a face that lacks one falls back to the bundled font (the glyph is not stored for it).
+    constexpr std::array<int, 17> UI_SYMBOLS = {
+        0x2190, 0x2191, 0x2192, 0x2193, // ← ↑ → ↓
+        0x21E7, 0x2303, 0x2318, 0x2325, // ⇧ ⌃ ⌘ ⌥
+        0x232B, 0x23CE,                 // ⌫ ⏎
+        0x25A0, 0x25B6, 0x25CF,         // ■ ▶ ●
+        0x2605, 0x2606,                 // ★ ☆
+        0x2713, 0x2717,                 // ✓ ✗
+    };
 
     uint32_t decodeUtf8(std::string_view text, size_t &index) {
         const auto *bytes = reinterpret_cast<const unsigned char *>(text.data());
@@ -43,14 +54,21 @@ namespace {
         return '?';
     }
 
+    // The packed glyphs of a range into the map, by the codepoint of each index. A codepoint the face
+    // does not have (stb packs its .notdef box for it) is left out, so that resolveGlyph goes down the
+    // fallback chain instead of drawing a box.
+    template<typename CodepointOf>
     void appendGlyphs(
         std::unordered_map<uint32_t, FontAtlas::Glyph> &glyphs,
         const std::vector<stbtt_packedchar> &packedChars,
-        uint32_t firstCodepoint,
+        CodepointOf codepointOf,
+        const stbtt_fontinfo &fontInfo,
         int atlasWidth,
         int atlasHeight
     ) {
         for (size_t i = 0; i < packedChars.size(); ++i) {
+            const uint32_t codepoint = codepointOf(i);
+            if (stbtt_FindGlyphIndex(&fontInfo, static_cast<int>(codepoint)) == 0) { continue; }
             const stbtt_packedchar &packed = packedChars[i];
             stbtt_aligned_quad quad;
             float unusedX = 0.f;
@@ -69,7 +87,7 @@ namespace {
             glyph.u1 = quad.s1;
             glyph.v1 = quad.t1;
             glyph.advanceX = packed.xadvance;
-            glyphs[firstCodepoint + static_cast<uint32_t>(i)] = glyph;
+            glyphs[codepoint] = glyph;
         }
     }
 
@@ -116,8 +134,10 @@ FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t si
     std::vector<stbtt_packedchar> latinGlyphs(224);
     std::vector<stbtt_packedchar> cyrillicGlyphs(0x052F - 0x0400 + 1);
     std::vector<stbtt_packedchar> punctuationGlyphs(PUNCTUATION_LAST - PUNCTUATION_FIRST + 1);
+    std::vector<stbtt_packedchar> symbolGlyphs(UI_SYMBOLS.size());
+    std::vector<int> symbolCodepoints(UI_SYMBOLS.begin(), UI_SYMBOLS.end()); // stb takes a mutable list
 
-    std::array<stbtt_pack_range, 3> ranges{};
+    std::array<stbtt_pack_range, 4> ranges{};
     ranges[0].font_size = pixelSize;
     ranges[0].first_unicode_codepoint_in_range = 32;
     ranges[0].num_chars = static_cast<int>(latinGlyphs.size());
@@ -130,6 +150,10 @@ FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t si
     ranges[2].first_unicode_codepoint_in_range = static_cast<int>(PUNCTUATION_FIRST);
     ranges[2].num_chars = static_cast<int>(punctuationGlyphs.size());
     ranges[2].chardata_for_range = punctuationGlyphs.data();
+    ranges[3].font_size = pixelSize;
+    ranges[3].array_of_unicode_codepoints = symbolCodepoints.data(); // a sparse list instead of a range
+    ranges[3].num_chars = static_cast<int>(symbolGlyphs.size());
+    ranges[3].chardata_for_range = symbolGlyphs.data();
 
     // The atlas is taken as small as is sufficient: with 1×1 oversampling the glyphs fit into 1024², which
     // saves 4× memory on the buffer/expansion/copy (the main cost of loading) compared to 2048².
@@ -161,9 +185,16 @@ FontAtlas::CpuAtlas FontAtlas::rasterizeFromMemory(const void *data, uint32_t si
     cpu.ascent = static_cast<float>(unscaledAscent) * scale;
     cpu.descent = static_cast<float>(unscaledDescent) * scale;
     cpu.lineHeight = static_cast<float>(unscaledAscent - unscaledDescent + unscaledLineGap) * scale;
-    appendGlyphs(cpu.glyphs, latinGlyphs, 32, atlasDim, atlasDim);
-    appendGlyphs(cpu.glyphs, cyrillicGlyphs, 0x0400, atlasDim, atlasDim);
-    appendGlyphs(cpu.glyphs, punctuationGlyphs, PUNCTUATION_FIRST, atlasDim, atlasDim);
+    appendGlyphs(cpu.glyphs, latinGlyphs, [](size_t i) { return 32u + static_cast<uint32_t>(i); }, fontInfo, atlasDim, atlasDim);
+    appendGlyphs(cpu.glyphs, cyrillicGlyphs, [](size_t i) { return 0x0400u + static_cast<uint32_t>(i); }, fontInfo, atlasDim, atlasDim);
+    appendGlyphs(
+        cpu.glyphs, punctuationGlyphs, [](size_t i) { return PUNCTUATION_FIRST + static_cast<uint32_t>(i); }, fontInfo,
+        atlasDim, atlasDim
+    );
+    appendGlyphs(
+        cpu.glyphs, symbolGlyphs, [&](size_t i) { return static_cast<uint32_t>(symbolCodepoints[i]); }, fontInfo, atlasDim,
+        atlasDim
+    );
 
     cpu.rgbaPixels.resize(static_cast<size_t>(atlasDim) * atlasDim * 4);
     for (size_t i = 0; i < alphaPixels.size(); ++i) {

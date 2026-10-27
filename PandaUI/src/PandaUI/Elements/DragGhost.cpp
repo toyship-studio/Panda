@@ -18,7 +18,7 @@ DragGhost::DragGhost(std::string text)
     setUserInteractionEnabled(false); // passive: hit-test skips it
     setBackgroundColor(Color(0x00000000));
 
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     m_bubble->setUserInteractionEnabled(false);
     m_bubble->setBackgroundColor(t.accent);
     m_bubble->setOpacity(0.92f);

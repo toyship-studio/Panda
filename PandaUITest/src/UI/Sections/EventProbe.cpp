@@ -42,7 +42,7 @@ void EventProbe::setupLayout() {
 }
 
 void EventProbe::setupStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     surface().setCornerRadius(Style::CardRadius);
     surface().setBorderWidth(1.f);
     surface().setBorderColor(m_focused ? t.focusRing : t.border);

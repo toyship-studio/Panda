@@ -30,7 +30,7 @@ void ColorSwatch::themeChanged() {
 
 void ColorSwatch::apply() {
     setBackgroundColor(m_color);
-    surface().setBorderColor(theme().border);
+    surface().setBorderColor(ThemeColor::border);
 }
 
 } // namespace PandaUI

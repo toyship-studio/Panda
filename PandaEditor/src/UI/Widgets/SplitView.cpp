@@ -81,7 +81,7 @@ protected:
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const Theme &t = Theme::current();
         m_line->setBackgroundColor(m_dragging ? t.accent : (m_hovered ? t.borderStrong : t.border));
     }
 

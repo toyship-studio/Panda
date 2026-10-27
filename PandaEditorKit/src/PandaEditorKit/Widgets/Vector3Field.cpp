@@ -4,6 +4,7 @@
 #include <PandaUI/Elements/Control.hpp>
 #include <PandaUI/Elements/Label.hpp>
 #include <PandaUI/Elements/NumberField.hpp>
+#include <PandaUI/Elements/TextField.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -18,6 +19,11 @@ namespace {
     constexpr float AXIS_LABEL_LEFT = 6.f;  // offset of the colored axis letter from the left edge of the field
     constexpr float AXIS_LABEL_WIDTH = 14.f;
     constexpr float AXIS_LABEL_GAP = 4.f;
+    // The plate of the axis button: from the left edge of the field to where the value starts.
+    constexpr float AXIS_PLATE_WIDTH = AXIS_LABEL_LEFT + AXIS_LABEL_WIDTH + AXIS_LABEL_GAP;
+    constexpr float AXIS_PLATE_ALPHA = 0.12f;
+    constexpr float AXIS_PLATE_ALPHA_HOVERED = 0.20f;
+    constexpr float AXIS_PLATE_ALPHA_PRESSED = 0.28f;
     constexpr float COMPONENT_GAP = 6.f;    // between X / Y / Z
     constexpr float FIELD_MIN_WIDTH = 40.f;
     constexpr float FIELD_FONT_SIZE = 14.f; // mono value (design axis-value 14px)
@@ -34,9 +40,10 @@ namespace {
         );
     }
 
-    // Colored axis letter inside the field: an overlay on the left, absolutely positioned on top of
-    // NumberField. The background is transparent so as not to conflict with the TextField rounding;
-    // a click resets the component to 0.
+    // Colored axis button inside the field: an overlay on the left, absolutely positioned on top of
+    // NumberField, a tinted plate in the color of the axis with the letter on it. The plate runs from
+    // the very left edge: the field clips its children by its rounded shape, so the plate takes the
+    // corners of the field. A click resets the component to 0.
     class AxisLabel final : public Control {
     public:
         AxisLabel(const std::string &letter, Color color)
@@ -45,13 +52,12 @@ namespace {
             setCursor(Cursor::PointingHand);
             setFocusable(false); // a click target for reset, not a tab stop; does not steal focus from the field
             layout().setPositionType(PositionType::Absolute);
-            layout().setPosition(Edge::Left, Length::points(AXIS_LABEL_LEFT));
+            layout().setPosition(Edge::Left, Length::points(0.f));
             layout().setPosition(Edge::Top, Length::points(0.f));
             layout().setPosition(Edge::Bottom, Length::points(0.f));
-            layout().setWidth(Length::points(AXIS_LABEL_WIDTH));
+            layout().setWidth(Length::points(AXIS_PLATE_WIDTH));
             layout().setJustifyContent(Justify::Center);
             layout().setAlignItems(Align::Center);
-            setBackgroundColor(Color(0x00000000));
 
             // Monospaced colored axis letter: looks like a prefix action inside an input.
             m_label->setFont(Font(12.f));
@@ -76,11 +82,15 @@ namespace {
         }
         void applyStyle() {
             float factor = 1.f;
+            float alpha = AXIS_PLATE_ALPHA;
             if (hasControlState(ControlState::Highlighted)) {
                 factor = 0.8f;
+                alpha = AXIS_PLATE_ALPHA_PRESSED;
             } else if (hasControlState(ControlState::Hovered)) {
                 factor = 1.2f;
+                alpha = AXIS_PLATE_ALPHA_HOVERED;
             }
+            setBackgroundColor(ThemeColor(m_color).withAlpha(alpha)); // a translucent tint: the field border shows through
             m_label->setTextColor(withBrightness(m_color, factor));
         }
 
@@ -99,7 +109,7 @@ Vector3Field::Vector3Field()
     layout().setGap(COMPONENT_GAP);
 
     // Theme axis colors: X=danger, Y=success, Z=light blue (accentHover) — exactly per design.md §1.
-    const Color axisColors[3] = {theme().danger, theme().success, theme().accentHover};
+    const Color axisColors[3] = {Theme::current().danger, Theme::current().success, Theme::current().accentHover};
 
     for (int i = 0; i < 3; ++i) {
         auto field = std::make_shared<NumberField>();
@@ -111,6 +121,10 @@ Vector3Field::Vector3Field()
         field->layout().setFlexGrow(1.f);      // the three fields split the width equally
         field->layout().setFlexShrink(1.f);
         field->layout().setMinWidth(Length::points(FIELD_MIN_WIDTH));
+        // The axis plate is a child of the field panel: the panel clips by the rounded shape of the
+        // inner TextField (the same radius), so the plate ends at the field's corners.
+        field->surface().setCornerRadii(TextField::defaultAppearance().cornerRadius);
+        field->setClipsToBounds(true);
         field->setOnValueChanged([this](NumberField &) {
             if (m_onValueChanged) { m_onValueChanged(*this); }
         });

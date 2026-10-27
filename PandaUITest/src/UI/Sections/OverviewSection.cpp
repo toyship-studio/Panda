@@ -26,7 +26,7 @@ void OverviewSection::addSubviews() {
         "the file UI/Sections/<Name>Section.cpp — it shows how to build the element in code."
     ));
     addSubview(std::make_shared<DemoExample>(
-        "Themes", "All colors come from PandaUI::theme(). Switch Light/Dark in the View menu — the UI updates live."
+        "Themes", "All colors come from PandaUI::Theme::current(). Switch Light/Dark in the View menu — the UI updates live."
     ));
     addSubview(std::make_shared<DemoExample>(
         "Code convention",

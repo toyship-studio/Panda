@@ -47,7 +47,7 @@ void DemoExample::setupLayout() {
 }
 
 void DemoExample::setupStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     setBackgroundColor(t.surface);
     surface().setCornerRadius(Style::CardRadius);
     surface().setBorderWidth(1.f);

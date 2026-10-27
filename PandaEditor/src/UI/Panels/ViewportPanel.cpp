@@ -341,7 +341,7 @@ void ViewportPanelView::setDropActive(bool active) {
 
 void ViewportPanelView::applyBorder() {
     // Accent border around the whole panel: drag-over of a compatible asset and the edit mode.
-    surface().setBorderColor(theme().accent);
+    surface().setBorderColor(ThemeColor::accent);
     surface().setBorderWidth(m_dropActive || m_editActive ? 2.f : 0.f);
     setNeedsDisplay();
 }
@@ -352,12 +352,12 @@ void ViewportPanelView::setupLayout() {
 }
 
 void ViewportPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground); // dark "scene" (placeholder)
+    setBackgroundColor(ThemeColor::windowBackground); // dark "scene" (placeholder)
     if (m_sidebar) {
         // Opaque: the controls must read on any scene behind them; a border line separates it
         // from the scene.
-        m_sidebar->setBackgroundColor(theme().windowBackground);
-        m_sidebar->surface().setBorderColor(theme().border);
+        m_sidebar->setBackgroundColor(ThemeColor::windowBackground);
+        m_sidebar->surface().setBorderColor(ThemeColor::border);
         m_sidebar->surface().setBorderWidth(1.f);
     }
     if (m_overlay) {

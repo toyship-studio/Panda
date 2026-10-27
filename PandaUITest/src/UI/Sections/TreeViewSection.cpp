@@ -184,8 +184,8 @@ void TreeViewSection::setupLayout() {
 void TreeViewSection::setupStyle() {
     setBackgroundColor(Color(0x00000000));
     if (m_tree) {
-        m_tree->setBackgroundColor(theme().surfaceVariant);
-        m_tree->surface().setBorderColor(theme().border);
+        m_tree->setBackgroundColor(ThemeColor::surfaceVariant);
+        m_tree->surface().setBorderColor(ThemeColor::border);
     }
 }
 

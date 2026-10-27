@@ -178,10 +178,10 @@ void AssetEditorView::applyPreview() {
     m_preview->setFlipVertical(preview.flipVertical);
     // Image plate: a square with a border (like the Content Browser preview slots). A material is
     // a sphere on a transparent background, a plate would only get in its way.
-    m_preview->setBackgroundColor(preview.plate ? theme().input : Color(0x00000000));
+    m_preview->setBackgroundColor(preview.plate ? Theme::current().input : Color(0x00000000));
     m_preview->surface().setCornerRadius(preview.plate ? Radius::md : Radius::none);
     m_preview->surface().setBorderWidth(preview.plate ? 1.f : 0.f);
-    m_preview->surface().setBorderColor(preview.plate ? theme().borderMed : Color(0x00000000));
+    m_preview->surface().setBorderColor(preview.plate ? Theme::current().borderMed : Color(0x00000000));
     const bool visible = preview.texture.isValid();
     m_preview->setHidden(!visible);
     m_preview->layout().setDisplay(visible ? Display::Flex : Display::None);
@@ -200,7 +200,7 @@ void AssetEditorView::setupLayout() {
 }
 
 void AssetEditorView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Editor

@@ -190,7 +190,7 @@ void ToolbarPanelView::setupLayout() {
 }
 
 void ToolbarPanelView::setupStyle() {
-    setBackgroundColor(theme().surface); // bg/toolbar — a separate strip above the content
+    setBackgroundColor(ThemeColor::surface); // bg/toolbar — a separate strip above the content
 }
 
 } // namespace Editor

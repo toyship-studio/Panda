@@ -101,7 +101,11 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). Colors are
   `PandaUI::ThemeColor`: a token of the theme (`ThemeColor::border`, the model of UIKit's dynamic
   colors) is resolved every time the view draws, so a divider, a card or a tinted label follows a
-  theme change with no code — pass the token, not `theme().border` (a `Color` is a snapshot).
+  theme change with no code. The token is the only spelling of a theme color: there is no free
+  `theme()` accessor any more (removed in October 2026 so that nobody wonders which of two
+  spellings to use). A `Color` value is asked for explicitly where one is needed right now — a draw
+  primitive, a computation — with `ThemeColor::textDim.resolve()`; `Theme::current()` is the whole
+  theme as values, for the scheme editor and for a color derived from several, never for storing.
   `themeChanged` is for state DERIVED from the theme (a rebuilt card, a cached texture). A view
   that was out of the tree during a theme change (the hidden start screen, a replaced tab content)
   catches up when attached: every view carries the theme generation it was styled under
@@ -114,7 +118,10 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   the APPEARANCE settings (`EditorAppearanceSettings::uiFont`, `monoFont`, `uiFontSize`) — any
   family installed on the machine (`Fern::Fonts`, the catalog of the system font folders), the
   bundled Inter Display and JetBrains Mono by default; a glyph the chosen face lacks is drawn from
-  the bundled one (the fallback chain of `FontAtlas`), the size scales every text through
+  the bundled one (the fallback chain of `FontAtlas`: an atlas holds Latin, Cyrillic, general
+  punctuation and a list of UI symbols — arrows, key glyphs, ■ ▶ ●, ★ ☆, ✓ ✗ — and stores no glyph
+  for a codepoint the face does not have, so the chain is reached instead of a box), the size
+  scales every text through
   `Context::textScale`, and a change re-measures the tree like a theme change
   (`Context::fontsChanged`). A font of the project is an asset (`FontAsset`): the font tab draws it
   with an atlas of its own (`EditorHost::assetFont`), games take it through `Bamboo::UI::font`

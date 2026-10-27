@@ -16,7 +16,7 @@ namespace {
     // A colored "chip" with a caption — a visual element for demonstrating stacks.
     std::shared_ptr<View> makeChip(const std::string &text) {
         auto chip = std::make_shared<Panel>();
-        chip->setBackgroundColor(theme().control);
+        chip->setBackgroundColor(ThemeColor::control);
         chip->surface().setCornerRadius(6.f);
         chip->layout().setPadding(Edge::Horizontal, 14.f);
         chip->layout().setPadding(Edge::Vertical, 9.f);

@@ -725,7 +725,7 @@ void EntityEditorView::setupLayout() {
 }
 
 void EntityEditorView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Editor

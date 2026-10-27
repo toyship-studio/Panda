@@ -103,7 +103,7 @@ void DemoAppView::setupLayout() {
 }
 
 void DemoAppView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
     m_content->setBackgroundColor(Color(0x00000000));
 }
 

@@ -90,7 +90,7 @@ void ModalSection::addSubviews() {
             Context *context = button.getContext();
             if (!context) { return; }
             auto card = std::make_shared<Panel>();
-            card->setBackgroundColor(theme().surface);
+            card->setBackgroundColor(ThemeColor::surface);
             card->surface().setCornerRadius(10.f);
             card->layout().setFlexDirection(FlexDirection::Row);
             card->layout().setPadding(16.f);

@@ -19,7 +19,7 @@ SurfaceSection::SurfaceSection() {
 std::shared_ptr<Panel> SurfaceSection::makeTile() const {
     auto tile = std::make_shared<Panel>();
     tile->layout().setSize({76.f, 76.f});
-    tile->setBackgroundColor(theme().accent);
+    tile->setBackgroundColor(ThemeColor::accent);
     return tile;
 }
 
@@ -42,10 +42,10 @@ void SurfaceSection::addSubviews() {
     {
         auto example = std::make_shared<DemoExample>("Border", "Surface::setBorderWidth / setBorderColor.");
         auto tile = makeTile();
-        tile->setBackgroundColor(theme().surface);
+        tile->setBackgroundColor(ThemeColor::surface);
         tile->surface().setCornerRadius(10.f);
         tile->surface().setBorderWidth(2.f);
-        tile->surface().setBorderColor(theme().accent);
+        tile->surface().setBorderColor(ThemeColor::accent);
         example->addContent(tile);
         addSubview(example);
     }
@@ -70,7 +70,7 @@ void SurfaceSection::addSubviews() {
         auto mixed = makeTile();
         mixed->surface().setCornerRadii(CornerRadii(24.f, 4.f, 24.f, 4.f));
         mixed->surface().setBorderWidth(2.f);
-        mixed->surface().setBorderColor(theme().textPrimary);
+        mixed->surface().setBorderColor(ThemeColor::textPrimary);
         example->addContent(top);
         example->addContent(left);
         example->addContent(mixed);
@@ -82,16 +82,16 @@ void SurfaceSection::addSubviews() {
         );
         auto vertical = makeTile();
         vertical->surface().setCornerRadius(12.f);
-        vertical->surface().setBackgroundGradient(SurfaceGradient(theme().accent, theme().accentPressed));
+        vertical->surface().setBackgroundGradient(SurfaceGradient(ThemeColor::accent, ThemeColor::accentPressed));
         auto horizontal = makeTile();
         horizontal->surface().setCornerRadius(12.f);
         horizontal->surface().setBackgroundGradient(
-            SurfaceGradient(theme().accentSecondary, theme().accent, GradientDirection::LeftToRight)
+            SurfaceGradient(ThemeColor::accentSecondary, ThemeColor::accent, GradientDirection::LeftToRight)
         );
         auto diagonal = makeTile();
         diagonal->surface().setCornerRadii(CornerRadii(24.f, 4.f, 24.f, 4.f));
         diagonal->surface().setBackgroundGradient(
-            SurfaceGradient(theme().warning, theme().danger, GradientDirection::TopLeftToBottomRight)
+            SurfaceGradient(ThemeColor::warning, ThemeColor::danger, GradientDirection::TopLeftToBottomRight)
         );
         example->addContent(vertical);
         example->addContent(horizontal);
@@ -106,7 +106,7 @@ void SurfaceSection::addSubviews() {
         clipped->surface().setCornerRadius(24.f);
         clipped->setClipsToBounds(true);
         auto stripe = std::make_shared<Panel>();
-        stripe->setBackgroundColor(theme().textPrimary);
+        stripe->setBackgroundColor(ThemeColor::textPrimary);
         stripe->layout().setPositionType(PositionType::Absolute);
         stripe->layout().setPosition(Edge::Left, Length::points(-10.f));
         stripe->layout().setPosition(Edge::Top, Length::points(0.f));
@@ -115,7 +115,7 @@ void SurfaceSection::addSubviews() {
         auto unclipped = makeTile();
         unclipped->surface().setCornerRadius(24.f);
         auto stripe2 = std::make_shared<Panel>();
-        stripe2->setBackgroundColor(theme().textPrimary);
+        stripe2->setBackgroundColor(ThemeColor::textPrimary);
         stripe2->layout().setPositionType(PositionType::Absolute);
         stripe2->layout().setPosition(Edge::Left, Length::points(-10.f));
         stripe2->layout().setPosition(Edge::Top, Length::points(0.f));

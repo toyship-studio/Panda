@@ -29,7 +29,7 @@ namespace {
             layout().setPadding(Edge::Horizontal, 12.f);
             layout().setPadding(Edge::Vertical, 7.f);
             surface().setCornerRadius(6.f);
-            setBackgroundColor(theme().control);
+            setBackgroundColor(ThemeColor::control);
 
             auto labelView = std::make_shared<Label>(m_label);
             labelView->setFont(Font(17.f));
@@ -115,7 +115,7 @@ namespace {
             applyStyle();
         }
         void applyStyle() {
-            const Theme &t = theme();
+            const Theme &t = Theme::current();
             setBackgroundColor(m_dropHovered ? t.controlHover : t.surfaceVariant);
             surface().setBorderColor(m_dropHovered ? t.accent : t.border);
         }

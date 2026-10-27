@@ -52,7 +52,7 @@ void ColorWell::themeChanged() {
 }
 
 void ColorWell::apply() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     setBackgroundColor(m_color);
     if (hasControlState(ControlState::Focused)) {
         surface().setBorderColor(t.focusRing);

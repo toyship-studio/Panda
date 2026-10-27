@@ -88,7 +88,7 @@ namespace {
             applyStyle();
         }
         void applyStyle() {
-            const Theme &t = theme();
+            const Theme &t = Theme::current();
             const bool hot = hasControlState(ControlState::Hovered) || hasControlState(ControlState::Focused);
             m_icon->setTintColor(m_picked ? t.accentText : (hot ? t.textPrimary : t.textMuted));
             setBackgroundColor(m_picked ? t.accentSoft : (hot ? t.control : t.input));

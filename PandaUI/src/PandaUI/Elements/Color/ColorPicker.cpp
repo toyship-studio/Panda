@@ -50,7 +50,7 @@ namespace {
             applyStyle();
         }
         void applyStyle() {
-            const Theme &t = theme();
+            const Theme &t = Theme::current();
             const bool hovered =
                 hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted);
             setBackgroundColor(t.input);
@@ -64,7 +64,7 @@ namespace {
             const Rect frame = getFrame();
             const float cx = offsetX + frame.origin.x + frame.size.width * 0.5f;
             const float cy = offsetY + frame.origin.y + frame.size.height * 0.5f;
-            const Color color = theme().textPrimary;
+            const Color color = Theme::current().textPrimary;
             UIRenderer::RectData ring;
             ring.center = {cx, cy, 0.f};
             ring.size = {13.f, 13.f};
@@ -196,7 +196,7 @@ ColorPicker::ColorPicker()
     }
     addSubview(row);
 
-    m_swatch->surface().setBorderColor(theme().border);
+    m_swatch->surface().setBorderColor(ThemeColor::border);
     applyColorChanged(true, false);
     s_alivePickers.insert(this);
 }
@@ -324,7 +324,7 @@ void ColorPicker::draw(float offsetX, float offsetY) {
 }
 
 void ColorPicker::themeChanged() {
-    m_swatch->surface().setBorderColor(theme().border);
+    m_swatch->surface().setBorderColor(ThemeColor::border);
     setNeedsDisplay();
 }
 

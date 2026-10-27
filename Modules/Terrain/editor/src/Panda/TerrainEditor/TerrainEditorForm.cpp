@@ -85,7 +85,7 @@ namespace {
             applyStyle();
         }
         void applyStyle() {
-            const Theme &t = theme();
+            const Theme &t = Theme::current();
             m_icon->setTintColor(!m_enabled ? t.textDisabled : (m_selected ? t.accentText : t.textMuted));
             if (m_selected) {
                 setBackgroundColor(t.accentSoft);

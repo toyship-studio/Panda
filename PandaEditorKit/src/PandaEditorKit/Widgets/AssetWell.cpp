@@ -152,7 +152,7 @@ void AssetWell::refresh() {
     } else {
         m_preview->setTexture(icons().get(iconForKind(m_kind)));
         m_preview->setFlipVertical(false);
-        m_preview->setTintColor(m_assetId ? theme().textPrimary : theme().textMuted);
+        m_preview->setTintColor(m_assetId ? Theme::current().textPrimary : Theme::current().textMuted);
     }
 
     const bool hasValue = m_assetId != 0;
@@ -180,7 +180,7 @@ void AssetWell::draw(float offsetX, float offsetY) {
 }
 
 void AssetWell::applyStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     m_main->setBackgroundColor(m_dropHovered ? t.controlHover : t.control);
     m_main->surface().setBorderColor(m_dropHovered ? t.accent : t.border);
 }

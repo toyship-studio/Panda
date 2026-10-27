@@ -89,7 +89,7 @@ namespace Ic {
 } // namespace Ic
 
 // Icon registry: name → TextureHandle. The application loads it once onto the shared renderer and
-// sets it globally (setIcons), panels read it through makeIcon — like PandaUI::theme()/fonts: a
+// sets it globally (setIcons), panels read it through makeIcon — like PandaUI::Theme::current()/fonts: a
 // static chrome resource, not part of the MVC data. The color comes from the tint (masks are white).
 class IconLibrary {
 public:
@@ -105,7 +105,7 @@ void setIcons(IconLibrary library);
 void addIcons(const IconLibrary &library); // package folders that arrived after startup (names override)
 const IconLibrary &icons();
 
-// An icon as an ImageView of the given size and color (tint). Without a color — theme().textMuted.
+// An icon as an ImageView of the given size and color (tint). Without a color — Theme::current().textMuted.
 std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size, PandaUI::ThemeColor color);
 std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size);
 // Icon button: a square Control with a tinted icon and a hover background (toolbar 28, headers 23).

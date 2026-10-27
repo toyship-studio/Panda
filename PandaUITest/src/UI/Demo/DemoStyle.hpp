@@ -3,7 +3,7 @@
 namespace Demo::Style {
 
 // Shared styling constants of the demo (paddings, radii, font sizes).
-// Colors come from PandaUI::theme(); they are intentionally absent here.
+// Colors come from PandaUI::Theme::current(); they are intentionally absent here.
 // The geometry follows PandaUI::Radius / PandaUI::Spacing (the GPUI scale): a page is xxl, a card xl.
 constexpr float PagePadding = 24.f;
 constexpr float PageGap = 16.f;

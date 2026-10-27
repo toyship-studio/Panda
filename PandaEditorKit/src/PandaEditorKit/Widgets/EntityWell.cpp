@@ -74,7 +74,7 @@ void EntityWell::refresh() {
 }
 
 void EntityWell::applyStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     setBackgroundColor(m_dropHovered ? t.controlHover : t.control);
     surface().setBorderColor(m_dropHovered ? t.accent : t.border);
 }

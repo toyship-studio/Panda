@@ -12,7 +12,7 @@ namespace {
 
 } // namespace
 
-const Theme &theme() {
+const Theme &Theme::current() {
     return s_theme;
 }
 

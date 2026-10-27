@@ -11,7 +11,7 @@ ThemedSurface::ThemedSurface(SurfaceRole role, float cornerRadius)
 }
 
 void ThemedSurface::setupStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     Color background = t.surface;
     switch (m_role) {
         case SurfaceRole::Surface:

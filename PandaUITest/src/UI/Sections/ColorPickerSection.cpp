@@ -86,7 +86,7 @@ void ColorPickerSection::setupLayout() {
 
 void ColorPickerSection::setupStyle() {
     setBackgroundColor(Color(0x00000000));
-    if (m_preview) { m_preview->surface().setBorderColor(theme().border); }
+    if (m_preview) { m_preview->surface().setBorderColor(ThemeColor::border); }
 }
 
 } // namespace Demo

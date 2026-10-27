@@ -36,7 +36,7 @@ namespace {
         }
 
         void controlStateChanged(ControlState, ControlState) override {
-            const Theme &t = theme();
+            const Theme &t = Theme::current();
             if (hasControlState(ControlState::Highlighted)) {
                 setBackgroundColor(t.controlPressed);
             } else if (hasControlState(ControlState::Hovered)) {
@@ -155,7 +155,7 @@ void StartScreenView::setupLayout() {
 }
 
 void StartScreenView::setupStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     setBackgroundColor(t.windowBackground);
     if (m_sidebar) {
         m_sidebar->setBackgroundColor(t.surface);

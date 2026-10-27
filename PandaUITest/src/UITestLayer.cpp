@@ -224,7 +224,7 @@ void UITestLayer::openSecondaryWindow() {
     demoWindow->platform.init(window, demoWindow->context);
 
     auto root = demoWindow->context.makeView<PandaUI::Panel>();
-    root->setBackgroundColor(PandaUI::theme().windowBackground);
+    root->setBackgroundColor(PandaUI::ThemeColor::windowBackground);
     root->layout().setFlexDirection(PandaUI::FlexDirection::Column);
     root->layout().setPadding(24.f);
     root->addSubview(std::make_shared<Demo::PageHeader>(

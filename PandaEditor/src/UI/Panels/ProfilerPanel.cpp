@@ -97,7 +97,7 @@ void ProfilerPanelView::setupLayout() {
 }
 
 void ProfilerPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 void ProfilerPanelView::updateSnapshot() {

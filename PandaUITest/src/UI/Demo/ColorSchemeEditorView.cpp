@@ -27,7 +27,7 @@ namespace {
 } // namespace
 
 ColorSchemeEditorView::ColorSchemeEditorView()
-    : m_theme(theme())
+    : m_theme(Theme::current())
     , m_selected(0) {
     addSubviews();
     setupLayout();
@@ -79,7 +79,7 @@ void ColorSchemeEditorView::setupLayout() {
 }
 
 void ColorSchemeEditorView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Demo

@@ -40,7 +40,7 @@ void DemoSidebar::setupLayout() {
 }
 
 void DemoSidebar::setupStyle() {
-    setBackgroundColor(theme().surface);
+    setBackgroundColor(ThemeColor::surface);
     m_list->setBackgroundColor(Color(0x00000000));
 }
 

@@ -186,7 +186,7 @@ void StatisticsPanelView::setupLayout() {
 }
 
 void StatisticsPanelView::setupStyle() {
-    setBackgroundColor(theme().windowBackground);
+    setBackgroundColor(ThemeColor::windowBackground);
 }
 
 } // namespace Editor

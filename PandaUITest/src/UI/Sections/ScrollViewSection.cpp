@@ -67,7 +67,7 @@ void ScrollViewSection::addSubviews() {
         for (int i = 0; i < 16; ++i) {
             auto block = std::make_shared<Panel>();
             block->layout().setSize({60.f, 60.f});
-            block->setBackgroundColor(theme().accent);
+            block->setBackgroundColor(ThemeColor::accent);
             block->surface().setCornerRadius(6.f);
             scroll->addContentSubview(block);
         }

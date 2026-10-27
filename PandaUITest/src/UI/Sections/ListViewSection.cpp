@@ -97,7 +97,7 @@ void ListViewSection::setupLayout() {
 
 void ListViewSection::setupStyle() {
     setBackgroundColor(Color(0x00000000));
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     for (ListView *list : {m_single.get(), m_multi.get()}) {
         if (!list) { continue; }
         list->setBackgroundColor(t.surfaceVariant);

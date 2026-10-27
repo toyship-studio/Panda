@@ -54,7 +54,10 @@ heights, paddings, radii, border widths.
   button looks like; `ButtonSize` lays its metrics (`Button::defaultMetrics(size)`) over it.
 - Colors are `ThemeColor`: a theme token (`ThemeColor::accent`) follows the theme, a literal
   (`Color(0xC9A227FF)`) is yours; `ThemeColor::withShade(0.15f)` lightens a token for a hover
-  tone, a negative value darkens it.
+  tone, a negative value darkens it. A token is the only way to name a color of the theme; when a
+  plain `Color` is needed right now, in your own `draw()` for example, resolve it:
+  `ThemeColor::textDim.resolve()`. `Theme::current()` is the whole theme as values, for a color
+  derived from several, not for storing.
 
 ```cpp
 using namespace PandaUI;

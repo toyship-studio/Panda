@@ -30,10 +30,10 @@ void ContextMenuArea::setupLayout() {
 }
 
 void ContextMenuArea::setupStyle() {
-    setBackgroundColor(theme().surfaceVariant);
+    setBackgroundColor(ThemeColor::surfaceVariant);
     surface().setCornerRadius(Style::CardRadius);
     surface().setBorderWidth(1.f);
-    surface().setBorderColor(theme().border);
+    surface().setBorderColor(ThemeColor::border);
 }
 
 bool ContextMenuArea::pointerDown(PointerEvent &event) {

@@ -71,8 +71,8 @@ namespace {
         collection->layout().setHeight(Length::points(BOX_HEIGHT));
         collection->surface().setCornerRadius(Radius::md);
         collection->surface().setBorderWidth(1.f);
-        collection->surface().setBorderColor(theme().border);
-        collection->setBackgroundColor(theme().surfaceVariant);
+        collection->surface().setBorderColor(ThemeColor::border);
+        collection->setBackgroundColor(ThemeColor::surfaceVariant);
 
         auto box = StackView::vertical(8.f);
         box->layout().setFlexGrow(1.f);

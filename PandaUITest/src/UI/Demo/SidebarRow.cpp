@@ -37,7 +37,7 @@ void SidebarRow::setupLayout() {
 }
 
 void SidebarRow::setupStyle() {
-    const Theme &t = theme();
+    const Theme &t = Theme::current();
     surface().setCornerRadius(Radius::sm);
     if (isSelected()) {
         setBackgroundColor(t.accent);

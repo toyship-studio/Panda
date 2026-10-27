@@ -46,7 +46,7 @@ std::shared_ptr<ImageView> makeIcon(const std::string &name, float size, ThemeCo
 }
 
 std::shared_ptr<ImageView> makeIcon(const std::string &name, float size) {
-    return makeIcon(name, size, theme().textMuted);
+    return makeIcon(name, size, Theme::current().textMuted);
 }
 
 IconButton::IconButton(const std::string &iconName, float iconSize, float buttonSize)
