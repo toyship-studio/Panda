@@ -131,7 +131,7 @@ scripts\run_panda_editor.ps1
 
 - [`context/`](context/README.md): how the engine is built inside, subsystem by subsystem.
 - [`PandaSDK/docs/`](PandaSDK/docs/sdk-overview.md): the SDK, scripting, assets, the world file
-  format and [writing a module](PandaSDK/docs/modules/README.md).
+  format and [writing a module](PandaSDK/docs/modules/index.md).
 
 ## Third-party libraries
 

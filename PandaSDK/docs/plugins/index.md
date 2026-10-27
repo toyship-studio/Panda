@@ -6,7 +6,7 @@ project — one installed plugin serves every project on the machine — and the
 They are installed, updated and removed from the editor's Plugins tab (Window → Plugins), and
 every change takes effect at once, without a restart.
 
-A plugin carries no code. Engine systems are modules (see [Writing a module](../modules/README.md)),
+A plugin carries no code. Engine systems are modules (see [Writing a module](../modules/index.md)),
 and gameplay is the Bamboo scripts of a project; a plugin is what is left — files the editor reads.
 Keyboard layouts are not plugins either: they are editor settings. Project templates and sample
 projects are not planned as plugins for now.

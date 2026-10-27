@@ -1,5 +1,7 @@
 # The documentation book (mdBook): the pages of docs/ as they ship inside the SDK package.
 # `mdbook build PandaSDK` writes the site into bin/docs; docs.yml publishes it.
+# Chapter files of a folder are index.md, not README.md: mdBook renders README.md as index.html but
+# leaves links to README.md pointing at a README.html that does not exist (the 404 of 2026-10-27).
 [book]
 title = "Panda"
 language = "en"
