@@ -42,6 +42,15 @@ public:
         float spread = 0.f;
     };
 
+    // The colors of the four corners of a shape: a linear gradient is two of them repeated.
+    struct CornerColors {
+        Color topLeft, topRight, bottomRight, bottomLeft;
+
+        static CornerColors uniform(Color color) {
+            return {color, color, color, color};
+        }
+    };
+
     struct Statistics {
         uint32_t drawCalls = 0;
         uint32_t primitiveCount = 0;
@@ -71,12 +80,28 @@ public:
     void drawRoundedRect(const RectData &rect, float cornerRadius);
     void drawRoundedRectBorder(const RectData &rect, float cornerRadius, float borderWidth);
     void drawShadow(const RectData &rect, float cornerRadius, ShadowData shadow);
+    // Per-corner radii: a uniform value takes the analytic SDF path, differing ones are tessellated.
+    // The gradient variant interpolates the corner colors across the shape (exact for vertical and
+    // horizontal gradients, bilinear in between); rect.color is ignored then.
+    void drawRoundedRect(const RectData &rect, CornerRadii radii);
+    void drawRoundedRect(const RectData &rect, CornerRadii radii, const CornerColors &colors);
+    void drawRoundedRectBorder(const RectData &rect, CornerRadii radii, float borderWidth);
+    void drawShadow(const RectData &rect, CornerRadii radii, ShadowData shadow);
+    // An image in nine slices: the corners keep their size (capInsets, in texture pixels of the
+    // image rect.textureCoords selects), the edges stretch along one axis, the center along both.
+    // capScale is texture pixels per point (2 for a @2x image). Zero insets — one stretched quad.
+    // rect.texture is the image, rect.color its tint.
+    void drawNineSlice(const RectData &rect, EdgeInsets capInsets, float capScale = 1.f);
     void drawText(
         const FontAtlas &font, std::string_view text, Point position, Color color, float fontSize = 0.f,
         float letterSpacing = 0.f, bool italic = false
     );
     void end();
     void pushClipRect(Rect rect);
+    // A clip with rounded corners: the scissor of the rect plus a mask the shaders apply (the
+    // innermost rounded clip of the chain wins, DrawCommand::mask). The radii may differ per corner.
+    void pushClipRoundedRect(Rect rect, float cornerRadius);
+    void pushClipRoundedRect(Rect rect, CornerRadii radii);
     void popClipRect();
     Statistics getStats();
     void setViewportSize(Size viewportSize, Size dpiScale = Size(1.f, 1.f));
@@ -98,10 +123,22 @@ private:
     Rect m_currentCommandClipRect;
     Size m_viewportSize;
     Size m_dpiScale;
-    std::vector<Rect> m_clipStack;
+    struct ClipState {
+        Rect rect;
+        bool hasMask = false;
+        Rect maskRect;
+        CornerRadii maskRadii;
+    };
+    std::vector<ClipState> m_clipStack;
     Rect m_currentClipRect;
     bool m_hasCurrentClip;
     bool m_currentClipIsEmpty;
+    bool m_currentHasMask;
+    Rect m_currentMaskRect;
+    CornerRadii m_currentMaskRadii;
+    bool m_currentCommandHasMask;
+    Rect m_currentCommandMaskRect;
+    CornerRadii m_currentCommandMaskRadii;
     TextureHandle m_solidTexture;
     Rect m_solidTextureCoords;
 
@@ -121,12 +158,18 @@ private:
     // Filled circle as a fan (segments<=0 — pick by the radius). For round line caps.
     void fillCircle(Point center, float radius, Color color, int segments);
 
+    void pushClip(const ClipState &state);
+    void applyClipState();
     void drawRect(const glm::mat4 &transform, RectData rect);
-    void drawRoundedRect(const glm::mat4 &transform, RectData rect, float cornerRadius);
-    void drawRoundedRectBorder(const glm::mat4 &transform, RectData rect, float cornerRadius, float borderWidth);
+    void drawRoundedRect(const glm::mat4 &transform, RectData rect, CornerRadii radii, const CornerColors *colors);
+    void drawRoundedRectBorder(const glm::mat4 &transform, RectData rect, CornerRadii radii, float borderWidth);
     // A single quad with SDF parameters (RoundedSDF): an analytic rounded rectangle.
-    // borderWidth == 0 — fill; > 0 — stroke (inward from the edge). No texture, color from rect.color.
-    void emitRoundedSDF(const glm::mat4 &transform, const RectData &rect, float cornerRadius, float borderWidth);
+    // borderWidth == 0 — fill; > 0 — stroke (inward from the edge). No texture; the color is
+    // rect.color, or the four corner colors of a gradient.
+    void emitRoundedSDF(
+        const glm::mat4 &transform, const RectData &rect, float cornerRadius, float borderWidth,
+        const CornerColors *colors
+    );
 };
 
 } // namespace PandaUI

@@ -35,8 +35,22 @@ struct DrawCommand {
     uint32_t indexCount = 0;
     TextureHandle texture;
     bool hasClip = false;
-    Rect clipRect;
+    Rect clipRect; // the scissor: the intersection of every clip of the view chain
+    // A rounded clip (a view with clipsToBounds and a corner radius): the shaders fade every pixel
+    // outside this rounded rectangle, in UI points like the vertices. The innermost rounded clip of
+    // the chain; the scissor still covers the rest. Laid out as the MASK uniform buffer of the UI
+    // shaders, so a backend hands the two vectors over as they are (the command outlives the frame).
+    struct Mask {
+        glm::vec4 rect = glm::vec4(0.f);   // x, y, width, height in UI points
+        glm::vec4 radii = glm::vec4(0.f);  // the corner radii: top left, top right, bottom right, bottom left
+        glm::vec4 params = glm::vec4(0.f); // x: 1 when a mask is set
+    };
+    Mask mask;
     DrawPrimitive primitive = DrawPrimitive::Textured;
+
+    bool hasMask() const {
+        return mask.params.x > 0.5f;
+    }
 };
 
 struct DrawListView {

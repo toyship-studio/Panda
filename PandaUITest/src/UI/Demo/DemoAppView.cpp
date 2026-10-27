@@ -22,6 +22,7 @@
 #include "UI/Sections/SliderSection.hpp"
 #include "UI/Sections/StackViewSection.hpp"
 #include "UI/Sections/StepperSection.hpp"
+#include "UI/Sections/SkinsSection.hpp"
 #include "UI/Sections/SurfaceSection.hpp"
 #include "UI/Sections/TextFieldSection.hpp"
 #include "UI/Sections/TextSection.hpp"
@@ -37,8 +38,9 @@ namespace Demo {
 
 using namespace PandaUI;
 
-DemoAppView::DemoAppView(TextureHandle logoTexture, OpenWindowCallback onOpenWindow)
+DemoAppView::DemoAppView(TextureHandle logoTexture, SkinAssets skinAssets, OpenWindowCallback onOpenWindow)
     : m_logoTexture(logoTexture)
+    , m_skinAssets(std::move(skinAssets))
     , m_onOpenWindow(std::move(onOpenWindow)) {
     buildSections();
     addSubviews();
@@ -68,6 +70,7 @@ void DemoAppView::buildSections() {
     m_sections.push_back({"ScrollView", [] { return std::make_shared<ScrollViewSection>(); }});
     m_sections.push_back({"Image", [this] { return std::make_shared<ImageSection>(m_logoTexture); }});
     m_sections.push_back({"Surface", [] { return std::make_shared<SurfaceSection>(); }});
+    m_sections.push_back({"Skins", [this] { return std::make_shared<SkinsSection>(m_skinAssets); }});
     m_sections.push_back({"List", [] { return std::make_shared<ListViewSection>(); }});
     m_sections.push_back({"Collection", [] { return std::make_shared<CollectionViewSection>(); }});
     m_sections.push_back({"Tree", [] { return std::make_shared<TreeViewSection>(); }});

@@ -394,7 +394,13 @@ void View::render(float offsetX, float offsetY) {
         Rect clipRect;
         clipRect.origin = worldOrigin;
         clipRect.size = m_frame.size;
-        context->getRenderer().pushClipRect(clipRect);
+        // Corner radii round the clip (masksToBounds), each corner its own.
+        const CornerRadii radii = m_surface.cornerRadii();
+        if (!radii.isZero()) {
+            context->getRenderer().pushClipRoundedRect(clipRect, radii);
+        } else {
+            context->getRenderer().pushClipRect(clipRect);
+        }
         pushedClip = true;
     }
 

@@ -27,7 +27,6 @@ public:
         // Selectable cells (grid/table) — pointing hand on hover, like tree rows; console log (None) — regular cursor.
         if (m_owner->m_selectionMode != CollectionSelectionMode::None) { setCursor(Cursor::PointingHand); }
         layout().setPositionType(PositionType::Absolute);
-        surface().setCornerRadius(0.f); // cell selection — no rounding
         // The content is absolutely stretched over the cell (insets 0).
         m_content->layout().setPositionType(PositionType::Absolute);
         m_content->layout().setPosition(Edge::Left, Length::points(0.f));
@@ -52,6 +51,9 @@ public:
         if (m_selected == selected && m_active == active) { return; }
         m_selected = selected;
         m_active = active; // active = the collection is focused → brighter selection
+        applyStyle();
+    }
+    void refreshStyle() { // the appearance of the owner changed
         applyStyle();
     }
 
@@ -91,17 +93,21 @@ protected:
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const CollectionViewAppearance &a = m_owner->appearance();
         const bool selectable = m_owner->selectionMode() != CollectionSelectionMode::None;
+        surface().setCornerRadius(a.cellRadius);
+        surface().setBorderWidth(0.f);
         if (selectable && m_selected) {
-            setBackgroundColor(m_active ? t.selection : t.selectionInactive); // soft background; brighter in focus
-            surface().setBorderWidth(0.f);
+            setBackgroundColor(m_active ? a.selection : a.selectionInactive); // soft plate; brighter in focus
         } else if (selectable && hasControlState(ControlState::Hovered)) {
-            setBackgroundColor(t.rowHover);
-            surface().setBorderWidth(0.f);
+            setBackgroundColor(a.hover);
         } else {
             setBackgroundColor(Color(0x00000000));
-            surface().setBorderWidth(0.f);
+        }
+        if (selectable && m_selected && a.selectionImage) {
+            surface().setBackgroundImage(a.selectionImage);
+        } else {
+            surface().clearBackgroundImage();
         }
     }
 
@@ -116,8 +122,20 @@ private:
 
 /* ------------------------------ CollectionView ------------------------------ */
 
+CollectionViewAppearance &CollectionView::defaultAppearance() {
+    static CollectionViewAppearance appearance;
+    return appearance;
+}
+
+void CollectionView::setAppearance(const CollectionViewAppearance &appearance) {
+    m_appearance = appearance;
+    m_recyclePool.clear();
+    for (auto &entry : m_visibleCells) { entry.second->refreshStyle(); }
+}
+
 CollectionView::CollectionView(std::shared_ptr<CollectionViewLayout> layout)
-    : m_layout(std::move(layout)) {
+    : m_appearance(defaultAppearance())
+    , m_layout(std::move(layout)) {
     setScrollDirection(ScrollDirection::Vertical);
     setFocusable(true);             // the collection accepts focus → the arrow keys and the focus ring work
     setContentSize(Size(0.f, 0.f)); // disables auto-adjust: the content size is computed here from the layout

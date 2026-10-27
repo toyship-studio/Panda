@@ -10,13 +10,20 @@ namespace PandaUI {
 
 namespace {
 
-    constexpr float SLIDER_HEIGHT = 22.f;
-    constexpr float TRACK_HEIGHT = 4.f;
-    constexpr float THUMB_SIZE = 16.f;
-    constexpr float DEFAULT_WIDTH = 180.f;
-    constexpr float FOCUS_HALO = 8.f; // how much larger the focus halo is than the thumb (4px on each side)
+    void applyImage(Surface &surface, const SurfaceImage &image) {
+        if (image) {
+            surface.setBackgroundImage(image);
+        } else {
+            surface.clearBackgroundImage();
+        }
+    }
 
 } // namespace
+
+SliderAppearance &Slider::defaultAppearance() {
+    static SliderAppearance appearance;
+    return appearance;
+}
 
 Slider::Slider()
     : m_track(std::make_shared<Panel>())
@@ -24,6 +31,7 @@ Slider::Slider()
     , m_thumb(std::make_shared<Panel>())
     , m_focusRing(std::make_shared<Panel>())
     , m_onValueChanged(nullptr)
+    , m_appearance(defaultAppearance())
     , m_minimum(0.f)
     , m_maximum(1.f)
     , m_value(0.f)
@@ -31,47 +39,68 @@ Slider::Slider()
     , m_appliedThumbLeft(-1.f) {
     setFocusable(true);
     setCursor(Cursor::PointingHand);
-    layout().setWidth(Length::points(DEFAULT_WIDTH));
-    layout().setHeight(Length::points(SLIDER_HEIGHT));
-
-    const float trackTop = (SLIDER_HEIGHT - TRACK_HEIGHT) * 0.5f;
+    setBackgroundColor(Color(0x00000000));
 
     m_track->setUserInteractionEnabled(false);
     m_track->layout().setPositionType(PositionType::Absolute);
     m_track->layout().setPosition(Edge::Left, Length::points(0.f));
-    m_track->layout().setPosition(Edge::Top, Length::points(trackTop));
     m_track->layout().setWidth(Length::percent(100.f));
-    m_track->layout().setHeight(Length::points(TRACK_HEIGHT));
-    m_track->surface().setCornerRadius(TRACK_HEIGHT * 0.5f);
     addSubview(m_track);
 
     m_fill->setUserInteractionEnabled(false);
     m_fill->layout().setPositionType(PositionType::Absolute);
     m_fill->layout().setPosition(Edge::Left, Length::points(0.f));
-    m_fill->layout().setPosition(Edge::Top, Length::points(trackTop));
-    m_fill->layout().setHeight(Length::points(TRACK_HEIGHT));
-    m_fill->surface().setCornerRadius(TRACK_HEIGHT * 0.5f);
     addSubview(m_fill);
 
-    // Soft halo behind the thumb — the focus indicator (visible only in focus; the color is in updateAppearance).
+    // Soft halo behind the thumb — the focus indicator (visible only in focus).
     m_focusRing->setUserInteractionEnabled(false);
     m_focusRing->setHidden(true);
     m_focusRing->layout().setPositionType(PositionType::Absolute);
-    m_focusRing->layout().setPosition(Edge::Top, Length::points((SLIDER_HEIGHT - (THUMB_SIZE + FOCUS_HALO)) * 0.5f));
-    m_focusRing->layout().setSize({THUMB_SIZE + FOCUS_HALO, THUMB_SIZE + FOCUS_HALO});
-    m_focusRing->surface().setCornerRadius((THUMB_SIZE + FOCUS_HALO) * 0.5f);
     addSubview(m_focusRing); // before the thumb → behind it
 
     m_thumb->setUserInteractionEnabled(false);
     m_thumb->layout().setPositionType(PositionType::Absolute);
-    m_thumb->layout().setPosition(Edge::Top, Length::points((SLIDER_HEIGHT - THUMB_SIZE) * 0.5f));
-    m_thumb->layout().setSize({THUMB_SIZE, THUMB_SIZE});
-    m_thumb->surface().setCornerRadius(THUMB_SIZE * 0.5f);
-    m_thumb->surface().setBorderWidth(1.f);
-    m_thumb->surface().setShadow(ShadowStyle{Color(0.f, 0.f, 0.f, 0.2f), Point(0.f, 1.f), 2.f});
     addSubview(m_thumb);
 
-    applyThemeColors();
+    applyAppearance();
+}
+
+void Slider::setAppearance(const SliderAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void Slider::applyAppearance() {
+    const SliderAppearance &a = m_appearance;
+    layout().setWidth(Length::points(a.defaultWidth));
+    layout().setHeight(Length::points(a.height));
+
+    const float trackTop = (a.height - a.trackHeight) * 0.5f;
+    m_track->layout().setPosition(Edge::Top, Length::points(trackTop));
+    m_track->layout().setHeight(Length::points(a.trackHeight));
+    m_track->surface().setCornerRadius(a.trackHeight * 0.5f);
+    m_track->setBackgroundColor(a.track);
+    applyImage(m_track->surface(), a.trackImage);
+
+    m_fill->layout().setPosition(Edge::Top, Length::points(trackTop));
+    m_fill->layout().setHeight(Length::points(a.trackHeight));
+    m_fill->surface().setCornerRadius(a.trackHeight * 0.5f);
+    applyImage(m_fill->surface(), a.fillImage);
+
+    const float haloSize = a.thumbSize + a.focusHaloSize;
+    m_focusRing->layout().setPosition(Edge::Top, Length::points((a.height - haloSize) * 0.5f));
+    m_focusRing->layout().setSize({haloSize, haloSize});
+    m_focusRing->surface().setCornerRadius(haloSize * 0.5f);
+
+    m_thumb->layout().setPosition(Edge::Top, Length::points((a.height - a.thumbSize) * 0.5f));
+    m_thumb->layout().setSize({a.thumbSize, a.thumbSize});
+    m_thumb->surface().setCornerRadius(a.thumbSize * 0.5f);
+    m_thumb->surface().setBorderWidth(a.thumbBorderWidth);
+    m_thumb->surface().setShadow(a.thumbShadow);
+    applyImage(m_thumb->surface(), a.thumbImage);
+
+    m_appliedThumbLeft = -1.f; // the geometry changed: place the thumb again
+    updateThumbAndFill();
     updateAppearance();
 }
 
@@ -104,27 +133,31 @@ void Slider::setValueInternal(float value, bool notify) {
 }
 
 void Slider::updateThumbAndFill() {
+    const float thumbSize = m_appearance.thumbSize;
     const float width = getFrame().size.width;
-    if (width <= THUMB_SIZE) { return; }
+    if (width <= thumbSize) { return; }
 
     const float range = (m_maximum > m_minimum) ? (m_maximum - m_minimum) : 1.f;
     const float fraction = std::clamp((m_value - m_minimum) / range, 0.f, 1.f);
-    const float thumbLeft = fraction * (width - THUMB_SIZE);
+    const float thumbLeft = fraction * (width - thumbSize);
     if (std::abs(thumbLeft - m_appliedThumbLeft) < 0.5f) { return; }
 
     m_appliedThumbLeft = thumbLeft;
     m_thumb->layout().setPosition(Edge::Left, Length::points(thumbLeft));
-    m_focusRing->layout().setPosition(Edge::Left, Length::points(thumbLeft - FOCUS_HALO * 0.5f)); // centered on thumb
-    m_fill->layout().setWidth(Length::points(thumbLeft + THUMB_SIZE * 0.5f));
+    m_focusRing->layout().setPosition(
+        Edge::Left, Length::points(thumbLeft - m_appearance.focusHaloSize * 0.5f)
+    ); // centered on the thumb
+    m_fill->layout().setWidth(Length::points(thumbLeft + thumbSize * 0.5f));
 }
 
 void Slider::setValueFromPointer(const PointerEvent &event) {
+    const float thumbSize = m_appearance.thumbSize;
     const float width = getFrame().size.width;
-    if (width <= THUMB_SIZE) { return; }
+    if (width <= thumbSize) { return; }
 
     const Rect worldFrame = getWorldFrame();
     const float localX = event.position.x - worldFrame.origin.x;
-    const float fraction = std::clamp((localX - THUMB_SIZE * 0.5f) / (width - THUMB_SIZE), 0.f, 1.f);
+    const float fraction = std::clamp((localX - thumbSize * 0.5f) / (width - thumbSize), 0.f, 1.f);
     const float range = (m_maximum > m_minimum) ? (m_maximum - m_minimum) : 1.f;
     setValueInternal(m_minimum + fraction * range, true);
 }
@@ -172,7 +205,6 @@ void Slider::focusChanged(bool focused) {
 }
 
 void Slider::themeChanged() {
-    applyThemeColors();
     updateAppearance();
 }
 
@@ -180,25 +212,14 @@ void Slider::viewDidCalculateLayout() {
     updateThumbAndFill();
 }
 
-void Slider::applyThemeColors() {
-    const Theme &t = theme();
-    setBackgroundColor(Color(0x00000000));
-    m_track->setBackgroundColor(t.input);
-    m_fill->setBackgroundColor(t.accent);
-    m_thumb->setBackgroundColor(t.knob);
-}
-
 void Slider::updateAppearance() {
-    const Theme &t = theme();
+    const SliderAppearance &a = m_appearance;
     const bool disabled = hasControlState(ControlState::Disabled);
-    m_fill->setBackgroundColor(disabled ? t.control : t.accent);
-    m_thumb->setBackgroundColor(disabled ? t.textDisabled : t.knob);
-    m_thumb->surface().setBorderWidth(1.f);
-    m_thumb->surface().setBorderColor(hasControlState(ControlState::Hovered) ? t.borderStrong : t.borderMed);
-    // Focus indicator — a soft translucent halo behind the thumb (stable: it is a child view,
-    // not a surface border). Visible only in focus, the color is a muted focusRing.
-    const Color halo = t.focusRing;
-    m_focusRing->setBackgroundColor(Color(halo.r, halo.g, halo.b, 0.30f));
+    m_fill->setBackgroundColor(disabled ? a.fillDisabled : a.fill);
+    m_thumb->setBackgroundColor(disabled ? a.thumbDisabled : a.thumb);
+    m_thumb->surface().setBorderColor(hasControlState(ControlState::Hovered) ? a.thumbBorderHovered : a.thumbBorder);
+    // Focus indicator — a soft translucent halo behind the thumb (a child view, not a surface border).
+    m_focusRing->setBackgroundColor(a.focusHalo);
     m_focusRing->setHidden(!hasControlState(ControlState::Focused));
 }
 

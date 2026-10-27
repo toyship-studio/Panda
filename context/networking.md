@@ -260,6 +260,12 @@ expensive connection without asking.
 - macOS and iOS: the system frameworks Foundation (NSURLSession) and Network (`NWPathMonitor`).
 - Windows: `winhttp` and `ws2_32` (linked by Fern and by the runtime config of the games) and,
   for the network state, `ole32` later.
+- Script bundles link Fern too: `PandaSDK::PandaSDK` of the SDK config (`PandaRuntimeConfig.cmake.in`)
+  carries `PandaSDK::Fern`, which carries Foundation (SHA-256, the log), PandaAsync and the stack of
+  the system — the Foundation framework on Apple, `winhttp ws2_32` on Windows, `curl pthread` on
+  Linux. Only the network objects of the archive are pulled into a bundle; the window and platform
+  code of Fern stays out because nothing references it. Found on 2026-10-27: without it a bundle
+  fails to link with every `Fern::Net` symbol undefined from `libPandaSDK.a(Net.cpp.o)`.
 - Linux: `find_package(CURL)` in Fern, `curl` in the link libraries of the SDK config. The CI and
   release jobs install `libcurl4-openssl-dev` (the mirror job of Fern will too); the editor archive
   and every Linux game need `libcurl4` at run time, written into the requirements of the README

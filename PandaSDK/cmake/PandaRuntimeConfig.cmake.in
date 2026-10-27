@@ -96,8 +96,22 @@ set_property(TARGET PandaSDK::PandaUI APPEND PROPERTY
     INTERFACE_LINK_LIBRARIES PandaSDK::yogacore
 )
 
+# A script bundle links Fern as well: Bamboo::Net is a layer over Fern::Net inside the bundle
+# (context/networking.md, section 7). Only the network objects of the archive are pulled in; they
+# need Foundation (SHA-256, the log), PandaAsync (the completions) and the HTTP stack of the system.
+set_property(TARGET PandaSDK::Fern APPEND PROPERTY
+    INTERFACE_LINK_LIBRARIES PandaSDK::Foundation PandaSDK::PandaAsync
+)
+if(WIN32)
+    set_property(TARGET PandaSDK::Fern APPEND PROPERTY INTERFACE_LINK_LIBRARIES winhttp ws2_32)
+elseif(APPLE)
+    set_property(TARGET PandaSDK::Fern APPEND PROPERTY INTERFACE_LINK_LIBRARIES "-framework Foundation")
+elseif(UNIX)
+    set_property(TARGET PandaSDK::Fern APPEND PROPERTY INTERFACE_LINK_LIBRARIES curl pthread)
+endif()
+
 set_property(TARGET PandaSDK::PandaSDK APPEND PROPERTY
-    INTERFACE_LINK_LIBRARIES PandaSDK::PandaUI PandaSDK::PandaAsync
+    INTERFACE_LINK_LIBRARIES PandaSDK::PandaUI PandaSDK::PandaAsync PandaSDK::Fern
 )
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)

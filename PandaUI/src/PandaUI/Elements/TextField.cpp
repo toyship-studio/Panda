@@ -20,8 +20,6 @@ namespace {
     // Lower bound of the field height. It does not define the height by itself — usually the text +
     // insets do; the bound only keeps the field from degenerating with a tiny font/insets, which
     // allows building compact fields (inspector, toolbars).
-    constexpr float DEFAULT_HEIGHT = 28.f;
-    constexpr float CARET_WIDTH = 1.5f;
     constexpr double CARET_BLINK_INTERVAL = 0.5;
     constexpr double CLICK_CHAIN_INTERVAL = 0.5;
     constexpr float CLICK_CHAIN_DISTANCE = 5.f;
@@ -142,13 +140,13 @@ TextField::TextField(std::string text)
     , m_placeholder()
     , m_onTextChanged(nullptr)
     , m_onSubmit(nullptr)
-    , m_textColor(theme().textPrimary)
-    , m_placeholderColor(theme().textDim)
-    , m_caretColor(theme().focusRing)
-    , m_selectionColor(theme().textSelection)
+    , m_appearance(defaultAppearance())
+    , m_textColor(m_appearance.text.resolve())
+    , m_placeholderColor(m_appearance.placeholder.resolve())
+    , m_caretColor(m_appearance.caret.resolve())
+    , m_selectionColor(m_appearance.selection.resolve())
     , m_numberOfLines(1)
     , m_lineSpacing(3.f)
-    , m_contentInsets(4.f, Spacing::md, Spacing::md, 4.f) // vertical is small → floor (DEFAULT_HEIGHT) sets height; text self-centers
     , m_caretIndex(m_text.size())
     , m_selectionAnchorIndex(m_caretIndex)
     , m_caretBlinkElapsed(0.0)
@@ -165,9 +163,27 @@ TextField::TextField(std::string text)
     setUsesIntrinsicContentSize(true);
     setClipsToBounds(true);
     layout().setFlexShrink(1.f);
-    surface().setCornerRadius(Radius::sm); // the radius of every input (Combobox / Vector3 / ColorWell)
-    surface().setBorderWidth(1.f);
+    applyAppearance();
+}
+
+TextFieldAppearance &TextField::defaultAppearance() {
+    static TextFieldAppearance appearance;
+    return appearance;
+}
+
+void TextField::setAppearance(const TextFieldAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void TextField::applyAppearance() {
+    surface().setCornerRadii(m_appearance.cornerRadius);
+    surface().setBorderWidth(m_appearance.borderWidth);
+    applyThemeColors();
     updateAppearance();
+    invalidateTextLayout();
+    invalidateIntrinsicContentSize();
+    setNeedsDisplay();
 }
 
 void TextField::setText(std::string text) {
@@ -206,14 +222,14 @@ void TextField::setPlaceholder(std::string placeholder) {
 }
 
 void TextField::setFont(Font font) {
-    m_font = font; // family/weight/point size as a single value
+    m_appearance.font = font; // family/weight/point size as a single value
     invalidateTextLayout();
     invalidateIntrinsicContentSize();
 }
 
 std::shared_ptr<FontAtlas> TextField::resolveFont() const {
     Context *context = getContext();
-    return context ? context->getFontAtlas(m_font.weight, m_font.family) : nullptr;
+    return context ? context->getFontAtlas(m_appearance.font.weight, m_appearance.font.family) : nullptr;
 }
 
 void TextField::setNumberOfLines(int numberOfLines) {
@@ -233,8 +249,8 @@ void TextField::setLineSpacing(float lineSpacing) {
 }
 
 void TextField::setContentInsets(EdgeInsets insets) {
-    if (m_contentInsets == insets) { return; }
-    m_contentInsets = insets;
+    if (m_appearance.contentInsets == insets) { return; }
+    m_appearance.contentInsets = insets;
     invalidateIntrinsicContentSize();
 }
 
@@ -406,18 +422,18 @@ void TextField::interactionCancelled() {
 
 Size TextField::intrinsicContentSize(Size availableSize) const {
     std::shared_ptr<FontAtlas> font = resolveFont();
-    if (!font) { return {160.f, DEFAULT_HEIGHT}; }
+    if (!font) { return {160.f, m_appearance.minHeight}; }
 
     const float availableTextWidth =
-        availableSize.width > 0.f ? std::max(0.f, availableSize.width - m_contentInsets.left - m_contentInsets.right)
+        availableSize.width > 0.f ? std::max(0.f, availableSize.width - m_appearance.contentInsets.left - m_appearance.contentInsets.right)
                                   : 0.f;
     const std::string_view measuredText = m_text.empty() ? std::string_view(m_placeholder) : std::string_view(m_text);
     Size textSize = layoutText(*font, measuredText, isMultiline() ? availableTextWidth : 0.f).size;
     if (textSize.height <= 0.f) { textSize.height = font->getLineHeight() * (effectiveFontSize() / font->getPixelSize()); }
 
     return {
-        textSize.width + m_contentInsets.left + m_contentInsets.right,
-        std::max(DEFAULT_HEIGHT, textSize.height + m_contentInsets.top + m_contentInsets.bottom),
+        textSize.width + m_appearance.contentInsets.left + m_appearance.contentInsets.right,
+        std::max(m_appearance.minHeight, textSize.height + m_appearance.contentInsets.top + m_appearance.contentInsets.bottom),
     };
 }
 
@@ -444,8 +460,8 @@ void TextField::draw(float offsetX, float offsetY) {
     // single-line: the caret is kept within the visible area, a long line is scrolled horizontally.
     m_scrollOffsetX = clampedScrollOffsetX(*font, textLayout, frame.size);
     const float textX =
-        offsetX + frame.origin.x + m_contentInsets.left + textOriginX(bodyLayout, frame.size) - m_scrollOffsetX;
-    const float textY = offsetY + frame.origin.y + m_contentInsets.top + textOriginY(frame.size, bodyLayout);
+        offsetX + frame.origin.x + m_appearance.contentInsets.left + textOriginX(bodyLayout, frame.size) - m_scrollOffsetX;
+    const float textY = offsetY + frame.origin.y + m_appearance.contentInsets.top + textOriginY(frame.size, bodyLayout);
     if (isFocused() && hasSelection() && !m_text.empty()) {
         drawSelection(*font, textLayout, {textX, textY});
     }
@@ -469,8 +485,8 @@ void TextField::draw(float offsetX, float offsetY) {
     const float caretY = textY + (textLayout.lineHeight + textLayout.lineSpacing) * static_cast<float>(caretLineIndex);
 
     UIRenderer::RectData caret;
-    caret.center = {caretX + CARET_WIDTH * 0.5f, caretY + textLayout.lineHeight * 0.5f, 0.f};
-    caret.size = {CARET_WIDTH, textLayout.lineHeight};
+    caret.center = {caretX + m_appearance.caretWidth * 0.5f, caretY + textLayout.lineHeight * 0.5f, 0.f};
+    caret.size = {m_appearance.caretWidth, textLayout.lineHeight};
     caret.color = m_caretColor;
     context->getRenderer().drawRect(caret);
 }
@@ -510,11 +526,10 @@ void TextField::invalidateTextLayout() {
 }
 
 void TextField::applyThemeColors() {
-    const Theme &t = theme();
-    m_textColor = t.textPrimary;
-    m_placeholderColor = t.textDim;
-    m_caretColor = t.focusRing;
-    m_selectionColor = t.textSelection;
+    m_textColor = m_appearance.text.resolve();
+    m_placeholderColor = m_appearance.placeholder.resolve();
+    m_caretColor = m_appearance.caret.resolve();
+    m_selectionColor = m_appearance.selection.resolve();
 }
 
 void TextField::themeChanged() {
@@ -527,26 +542,16 @@ void TextField::themeChanged() {
 
 float TextField::effectiveFontSize() const {
     const Context *context = getContext();
-    return m_font.size * (context ? context->textScale() : 1.f);
+    return m_appearance.font.size * (context ? context->textScale() : 1.f);
 }
 
 void TextField::updateAppearance() {
-    const Theme &t = theme();
-    // Input field = the recessed input surface (#1B1B1B), med border; the background does not change —
-    // only the border reacts.
-    if (hasControlState(ControlState::Disabled)) {
-        setBackgroundColor(t.inputDeep);
-        surface().setBorderColor(t.borderMed);
-    } else if (hasControlState(ControlState::Focused)) {
-        setBackgroundColor(t.input);
-        surface().setBorderColor(t.focusRing);
-    } else if (hasControlState(ControlState::Hovered)) {
-        setBackgroundColor(t.input);
-        surface().setBorderColor(t.borderStrong);
-    } else {
-        setBackgroundColor(t.input);
-        surface().setBorderColor(t.borderMed);
-    }
+    // The recessed input plate; in the editor only the border reacts to the state.
+    const SurfaceStyle &style = hasControlState(ControlState::Disabled) ? m_appearance.disabled
+                                : hasControlState(ControlState::Focused)  ? m_appearance.focused
+                                : hasControlState(ControlState::Hovered)  ? m_appearance.hovered
+                                                                          : m_appearance.normal;
+    style.applyTo(surface());
 }
 
 void TextField::textDidChange() {
@@ -759,8 +764,8 @@ void TextField::extendSelectionToRange(SelectionRange range) {
 void TextField::placeCaret(Point windowPosition, bool extendsSelection) {
     Rect worldFrame = getWorldFrame();
     Point localContentPosition(
-        windowPosition.x - worldFrame.origin.x - m_contentInsets.left + m_scrollOffsetX,
-        windowPosition.y - worldFrame.origin.y - m_contentInsets.top
+        windowPosition.x - worldFrame.origin.x - m_appearance.contentInsets.left + m_scrollOffsetX,
+        windowPosition.y - worldFrame.origin.y - m_appearance.contentInsets.top
     );
     setCaretIndex(closestTextIndexAt(localContentPosition), extendsSelection);
 }
@@ -768,8 +773,8 @@ void TextField::placeCaret(Point windowPosition, bool extendsSelection) {
 TextField::SelectionRange TextField::selectionRangeAt(Point windowPosition, int clickCount) const {
     Rect worldFrame = getWorldFrame();
     Point localContentPosition(
-        windowPosition.x - worldFrame.origin.x - m_contentInsets.left + m_scrollOffsetX,
-        windowPosition.y - worldFrame.origin.y - m_contentInsets.top
+        windowPosition.x - worldFrame.origin.x - m_appearance.contentInsets.left + m_scrollOffsetX,
+        windowPosition.y - worldFrame.origin.y - m_appearance.contentInsets.top
     );
     const size_t textIndex = closestTextIndexAt(localContentPosition);
     if (clickCount <= 1) { return {textIndex, textIndex}; }
@@ -914,7 +919,7 @@ float TextField::caretXInLine(const FontAtlas &font, const TextLine &line, size_
 }
 
 float TextField::contentWidth(Size frameSize) const {
-    return std::max(0.f, frameSize.width - m_contentInsets.left - m_contentInsets.right);
+    return std::max(0.f, frameSize.width - m_appearance.contentInsets.left - m_appearance.contentInsets.right);
 }
 
 float TextField::textMaxWidth(Size frameSize) const {
@@ -923,7 +928,7 @@ float TextField::textMaxWidth(Size frameSize) const {
 
 float TextField::textOriginY(Size frameSize, const TextLayoutResult &layout) const {
     if (isMultiline()) { return 0.f; }
-    const float contentHeight = std::max(0.f, frameSize.height - m_contentInsets.top - m_contentInsets.bottom);
+    const float contentHeight = std::max(0.f, frameSize.height - m_appearance.contentInsets.top - m_appearance.contentInsets.bottom);
     return std::max(0.f, (contentHeight - layout.size.height) * 0.5f);
 }
 

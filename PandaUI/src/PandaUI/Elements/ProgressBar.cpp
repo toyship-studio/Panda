@@ -8,15 +8,35 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float BAR_HEIGHT = 6.f;
-    constexpr float INDETERMINATE_SEGMENT = 0.35f; // fraction of the width taken by the running segment
-    constexpr double INDETERMINATE_PERIOD = 1.1;   // seconds per pass from left to right
+ProgressBarAppearance &ProgressBar::defaultAppearance() {
+    static ProgressBarAppearance appearance;
+    return appearance;
 }
 
-ProgressBar::ProgressBar() {
-    layout().setHeight(Length::points(BAR_HEIGHT));
-    applyTrackStyle();
+ProgressBar::ProgressBar()
+    : m_appearance(defaultAppearance()) {
+    applyAppearance();
+}
+
+void ProgressBar::setAppearance(const ProgressBarAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+float ProgressBar::radiusFor(float height) const {
+    return m_appearance.cornerRadius < 0.f ? height * 0.5f : m_appearance.cornerRadius;
+}
+
+void ProgressBar::applyAppearance() {
+    layout().setHeight(Length::points(m_appearance.height));
+    setBackgroundColor(m_appearance.track);
+    surface().setCornerRadius(radiusFor(m_appearance.height));
+    if (m_appearance.trackImage) {
+        surface().setBackgroundImage(m_appearance.trackImage);
+    } else {
+        surface().clearBackgroundImage();
+    }
+    setNeedsDisplay();
 }
 
 void ProgressBar::setProgress(float progress) {
@@ -38,7 +58,7 @@ void ProgressBar::update(double deltaTime) {
     if (!m_indeterminate) { return; }
     // Animation: the 0..1 phase is looped. The frame is marked dirty only while the bar is indeterminate
     // and visible — no frames are spent on a determinate/hidden bar.
-    m_phase += deltaTime / INDETERMINATE_PERIOD;
+    m_phase += deltaTime / m_appearance.indeterminatePeriod;
     if (m_phase >= 1.0) { m_phase -= 1.0; }
     setNeedsDisplay();
 }
@@ -53,7 +73,7 @@ void ProgressBar::draw(float offsetX, float offsetY) {
     const float h = frame.size.height;
     if (w <= 0.f || h <= 0.f) { return; }
 
-    const float radius = h * 0.5f;
+    const float radius = radiusFor(h);
     const float baseX = offsetX + frame.origin.x;
     const float baseY = offsetY + frame.origin.y;
 
@@ -64,7 +84,7 @@ void ProgressBar::draw(float offsetX, float offsetY) {
         // The leading edge (head) travels from 0 to w+segment; the tail lags behind by segment. Both
         // are clamped to [0,w]: the segment smoothly "grows" from the left edge at the start of the cycle
         // and "drains away" past the right edge at the end — without abruptly appearing at full width.
-        const float segment = w * INDETERMINATE_SEGMENT;
+        const float segment = w * m_appearance.indeterminateSegment;
         const float head = static_cast<float>(m_phase) * (w + segment);
         const float right = std::min(w, head);
         const float left = std::max(0.f, head - segment);
@@ -78,18 +98,20 @@ void ProgressBar::draw(float offsetX, float offsetY) {
     UIRenderer::RectData fill;
     fill.center = {baseX + fillX + fillW * 0.5f, baseY + h * 0.5f, 0.f};
     fill.size = {fillW, h};
-    fill.color = theme().accent;
-    renderer.drawRoundedRect(fill, std::min(radius, fillW * 0.5f));
+    if (m_appearance.fillImage) {
+        const SurfaceImage &image = m_appearance.fillImage;
+        fill.color = image.tint.resolve();
+        fill.texture = image.texture;
+        fill.textureCoords = image.textureCoords;
+        renderer.drawNineSlice(fill, image.capInsets, image.scale);
+    } else {
+        fill.color = m_appearance.fill.resolve();
+        renderer.drawRoundedRect(fill, std::min(radius, fillW * 0.5f));
+    }
 }
 
 void ProgressBar::themeChanged() {
-    applyTrackStyle();
-    setNeedsDisplay();
-}
-
-void ProgressBar::applyTrackStyle() {
-    setBackgroundColor(theme().control);
-    surface().setCornerRadius(BAR_HEIGHT * 0.5f);
+    setNeedsDisplay(); // the tokens resolve at draw
 }
 
 } // namespace PandaUI

@@ -1,5 +1,9 @@
 #include "UITestLayer.hpp"
 
+#include <Fern/Fonts/FontCatalog.hpp>
+
+#include <fstream>
+
 #include "UI/Demo/ColorSchemeEditorView.hpp"
 #include "UI/Demo/DemoAppView.hpp"
 #include "UI/Demo/PageHeader.hpp"
@@ -59,6 +63,30 @@ void UITestLayer::onAttach() {
 
     m_shipLogoTexture = m_uiRenderer.createTextureFromStaticResource("demo-ui/ship_logo.png");
 
+    // The "Fantasy" skin of the Skins section: nine-slice plates drawn at start, and a serif face
+    // of the system (whichever is installed) as the family "Fantasy"; without one the skin keeps Sans.
+    m_skinAssets = Demo::createSkinAssets([this](const unsigned char *pixels, uint16_t width, uint16_t height) {
+        return m_uiRenderer.createTextureRGBA8(pixels, width, height);
+    });
+    for (const char *family : {"Georgia", "Palatino", "Baskerville", "Times New Roman", "DejaVu Serif", "Liberation Serif"}) {
+        const std::optional<Fern::Fonts::Face> face = Fern::Fonts::find(family, 700);
+        if (!face) { continue; }
+        std::ifstream file(face->file, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) { continue; }
+        std::vector<unsigned char> bytes(static_cast<size_t>(file.tellg()));
+        file.seekg(0);
+        file.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        m_displayFont = PandaUI::FontAtlas::createFromMemory(
+            bytes.data(), static_cast<uint32_t>(bytes.size()), 40.f, createFontAtlasTexture, &m_uiRenderer, face->index
+        );
+        if (m_displayFont) {
+            m_displayFont->setFallback(m_boldFont);
+            m_skinAssets.displayFont = PandaUI::fontFamily("Fantasy");
+            m_skinAssets.hasDisplayFont = true;
+            break;
+        }
+    }
+
     createMainWindow();
 }
 
@@ -75,6 +103,7 @@ void UITestLayer::onDetach() {
     m_monoFont.reset();
     m_monoMediumFont.reset();
     m_monoBoldFont.reset();
+    m_displayFont.reset();
     m_uiRenderer.shutdown();
 }
 
@@ -85,6 +114,9 @@ void UITestLayer::applyFonts(PandaUI::Context &context) {
     context.setFontAtlas(m_monoFont, PandaUI::FontWeight::Regular, PandaUI::FontFamily::Mono);
     context.setFontAtlas(m_monoMediumFont, PandaUI::FontWeight::Medium, PandaUI::FontFamily::Mono);
     context.setFontAtlas(m_monoBoldFont, PandaUI::FontWeight::Bold, PandaUI::FontFamily::Mono);
+    if (m_displayFont) { // the display face of the skin: one file serves every weight
+        context.setFontAtlas(m_displayFont, PandaUI::FontWeight::Regular, PandaUI::fontFamily("Fantasy"));
+    }
 }
 
 void UITestLayer::onUpdate(double deltaTime) {
@@ -170,7 +202,7 @@ void UITestLayer::createMainWindow() {
     applyFonts(demoWindow->context);
     demoWindow->platform.init(window, demoWindow->context);
     demoWindow->context.setRootView(
-        demoWindow->context.makeView<Demo::DemoAppView>(m_shipLogoTexture, [this] { openSecondaryWindow(); })
+        demoWindow->context.makeView<Demo::DemoAppView>(m_shipLogoTexture, m_skinAssets, [this] { openSecondaryWindow(); })
     );
     syncViewport(*demoWindow);
     m_windows.push_back(std::move(demoWindow));

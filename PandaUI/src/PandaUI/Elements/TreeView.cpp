@@ -14,17 +14,6 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float BASE_PAD_LEFT = 8.f;
-    constexpr float INDENT = 16.f;
-    constexpr float DISCLOSURE_SIZE = 12.f; // width of the arrow (and click) zone
-    constexpr float LABEL_GAP = 4.f;
-    constexpr float ROW_PADDING_RIGHT = 12.f;
-
-    // Chevron (›/⌄) made of two lines: LONG — the long side of an arm, SHORT — the short one.
-    constexpr float CHEVRON_LONG = 3.4f;
-    constexpr float CHEVRON_SHORT = 1.8f;
-    constexpr float CHEVRON_THICKNESS = 1.6f;
-
     constexpr double SPRING_OPEN_DELAY = 0.6; // seconds of hovering over a collapsed item before auto-expansion
 
     constexpr float DRAG_AUTOSCROLL_EDGE = 24.f;   // height of the edge zone (px) where a drag triggers auto-scroll
@@ -46,7 +35,7 @@ public:
         layout().setPosition(Edge::Left, Length::points(0.f));
         layout().setWidth(Length::percent(100.f));
         layout().setHeight(Length::points(m_tree->m_rowHeight));
-        surface().setCornerRadius(0.f); // row selection — no rounding
+        surface().setCornerRadius(m_tree->appearance().rowRadius);
 
         // The content does not intercept the pointer — the whole row catches hover/click (otherwise the
         // highlight would appear only over the indent/padding). The content's left edge is set in configure().
@@ -54,7 +43,7 @@ public:
         m_content->layout().setPositionType(PositionType::Absolute);
         m_content->layout().setPosition(Edge::Top, Length::points(0.f));
         m_content->layout().setPosition(Edge::Bottom, Length::points(0.f));
-        m_content->layout().setPosition(Edge::Right, Length::points(ROW_PADDING_RIGHT));
+        m_content->layout().setPosition(Edge::Right, Length::points(m_tree->appearance().rowPaddingRight));
         addSubview(m_content);
     }
 
@@ -73,9 +62,12 @@ public:
         m_selected = selected;
         m_active = active;
         m_dropHighlight = dropHighlight;
+        const TreeViewAppearance &a = m_tree->appearance();
         m_content->layout().setPosition(
-            Edge::Left, Length::points(BASE_PAD_LEFT + static_cast<float>(depth) * INDENT + DISCLOSURE_SIZE + LABEL_GAP)
+            Edge::Left, Length::points(a.basePadLeft + static_cast<float>(depth) * a.indent + a.disclosureSize + a.labelGap)
         );
+        m_content->layout().setPosition(Edge::Right, Length::points(a.rowPaddingRight));
+        surface().setCornerRadius(a.rowRadius);
         applyStyle();
         setNeedsDisplay();
     }
@@ -103,8 +95,9 @@ protected:
         if (m_expandable) {
             const Rect worldFrame = getWorldFrame();
             const float localX = event.position.x - worldFrame.origin.x;
-            const float left = BASE_PAD_LEFT + static_cast<float>(m_depth) * INDENT;
-            if (localX >= left && localX <= left + DISCLOSURE_SIZE + 2.f) {
+            const TreeViewAppearance &a = m_tree->appearance();
+            const float left = a.basePadLeft + static_cast<float>(m_depth) * a.indent;
+            if (localX >= left && localX <= left + a.disclosureSize + 2.f) {
                 m_tree->handleDisclosureClicked(m_item);
                 return true; // click on the arrow — the row is not selected
             }
@@ -136,44 +129,43 @@ protected:
         if (!context) { return; }
         UIRenderer &renderer = context->getRenderer();
 
+        const TreeViewAppearance &a = m_tree->appearance();
         const Rect frame = getFrame();
         const float cx =
-            offsetX + frame.origin.x + BASE_PAD_LEFT + static_cast<float>(m_depth) * INDENT + DISCLOSURE_SIZE * 0.5f;
+            offsetX + frame.origin.x + a.basePadLeft + static_cast<float>(m_depth) * a.indent + a.disclosureSize * 0.5f;
         const float cy = offsetY + frame.origin.y + frame.size.height * 0.5f;
-        const Color color = theme().textDim; // soft selection — the chevron is not inverted
+        const Color color = a.chevron.resolve(); // soft selection — the chevron is not inverted
+        const float lng = a.chevronLong;
+        const float sht = a.chevronShort;
+        const float thick = a.chevronThickness;
 
-        if (m_expanded) {
-            // ⌄ — down
-            renderer.drawLine(
-                Point(cx - CHEVRON_LONG, cy - CHEVRON_SHORT), Point(cx, cy + CHEVRON_SHORT), CHEVRON_THICKNESS, color
-            );
-            renderer.drawLine(
-                Point(cx, cy + CHEVRON_SHORT), Point(cx + CHEVRON_LONG, cy - CHEVRON_SHORT), CHEVRON_THICKNESS, color
-            );
-        } else {
-            // › — right
-            renderer.drawLine(
-                Point(cx - CHEVRON_SHORT, cy - CHEVRON_LONG), Point(cx + CHEVRON_SHORT, cy), CHEVRON_THICKNESS, color
-            );
-            renderer.drawLine(
-                Point(cx + CHEVRON_SHORT, cy), Point(cx - CHEVRON_SHORT, cy + CHEVRON_LONG), CHEVRON_THICKNESS, color
-            );
+        if (m_expanded) { // ⌄ — down
+            renderer.drawLine(Point(cx - lng, cy - sht), Point(cx, cy + sht), thick, color);
+            renderer.drawLine(Point(cx, cy + sht), Point(cx + lng, cy - sht), thick, color);
+        } else { // › — right
+            renderer.drawLine(Point(cx - sht, cy - lng), Point(cx + sht, cy), thick, color);
+            renderer.drawLine(Point(cx + sht, cy), Point(cx - sht, cy + lng), thick, color);
         }
     }
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const TreeViewAppearance &a = m_tree->appearance();
         if (m_selected) {
-            setBackgroundColor(m_active ? t.selection : t.selectionInactive); // soft; brighter in focus
+            setBackgroundColor(m_active ? a.selection : a.selectionInactive); // soft; brighter in focus
         } else if (hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted)) {
-            setBackgroundColor(t.rowHover);
+            setBackgroundColor(a.hover);
         } else {
             setBackgroundColor(Color(0x00000000));
         }
+        if (m_selected && a.selectionImage) {
+            surface().setBackgroundImage(a.selectionImage);
+        } else {
+            surface().clearBackgroundImage();
+        }
         // "Drop into this node" target: an accent border on top of the background.
-        surface().setBorderWidth(m_dropHighlight ? 1.5f : 0.f);
-        if (m_dropHighlight) { surface().setBorderColor(t.accent); }
+        surface().setBorderWidth(m_dropHighlight ? a.dropBorderWidth : 0.f);
+        if (m_dropHighlight) { surface().setBorderColor(a.dropBorder); }
     }
 
     TreeView *m_tree;
@@ -191,7 +183,8 @@ private:
 
 /* ------------------------------ TreeView ------------------------------ */
 
-TreeView::TreeView() {
+TreeView::TreeView()
+    : m_appearance(defaultAppearance()) {
     setScrollDirection(ScrollDirection::Vertical);
     setFocusable(true);             // the tree accepts focus → arrows/Shift work (rows are not focusable)
     setContentSize(Size(0.f, 0.f)); // the content size is computed here from the flat list (virtualization)
@@ -478,6 +471,19 @@ void TreeView::themeChanged() {
     // Visible rows are re-themed by the theme propagating through the tree; pooled rows are not.
     // The pool is cleared so that reused rows do not keep the colors of the previous theme.
     m_recyclePool.clear();
+}
+
+TreeViewAppearance &TreeView::defaultAppearance() {
+    static TreeViewAppearance appearance;
+    return appearance;
+}
+
+void TreeView::setAppearance(const TreeViewAppearance &appearance) {
+    m_appearance = appearance;
+    // The rows take their geometry and colors when they are bound (configure): rebind everything.
+    m_recyclePool.clear();
+    m_needsRebuild = true;
+    setNeedsLayout();
 }
 
 bool TreeView::pointerDown(PointerEvent &event) {

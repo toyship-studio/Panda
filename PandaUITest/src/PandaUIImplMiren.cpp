@@ -163,6 +163,8 @@ void PandaUIImplMiren::render(const PandaUI::DrawList &drawList, uint16_t viewId
 
         Miren::setState(MIREN_STATE_BLEND);
         Miren::addInputUniformBuffer("UBO", &drawList.viewProjection[0][0], sizeof(glm::mat4));
+        // The rounded clip of the command (zero when none): the shaders fade the pixels outside it.
+        Miren::addInputUniformBuffer("MASK", &command.mask, sizeof(PandaUI::DrawCommand::Mask));
         if (!isSdf) { Miren::addInputTexture("u_texture", texture); }
         Miren::setVertexLayout(m_data->vertexLayout);
         Miren::setVertexBuffer(tvb.handle, tvb.startVertex);

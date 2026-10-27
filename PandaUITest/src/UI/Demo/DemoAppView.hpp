@@ -2,6 +2,7 @@
 
 #include "UI/Demo/DemoComponent.hpp"
 #include "UI/Demo/DemoSidebar.hpp"
+#include "UI/Demo/SkinAssets.hpp"
 
 #include <PandaUI/PandaUI.hpp>
 
@@ -18,7 +19,7 @@ class DemoAppView final : public DemoComponent {
 public:
     using OpenWindowCallback = std::function<void()>;
 
-    DemoAppView(PandaUI::TextureHandle logoTexture, OpenWindowCallback onOpenWindow);
+    DemoAppView(PandaUI::TextureHandle logoTexture, SkinAssets skinAssets, OpenWindowCallback onOpenWindow);
 
 private:
     struct SectionEntry {
@@ -33,6 +34,7 @@ private:
     void selectSection(int index);
 
     PandaUI::TextureHandle m_logoTexture;
+    SkinAssets m_skinAssets;
     OpenWindowCallback m_onOpenWindow;
     std::vector<SectionEntry> m_sections;
     std::shared_ptr<DemoSidebar> m_sidebar;

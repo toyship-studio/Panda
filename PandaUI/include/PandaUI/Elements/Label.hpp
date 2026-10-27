@@ -18,10 +18,49 @@ enum class TextRole {
     Accent,    // accent text
 };
 
+// A shadow under the text: the offset and the color (a theme token follows the theme). Does not
+// change the measured size, like NSShadow.
+struct TextShadow {
+    Point offset = Point(0.f, 1.f);
+    ThemeColor color = Color(0.f, 0.f, 0.f, 0.f);
+
+    TextShadow() = default;
+    TextShadow(Point offset, ThemeColor color)
+        : offset(offset)
+        , color(color) {}
+
+    bool isVisible() const {
+        return color.resolve().a > 0.f && (offset.x != 0.f || offset.y != 0.f);
+    }
+};
+
+// An outline around the glyphs, `width` points thick (the glyphs are drawn again around their
+// place, so the cost grows with the width; 1–2 points is the usual HUD stroke).
+struct TextOutline {
+    float width = 0.f;
+    ThemeColor color = Color(0.f, 0.f, 0.f, 0.f);
+
+    TextOutline() = default;
+    TextOutline(float width, ThemeColor color)
+        : width(width)
+        , color(color) {}
+
+    bool isVisible() const {
+        return width > 0.f && color.resolve().a > 0.f;
+    }
+};
+
+struct LabelAppearance {
+    Font font = Font(16.f); // the font of every label created from now on: the face of a game's UI
+};
+
 class Label : public View {
 public:
     Label();
     explicit Label(std::string text);
+
+    // The look of the labels created from now on (Appearance.hpp).
+    static LabelAppearance &defaultAppearance();
 
     // measure-leaf (intrinsic size → Yoga measure function): children are not allowed — forbidden
     // at compile time (otherwise Yoga crashes at runtime). Accessories/icons go into a wrapper
@@ -65,6 +104,16 @@ public:
     TextOverflowMode getTextOverflowMode() const {
         return m_textOverflowMode;
     }
+    // Decorations of the glyphs for game text over a scene: a drop shadow, an outline. Neither
+    // changes the layout.
+    void setTextShadow(TextShadow shadow);
+    const TextShadow &getTextShadow() const {
+        return m_textShadow;
+    }
+    void setTextOutline(TextOutline outline);
+    const TextOutline &getTextOutline() const {
+        return m_textOutline;
+    }
     Size measureText() const;
 
 protected:
@@ -89,6 +138,8 @@ private:
     TextAlignment m_textAlignment;
     TextVerticalAlignment m_verticalTextAlignment;
     TextOverflowMode m_textOverflowMode;
+    TextShadow m_textShadow;
+    TextOutline m_textOutline;
     mutable const FontAtlas *m_cachedFont;
     mutable TextLayoutOptions m_cachedLayoutOptions;
     mutable TextLayoutResult m_cachedLayout;

@@ -134,6 +134,58 @@ struct EdgeInsets {
     }
 };
 
+// The radius of each corner, clockwise from the top left. A uniform value is the common case; a
+// tab (round on top, flat below) or a bar segment (round on one side) differ per corner.
+struct CornerRadii {
+    float topLeft = 0.f, topRight = 0.f, bottomRight = 0.f, bottomLeft = 0.f;
+
+    constexpr CornerRadii() = default;
+    constexpr CornerRadii(float radius)
+        : topLeft(radius)
+        , topRight(radius)
+        , bottomRight(radius)
+        , bottomLeft(radius) {}
+    constexpr CornerRadii(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        : topLeft(topLeft)
+        , topRight(topRight)
+        , bottomRight(bottomRight)
+        , bottomLeft(bottomLeft) {}
+
+    static constexpr CornerRadii top(float radius) {
+        return CornerRadii(radius, radius, 0.f, 0.f);
+    }
+    static constexpr CornerRadii bottom(float radius) {
+        return CornerRadii(0.f, 0.f, radius, radius);
+    }
+    static constexpr CornerRadii left(float radius) {
+        return CornerRadii(radius, 0.f, 0.f, radius);
+    }
+    static constexpr CornerRadii right(float radius) {
+        return CornerRadii(0.f, radius, radius, 0.f);
+    }
+
+    constexpr bool isUniform() const {
+        return topLeft == topRight && topRight == bottomRight && bottomRight == bottomLeft;
+    }
+    constexpr bool isZero() const {
+        return topLeft <= 0.f && topRight <= 0.f && bottomRight <= 0.f && bottomLeft <= 0.f;
+    }
+    constexpr float max() const {
+        float result = topLeft;
+        if (topRight > result) { result = topRight; }
+        if (bottomRight > result) { result = bottomRight; }
+        if (bottomLeft > result) { result = bottomLeft; }
+        return result;
+    }
+    constexpr bool operator==(const CornerRadii &other) const {
+        return topLeft == other.topLeft && topRight == other.topRight && bottomRight == other.bottomRight &&
+               bottomLeft == other.bottomLeft;
+    }
+    constexpr bool operator!=(const CornerRadii &other) const {
+        return !(*this == other);
+    }
+};
+
 struct SizeRange {
     Size min;
     Size max;

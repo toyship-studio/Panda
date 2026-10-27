@@ -60,6 +60,72 @@ void SurfaceSection::addSubviews() {
         addSubview(example);
     }
     {
+        auto example = std::make_shared<DemoExample>(
+            "Per-corner radii", "Surface::setCornerRadii: CornerRadii::top / left, or four values (the tessellated path)."
+        );
+        auto top = makeTile();
+        top->surface().setCornerRadii(CornerRadii::top(16.f));
+        auto left = makeTile();
+        left->surface().setCornerRadii(CornerRadii::left(38.f));
+        auto mixed = makeTile();
+        mixed->surface().setCornerRadii(CornerRadii(24.f, 4.f, 24.f, 4.f));
+        mixed->surface().setBorderWidth(2.f);
+        mixed->surface().setBorderColor(theme().textPrimary);
+        example->addContent(top);
+        example->addContent(left);
+        example->addContent(mixed);
+        addSubview(example);
+    }
+    {
+        auto example = std::make_shared<DemoExample>(
+            "Gradient", "Surface::setBackgroundGradient: two colors along a direction, with the corners."
+        );
+        auto vertical = makeTile();
+        vertical->surface().setCornerRadius(12.f);
+        vertical->surface().setBackgroundGradient(SurfaceGradient(theme().accent, theme().accentPressed));
+        auto horizontal = makeTile();
+        horizontal->surface().setCornerRadius(12.f);
+        horizontal->surface().setBackgroundGradient(
+            SurfaceGradient(theme().accentSecondary, theme().accent, GradientDirection::LeftToRight)
+        );
+        auto diagonal = makeTile();
+        diagonal->surface().setCornerRadii(CornerRadii(24.f, 4.f, 24.f, 4.f));
+        diagonal->surface().setBackgroundGradient(
+            SurfaceGradient(theme().warning, theme().danger, GradientDirection::TopLeftToBottomRight)
+        );
+        example->addContent(vertical);
+        example->addContent(horizontal);
+        example->addContent(diagonal);
+        addSubview(example);
+    }
+    {
+        auto example = std::make_shared<DemoExample>(
+            "Rounded clip", "clipsToBounds with a corner radius clips the subviews by the rounded shape (masksToBounds)."
+        );
+        auto clipped = makeTile();
+        clipped->surface().setCornerRadius(24.f);
+        clipped->setClipsToBounds(true);
+        auto stripe = std::make_shared<Panel>();
+        stripe->setBackgroundColor(theme().textPrimary);
+        stripe->layout().setPositionType(PositionType::Absolute);
+        stripe->layout().setPosition(Edge::Left, Length::points(-10.f));
+        stripe->layout().setPosition(Edge::Top, Length::points(0.f));
+        stripe->layout().setSize({96.f, 18.f});
+        clipped->addSubview(stripe);
+        auto unclipped = makeTile();
+        unclipped->surface().setCornerRadius(24.f);
+        auto stripe2 = std::make_shared<Panel>();
+        stripe2->setBackgroundColor(theme().textPrimary);
+        stripe2->layout().setPositionType(PositionType::Absolute);
+        stripe2->layout().setPosition(Edge::Left, Length::points(-10.f));
+        stripe2->layout().setPosition(Edge::Top, Length::points(0.f));
+        stripe2->layout().setSize({96.f, 18.f});
+        unclipped->addSubview(stripe2);
+        example->addContent(clipped);
+        example->addContent(unclipped);
+        addSubview(example);
+    }
+    {
         auto example = std::make_shared<DemoExample>("Opacity", "View::setOpacity.");
         auto opaque = makeTile();
         opaque->surface().setCornerRadius(10.f);

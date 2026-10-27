@@ -86,6 +86,7 @@ struct ThemeColor {
     Color Theme::*token = nullptr;
     Color literal{0.f, 0.f, 0.f, 0.f};
     float alpha = -1.f; // >= 0: replaces the alpha of the resolved color
+    float shade = 0.f;  // > 0 mixes toward white by that much, < 0 toward black: a hover or pressed tone of a token
 
     constexpr ThemeColor() = default;
     constexpr ThemeColor(Color color)
@@ -98,8 +99,20 @@ struct ThemeColor {
         copy.alpha = value;
         return copy;
     }
+    constexpr ThemeColor withShade(float amount) const {
+        ThemeColor copy = *this;
+        copy.shade = amount;
+        return copy;
+    }
     Color resolve() const {
         Color color = token ? theme().*token : literal;
+        if (shade != 0.f) {
+            const float target = shade > 0.f ? 1.f : 0.f;
+            const float amount = shade > 0.f ? shade : -shade;
+            color.r += (target - color.r) * amount;
+            color.g += (target - color.g) * amount;
+            color.b += (target - color.b) * amount;
+        }
         if (alpha >= 0.f) { color.a = alpha; }
         return color;
     }
@@ -107,7 +120,7 @@ struct ThemeColor {
         return token == nullptr;
     }
     constexpr bool operator==(const ThemeColor &other) const {
-        return token == other.token && literal == other.literal && alpha == other.alpha;
+        return token == other.token && literal == other.literal && alpha == other.alpha && shade == other.shade;
     }
     constexpr bool operator!=(const ThemeColor &other) const {
         return !(*this == other);

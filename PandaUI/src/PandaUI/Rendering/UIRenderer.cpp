@@ -93,22 +93,53 @@ namespace {
                glm::scale(identity, glm::vec3(rect.size.width, rect.size.height, 1.f));
     }
 
-    RoundedRectPerimeter buildRoundedRectPerimeter(Size size, float cornerRadius, float inset, int segments) {
+    // Radii that fit the sides: adjacent corners may not overlap (the CSS rule — every radius scales
+    // by the same factor when a side is too short).
+    CornerRadii fitCornerRadii(Size size, CornerRadii radii) {
+        radii.topLeft = std::max(0.f, radii.topLeft);
+        radii.topRight = std::max(0.f, radii.topRight);
+        radii.bottomRight = std::max(0.f, radii.bottomRight);
+        radii.bottomLeft = std::max(0.f, radii.bottomLeft);
+        float factor = 1.f;
+        const auto limit = [&factor](float side, float a, float b) {
+            if (a + b > side && a + b > 0.f) { factor = std::min(factor, side / (a + b)); }
+        };
+        limit(size.width, radii.topLeft, radii.topRight);
+        limit(size.width, radii.bottomLeft, radii.bottomRight);
+        limit(size.height, radii.topLeft, radii.bottomLeft);
+        limit(size.height, radii.topRight, radii.bottomRight);
+        if (factor < 1.f) {
+            radii.topLeft *= factor;
+            radii.topRight *= factor;
+            radii.bottomRight *= factor;
+            radii.bottomLeft *= factor;
+        }
+        return radii;
+    }
+
+    // A quarter arc per corner, `segments` straight pieces each, clockwise from the top right.
+    // The counts are the same for every corner so an inner ring (a border) lines up with the outer.
+    RoundedRectPerimeter buildRoundedRectPerimeter(Size size, CornerRadii radii, float inset, int segments) {
         RoundedRectPerimeter perimeter;
         if (size.width <= 0.f || size.height <= 0.f) { return perimeter; }
 
         const float maxInset = std::min(size.width, size.height) * 0.5f;
         inset = std::clamp(inset, 0.f, maxInset);
-        const float innerWidth = std::max(0.f, size.width - inset * 2.f);
-        const float innerHeight = std::max(0.f, size.height - inset * 2.f);
-        cornerRadius = std::clamp(cornerRadius, 0.f, std::min(innerWidth, innerHeight) * 0.5f);
+        const Size inner(std::max(0.f, size.width - inset * 2.f), std::max(0.f, size.height - inset * 2.f));
+        // The inner edge of a border runs parallel to the outer one: its radii are smaller by the inset.
+        radii = fitCornerRadii(
+            inner, CornerRadii(
+                       std::max(0.f, radii.topLeft - inset), std::max(0.f, radii.topRight - inset),
+                       std::max(0.f, radii.bottomRight - inset), std::max(0.f, radii.bottomLeft - inset)
+                   )
+        );
 
         const float left = -0.5f + inset / size.width;
         const float right = 0.5f - inset / size.width;
         const float top = -0.5f + inset / size.height;
         const float bottom = 0.5f - inset / size.height;
 
-        if (cornerRadius <= 0.f && segments <= 1) {
+        if (radii.isZero() && segments <= 1) {
             perimeter.push({left, top});
             perimeter.push({right, top});
             perimeter.push({right, bottom});
@@ -116,12 +147,16 @@ namespace {
             return perimeter;
         }
 
-        const float radiusX = cornerRadius / size.width;
-        const float radiusY = cornerRadius / size.height;
         const float pi = 3.14159265358979323846f;
         const float halfPi = pi * 0.5f;
+        segments = std::max(1, segments);
 
-        auto addCorner = [&](float centerX, float centerY, float startAngle, float endAngle) {
+        auto addCorner = [&](float cornerX, float cornerY, float radius, float startAngle, float endAngle) {
+            // The arc center sits one radius inside the corner along both axes.
+            const float radiusX = radius / size.width;
+            const float radiusY = radius / size.height;
+            const float centerX = cornerX + (cornerX < 0.f ? radiusX : -radiusX);
+            const float centerY = cornerY + (cornerY < 0.f ? radiusY : -radiusY);
             for (int i = 0; i <= segments; ++i) {
                 const float t = static_cast<float>(i) / static_cast<float>(segments);
                 const float angle = startAngle + (endAngle - startAngle) * t;
@@ -129,11 +164,20 @@ namespace {
             }
         };
 
-        addCorner(right - radiusX, top + radiusY, -halfPi, 0.f);
-        addCorner(right - radiusX, bottom - radiusY, 0.f, halfPi);
-        addCorner(left + radiusX, bottom - radiusY, halfPi, pi);
-        addCorner(left + radiusX, top + radiusY, pi, pi + halfPi);
+        addCorner(right, top, radii.topRight, -halfPi, 0.f);
+        addCorner(right, bottom, radii.bottomRight, 0.f, halfPi);
+        addCorner(left, bottom, radii.bottomLeft, halfPi, pi);
+        addCorner(left, top, radii.topLeft, pi, pi + halfPi);
         return perimeter;
+    }
+
+    // The color of a point of the shape: the four corner colors, bilinearly.
+    glm::vec4 colorAtLocalPoint(const UIRenderer::CornerColors &colors, glm::vec2 point) {
+        const float u = std::clamp(point.x + 0.5f, 0.f, 1.f);
+        const float v = std::clamp(point.y + 0.5f, 0.f, 1.f);
+        const glm::vec4 top = glm::mix(glm::vec4(colors.topLeft), glm::vec4(colors.topRight), u);
+        const glm::vec4 bottom = glm::mix(glm::vec4(colors.bottomLeft), glm::vec4(colors.bottomRight), u);
+        return glm::mix(top, bottom, v);
     }
 
 } // namespace
@@ -154,6 +198,12 @@ UIRenderer::UIRenderer()
     , m_currentClipRect()
     , m_hasCurrentClip(false)
     , m_currentClipIsEmpty(false)
+    , m_currentHasMask(false)
+    , m_currentMaskRect()
+    , m_currentMaskRadii()
+    , m_currentCommandHasMask(false)
+    , m_currentCommandMaskRect()
+    , m_currentCommandMaskRadii()
     , m_solidTexture()
     , m_solidTextureCoords(0, 0, 1, 1) {
     m_drawList.vertices.reserve(4096);
@@ -168,6 +218,9 @@ void UIRenderer::begin() {
     m_clipStack.clear();
     m_hasCurrentClip = false;
     m_currentClipIsEmpty = false;
+    m_currentHasMask = false;
+    m_currentMaskRect = Rect::zero();
+    m_currentMaskRadii = CornerRadii();
     reset();
     updateSolidTexture();
 }
@@ -178,16 +231,101 @@ void UIRenderer::drawRect(const RectData &rect) {
 }
 
 void UIRenderer::drawRoundedRect(const RectData &rect, float cornerRadius) {
+    drawRoundedRect(rect, CornerRadii(cornerRadius));
+}
+
+void UIRenderer::drawRoundedRect(const RectData &rect, CornerRadii radii) {
     if (m_currentClipIsEmpty) { return; }
-    drawRoundedRect(transformForRect(rect), rect, cornerRadius);
+    drawRoundedRect(transformForRect(rect), rect, radii, nullptr);
+}
+
+void UIRenderer::drawRoundedRect(const RectData &rect, CornerRadii radii, const CornerColors &colors) {
+    if (m_currentClipIsEmpty) { return; }
+    drawRoundedRect(transformForRect(rect), rect, radii, &colors);
 }
 
 void UIRenderer::drawRoundedRectBorder(const RectData &rect, float cornerRadius, float borderWidth) {
+    drawRoundedRectBorder(rect, CornerRadii(cornerRadius), borderWidth);
+}
+
+void UIRenderer::drawRoundedRectBorder(const RectData &rect, CornerRadii radii, float borderWidth) {
     if (m_currentClipIsEmpty) { return; }
-    drawRoundedRectBorder(transformForRect(rect), rect, cornerRadius, borderWidth);
+    drawRoundedRectBorder(transformForRect(rect), rect, radii, borderWidth);
 }
 
 void UIRenderer::drawShadow(const RectData &rect, float cornerRadius, ShadowData shadow) {
+    drawShadow(rect, CornerRadii(cornerRadius), shadow);
+}
+
+void UIRenderer::drawNineSlice(const RectData &rect, EdgeInsets capInsets, float capScale) {
+    if (m_currentClipIsEmpty || !rect.texture) { return; }
+    if (rect.size.width <= 0.f || rect.size.height <= 0.f) { return; }
+    const Size textureSize = rect.texture.size;
+    const Rect &uv = rect.textureCoords;
+    // The image in texture pixels (a part of an atlas when textureCoords is a sub-rectangle).
+    const float imageWidth = textureSize.width * uv.size.width;
+    const float imageHeight = textureSize.height * uv.size.height;
+    const bool stretched = (capInsets.left <= 0.f && capInsets.right <= 0.f && capInsets.top <= 0.f &&
+                            capInsets.bottom <= 0.f) ||
+                           imageWidth <= 0.f || imageHeight <= 0.f;
+    if (stretched) {
+        drawRect(rect);
+        return;
+    }
+    capScale = capScale > 0.f ? capScale : 1.f;
+    // The caps in points; a destination smaller than two caps shrinks them in proportion.
+    float capLeft = capInsets.left / capScale;
+    float capRight = capInsets.right / capScale;
+    float capTop = capInsets.top / capScale;
+    float capBottom = capInsets.bottom / capScale;
+    if (capLeft + capRight > rect.size.width && capLeft + capRight > 0.f) {
+        const float factor = rect.size.width / (capLeft + capRight);
+        capLeft *= factor;
+        capRight *= factor;
+    }
+    if (capTop + capBottom > rect.size.height && capTop + capBottom > 0.f) {
+        const float factor = rect.size.height / (capTop + capBottom);
+        capTop *= factor;
+        capBottom *= factor;
+    }
+    const float left = rect.center.x - rect.size.width * 0.5f;
+    const float top = rect.center.y - rect.size.height * 0.5f;
+    // Destination columns and rows (points) and the matching source columns and rows (image pixels).
+    const float xs[4] = {0.f, capLeft, rect.size.width - capRight, rect.size.width};
+    const float ys[4] = {0.f, capTop, rect.size.height - capBottom, rect.size.height};
+    const float sx[4] = {0.f, std::min(capInsets.left, imageWidth), std::max(0.f, imageWidth - capInsets.right), imageWidth};
+    const float sy[4] = {0.f, std::min(capInsets.top, imageHeight), std::max(0.f, imageHeight - capInsets.bottom), imageHeight};
+
+    PrimBuffer buffer = beginPrimitive(rect.texture);
+    if (!buffer) { return; }
+    const glm::vec4 color = rect.color;
+    const glm::mat4 model = rect.transform;
+    // Image pixels → texture coordinates, in the convention of drawRect (v grows upwards).
+    const auto texU = [&](float px) { return uv.origin.x + uv.size.width * (px / imageWidth); };
+    const auto texV = [&](float py) { return uv.origin.y + uv.size.height * (1.f - py / imageHeight); };
+    uint32_t vertexCount = 0;
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            const float x0 = left + xs[column];
+            const float x1 = left + xs[column + 1];
+            const float y0 = top + ys[row];
+            const float y1 = top + ys[row + 1];
+            if (x1 <= x0 || y1 <= y0) { continue; }
+            const float u0 = texU(sx[column]);
+            const float u1 = texU(sx[column + 1]);
+            const float v0 = texV(sy[row]);
+            const float v1 = texV(sy[row + 1]);
+            buffer.vertex(glm::vec3(model * glm::vec4(x0, y0, 0.f, 1.f)), {u0, v0}, color);
+            buffer.vertex(glm::vec3(model * glm::vec4(x1, y0, 0.f, 1.f)), {u1, v0}, color);
+            buffer.vertex(glm::vec3(model * glm::vec4(x1, y1, 0.f, 1.f)), {u1, v1}, color);
+            buffer.vertex(glm::vec3(model * glm::vec4(x0, y1, 0.f, 1.f)), {u0, v1}, color);
+            buffer.quad(vertexCount, vertexCount + 1, vertexCount + 2, vertexCount + 3);
+            vertexCount += 4;
+        }
+    }
+}
+
+void UIRenderer::drawShadow(const RectData &rect, CornerRadii radii, ShadowData shadow) {
     if (m_currentClipIsEmpty || shadow.color.a <= 0.f) { return; }
 
     const int layerCount = std::max(1, std::min(10, static_cast<int>(std::ceil(std::max(1.f, shadow.radius) / 3.f))));
@@ -201,7 +339,12 @@ void UIRenderer::drawShadow(const RectData &rect, float cornerRadius, ShadowData
         shadowRect.size.height += spread * 2.f;
         shadowRect.color = shadow.color;
         shadowRect.color.a *= (1.f - t * 0.65f) / static_cast<float>(layerCount);
-        drawRoundedRect(shadowRect, cornerRadius + spread);
+        drawRoundedRect(
+            shadowRect, CornerRadii(
+                            radii.topLeft + spread, radii.topRight + spread, radii.bottomRight + spread,
+                            radii.bottomLeft + spread
+                        )
+        );
     }
 }
 
@@ -226,7 +369,9 @@ void UIRenderer::drawRect(const glm::mat4 &transform, RectData rect) {
     buffer.quad(0, 1, 2, 3);
 }
 
-void UIRenderer::emitRoundedSDF(const glm::mat4 &transform, const RectData &rect, float cornerRadius, float borderWidth) {
+void UIRenderer::emitRoundedSDF(
+    const glm::mat4 &transform, const RectData &rect, float cornerRadius, float borderWidth, const CornerColors *colors
+) {
     if (rect.size.width <= 0.f || rect.size.height <= 0.f) { return; }
 
     PrimBuffer buffer = beginPrimitive(TextureHandle{}, DrawPrimitive::RoundedSDF);
@@ -246,36 +391,39 @@ void UIRenderer::emitRoundedSDF(const glm::mat4 &transform, const RectData &rect
     const glm::vec4 params(halfW, halfH, cornerRadius, borderWidth);
 
     // localPos (through the uv slot) — the local position of the corner relative to the center, in pixels.
-    auto corner = [&](float sx, float sy) {
+    // A gradient gives every corner its own color; the shader interpolates them across the quad.
+    auto corner = [&](float sx, float sy, Color cornerColor) {
         buffer.vertex(
             glm::vec3(model * glm::vec4(sx * nx, sy * ny, 0.f, 1.f)),
-            glm::vec2(sx * nx * rect.size.width, sy * ny * rect.size.height), color, params
+            glm::vec2(sx * nx * rect.size.width, sy * ny * rect.size.height),
+            colors ? glm::vec4(cornerColor) : color, params
         );
     };
-    corner(-1.f, -1.f); // TL
-    corner(1.f, -1.f);  // TR
-    corner(1.f, 1.f);   // BR
-    corner(-1.f, 1.f);  // BL
+    corner(-1.f, -1.f, colors ? colors->topLeft : rect.color);    // TL
+    corner(1.f, -1.f, colors ? colors->topRight : rect.color);    // TR
+    corner(1.f, 1.f, colors ? colors->bottomRight : rect.color);  // BR
+    corner(-1.f, 1.f, colors ? colors->bottomLeft : rect.color);  // BL
     buffer.quad(0, 1, 2, 3);
 }
 
-void UIRenderer::drawRoundedRect(const glm::mat4 &transform, RectData rect, float cornerRadius) {
-    cornerRadius = clampCornerRadius(rect.size, cornerRadius);
-    if (cornerRadius <= 0.f) {
+void UIRenderer::drawRoundedRect(const glm::mat4 &transform, RectData rect, CornerRadii radii, const CornerColors *colors) {
+    if (rect.size.width <= 0.f || rect.size.height <= 0.f) { return; }
+    radii = fitCornerRadii(rect.size, radii);
+    if (radii.isZero() && !colors) {
         drawRect(transform, rect);
         return;
     }
-    if (rect.size.width <= 0.f || rect.size.height <= 0.f) { return; }
 
-    // Solid fill — analytic SDF (perfect AA). A rounded rectangle with
-    // a texture (a rare case) — the previous fan tessellation.
-    if (!rect.texture) {
-        emitRoundedSDF(transform, rect, cornerRadius, 0.f);
+    // A solid or gradient fill with one radius — the analytic SDF (perfect AA). Differing radii or
+    // a texture — the fan tessellation.
+    if (!rect.texture && radii.isUniform()) {
+        emitRoundedSDF(transform, rect, radii.topLeft, 0.f, colors);
         return;
     }
 
-    const int segments = segmentsForRadius(cornerRadius);
-    const RoundedRectPerimeter perimeter = buildRoundedRectPerimeter(rect.size, cornerRadius, 0.f, segments);
+    resolveSolidTexture(rect);
+    const int segments = segmentsForRadius(radii.max());
+    const RoundedRectPerimeter perimeter = buildRoundedRectPerimeter(rect.size, radii, 0.f, segments);
     if (perimeter.count < 3) { return; }
 
     PrimBuffer buffer = beginPrimitive(rect.texture);
@@ -283,33 +431,57 @@ void UIRenderer::drawRoundedRect(const glm::mat4 &transform, RectData rect, floa
 
     const glm::vec4 color = rect.color;
     const glm::mat4 model = rect.transform * transform;
+    const auto colorAt = [&](glm::vec2 point) { return colors ? colorAtLocalPoint(*colors, point) : color; };
 
     const uint32_t center = buffer.vertex(
         glm::vec3(model * glm::vec4(0.f, 0.f, 0.f, 1.f)), textureCoordsForLocalPoint(rect.textureCoords, {0.f, 0.f}),
-        color
+        colorAt({0.f, 0.f})
     );
     for (uint32_t i = 0; i < perimeter.count; ++i) {
         const glm::vec2 point = perimeter.points[i];
         buffer.vertex(
             glm::vec3(model * glm::vec4(point.x, point.y, 0.f, 1.f)), textureCoordsForLocalPoint(rect.textureCoords, point),
-            color
+            colorAt(point)
         );
     }
     buffer.fan(center, center + 1, perimeter.count);
 }
 
-void UIRenderer::drawRoundedRectBorder(
-    const glm::mat4 &transform, RectData rect, float cornerRadius, float borderWidth
-) {
+void UIRenderer::drawRoundedRectBorder(const glm::mat4 &transform, RectData rect, CornerRadii radii, float borderWidth) {
     if (borderWidth <= 0.f || rect.size.width <= 0.f || rect.size.height <= 0.f) { return; }
 
     const float maxBorderWidth = std::min(rect.size.width, rect.size.height) * 0.5f;
     borderWidth = std::min(borderWidth, maxBorderWidth);
-    cornerRadius = clampCornerRadius(rect.size, cornerRadius);
+    radii = fitCornerRadii(rect.size, radii);
 
-    // The stroke is always a solid color — a single SDF path (including sharp corners at radius 0):
-    // fill and stroke from a single distance, perfect AA.
-    emitRoundedSDF(transform, rect, cornerRadius, borderWidth);
+    // One radius: fill and stroke from a single distance, perfect AA (sharp corners included).
+    if (radii.isUniform()) {
+        emitRoundedSDF(transform, rect, radii.topLeft, borderWidth, nullptr);
+        return;
+    }
+
+    // Differing radii: a ring between the outer perimeter and the one inset by the border width.
+    resolveSolidTexture(rect);
+    const int segments = segmentsForRadius(radii.max());
+    const RoundedRectPerimeter outer = buildRoundedRectPerimeter(rect.size, radii, 0.f, segments);
+    const RoundedRectPerimeter inner = buildRoundedRectPerimeter(rect.size, radii, borderWidth, segments);
+    if (outer.count < 3 || outer.count != inner.count) { return; }
+
+    PrimBuffer buffer = beginPrimitive(rect.texture);
+    if (!buffer) { return; }
+
+    const glm::vec4 color = rect.color;
+    const glm::mat4 model = rect.transform * transform;
+    const glm::vec2 uv = textureCoordsForLocalPoint(rect.textureCoords, {0.f, 0.f});
+    for (uint32_t i = 0; i < outer.count; ++i) {
+        const glm::vec2 point = outer.points[i];
+        buffer.vertex(glm::vec3(model * glm::vec4(point.x, point.y, 0.f, 1.f)), uv, color);
+    }
+    for (uint32_t i = 0; i < inner.count; ++i) {
+        const glm::vec2 point = inner.points[i];
+        buffer.vertex(glm::vec3(model * glm::vec4(point.x, point.y, 0.f, 1.f)), uv, color);
+    }
+    buffer.ring(0, outer.count, outer.count);
 }
 
 void UIRenderer::drawText(
@@ -471,26 +643,65 @@ void UIRenderer::end() {
 }
 
 void UIRenderer::pushClipRect(Rect rect) {
+    ClipState state;
+    state.rect = rect;
+    pushClip(state);
+}
+
+void UIRenderer::pushClipRoundedRect(Rect rect, float cornerRadius) {
+    pushClipRoundedRect(rect, CornerRadii(cornerRadius));
+}
+
+void UIRenderer::pushClipRoundedRect(Rect rect, CornerRadii radii) {
+    ClipState state;
+    state.rect = rect;
+    radii = fitCornerRadii(rect.size, radii);
+    if (!radii.isZero()) {
+        state.hasMask = true;
+        state.maskRect = rect;
+        state.maskRadii = radii;
+    }
+    pushClip(state);
+}
+
+void UIRenderer::pushClip(const ClipState &state) {
     flush();
-    Rect nextClip = rect;
-    if (m_hasCurrentClip) { nextClip = intersectRects(m_currentClipRect, rect); }
-    m_clipStack.push_back(nextClip);
-    m_currentClipRect = nextClip;
-    m_hasCurrentClip = true;
-    m_currentClipIsEmpty = !hasArea(nextClip);
+    ClipState next = state;
+    if (m_hasCurrentClip) {
+        next.rect = intersectRects(m_currentClipRect, state.rect);
+        // The innermost rounded clip is the mask; a plain clip inside a rounded one keeps the outer mask.
+        if (!state.hasMask && m_currentHasMask) {
+            next.hasMask = true;
+            next.maskRect = m_currentMaskRect;
+            next.maskRadii = m_currentMaskRadii;
+        }
+    }
+    m_clipStack.push_back(next);
+    applyClipState();
 }
 
 void UIRenderer::popClipRect() {
     if (m_clipStack.empty()) { return; }
     flush();
     m_clipStack.pop_back();
+    applyClipState();
+}
+
+void UIRenderer::applyClipState() {
     m_hasCurrentClip = !m_clipStack.empty();
     if (m_hasCurrentClip) {
-        m_currentClipRect = m_clipStack.back();
-        m_currentClipIsEmpty = !hasArea(m_currentClipRect);
+        const ClipState &state = m_clipStack.back();
+        m_currentClipRect = state.rect;
+        m_currentClipIsEmpty = !hasArea(state.rect);
+        m_currentHasMask = state.hasMask;
+        m_currentMaskRect = state.maskRect;
+        m_currentMaskRadii = state.maskRadii;
     } else {
         m_currentClipRect = Rect::zero();
         m_currentClipIsEmpty = false;
+        m_currentHasMask = false;
+        m_currentMaskRect = Rect::zero();
+        m_currentMaskRadii = CornerRadii();
     }
 }
 
@@ -506,6 +717,9 @@ void UIRenderer::reset() {
     m_currentCommandIndexCount = 0;
     m_currentCommandHasClip = false;
     m_currentCommandClipRect = Rect::zero();
+    m_currentCommandHasMask = false;
+    m_currentCommandMaskRect = Rect::zero();
+    m_currentCommandMaskRadii = CornerRadii();
 }
 
 void UIRenderer::updateSolidTexture() {
@@ -523,12 +737,17 @@ void UIRenderer::updateSolidTexture() {
 void UIRenderer::syncCurrentBatchState(TextureHandle texture, DrawPrimitive primitive) {
     const bool hasClip = m_hasCurrentClip && !m_currentClipIsEmpty;
     const Rect clipRect = hasClip ? m_currentClipRect : Rect::zero();
-    if (m_currentCommandIndexCount > 0 && (texture != m_currentTexture || primitive != m_currentPrimitive ||
-                                           hasClip != m_currentCommandHasClip ||
-                                           clipRect.origin.x != m_currentCommandClipRect.origin.x ||
-                                           clipRect.origin.y != m_currentCommandClipRect.origin.y ||
-                                           clipRect.size.width != m_currentCommandClipRect.size.width ||
-                                           clipRect.size.height != m_currentCommandClipRect.size.height)) {
+    const bool hasMask = hasClip && m_currentHasMask;
+    const Rect maskRect = hasMask ? m_currentMaskRect : Rect::zero();
+    const CornerRadii maskRadii = hasMask ? m_currentMaskRadii : CornerRadii();
+    const auto sameRect = [](const Rect &a, const Rect &b) {
+        return a.origin.x == b.origin.x && a.origin.y == b.origin.y && a.size.width == b.size.width &&
+               a.size.height == b.size.height;
+    };
+    if (m_currentCommandIndexCount > 0 &&
+        (texture != m_currentTexture || primitive != m_currentPrimitive || hasClip != m_currentCommandHasClip ||
+         !sameRect(clipRect, m_currentCommandClipRect) || hasMask != m_currentCommandHasMask ||
+         !sameRect(maskRect, m_currentCommandMaskRect) || maskRadii != m_currentCommandMaskRadii)) {
         flush();
     }
 
@@ -538,6 +757,9 @@ void UIRenderer::syncCurrentBatchState(TextureHandle texture, DrawPrimitive prim
         m_currentCommandIndexOffset = static_cast<uint32_t>(m_drawList.indices.size());
         m_currentCommandHasClip = hasClip;
         m_currentCommandClipRect = clipRect;
+        m_currentCommandHasMask = hasMask;
+        m_currentCommandMaskRect = maskRect;
+        m_currentCommandMaskRadii = maskRadii;
     }
 }
 
@@ -569,6 +791,13 @@ void UIRenderer::flush() {
     command.texture = m_currentTexture;
     command.hasClip = m_currentCommandHasClip;
     command.clipRect = m_currentCommandClipRect;
+    if (m_currentCommandHasMask) {
+        const Rect &mask = m_currentCommandMaskRect;
+        const CornerRadii &radii = m_currentCommandMaskRadii;
+        command.mask.rect = glm::vec4(mask.origin.x, mask.origin.y, mask.size.width, mask.size.height);
+        command.mask.radii = glm::vec4(radii.topLeft, radii.topRight, radii.bottomRight, radii.bottomLeft);
+        command.mask.params = glm::vec4(1.f, 0.f, 0.f, 0.f);
+    }
     command.primitive = m_currentPrimitive;
     m_drawList.commands.push_back(command);
     m_stats.drawCalls += 1;

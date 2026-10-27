@@ -2,6 +2,7 @@
 
 #include "PandaUIImplFern.hpp"
 #include "PandaUIImplMiren.hpp"
+#include "UI/Demo/SkinAssets.hpp"
 
 #include <Fern/Window/Menu.hpp>
 #include <Panda/Application/Layer.hpp>
@@ -44,6 +45,8 @@ private:
     std::shared_ptr<PandaUI::FontAtlas> m_monoFont;
     std::shared_ptr<PandaUI::FontAtlas> m_monoMediumFont;
     std::shared_ptr<PandaUI::FontAtlas> m_monoBoldFont;
+    std::shared_ptr<PandaUI::FontAtlas> m_displayFont; // a serif face of the system for the "Fantasy" skin; null — none
     PandaUI::TextureHandle m_shipLogoTexture;
+    Demo::SkinAssets m_skinAssets;
     uint16_t m_nextViewId = 1;
 };

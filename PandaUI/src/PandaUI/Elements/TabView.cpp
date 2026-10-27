@@ -15,15 +15,6 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float TAB_HEIGHT = 32.f;
-    constexpr float TAB_GAP = 0.f;    // tabs are flush, separated by a thin line (as in Zed)
-    constexpr float TAB_RADIUS = 0.f; // flat tabs
-    constexpr float DOT_SIZE = 7.f;    // "unsaved" indicator
-    constexpr float TAB_ICON_SIZE = 14.f; // tab icon (like the strip/row icons)
-    constexpr float CLOSE_SLOT = 24.f; // trailing zone for the close cross/dot (and the close click zone)
-    constexpr float CLOSE_GLYPH = 8.f; // size of the drawn close cross
-    constexpr float DROP_LINE_WIDTH = 2.f;
-
     constexpr const char *TAB_DRAG_TYPE = "tabview.tab"; // payload.type for dragging tabs
 
     // The first focusable view in the subtree (focus goes to the main view of the tab on click).
@@ -54,23 +45,17 @@ public:
         layout().setFlexDirection(FlexDirection::Row);
         layout().setAlignItems(Align::Center);
         layout().setFlexShrink(0.f);
-        layout().setHeight(Length::points(TAB_HEIGHT));
-        layout().setPadding(Edge::Left, 12.f);
         layout().setPadding(Edge::Right, 0.f); // every tab has the trailing slot (dot/cross)
-        surface().setCornerRadius(TAB_RADIUS);
 
         if (icon.isValid()) {
             m_icon = std::make_shared<ImageView>();
             m_icon->setTexture(icon);
             m_icon->setContentMode(ImageContentMode::Fit);
             m_icon->setUserInteractionEnabled(false);
-            m_icon->layout().setSize({TAB_ICON_SIZE, TAB_ICON_SIZE});
             m_icon->layout().setFlexShrink(0.f);
-            m_icon->layout().setMargin(Edge::Right, 6.f);
             addSubview(m_icon);
         }
 
-        m_label->setFont(Font(16.f));
         m_label->layout().setFlexShrink(1.f);
         addSubview(m_label);
 
@@ -79,18 +64,32 @@ public:
         m_slot = std::make_shared<Panel>();
         m_slot->setBackgroundColor(Color(0x00000000));
         m_slot->setUserInteractionEnabled(false);
-        m_slot->layout().setWidth(Length::points(CLOSE_SLOT));
         m_slot->layout().setFlexShrink(0.f);
         m_slot->layout().setJustifyContent(Justify::Center);
         m_slot->layout().setAlignItems(Align::Center);
 
         m_dot = std::make_shared<Panel>();
         m_dot->setUserInteractionEnabled(false);
-        m_dot->layout().setSize({DOT_SIZE, DOT_SIZE});
-        m_dot->surface().setCornerRadius(DOT_SIZE * 0.5f);
         m_slot->addSubview(m_dot);
         addSubview(m_slot);
 
+        applyAppearance();
+    }
+
+    // The geometry and the font of the appearance; then the state colors.
+    void applyAppearance() {
+        const TabViewAppearance &a = m_owner->appearance();
+        layout().setHeight(Length::points(a.tabHeight));
+        layout().setPadding(Edge::Left, a.tabPaddingLeft);
+        surface().setCornerRadius(a.tabRadius);
+        if (m_icon) {
+            m_icon->layout().setSize({a.iconSize, a.iconSize});
+            m_icon->layout().setMargin(Edge::Right, a.iconGap);
+        }
+        m_label->setFont(a.font.withItalic(m_preview));
+        m_slot->layout().setWidth(Length::points(a.closeSlot));
+        m_dot->layout().setSize({a.dotSize, a.dotSize});
+        m_dot->surface().setCornerRadius(a.dotSize * 0.5f);
         applyStyle();
     }
 
@@ -126,12 +125,13 @@ public:
             return;
         }
         if (!m_icon) {
+            const TabViewAppearance &a = m_owner->appearance();
             m_icon = std::make_shared<ImageView>();
             m_icon->setContentMode(ImageContentMode::Fit);
             m_icon->setUserInteractionEnabled(false);
-            m_icon->layout().setSize({TAB_ICON_SIZE, TAB_ICON_SIZE});
+            m_icon->layout().setSize({a.iconSize, a.iconSize});
             m_icon->layout().setFlexShrink(0.f);
-            m_icon->layout().setMargin(Edge::Right, 6.f);
+            m_icon->layout().setMargin(Edge::Right, a.iconGap);
             // There is no insertSubview — the icon must go BEFORE the title: rebuild the order of the children.
             removeSubview(m_label);
             removeSubview(m_slot);
@@ -152,7 +152,7 @@ protected:
         // A double-click is detected ONLY on down (Context fills clickCount for down events; on release
         // it is always 1). The first click of the pair has already selected the tab — the second one pins it.
         const float localX = event.position.x - getWorldFrame().origin.x;
-        const bool inCloseZone = showClose() && localX >= getFrame().size.width - CLOSE_SLOT;
+        const bool inCloseZone = showClose() && localX >= getFrame().size.width - m_owner->appearance().closeSlot;
         if (event.button == PointerButton::Left && event.clickCount >= 2 && !inCloseZone) {
             m_owner->tabDoubleClicked(this);
         }
@@ -163,7 +163,7 @@ protected:
         // goes to finishDrag. A right click is handled on down (menu) — the release does not select.
         if (event.button != PointerButton::Left) { return true; }
         const float localX = event.position.x - getWorldFrame().origin.x;
-        if (showClose() && localX >= getFrame().size.width - CLOSE_SLOT) {
+        if (showClose() && localX >= getFrame().size.width - m_owner->appearance().closeSlot) {
             m_owner->closeTab(this);
         } else {
             m_owner->selectTab(this);
@@ -189,25 +189,26 @@ protected:
         Context *context = getContext();
         if (!context) { return; }
         UIRenderer &renderer = context->getRenderer();
+        const TabViewAppearance &a = m_owner->appearance();
         const Rect f = getFrame();
 
         // A thin vertical separator on the left (between tabs), except for the very first tab — full height.
-        if (m_owner->indexOfTab(this) > 0) {
-            const float x = offsetX + f.origin.x + 0.5f;
+        if (m_owner->indexOfTab(this) > 0 && a.separatorWidth > 0.f) {
+            const float x = offsetX + f.origin.x + a.separatorWidth * 0.5f;
             renderer.drawLine(
-                Point(x, offsetY + f.origin.y), Point(x, offsetY + f.origin.y + f.size.height), 1.f,
-                theme().border
+                Point(x, offsetY + f.origin.y), Point(x, offsetY + f.origin.y + f.size.height), a.separatorWidth,
+                a.separator.resolve()
             );
         }
 
         // The cross is the only reaction to hover (on the active tab too), drawn on top.
         if (showClose()) {
-            const float cx = offsetX + f.origin.x + f.size.width - CLOSE_SLOT * 0.5f;
+            const float cx = offsetX + f.origin.x + f.size.width - a.closeSlot * 0.5f;
             const float cy = offsetY + f.origin.y + f.size.height * 0.5f;
-            const float g = CLOSE_GLYPH * 0.5f;
-            const Color color = theme().textMuted;
-            renderer.drawLine(Point(cx - g, cy - g), Point(cx + g, cy + g), 1.4f, color);
-            renderer.drawLine(Point(cx - g, cy + g), Point(cx + g, cy - g), 1.4f, color);
+            const float g = a.closeGlyph * 0.5f;
+            const Color color = a.closeGlyphColor.resolve();
+            renderer.drawLine(Point(cx - g, cy - g), Point(cx + g, cy + g), a.closeThickness, color);
+            renderer.drawLine(Point(cx - g, cy + g), Point(cx + g, cy - g), a.closeThickness, color);
         }
     }
 
@@ -218,17 +219,22 @@ private:
         return m_closable && (m_hovered || (m_selected && !m_dirty));
     }
     void applyStyle() {
-        const Theme &t = theme();
-        // Active tab = the content background (windowBackground) → it "merges" with the area below, as in Zed.
-        // Inactive ones are transparent (the strip background shows through). There is no hover background.
-        setBackgroundColor(m_selected ? t.windowBackground : Color(0x00000000));
-        m_label->setTextRole(m_selected ? TextRole::Primary : TextRole::Muted);
-        if (m_icon) { m_icon->setTintColor(m_selected ? t.textPrimary : t.textMuted); }
+        const TabViewAppearance &a = m_owner->appearance();
+        // Active tab = the content background → it "merges" with the area below, as in Zed. Inactive
+        // ones are transparent (the strip background shows through). There is no hover plate.
+        setBackgroundColor(m_selected ? a.tabSelected : a.tabNormal);
+        if (m_selected && a.tabSelectedImage) {
+            surface().setBackgroundImage(a.tabSelectedImage);
+        } else {
+            surface().clearBackgroundImage();
+        }
+        m_label->setTextColor(m_selected ? a.textSelected : a.textNormal);
+        if (m_icon) { m_icon->setTintColor(m_selected ? a.textSelected : a.textNormal); }
         if (m_dot) {
             const bool dotShown = m_dirty && !showClose(); // the dot hides while the cross is shown
             m_dot->setHidden(!dotShown);
             m_dot->layout().setDisplay(dotShown ? Display::Flex : Display::None);
-            m_dot->setBackgroundColor(m_selected ? t.textPrimary : t.textMuted);
+            m_dot->setBackgroundColor(m_selected ? a.textSelected : a.textNormal);
         }
         setNeedsLayout();
         setNeedsDisplay();
@@ -249,7 +255,13 @@ private:
     bool m_hovered = false;
 };
 
-TabView::TabView() {
+TabViewAppearance &TabView::defaultAppearance() {
+    static TabViewAppearance appearance;
+    return appearance;
+}
+
+TabView::TabView()
+    : m_appearance(defaultAppearance()) {
     setBackgroundColor(Color(0x00000000));
     layout().setFlexDirection(FlexDirection::Column);
 
@@ -266,10 +278,8 @@ TabView::TabView() {
     m_tabsScroll->setBounces(false);
     m_tabsScroll->layout().setFlexGrow(1.f);
     m_tabsScroll->layout().setFlexShrink(1.f);
-    m_tabsScroll->layout().setHeight(Length::points(TAB_HEIGHT));
     m_tabsScroll->getContentView()->layout().setFlexDirection(FlexDirection::Row);
     m_tabsScroll->getContentView()->layout().setAlignItems(Align::Stretch);
-    m_tabsScroll->getContentView()->layout().setGap(TAB_GAP);
 
     m_contentArea = std::make_shared<Panel>();
     m_contentArea->setBackgroundColor(Color(0x00000000));
@@ -282,15 +292,28 @@ TabView::TabView() {
     m_dropLine = std::make_shared<Panel>();
     m_dropLine->setUserInteractionEnabled(false);
     m_dropLine->layout().setPositionType(PositionType::Absolute);
-    m_dropLine->layout().setSize({DROP_LINE_WIDTH, TAB_HEIGHT});
     m_dropLine->layout().setPosition(Edge::Top, Length::points(0.f));
     m_dropLine->layout().setPosition(Edge::Left, Length::points(0.f));
     m_dropLine->setHidden(true);
     m_dropLine->layout().setDisplay(Display::None);
     addSubview(m_dropLine);
 
-    m_tabBar->setBackgroundColor(theme().surfaceVariant);
-    m_dropLine->setBackgroundColor(theme().accent);
+    applyAppearance();
+}
+
+void TabView::setAppearance(const TabViewAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+    for (TabItem &item : m_tabs) { item.control->applyAppearance(); }
+}
+
+void TabView::applyAppearance() {
+    const TabViewAppearance &a = m_appearance;
+    m_tabsScroll->layout().setHeight(Length::points(a.tabHeight));
+    m_tabsScroll->getContentView()->layout().setGap(a.tabGap);
+    m_dropLine->layout().setSize({a.dropLineWidth, a.tabHeight});
+    m_tabBar->setBackgroundColor(a.barBackground);
+    m_dropLine->setBackgroundColor(a.dropLine);
 }
 
 TabView::~TabView() = default;
@@ -572,7 +595,7 @@ void TabView::showDropLine(int insertIndex) {
         }
         x -= getWorldFrame().origin.x;
     }
-    m_dropLine->layout().setPosition(Edge::Left, Length::points(std::max(0.f, x - DROP_LINE_WIDTH * 0.5f)));
+    m_dropLine->layout().setPosition(Edge::Left, Length::points(std::max(0.f, x - m_appearance.dropLineWidth * 0.5f)));
     m_dropLine->setHidden(false);
     m_dropLine->layout().setDisplay(Display::Flex);
     setNeedsLayout();
@@ -649,8 +672,8 @@ void TabView::applyContent() {
 }
 
 void TabView::themeChanged() {
-    m_tabBar->setBackgroundColor(theme().surfaceVariant);
-    m_dropLine->setBackgroundColor(theme().accent);
+    m_tabBar->setBackgroundColor(m_appearance.barBackground); // the tokens resolve at draw
+    m_dropLine->setBackgroundColor(m_appearance.dropLine);
 }
 
 } // namespace PandaUI

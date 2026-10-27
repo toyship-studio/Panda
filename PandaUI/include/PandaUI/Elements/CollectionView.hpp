@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Elements/CollectionViewLayout.hpp"
 #include "PandaUI/Elements/ScrollView.hpp"
 
@@ -42,6 +44,15 @@ enum class CollectionSelectionMode {
 // Scrollable collection with virtualization and cell reuse: only the visible cells (+ a buffer)
 // actually exist, the rest sit in the pool. The layout is defined by CollectionViewLayout
 // (list/grid), the data by CollectionViewDataSource. Built on top of ScrollView (vertical scrolling).
+// The look of a collection: the selection and hover plates of the cells.
+struct CollectionViewAppearance {
+    float cellRadius = 0.f; // cell selection — no rounding
+    ThemeColor selection = ThemeColor::selection; // when the collection is focused
+    ThemeColor selectionInactive = ThemeColor::selectionInactive;
+    ThemeColor hover = ThemeColor::rowHover;
+    SurfaceImage selectionImage;
+};
+
 class CollectionView : public ScrollView {
 public:
     using SelectionChangedCallback = std::function<void(CollectionView &)>;
@@ -49,6 +60,13 @@ public:
 
     explicit CollectionView(std::shared_ptr<CollectionViewLayout> layout);
     ~CollectionView() override;
+
+    // The look of the collections created from now on (Appearance.hpp).
+    static CollectionViewAppearance &defaultAppearance();
+    void setAppearance(const CollectionViewAppearance &appearance);
+    const CollectionViewAppearance &appearance() const {
+        return m_appearance;
+    }
 
     void setDataSource(CollectionViewDataSource dataSource);
     void setLayout(std::shared_ptr<CollectionViewLayout> layout);
@@ -101,6 +119,7 @@ private:
     bool viewportChanged() const;
     void updatePrefetch(int firstVisible, int lastVisible); // buffer zone diff → prefetch/cancel
 
+    CollectionViewAppearance m_appearance;
     std::shared_ptr<CollectionViewLayout> m_layout;
     CollectionViewDataSource m_dataSource;
     int m_itemCount = 0;

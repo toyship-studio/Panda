@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Core/Animation.hpp"
 #include "PandaUI/Core/View.hpp"
 
@@ -14,9 +16,23 @@ namespace PandaUI {
 // not bound to an anchor and is not closed by an outside click unless explicitly allowed.
 // Showing and removing go only through ModalManager (Context::modals()): it holds the stack and
 // the ownership.
+// The look of the modal layer: the scrim over the window and its fade-in.
+struct ModalAppearance {
+    ThemeColor scrim = Color(0.f, 0.f, 0.f, 0.55f);
+    float fadeDuration = 0.12f;
+    float windowMargin = 24.f; // the content does not stick to the window edges
+};
+
 class Modal : public View {
 public:
     explicit Modal(std::shared_ptr<View> content);
+
+    // The look of the modals created from now on (Appearance.hpp).
+    static ModalAppearance &defaultAppearance();
+    void setAppearance(const ModalAppearance &appearance);
+    const ModalAppearance &appearance() const {
+        return m_appearance;
+    }
 
     // Close: the manager removes the overlay in a deferred way (safe from a button callback inside
     // the modal) and calls onDismiss. A repeated call is a no-op.
@@ -58,6 +74,7 @@ private:
     void update(double deltaTime) override;
     void notifyDismissed(); // called by ModalManager exactly once
 
+    ModalAppearance m_appearance;
     std::shared_ptr<View> m_content;
     std::function<void()> m_onDismiss;
     View *m_initialFocus = nullptr;

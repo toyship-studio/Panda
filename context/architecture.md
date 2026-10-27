@@ -120,6 +120,28 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   with an atlas of its own (`EditorHost::assetFont`), games take it through `Bamboo::UI::font`
   ("SDK API" below). A view is passive: it sends intentions out through its own `Output`
   interface and receives data through setters (its input). It makes no decisions about the model.
+- **Surface and appearance** (`PandaUI/Rendering/Surface.hpp`, `PandaUI/Core/Appearance.hpp`).
+  `Surface` is the visual layer of every view, what CALayer is to a UIView: a background color, a
+  two-color gradient (`SurfaceGradient`) or an image over the fill (`SurfaceImage`: a texture or a
+  part of it, stretched or in nine slices with caps in texture pixels, tinted), per-corner radii
+  (`CornerRadii`; a uniform radius takes the analytic SDF path, differing ones are tessellated), the
+  border inside the bounds, the shadow, the opacity and the clip — `clipsToBounds` with corner radii
+  clips the subviews by the rounded shape, each corner its own (the renderer carries the innermost
+  rounded clip of the chain as `DrawCommand::mask`, the UI shaders fade the pixels outside it; the
+  scissor rect still covers the rest). `Label` draws decorations as more passes of the glyphs: `TextOutline` (eight
+  directions) and `TextShadow`; neither changes the layout. The widgets carry their look in
+  appearance structs (`ButtonAppearance`, `TextFieldAppearance`, `ToggleAppearance`, …, one per
+  widget, next to its class): the colors (theme tokens by default, `ThemeColor::withShade` for a
+  derived tone), the per-state plates (`SurfaceStyle`: fill, gradient, image, border), the fonts
+  and the geometry that used to be compile-time constants. `Widget::defaultAppearance()` is the
+  look of every instance created from now on — the editor's by default, so the editor changes
+  nothing; a game edits it once at start (`Label::defaultAppearance().font` for the face of the
+  whole UI, `Button::defaultAppearance(ButtonStyle::Neutral)` for the plates) and every control
+  follows; `setAppearance` restyles one instance. `ButtonStyle` is a preset of the appearance,
+  `ButtonSize` its metrics (`Button::defaultMetrics`). The themes stay what they are, colors; the
+  appearance is the shape too. PandaUITest, section "Skins", is the proof: the same controls with
+  the editor look and with the "Fantasy" skin (procedural nine-slice plates, a serif face of the
+  system, outlines, gradients, a rounded clip) side by side.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
   the updates into the affected panels (retained mode: no subscriptions, no reactivity). Panels do
@@ -372,14 +394,16 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (30 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (32 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
   `ScriptBundleInfo`, flat arrays owned by the bundle; the engine copies them into its own
   `ScriptBundleManifest` (strings and vectors) right after the bind. `font_ReadData` (v30) hands
   the SDK the bytes of a font asset (the `FontHandle` fields) in the "return the size / fill the
-  buffer" pattern of `ui_LoadStaticResource`.
+  buffer" pattern of `ui_LoadStaticResource`. v31 and v32 changed the layout of
+  `PandaUI::DrawCommand`, which crosses the ABI with the draw list (the rounded clip mask of a
+  command, with a radius per corner).
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity

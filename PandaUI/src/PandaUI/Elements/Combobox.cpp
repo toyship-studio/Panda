@@ -14,38 +14,44 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float COMBO_HEIGHT = 28.f; // = height of text fields (TextField DEFAULT_HEIGHT)
-    constexpr float PADDING_LEFT = Spacing::md;
-    constexpr float PADDING_RIGHT = 24.f; // room for the chevron on the right
-    constexpr float CHEVRON_HALF = 4.f;
-    constexpr float CHEVRON_DROP = 2.2f;
-    constexpr float CHEVRON_THICKNESS = 1.6f;
-    constexpr int MAX_VISIBLE_ROWS = 8;
-    constexpr float CARD_PADDING = 4.f;
+ComboboxAppearance &Combobox::defaultAppearance() {
+    static ComboboxAppearance appearance;
+    return appearance;
 }
 
 Combobox::Combobox()
-    : m_label(std::make_shared<Label>("")) {
+    : m_appearance(defaultAppearance())
+    , m_label(std::make_shared<Label>("")) {
     setCursor(Cursor::PointingHand);
     layout().setFlexDirection(FlexDirection::Row);
     layout().setAlignItems(Align::Center);
-    layout().setHeight(Length::points(COMBO_HEIGHT));
-    layout().setPadding(Edge::Left, PADDING_LEFT);
-    layout().setPadding(Edge::Right, PADDING_RIGHT);
-    surface().setCornerRadius(Radius::sm);
-    surface().setBorderWidth(1.f);
 
-    m_label->setFont(Font(16.f));
     m_label->setClipsToBounds(true); // long text does not run under the chevron
     m_label->layout().setFlexGrow(1.f);
     addSubview(m_label);
 
     updateLabel();
-    applyStyle();
+    applyAppearance();
 }
 
 Combobox::~Combobox() = default;
+
+void Combobox::setAppearance(const ComboboxAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void Combobox::applyAppearance() {
+    const ComboboxAppearance &a = m_appearance;
+    layout().setHeight(Length::points(a.height));
+    layout().setPadding(Edge::Left, a.paddingLeft);
+    layout().setPadding(Edge::Right, a.paddingRight);
+    surface().setCornerRadii(a.cornerRadius);
+    surface().setBorderWidth(a.borderWidth);
+    m_label->setFont(a.font);
+    applyStyle();
+    setNeedsDisplay();
+}
 
 void Combobox::setItems(std::vector<std::string> items) {
     m_items = std::move(items);
@@ -108,18 +114,15 @@ void Combobox::draw(float offsetX, float offsetY) {
     if (!context) { return; }
     UIRenderer &renderer = context->getRenderer();
 
+    const ComboboxAppearance &a = m_appearance;
     const Rect frame = getFrame();
-    const float cx = offsetX + frame.origin.x + frame.size.width - PADDING_RIGHT * 0.5f;
+    const float cx = offsetX + frame.origin.x + frame.size.width - a.paddingRight * 0.5f;
     const float cy = offsetY + frame.origin.y + frame.size.height * 0.5f;
-    const Color color = hasControlState(ControlState::Disabled) ? theme().textDisabled : theme().textDim;
+    const Color color = (hasControlState(ControlState::Disabled) ? a.chevronDisabled : a.chevron).resolve();
 
     // Chevron down ⌄
-    renderer.drawLine(
-        Point(cx - CHEVRON_HALF, cy - CHEVRON_DROP), Point(cx, cy + CHEVRON_DROP), CHEVRON_THICKNESS, color
-    );
-    renderer.drawLine(
-        Point(cx, cy + CHEVRON_DROP), Point(cx + CHEVRON_HALF, cy - CHEVRON_DROP), CHEVRON_THICKNESS, color
-    );
+    renderer.drawLine(Point(cx - a.chevronHalf, cy - a.chevronDrop), Point(cx, cy + a.chevronDrop), a.chevronThickness, color);
+    renderer.drawLine(Point(cx, cy + a.chevronDrop), Point(cx + a.chevronHalf, cy - a.chevronDrop), a.chevronThickness, color);
 }
 
 void Combobox::updateLabel() {
@@ -128,19 +131,13 @@ void Combobox::updateLabel() {
 }
 
 void Combobox::applyStyle() {
-    const Theme &t = theme();
-    Color background = t.input;   // recessed field surface (#1B1B1B)
-    Color border = t.borderMed;
-    if (hasControlState(ControlState::Disabled)) {
-        background = t.inputDeep;
-    } else if (hasControlState(ControlState::Highlighted)) {
-        border = t.borderStrong;
-    } else if (hasControlState(ControlState::Hovered)) {
-        border = t.borderStrong;
-    }
-    if (hasControlState(ControlState::Focused)) { border = t.focusRing; } // focus border on top
-    setBackgroundColor(background);
-    surface().setBorderColor(border);
+    // The recessed field plate: the border reacts, the focus border wins over the hover.
+    const bool hot = hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted);
+    const SurfaceStyle &style = hasControlState(ControlState::Disabled) ? m_appearance.disabled
+                                : hasControlState(ControlState::Focused)  ? m_appearance.focused
+                                : hot                                     ? m_appearance.hovered
+                                                                          : m_appearance.normal;
+    style.applyTo(surface());
 }
 
 void Combobox::openDropdown() {
@@ -148,9 +145,10 @@ void Combobox::openDropdown() {
     if (!context || m_items.empty() || m_dropdown) { return; } // already open — do not spawn another
 
     // Popover card with a shadow, with a ListView inside (single selection, the current item is highlighted).
+    const float cardPadding = m_appearance.cardPadding;
     auto card = std::make_shared<Panel>();
     applyElevation(*card, Elevation::Popover);
-    card->layout().setPadding(CARD_PADDING);
+    card->layout().setPadding(cardPadding);
 
     auto list = std::make_shared<ListView>();
     list->setSelectionMode(ListSelectionMode::Single);
@@ -163,9 +161,9 @@ void Combobox::openDropdown() {
     for (const auto &item : m_items) { list->addItem(item); }
     if (m_selectedIndex >= 0) { list->setSelectedIndex(m_selectedIndex); }
 
-    const int visible = std::min(static_cast<int>(m_items.size()), MAX_VISIBLE_ROWS);
-    list->layout().setWidth(Length::points(getFrame().size.width - CARD_PADDING * 2.f));
-    list->layout().setHeight(Length::points(static_cast<float>(visible) * ListView::kRowHeight));
+    const int visible = std::min(static_cast<int>(m_items.size()), m_appearance.maxVisibleRows);
+    list->layout().setWidth(Length::points(getFrame().size.width - cardPadding * 2.f));
+    list->layout().setHeight(Length::points(static_cast<float>(visible) * list->appearance().rowHeight));
     card->addSubview(list);
 
     auto popup = std::make_shared<Popup>(card, getWorldFrame());

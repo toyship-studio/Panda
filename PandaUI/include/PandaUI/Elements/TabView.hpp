@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Core/TextureHandle.hpp"
 #include "PandaUI/Elements/Panel.hpp"
 
@@ -18,6 +20,33 @@ class Label;
 // shared drag-and-drop: reorder within its own bar with a vertical indicator line, and, when a drag group
 // is set, transfer between different TabViews (docking). A tab has an "unsaved" indicator (a dot). The
 // content of every tab always stays alive and is switched by visibility.
+// The look of a tab bar: the bar, the tabs and their text per state, the close cross, the unsaved
+// dot, the drop line of a drag.
+struct TabViewAppearance {
+    float tabHeight = 32.f;
+    float tabGap = 0.f;    // the tabs are flush, separated by a thin line (as in Zed)
+    float tabRadius = 0.f; // flat tabs
+    float tabPaddingLeft = 12.f;
+    float iconSize = 14.f;
+    float iconGap = 6.f;
+    float dotSize = 7.f;     // the "unsaved" indicator
+    float closeSlot = 24.f;  // the trailing zone of the close cross or the dot
+    float closeGlyph = 8.f;  // the drawn close cross
+    float closeThickness = 1.4f;
+    float separatorWidth = 1.f;
+    float dropLineWidth = 2.f;
+    Font font = Font(16.f);
+    ThemeColor barBackground = ThemeColor::surfaceVariant;
+    ThemeColor tabSelected = ThemeColor::windowBackground; // the active tab merges with the content below
+    ThemeColor tabNormal = Color(0.f, 0.f, 0.f, 0.f);      // the strip shows through; no hover plate
+    SurfaceImage tabSelectedImage;
+    ThemeColor textSelected = ThemeColor::textPrimary;
+    ThemeColor textNormal = ThemeColor::textMuted;
+    ThemeColor separator = ThemeColor::border;
+    ThemeColor closeGlyphColor = ThemeColor::textMuted;
+    ThemeColor dropLine = ThemeColor::accent;
+};
+
 class TabView : public Panel {
 public:
     using SelectionChangedCallback = std::function<void(TabView &)>;
@@ -33,6 +62,13 @@ public:
 
     TabView();
     ~TabView() override;
+
+    // The look of the tab views created from now on (Appearance.hpp).
+    static TabViewAppearance &defaultAppearance();
+    void setAppearance(const TabViewAppearance &appearance);
+    const TabViewAppearance &appearance() const {
+        return m_appearance;
+    }
 
     // closable=true → the tab has a close button. id — a stable identifier (for transfer between
     // bars); 0 → auto id. draggable=false — the tab cannot be dragged (pinned, e.g. the viewport).
@@ -118,6 +154,9 @@ private:
 
     void viewDidCalculateLayout() override; // deferred scroll to the active tab (frames are ready)
 
+    void applyAppearance();
+
+    TabViewAppearance m_appearance;
     std::shared_ptr<Panel> m_tabBar;
     std::shared_ptr<class ScrollView> m_tabsScroll; // the tabs scroll, the accessory is pinned on the right
     bool m_pendingRevealSelected = false;

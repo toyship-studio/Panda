@@ -10,16 +10,6 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float CONTROL_HEIGHT = 28.f; // the height of the fields and buttons
-    constexpr float TRACK_RADIUS = Radius::sm;
-    constexpr float SEGMENT_RADIUS = Radius::xs; // nested: the track radius less its padding
-    constexpr float TRACK_PADDING = 2.f;
-    constexpr float SEGMENT_FONT = 16.f;
-    constexpr float SEGMENT_PADDING_X = 10.f; // breathing room around the label
-    constexpr float MIN_SEGMENT_WIDTH = 36.f;
-}
-
 // A single segment: a Control with a label; on click it reports its index to the owner. The selected
 // one is a "raised" plate (surface) on the dark track, the others are transparent.
 class SegmentedControl::Segment final : public Control {
@@ -28,17 +18,18 @@ public:
         : m_owner(owner)
         , m_index(index)
         , m_label(std::make_shared<Label>(std::move(text))) {
+        const SegmentedControlAppearance &a = owner->appearance();
         setCursor(Cursor::PointingHand);
         setFocusable(false); // the control itself holds the focus (a single tab stop, arrow keys go to it)
         layout().setFlexGrow(1.f); // segments share the width equally
         layout().setFlexShrink(1.f);
-        layout().setMinWidth(Length::points(MIN_SEGMENT_WIDTH));
-        layout().setPadding(Edge::Horizontal, SEGMENT_PADDING_X);
+        layout().setMinWidth(Length::points(a.minSegmentWidth));
+        layout().setPadding(Edge::Horizontal, a.segmentPaddingX);
         layout().setJustifyContent(Justify::Center);
         layout().setAlignItems(Align::Center);
-        surface().setCornerRadius(SEGMENT_RADIUS);
+        surface().setCornerRadius(a.segmentRadius);
 
-        m_label->setFont(Font(SEGMENT_FONT));
+        m_label->setFont(a.font);
         m_label->setTextAlignment(TextAlignment::Center);
         addSubview(m_label);
 
@@ -64,20 +55,26 @@ protected:
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const SegmentedControlAppearance &a = m_owner->appearance();
+        const Color transparent(0.f, 0.f, 0.f, 0.f);
         if (hasControlState(ControlState::Disabled)) {
-            setBackgroundColor(m_selected ? t.controlPressed : Color(0x00000000));
-            m_label->setTextColor(t.textDisabled);
+            setBackgroundColor(m_selected ? a.segmentSelectedDisabled : ThemeColor(transparent));
+            m_label->setTextColor(a.textDisabled);
         } else if (m_selected) {
-            // The selected one — a permanent accent plate (the color does NOT depend on focus).
-            setBackgroundColor(t.accentSecondary);
-            m_label->setTextColor(t.onAccent);
+            // The selected one — a permanent plate (the color does NOT depend on the focus).
+            setBackgroundColor(a.segmentSelected);
+            m_label->setTextColor(a.textSelected);
         } else if (hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted)) {
-            setBackgroundColor(t.controlHover);
-            m_label->setTextColor(t.textPrimary);
+            setBackgroundColor(a.segmentHovered);
+            m_label->setTextColor(a.textHovered);
         } else {
-            setBackgroundColor(Color(0x00000000));
-            m_label->setTextColor(t.textMuted);
+            setBackgroundColor(transparent);
+            m_label->setTextColor(a.textNormal);
+        }
+        if (m_selected && a.segmentSelectedImage) {
+            surface().setBackgroundImage(a.segmentSelectedImage);
+        } else {
+            surface().clearBackgroundImage();
         }
     }
 
@@ -87,18 +84,35 @@ private:
     bool m_selected = false;
 };
 
-SegmentedControl::SegmentedControl() {
+SegmentedControlAppearance &SegmentedControl::defaultAppearance() {
+    static SegmentedControlAppearance appearance;
+    return appearance;
+}
+
+SegmentedControl::SegmentedControl()
+    : m_appearance(defaultAppearance()) {
     setFocusable(true); // the control accepts focus → arrow keys switch the segment, the focus border is visible
     layout().setFlexDirection(FlexDirection::Row);
     layout().setAlignItems(Align::Stretch);
-    layout().setHeight(Length::points(CONTROL_HEIGHT));
-    layout().setPadding(TRACK_PADDING);
     setClipsToBounds(true); // the rounded track clips the segment plates
-    surface().setCornerRadius(TRACK_RADIUS);
-    applyStyles();
+    applyAppearance();
 }
 
 SegmentedControl::~SegmentedControl() = default;
+
+void SegmentedControl::setAppearance(const SegmentedControlAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+    rebuild(); // the segments take their geometry and font at creation
+}
+
+void SegmentedControl::applyAppearance() {
+    layout().setHeight(Length::points(m_appearance.height));
+    layout().setPadding(m_appearance.trackPadding);
+    surface().setCornerRadius(m_appearance.trackRadius);
+    applyStyles();
+    updateFocusBorder();
+}
 
 void SegmentedControl::setSegments(std::vector<std::string> segments) {
     m_segments = std::move(segments);
@@ -148,7 +162,12 @@ void SegmentedControl::rebuild() {
 }
 
 void SegmentedControl::applyStyles() {
-    setBackgroundColor(theme().control); // track
+    setBackgroundColor(m_appearance.track); // track
+    if (m_appearance.trackImage) {
+        surface().setBackgroundImage(m_appearance.trackImage);
+    } else {
+        surface().clearBackgroundImage();
+    }
     for (int i = 0; i < static_cast<int>(m_segmentViews.size()); ++i) {
         m_segmentViews[i]->setSegmentSelected(i == m_selectedIndex);
     }
@@ -183,8 +202,8 @@ void SegmentedControl::focusChanged(bool) {
 void SegmentedControl::updateFocusBorder() {
     // A border around the WHOLE control, shown only in focus. A neutral muted color (borderStrong)
     // and a thin line — soft, not "loud" like an accent outline. The background does not change.
-    surface().setBorderWidth(isFocused() ? 1.f : 0.f);
-    surface().setBorderColor(theme().borderStrong);
+    surface().setBorderWidth(isFocused() ? m_appearance.focusBorderWidth : 0.f);
+    surface().setBorderColor(m_appearance.trackFocusBorder);
     setNeedsDisplay();
 }
 

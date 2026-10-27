@@ -14,6 +14,7 @@ struct VSOutput {
     float4 color    : TEXCOORD0;
     float2 localPos : TEXCOORD1;
     float4 params   : TEXCOORD2;
+    float2 maskPos  : TEXCOORD3; // the position in UI points, for the rounded clip of the command
 };
 
 VSOutput main(VSInput input) {
@@ -22,5 +23,6 @@ VSOutput main(VSInput input) {
     output.color = input.color;
     output.localPos = input.localPos;
     output.params = input.params;
+    output.maskPos = input.position.xy;
     return output;
 }

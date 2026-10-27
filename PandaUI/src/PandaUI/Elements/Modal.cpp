@@ -8,22 +8,28 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float SCRIM_ALPHA = 0.55f;
-    constexpr float FADE_DURATION = 0.12f;
-    constexpr float WINDOW_MARGIN = 24.f; // the content does not stick to the window edges
+ModalAppearance &Modal::defaultAppearance() {
+    static ModalAppearance appearance;
+    return appearance;
 }
 
 Modal::Modal(std::shared_ptr<View> content)
-    : m_content(std::move(content)) {
+    : m_appearance(defaultAppearance())
+    , m_content(std::move(content)) {
     setBackgroundColor(Color(0.f, 0.f, 0.f, 0.f)); // the scrim is faded in by m_fade
     layout().setJustifyContent(Justify::Center);
     layout().setAlignItems(Align::Center);
-    layout().setPadding(WINDOW_MARGIN);
+    layout().setPadding(m_appearance.windowMargin);
     if (m_content) {
         m_content->layout().setFlexShrink(1.f); // tall content shrinks to fit the window (scrolling is its concern)
         addSubview(m_content);
     }
+}
+
+void Modal::setAppearance(const ModalAppearance &appearance) {
+    m_appearance = appearance;
+    layout().setPadding(m_appearance.windowMargin);
+    setNeedsDisplay();
 }
 
 void Modal::setOnDismiss(std::function<void()> callback) {
@@ -59,13 +65,15 @@ bool Modal::keyDown(KeyEvent &event) {
 void Modal::contextAttached() {
     Context *context = getContext();
     if (!context) { return; }
-    m_fade.start(0.f, 1.f, FADE_DURATION);
+    m_fade.start(0.f, 1.f, m_appearance.fadeDuration);
     context->setFocusedView(m_initialFocus ? m_initialFocus : this);
 }
 
 void Modal::update(double deltaTime) {
     if (!m_fade.advance(deltaTime)) { return; }
-    setBackgroundColor(Color(0.f, 0.f, 0.f, SCRIM_ALPHA * m_fade.value()));
+    Color scrim = m_appearance.scrim.resolve();
+    scrim.a *= m_fade.value();
+    setBackgroundColor(scrim);
 }
 
 } // namespace PandaUI

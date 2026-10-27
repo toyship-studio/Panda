@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Elements/ScrollView.hpp"
 
 #include <cstdint>
@@ -40,6 +42,27 @@ enum class TreeSelectionMode {
 // uniform height, and only the rows within the window (+buffer) actually exist — the rest are in the pool.
 // Drag-and-drop reparent is handed to the application as an intent (canMove/onMove): TreeView mutates
 // nothing itself; the application changes the model and calls reloadData().
+// The look of a tree: the indents and the disclosure chevron, the selection and hover plates, the
+// drop target border. The row height is setRowHeight.
+struct TreeViewAppearance {
+    float basePadLeft = 8.f;
+    float indent = 16.f;
+    float disclosureSize = 12.f; // the width of the arrow (and click) zone
+    float labelGap = 4.f;
+    float rowPaddingRight = 12.f;
+    float rowRadius = 0.f; // row selection — no rounding
+    ThemeColor chevron = ThemeColor::textDim; // the soft selection does not invert it
+    float chevronLong = 3.4f;
+    float chevronShort = 1.8f;
+    float chevronThickness = 1.6f;
+    ThemeColor selection = ThemeColor::selection; // when the tree is focused
+    ThemeColor selectionInactive = ThemeColor::selectionInactive;
+    ThemeColor hover = ThemeColor::rowHover;
+    SurfaceImage selectionImage;
+    ThemeColor dropBorder = ThemeColor::accent; // "drop into this node"
+    float dropBorderWidth = 1.5f;
+};
+
 class TreeView : public ScrollView {
 public:
     using SelectionChangedCallback = std::function<void(TreeView &)>;
@@ -48,6 +71,19 @@ public:
     using MoveCallback = std::function<void(const std::vector<TreeItem> &items, TreeItem newParent)>;
 
     TreeView();
+
+
+    // The look of the trees created from now on (Appearance.hpp).
+
+    static TreeViewAppearance &defaultAppearance();
+
+    void setAppearance(const TreeViewAppearance &appearance);
+
+    const TreeViewAppearance &appearance() const {
+
+        return m_appearance;
+
+    }
     ~TreeView() override;
 
     void setDataSource(TreeDataSource dataSource);
@@ -143,6 +179,7 @@ private:
     void updateDropForCursor(Point windowPosition);
     void clearDrag();
 
+    TreeViewAppearance m_appearance;
     TreeDataSource m_dataSource;
     std::vector<FlatItem> m_flat;            // flat visible list (cache; rebuilt on structural changes)
     std::unordered_set<TreeItem> m_expanded; // expanded items

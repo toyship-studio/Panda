@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
 #include "PandaUI/Elements/Control.hpp"
 #include "PandaUI/Rendering/Font.hpp" // FontAtlas (resource) + Font (descriptor)
 
@@ -8,6 +9,26 @@
 
 namespace PandaUI {
 
+// The look of a text field: the recessed plate per state (only the border reacts in the editor),
+// the colors of the text, the caret and the selection, the font, the insets and the height.
+struct TextFieldAppearance {
+    SurfaceStyle normal{ThemeColor::input, ThemeColor::borderMed};
+    SurfaceStyle hovered{ThemeColor::input, ThemeColor::borderStrong};
+    SurfaceStyle focused{ThemeColor::input, ThemeColor::focusRing};
+    SurfaceStyle disabled{ThemeColor::inputDeep, ThemeColor::borderMed};
+    ThemeColor text = ThemeColor::textPrimary;
+    ThemeColor placeholder = ThemeColor::textDim;
+    ThemeColor caret = ThemeColor::focusRing;
+    ThemeColor selection = ThemeColor::textSelection;
+    Font font = Font(16.f);
+    // Vertical insets small → the floor (minHeight) sets the height; the text centers itself.
+    EdgeInsets contentInsets = EdgeInsets(4.f, Spacing::md, Spacing::md, 4.f);
+    float minHeight = 28.f;
+    CornerRadii cornerRadius = CornerRadii(Radius::sm); // the radius of every input (Combobox, Vector3, ColorWell)
+    float borderWidth = 1.f;
+    float caretWidth = 1.5f;
+};
+
 class TextField : public Control {
 public:
     using TextChangedCallback = std::function<void(TextField &)>;
@@ -15,6 +36,13 @@ public:
 
     TextField();
     explicit TextField(std::string text);
+
+    // The look of the fields created from now on (Appearance.hpp).
+    static TextFieldAppearance &defaultAppearance();
+    void setAppearance(const TextFieldAppearance &appearance);
+    const TextFieldAppearance &appearance() const {
+        return m_appearance;
+    }
 
     // measure-leaf (intrinsic size → Yoga measure function): it must not have children — forbidden at
     // compile time (otherwise Yoga crashes at runtime). Accessories/icons go into a wrapper container.
@@ -36,7 +64,7 @@ public:
 
     void setFont(Font font); // family + weight + point size in a single setter (UIKit-style)
     const Font &getFont() const {
-        return m_font;
+        return m_appearance.font;
     }
     void setNumberOfLines(int numberOfLines);
     int getNumberOfLines() const {
@@ -78,6 +106,7 @@ private:
     TextLayoutResult layoutText(const FontAtlas &font, std::string_view text, float maxWidth) const;
     const TextLayoutResult &cachedTextLayout(const FontAtlas &font, float maxWidth) const;
     void invalidateTextLayout();
+    void applyAppearance(); // geometry and font; then the colors
     void updateAppearance();
     void applyThemeColors();
     void themeChanged() override;
@@ -125,14 +154,13 @@ private:
     std::string m_placeholder;
     TextChangedCallback m_onTextChanged;
     SubmitCallback m_onSubmit;
-    Color m_textColor;
+    TextFieldAppearance m_appearance;
+    Color m_textColor; // the colors of the appearance, resolved (applyThemeColors)
     Color m_placeholderColor;
     Color m_caretColor;
     Color m_selectionColor;
-    Font m_font;
     int m_numberOfLines;
     float m_lineSpacing;
-    EdgeInsets m_contentInsets;
     TextAlignment m_alignment = TextAlignment::Left;
     size_t m_caretIndex;
     size_t m_selectionAnchorIndex;

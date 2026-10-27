@@ -12,6 +12,11 @@
 
 namespace PandaUI {
 
+LabelAppearance &Label::defaultAppearance() {
+    static LabelAppearance appearance;
+    return appearance;
+}
+
 Label::Label()
     : Label("") {}
 
@@ -19,6 +24,7 @@ Label::Label(std::string text)
     : m_text(std::move(text))
     , m_textColor(ThemeColor::textPrimary)
     , m_textRole(TextRole::Primary)
+    , m_font(defaultAppearance().font)
     , m_numberOfLines(1)
     , m_lineSpacing(0.f)
     , m_textAlignment(TextAlignment::Left)
@@ -126,6 +132,17 @@ void Label::setLetterSpacing(float letterSpacing) {
     invalidateIntrinsicContentSize();
 }
 
+void Label::setTextShadow(TextShadow shadow) {
+    m_textShadow = shadow;
+    setNeedsDisplay();
+}
+
+void Label::setTextOutline(TextOutline outline) {
+    m_textOutline = outline;
+    m_textOutline.width = std::max(0.f, m_textOutline.width);
+    setNeedsDisplay();
+}
+
 void Label::setTextOverflowMode(TextOverflowMode overflowMode) {
     if (m_textOverflowMode == overflowMode) { return; }
     m_textOverflowMode = overflowMode;
@@ -215,6 +232,21 @@ void Label::draw(float offsetX, float offsetY) {
             break;
     }
 
+    // The decorations are more passes of the same glyphs: the outline around (eight directions, so
+    // the stroke closes at any angle), then the shadow under, then the text itself.
+    const bool outline = m_textOutline.isVisible();
+    const bool shadow = m_textShadow.isVisible();
+    const Color outlineColor = outline ? m_textOutline.color.resolve() : Color(0.f, 0.f, 0.f, 0.f);
+    const Color shadowColor = shadow ? m_textShadow.color.resolve() : Color(0.f, 0.f, 0.f, 0.f);
+    const Color textColor = m_textColor.resolve();
+    const float fontSize = effectiveFontSize();
+    UIRenderer &renderer = context->getRenderer();
+    const auto drawPass = [&](std::string_view text, Point origin, Point offset, Color color) {
+        renderer.drawText(
+            *font, text, {origin.x + offset.x, origin.y + offset.y}, color, fontSize, m_letterSpacing, m_font.italic
+        );
+    };
+
     for (size_t lineIndex = 0; lineIndex < layout.lines.size(); ++lineIndex) {
         const TextLine &line = layout.lines[lineIndex];
         if (line.length == 0 && line.displayText.empty()) { continue; }
@@ -235,10 +267,15 @@ void Label::draw(float offsetX, float offsetY) {
                                           ? std::string_view(m_text.data() + line.start, line.length)
                                           : std::string_view(line.displayText);
         const float lineY = yOffset + (layout.lineHeight + layout.lineSpacing) * static_cast<float>(lineIndex);
-        context->getRenderer().drawText(
-            *font, text, {offsetX + frame.origin.x + xOffset, offsetY + frame.origin.y + lineY}, m_textColor.resolve(),
-            effectiveFontSize(), m_letterSpacing, m_font.italic
-        );
+        const Point origin(offsetX + frame.origin.x + xOffset, offsetY + frame.origin.y + lineY);
+        if (outline) {
+            const float w = m_textOutline.width;
+            const float d = w * 0.7071f;
+            const Point offsets[8] = {{-w, 0.f}, {w, 0.f}, {0.f, -w}, {0.f, w}, {-d, -d}, {d, -d}, {-d, d}, {d, d}};
+            for (const Point &offset : offsets) { drawPass(text, origin, offset, outlineColor); }
+        }
+        if (shadow) { drawPass(text, origin, m_textShadow.offset, shadowColor); }
+        drawPass(text, origin, Point(0.f, 0.f), textColor);
     }
 }
 

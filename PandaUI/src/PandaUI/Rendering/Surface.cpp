@@ -21,9 +21,11 @@ Surface::Surface(View *owner)
     // Transparent default: a regular View/Panel is a layout container, not a "plate".
     // An opaque white forced every wrapper to reset the background manually.
     , m_backgroundColor(Color(0.f, 0.f, 0.f, 0.f))
+    , m_backgroundGradient()
+    , m_backgroundImage()
     , m_opacity(1.f)
     , m_clipsToBounds(false)
-    , m_cornerRadius(0.f)
+    , m_cornerRadii()
     , m_borderWidth(0.f)
     , m_borderColor(Color(0.f, 0.f, 0.f, 0.f))
     , m_shadow() {}
@@ -34,6 +36,32 @@ void Surface::setOwner(View *owner) {
 
 void Surface::setBackgroundColor(ThemeColor color) {
     m_backgroundColor = color;
+    invalidate();
+}
+
+void Surface::setBackgroundGradient(SurfaceGradient gradient) {
+    m_backgroundGradient = gradient;
+    invalidate();
+}
+
+void Surface::clearBackgroundGradient() {
+    if (!m_backgroundGradient) { return; }
+    m_backgroundGradient.reset();
+    invalidate();
+}
+
+void Surface::setBackgroundImage(SurfaceImage image) {
+    m_backgroundImage = image;
+    invalidate();
+}
+
+void Surface::setBackgroundImage(TextureHandle texture, EdgeInsets capInsets, ThemeColor tint) {
+    setBackgroundImage(SurfaceImage(texture, capInsets, tint));
+}
+
+void Surface::clearBackgroundImage() {
+    if (!m_backgroundImage) { return; }
+    m_backgroundImage = SurfaceImage();
     invalidate();
 }
 
@@ -51,9 +79,16 @@ void Surface::setClipsToBounds(bool clipsToBounds) {
 }
 
 void Surface::setCornerRadius(float cornerRadius) {
-    const float nextCornerRadius = std::max(0.f, cornerRadius);
-    if (m_cornerRadius == nextCornerRadius) { return; }
-    m_cornerRadius = nextCornerRadius;
+    setCornerRadii(CornerRadii(std::max(0.f, cornerRadius)));
+}
+
+void Surface::setCornerRadii(CornerRadii radii) {
+    radii.topLeft = std::max(0.f, radii.topLeft);
+    radii.topRight = std::max(0.f, radii.topRight);
+    radii.bottomRight = std::max(0.f, radii.bottomRight);
+    radii.bottomLeft = std::max(0.f, radii.bottomLeft);
+    if (m_cornerRadii == radii) { return; }
+    m_cornerRadii = radii;
     invalidate();
 }
 
@@ -114,19 +149,60 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
         shadow.offset = m_shadow.offset;
         shadow.radius = m_shadow.radius;
         shadow.spread = m_shadow.spread;
-        renderer.drawShadow(rect, m_cornerRadius, shadow);
+        renderer.drawShadow(rect, m_cornerRadii, shadow);
     }
 
-    const Color background = m_backgroundColor.resolve(); // the theme of the moment
-    if (background.a > 0.f) {
-        rect.color = withOpacity(background, m_opacity);
-        renderer.drawRoundedRect(rect, m_cornerRadius);
+    // The fill: a gradient while one is set, the color otherwise (the theme of the moment).
+    if (m_backgroundGradient) {
+        const Color start = withOpacity(m_backgroundGradient->start.resolve(), m_opacity);
+        const Color end = withOpacity(m_backgroundGradient->end.resolve(), m_opacity);
+        if (start.a > 0.f || end.a > 0.f) {
+            const auto mix = [](Color a, Color b) {
+                return Color((a.r + b.r) * 0.5f, (a.g + b.g) * 0.5f, (a.b + b.b) * 0.5f, (a.a + b.a) * 0.5f);
+            };
+            UIRenderer::CornerColors colors;
+            switch (m_backgroundGradient->direction) {
+                case GradientDirection::TopToBottom:
+                    colors = {start, start, end, end};
+                    break;
+                case GradientDirection::LeftToRight:
+                    colors = {start, end, end, start};
+                    break;
+                case GradientDirection::TopLeftToBottomRight:
+                    colors = {start, mix(start, end), end, mix(start, end)};
+                    break;
+                case GradientDirection::TopRightToBottomLeft:
+                    colors = {mix(start, end), start, mix(start, end), end};
+                    break;
+            }
+            renderer.drawRoundedRect(rect, m_cornerRadii, colors);
+        }
+    } else {
+        const Color background = m_backgroundColor.resolve();
+        if (background.a > 0.f) {
+            rect.color = withOpacity(background, m_opacity);
+            renderer.drawRoundedRect(rect, m_cornerRadii);
+        }
+    }
+
+    // The image on top of the fill: a frame, a texture, a skin. Its own shape, not the corner radius.
+    if (m_backgroundImage) {
+        const Color tint = withOpacity(m_backgroundImage.tint.resolve(), m_opacity);
+        if (tint.a > 0.f) {
+            UIRenderer::RectData image = rect;
+            image.color = tint;
+            image.texture = m_backgroundImage.texture;
+            image.textureCoords = m_backgroundImage.textureCoords;
+            renderer.drawNineSlice(image, m_backgroundImage.capInsets, m_backgroundImage.scale);
+        }
     }
 
     const Color border = m_borderColor.resolve();
     if (m_borderWidth > 0.f && border.a > 0.f) {
         rect.color = withOpacity(border, m_opacity);
-        renderer.drawRoundedRectBorder(rect, m_cornerRadius, m_borderWidth);
+        rect.texture = TextureHandle();
+        rect.textureCoords = Rect(0.f, 0.f, 1.f, 1.f);
+        renderer.drawRoundedRectBorder(rect, m_cornerRadii, m_borderWidth);
     }
 }
 

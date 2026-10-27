@@ -9,30 +9,28 @@ namespace PandaUI {
 
 namespace {
 
-    constexpr float DEFAULT_WIDTH = 420.f;
-
     std::shared_ptr<Panel> makeCard() {
         auto card = std::make_shared<Panel>();
         applyElevation(*card, Elevation::Modal);
         card->layout().setFlexDirection(FlexDirection::Column);
-        card->layout().setPadding(Spacing::xl);
-        card->layout().setGap(Spacing::lg);
-        card->layout().setWidth(Length::points(DEFAULT_WIDTH));
         return card;
     }
 
 } // namespace
 
+DialogAppearance &Dialog::defaultAppearance() {
+    static DialogAppearance appearance;
+    return appearance;
+}
+
 Dialog::Dialog(std::string title)
     : Modal(makeCard())
+    , m_appearance(defaultAppearance())
     , m_card(std::static_pointer_cast<Panel>(getContent())) {
     m_titleLabel = std::make_shared<Label>(std::move(title));
-    m_titleLabel->setFont(Font(18.f, FontWeight::Bold));
     m_card->addSubview(m_titleLabel);
 
     m_messageLabel = std::make_shared<Label>();
-    m_messageLabel->setFont(Font(15.f));
-    m_messageLabel->setTextRole(TextRole::Secondary);
     m_messageLabel->setNumberOfLines(0);
     m_messageLabel->setHidden(true);
     m_card->addSubview(m_messageLabel);
@@ -48,9 +46,28 @@ Dialog::Dialog(std::string title)
     m_actionRow->setBackgroundColor(Color(0x00000000));
     m_actionRow->layout().setFlexDirection(FlexDirection::Row);
     m_actionRow->layout().setJustifyContent(Justify::End);
-    m_actionRow->layout().setGap(8.f);
-    m_actionRow->layout().setMargin(Edge::Top, 4.f);
     m_card->addSubview(m_actionRow);
+
+    applyAppearance();
+}
+
+void Dialog::setAppearance(const DialogAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void Dialog::applyAppearance() {
+    const DialogAppearance &a = m_appearance;
+    a.card.applyTo(m_card->surface());
+    m_card->layout().setPadding(a.padding);
+    m_card->layout().setGap(a.gap);
+    m_card->layout().setWidth(Length::points(a.width));
+    m_titleLabel->setFont(a.titleFont);
+    m_titleLabel->setTextColor(a.titleColor);
+    m_messageLabel->setFont(a.messageFont);
+    m_messageLabel->setTextColor(a.messageColor);
+    m_actionRow->layout().setGap(a.actionGap);
+    m_actionRow->layout().setMargin(Edge::Top, a.actionsTopMargin);
 }
 
 void Dialog::setMessage(std::string message) {
@@ -65,6 +82,7 @@ void Dialog::setBody(std::shared_ptr<View> body) {
 }
 
 void Dialog::setContentWidth(float width) {
+    m_appearance.width = width;
     m_card->layout().setWidth(Length::points(width));
 }
 

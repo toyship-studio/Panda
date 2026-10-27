@@ -10,10 +10,6 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float ROW_PADDING_X = Spacing::md;
-}
-
 // A single list row: a container Control with selection/hover shown through the background. For text
 // rows it keeps a pointer to the Label in order to recolor the text in the selected state.
 class ListView::ListRow : public Control {
@@ -26,10 +22,16 @@ public:
         setFocusable(false); // the list itself holds the focus, not the rows (keys go to the list)
         layout().setFlexDirection(FlexDirection::Row);
         layout().setAlignItems(Align::Center);
-        layout().setHeight(Length::points(ListView::kRowHeight));
-        layout().setPadding(Edge::Horizontal, ROW_PADDING_X);
-        surface().setCornerRadius(0.f); // row selection — no rounding
         addSubview(std::move(content));
+        applyAppearance();
+    }
+
+    void applyAppearance() {
+        const ListViewAppearance &a = m_owner->appearance();
+        layout().setHeight(Length::points(a.rowHeight));
+        layout().setPadding(Edge::Horizontal, a.rowPaddingX);
+        surface().setCornerRadius(a.rowRadius);
+        if (m_label) { m_label->setFont(a.font); }
         applyStyle();
     }
 
@@ -65,15 +67,20 @@ protected:
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const ListViewAppearance &a = m_owner->appearance();
         if (m_selected) {
-            setBackgroundColor(m_active ? t.selection : t.selectionInactive); // soft; brighter in focus
+            setBackgroundColor(m_active ? a.selection : a.selectionInactive); // soft; brighter in focus
         } else if (hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted)) {
-            setBackgroundColor(t.rowHover);
+            setBackgroundColor(a.hover);
         } else {
             setBackgroundColor(Color(0x00000000));
         }
-        if (m_label) { m_label->setTextRole(TextRole::Primary); } // text stays regular — soft background is readable
+        if (m_selected && a.selectionImage) {
+            surface().setBackgroundImage(a.selectionImage);
+        } else {
+            surface().clearBackgroundImage();
+        }
+        if (m_label) { m_label->setTextColor(a.text); } // the text stays regular — the soft plate is readable
     }
 
     ListView *m_owner;
@@ -84,8 +91,14 @@ private:
     bool m_additiveClick = false; // the ⌘/Ctrl modifier remembered on press
 };
 
+ListViewAppearance &ListView::defaultAppearance() {
+    static ListViewAppearance appearance;
+    return appearance;
+}
+
 ListView::ListView()
-    : m_selectionMode(ListSelectionMode::Single)
+    : m_appearance(defaultAppearance())
+    , m_selectionMode(ListSelectionMode::Single)
     , m_onSelectionChanged(nullptr) {
     setScrollDirection(ScrollDirection::Vertical);
     setFocusable(true); // the list accepts focus → the arrow keys and the focus ring work
@@ -94,9 +107,14 @@ ListView::ListView()
 
 ListView::~ListView() = default;
 
+void ListView::setAppearance(const ListViewAppearance &appearance) {
+    m_appearance = appearance;
+    for (ListRow *row : m_rows) { row->applyAppearance(); }
+}
+
 int ListView::addItem(std::string text) {
     auto label = std::make_shared<Label>(std::move(text));
-    label->setFont(Font(16.f));
+    label->setFont(m_appearance.font);
     return addRowInternal(label, label);
 }
 

@@ -14,13 +14,6 @@
 namespace PandaUI {
 
 namespace {
-    constexpr float MENU_WIDTH = 200.f;
-    constexpr float ITEM_HEIGHT = 26.f;
-    // Chevron of a submenu row (strokes as in the CollapsibleSection disclosure, rotated to point right).
-    constexpr float CHEVRON_LONG = 3.6f;
-    constexpr float CHEVRON_SHORT = 1.9f;
-    constexpr float CHEVRON_THICKNESS = 1.6f;
-
     bool isViewInSubtree(View *target, View *root) {
         for (View *view = target; view; view = view->getSuperview()) {
             if (view == root) { return true; }
@@ -37,16 +30,22 @@ public:
         : m_owner(owner) {
         setCursor(Cursor::PointingHand);
         setFocusable(false);
-        layout().setHeight(Length::points(ITEM_HEIGHT));
         layout().setFlexDirection(FlexDirection::Row);
         layout().setAlignItems(Align::Center);
-        layout().setPadding(Edge::Horizontal, Spacing::md);
-        surface().setCornerRadius(Radius::sm);
 
         m_label = std::make_shared<Label>(std::move(title));
-        m_label->setFont(Font(16.f));
         m_label->setUserInteractionEnabled(false);
         addSubview(m_label);
+        applyAppearance();
+    }
+
+    void applyAppearance() {
+        const MenuAppearance &a = m_owner->appearance();
+        layout().setHeight(Length::points(a.itemHeight));
+        layout().setPadding(Edge::Horizontal, a.itemPaddingX);
+        surface().setCornerRadius(a.itemRadius);
+        m_label->setFont(a.itemFont);
+        applyStyle();
     }
 
     void setKeyboardHighlight(bool highlighted) {
@@ -65,11 +64,16 @@ protected:
                hasControlState(ControlState::Highlighted);
     }
     void applyStyle() {
-        const Theme &t = theme();
+        const MenuAppearance &a = m_owner->appearance();
         const bool highlighted = isRowHighlighted();
         // Item highlight = accent fill + white text (per the design reference for menu dropdowns).
-        setBackgroundColor(highlighted ? t.accent : Color(0x00000000));
-        m_label->setTextColor(highlighted ? Color(0xFFFFFFFF) : t.textPrimary);
+        setBackgroundColor(highlighted ? a.itemHighlight : ThemeColor(Color(0x00000000)));
+        if (highlighted && a.itemHighlightImage) {
+            surface().setBackgroundImage(a.itemHighlightImage);
+        } else {
+            surface().clearBackgroundImage();
+        }
+        m_label->setTextColor(highlighted ? a.itemHighlightedText : a.itemText);
         setNeedsDisplay();
     }
     void themeChanged() override {
@@ -153,29 +157,47 @@ private:
         if (!context) { return; }
         UIRenderer &renderer = context->getRenderer();
 
+        const MenuAppearance &a = m_owner->appearance();
         const Rect frame = getFrame();
-        const float cx = offsetX + frame.origin.x + frame.size.width - 12.f - CHEVRON_SHORT;
+        const float cx = offsetX + frame.origin.x + frame.size.width - 12.f - a.chevronShort;
         const float cy = offsetY + frame.origin.y + frame.size.height * 0.5f;
-        const Color color = isRowHighlighted() ? Color(0xFFFFFFFF) : theme().textDim;
+        const Color color = (isRowHighlighted() ? a.itemHighlightedText : a.chevron).resolve();
         renderer.drawLine(
-            Point(cx - CHEVRON_SHORT, cy - CHEVRON_LONG), Point(cx + CHEVRON_SHORT, cy), CHEVRON_THICKNESS, color
+            Point(cx - a.chevronShort, cy - a.chevronLong), Point(cx + a.chevronShort, cy), a.chevronThickness, color
         );
         renderer.drawLine(
-            Point(cx + CHEVRON_SHORT, cy), Point(cx - CHEVRON_SHORT, cy + CHEVRON_LONG), CHEVRON_THICKNESS, color
+            Point(cx + a.chevronShort, cy), Point(cx - a.chevronShort, cy + a.chevronLong), a.chevronThickness, color
         );
     }
 
     bool m_submenuOpen = false;
 };
 
+MenuAppearance &Menu::defaultAppearance() {
+    static MenuAppearance appearance;
+    return appearance;
+}
+
 Menu::Menu()
-    : m_onItemSelected(nullptr) {
+    : m_appearance(defaultAppearance())
+    , m_onItemSelected(nullptr) {
     setFocusable(true); // when shown in a Popup the menu takes the keyboard (wantsFocusWhenPresented)
     layout().setFlexDirection(FlexDirection::Column);
-    layout().setWidth(Length::points(MENU_WIDTH));
-    layout().setGap(1.f);
-    layout().setPadding(Spacing::sm);
     applyElevation(*this, Elevation::Popover);
+    applyAppearance();
+}
+
+void Menu::setAppearance(const MenuAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+    for (RowBase *row : m_navRows) { row->applyAppearance(); }
+    for (Panel *separator : m_separators) { separator->setBackgroundColor(m_appearance.separator); }
+}
+
+void Menu::applyAppearance() {
+    layout().setWidth(Length::points(m_appearance.width));
+    layout().setGap(m_appearance.itemGap);
+    layout().setPadding(m_appearance.padding);
     applyStyle();
 }
 
@@ -205,7 +227,8 @@ void Menu::addSeparator() {
     auto separator = std::make_shared<Panel>();
     separator->setUserInteractionEnabled(false);
     separator->layout().setHeight(Length::points(1.f));
-    separator->setBackgroundColor(theme().borderMed);
+    separator->setBackgroundColor(m_appearance.separator);
+    m_separators.push_back(separator.get());
     addSubview(separator);
 }
 
@@ -328,9 +351,7 @@ void Menu::themeChanged() {
 }
 
 void Menu::applyStyle() {
-    const Theme &t = theme();
-    setBackgroundColor(t.surface);
-    surface().setBorderColor(t.border);
+    m_appearance.card.applyTo(surface());
 }
 
 } // namespace PandaUI

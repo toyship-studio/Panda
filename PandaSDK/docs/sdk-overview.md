@@ -26,7 +26,7 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
   module. Without the module the physics calls do nothing and return zeros.
 - `TerrainAPI.hpp` — terrain queries (height etc.); provided by the Terrain module.
 - `UI/` — PandaUI from scripts; `UI/FontAPI.hpp` — a font of the project (a `FontHandle`
-  field) in that UI.
+  field) in that UI; the look of a game — `docs/ui.md`.
 - `Async.hpp` — background jobs (the work/complete model).
 - `Net.hpp` — networking: HTTP requests, TCP connections and servers, UDP datagrams
   (`docs/net.md`).
@@ -39,6 +39,7 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `docs/assets.md` — the asset registry, `.mat`, import.
 - `docs/scripting.md` — scripts, fields, the manifest, building.
 - `docs/net.md` — networking from scripts: HTTP, TCP, UDP.
+- `docs/ui.md` — the UI of a game: fonts, appearances, images and the surface of a view.
 - `docs/modules/` — writing an engine module: the layout and the build, the registries page by
   page, the editor and SDK parts, data compatibility, the tests, a checklist, the samples.
 

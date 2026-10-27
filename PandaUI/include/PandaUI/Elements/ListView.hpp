@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Elements/ScrollView.hpp"
 
 #include <functional>
@@ -18,14 +20,34 @@ enum class ListSelectionMode {
 // Vertical scrollable list of selectable rows. The rows are ordinary Views in the tree
 // (no virtualization): a simple and predictable retained mode. Text rows are created
 // via addItem(), arbitrary ones via addRow().
+// The look of a list: the rows, their text and the selection and hover plates.
+struct ListViewAppearance {
+    float rowHeight = 30.f;
+    float rowPaddingX = Spacing::md;
+    float rowRadius = 0.f; // row selection — no rounding
+    Font font = Font(16.f);
+    ThemeColor text = ThemeColor::textPrimary; // the text stays regular on the soft selection
+    ThemeColor selection = ThemeColor::selection; // when the list is focused
+    ThemeColor selectionInactive = ThemeColor::selectionInactive;
+    ThemeColor hover = ThemeColor::rowHover;
+    SurfaceImage selectionImage;
+};
+
 class ListView : public ScrollView {
 public:
-    static constexpr float kRowHeight = 30.f; // fixed row height (for size calculation)
+    static constexpr float kRowHeight = 30.f; // the row height of the default appearance
 
     using SelectionChangedCallback = std::function<void(ListView &)>;
 
     ListView();
     ~ListView() override;
+
+    // The look of the lists created from now on (Appearance.hpp).
+    static ListViewAppearance &defaultAppearance();
+    void setAppearance(const ListViewAppearance &appearance);
+    const ListViewAppearance &appearance() const {
+        return m_appearance;
+    }
 
     int addItem(std::string text);
     int addRow(std::shared_ptr<View> content);
@@ -70,6 +92,7 @@ private:
     void applySelectionStyles();
     void moveSelection(int delta);       // move the selection by delta rows (keyboard)
 
+    ListViewAppearance m_appearance;
     std::vector<ListRow *> m_rows; // ownership is in contentView; non-owning pointers here
     std::vector<int> m_selection;
     ListSelectionMode m_selectionMode;

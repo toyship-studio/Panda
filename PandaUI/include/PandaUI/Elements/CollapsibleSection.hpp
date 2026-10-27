@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Elements/Panel.hpp"
 #include "PandaUI/Rendering/Font.hpp"
 
@@ -13,11 +15,41 @@ class View;
 
 // Collapsible group: a clickable header with an arrow + a body with arbitrary content.
 // Expanding/collapsing is instant (the clip has height:auto when expanded, 0 when collapsed).
+// The look of a collapsible section: the header plate per state, the title, the disclosure chevron,
+// the paddings of the body.
+struct CollapsibleSectionAppearance {
+    float headerHeight = 30.f; // a list header of GPUI is 28; the bold 18 px title gets 2 more
+    float headerPadLeft = 8.f;
+    float headerPadRight = Spacing::md;
+    float headerRadius = Radius::sm;
+    float disclosureSize = 14.f;
+    float labelGap = 4.f;
+    Font titleFont = Font(18.f, FontWeight::Bold); // the component header: larger than the body, bold
+    ThemeColor titleColor = ThemeColor::textPrimary;
+    ThemeColor headerBackground = ThemeColor::surface; // separates the header from the content
+    ThemeColor headerHovered = ThemeColor::controlHover;
+    ThemeColor headerFocused = ThemeColor::selection; // a soft focus background, like a selection
+    SurfaceImage headerImage;
+    ThemeColor chevron = ThemeColor::textDim;
+    float chevronLong = 3.6f;
+    float chevronShort = 1.9f;
+    float chevronThickness = 1.6f;
+    EdgeInsets bodyPadding = EdgeInsets(6.f, 8.f, 8.f, 8.f); // the gap after the header, the sides, the bottom
+    float bodyGap = 6.f;
+};
+
 class CollapsibleSection : public Panel {
 public:
     CollapsibleSection();
     explicit CollapsibleSection(std::string title);
     ~CollapsibleSection() override;
+
+    // The look of the sections created from now on (Appearance.hpp).
+    static CollapsibleSectionAppearance &defaultAppearance();
+    void setAppearance(const CollapsibleSectionAppearance &appearance);
+    const CollapsibleSectionAppearance &appearance() const {
+        return m_appearance;
+    }
 
     void setTitle(std::string title);
     const std::string &title() const {
@@ -48,7 +80,9 @@ public:
 
 private:
     class Header;
+    void applyAppearance();
 
+    CollapsibleSectionAppearance m_appearance;
     std::shared_ptr<Header> m_header;
     std::shared_ptr<View> m_clip;  // clips the body; height auto (expanded) or 0 (collapsed)
     std::shared_ptr<Panel> m_body; // content; flexShrink 0 — does not shrink, overflow is clipped

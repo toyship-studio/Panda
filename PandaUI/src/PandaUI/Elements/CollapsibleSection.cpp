@@ -10,16 +10,6 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float HEADER_HEIGHT = 30.f; // a list header of GPUI is 28; the bold 18 px title gets 2 more
-    constexpr float HEADER_PAD_LEFT = 8.f;
-    constexpr float DISCLOSURE_SIZE = 14.f;
-    constexpr float LABEL_GAP = 4.f;
-    constexpr float CHEVRON_LONG = 3.6f;
-    constexpr float CHEVRON_SHORT = 1.9f;
-    constexpr float CHEVRON_THICKNESS = 1.6f;
-}
-
 // Group header: a clickable Control with a chevron arrow (drawn) and a caption.
 class CollapsibleSection::Header : public Control {
 public:
@@ -27,15 +17,22 @@ public:
         : m_owner(owner) {
         layout().setFlexDirection(FlexDirection::Row);
         layout().setAlignItems(Align::Center);
-        layout().setHeight(Length::points(HEADER_HEIGHT));
-        layout().setPadding(Edge::Left, HEADER_PAD_LEFT + DISCLOSURE_SIZE + LABEL_GAP);
-        layout().setPadding(Edge::Right, Spacing::md);
-        surface().setCornerRadius(Radius::sm);
 
         m_title = std::make_shared<Label>(std::move(title));
-        m_title->setFont(Font(18.f, FontWeight::Bold)); // component header: larger than the body, bold
         addSubview(m_title);
+        applyAppearance();
+    }
+
+    // The geometry and the title font of the appearance; the explicit setters of the section win.
+    void applyAppearance() {
+        const CollapsibleSectionAppearance &a = m_owner->appearance();
+        layout().setHeight(Length::points(a.headerHeight));
+        layout().setPadding(Edge::Left, a.headerPadLeft + a.disclosureSize + a.labelGap);
+        layout().setPadding(Edge::Right, a.headerPadRight);
+        surface().setCornerRadius(a.headerRadius);
+        if (!m_hasTitleFont) { m_title->setFont(a.titleFont); }
         applyStyle();
+        setNeedsDisplay();
     }
 
     void setTitle(std::string title) {
@@ -47,6 +44,7 @@ public:
         setNeedsDisplay();
     }
     void setTitleFont(Font font) {
+        m_hasTitleFont = true;
         m_title->setFont(font);
     }
     void setTitleColor(ThemeColor color) {
@@ -86,41 +84,42 @@ protected:
         if (!context) { return; }
         UIRenderer &renderer = context->getRenderer();
 
+        const CollapsibleSectionAppearance &a = m_owner->appearance();
         const Rect frame = getFrame();
-        const float cx = offsetX + frame.origin.x + HEADER_PAD_LEFT + DISCLOSURE_SIZE * 0.5f;
+        const float cx = offsetX + frame.origin.x + a.headerPadLeft + a.disclosureSize * 0.5f;
         const float cy = offsetY + frame.origin.y + frame.size.height * 0.5f;
-        const Color color = theme().textDim;
+        const Color color = a.chevron.resolve();
+        const float lng = a.chevronLong;
+        const float sht = a.chevronShort;
+        const float thick = a.chevronThickness;
 
         if (m_expanded) {
-            renderer.drawLine(
-                Point(cx - CHEVRON_LONG, cy - CHEVRON_SHORT), Point(cx, cy + CHEVRON_SHORT), CHEVRON_THICKNESS, color
-            );
-            renderer.drawLine(
-                Point(cx, cy + CHEVRON_SHORT), Point(cx + CHEVRON_LONG, cy - CHEVRON_SHORT), CHEVRON_THICKNESS, color
-            );
+            renderer.drawLine(Point(cx - lng, cy - sht), Point(cx, cy + sht), thick, color);
+            renderer.drawLine(Point(cx, cy + sht), Point(cx + lng, cy - sht), thick, color);
         } else {
-            renderer.drawLine(
-                Point(cx - CHEVRON_SHORT, cy - CHEVRON_LONG), Point(cx + CHEVRON_SHORT, cy), CHEVRON_THICKNESS, color
-            );
-            renderer.drawLine(
-                Point(cx + CHEVRON_SHORT, cy), Point(cx - CHEVRON_SHORT, cy + CHEVRON_LONG), CHEVRON_THICKNESS, color
-            );
+            renderer.drawLine(Point(cx - sht, cy - lng), Point(cx + sht, cy), thick, color);
+            renderer.drawLine(Point(cx + sht, cy), Point(cx - sht, cy + lng), thick, color);
         }
     }
 
 private:
     void applyStyle() {
-        const Theme &t = theme();
+        const CollapsibleSectionAppearance &a = m_owner->appearance();
         if (!m_headerFill) {
             setBackgroundColor(Color(0x00000000)); // flat header (inspector components): no backing
         } else if (hasControlState(ControlState::Focused)) {
-            setBackgroundColor(t.selection); // soft focus background (like the selection in collections)
+            setBackgroundColor(a.headerFocused);
         } else if (hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted)) {
-            setBackgroundColor(t.controlHover);
+            setBackgroundColor(a.headerHovered);
         } else {
-            setBackgroundColor(t.surface); // slightly different background separates the header from the content
+            setBackgroundColor(a.headerBackground);
         }
-        if (!m_hasTitleColor) { m_title->setTextRole(TextRole::Primary); }
+        if (m_headerFill && a.headerImage) {
+            surface().setBackgroundImage(a.headerImage);
+        } else {
+            surface().clearBackgroundImage();
+        }
+        if (!m_hasTitleColor) { m_title->setTextColor(a.titleColor); }
     }
 
     CollapsibleSection *m_owner;
@@ -128,12 +127,19 @@ private:
     bool m_expanded = true;
     bool m_headerFill = true;
     bool m_hasTitleColor = false;
+    bool m_hasTitleFont = false;
 };
 
 CollapsibleSection::CollapsibleSection()
     : CollapsibleSection(std::string()) {}
 
-CollapsibleSection::CollapsibleSection(std::string title) {
+CollapsibleSectionAppearance &CollapsibleSection::defaultAppearance() {
+    static CollapsibleSectionAppearance appearance;
+    return appearance;
+}
+
+CollapsibleSection::CollapsibleSection(std::string title)
+    : m_appearance(defaultAppearance()) {
     m_title = title;
     setBackgroundColor(Color(0x00000000));
     layout().setFlexDirection(FlexDirection::Column);
@@ -152,14 +158,26 @@ CollapsibleSection::CollapsibleSection(std::string title) {
     m_body->layout().setFlexDirection(FlexDirection::Column);
     m_body->layout().setFlexShrink(0.f); // do not shrink while the clip height is animated
     m_body->layout().setWidth(Length::percent(100.f));
-    m_body->layout().setGap(6.f);
-    m_body->layout().setPadding(Edge::Horizontal, 8.f);
-    m_body->layout().setPadding(Edge::Top, 6.f); // gap between the header and the content
-    m_body->layout().setPadding(Edge::Bottom, 8.f);
     m_clip->addSubview(m_body);
+    applyAppearance();
 }
 
 CollapsibleSection::~CollapsibleSection() = default;
+
+void CollapsibleSection::setAppearance(const CollapsibleSectionAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void CollapsibleSection::applyAppearance() {
+    const CollapsibleSectionAppearance &a = m_appearance;
+    m_body->layout().setGap(a.bodyGap);
+    m_body->layout().setPadding(Edge::Top, a.bodyPadding.top); // the gap between the header and the content
+    m_body->layout().setPadding(Edge::Left, a.bodyPadding.left);
+    m_body->layout().setPadding(Edge::Right, a.bodyPadding.right);
+    m_body->layout().setPadding(Edge::Bottom, a.bodyPadding.bottom);
+    m_header->applyAppearance();
+}
 
 void CollapsibleSection::setTitle(std::string title) {
     m_title = title;

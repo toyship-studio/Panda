@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PandaUI/Core/Appearance.hpp"
+
 #include "PandaUI/Elements/Panel.hpp"
 
 #include <memory>
@@ -13,11 +15,27 @@ class Label;
 // neighboring rows gives an aligned column — the basis of the inspector and forms.
 // fill=true stretches the editor to the column width (input fields), false — keeps its
 // own size (Toggle, ColorWell, etc.).
+// The look of a form row: the label column, the row height, the gap and the label text.
+struct PropertyRowAppearance {
+    float labelWidth = 120.f;
+    float minHeight = 28.f;
+    float gap = 12.f;
+    Font labelFont = Font(16.f);
+    ThemeColor labelColor = ThemeColor::textMuted; // a form field label — muted
+};
+
 class PropertyRow : public Panel {
 public:
     PropertyRow(std::string title, std::shared_ptr<View> editor, bool fill = true);
     explicit PropertyRow(std::string title);
     ~PropertyRow() override;
+
+    // The look of the rows created from now on (Appearance.hpp).
+    static PropertyRowAppearance &defaultAppearance();
+    void setAppearance(const PropertyRowAppearance &appearance);
+    const PropertyRowAppearance &appearance() const {
+        return m_appearance;
+    }
 
     void setTitle(std::string title);
     void setEditor(std::shared_ptr<View> editor, bool fill = true);
@@ -31,11 +49,12 @@ public:
 
 private:
     void refreshLabel();
+    void applyAppearance();
 
+    PropertyRowAppearance m_appearance;
     std::shared_ptr<Label> m_label;
     std::shared_ptr<View> m_editor;
     std::string m_title;
-    float m_labelWidth;
     bool m_mixed = false;
 };
 

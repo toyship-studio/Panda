@@ -6,28 +6,36 @@
 
 namespace PandaUI {
 
-namespace {
-    constexpr float DEFAULT_LABEL_WIDTH = 120.f;
-    constexpr float ROW_MIN_HEIGHT = 28.f;
-    constexpr float ROW_GAP = 12.f;
+PropertyRowAppearance &PropertyRow::defaultAppearance() {
+    static PropertyRowAppearance appearance;
+    return appearance;
 }
 
 PropertyRow::PropertyRow(std::string title)
-    : m_labelWidth(DEFAULT_LABEL_WIDTH) {
+    : m_appearance(defaultAppearance()) {
     setBackgroundColor(Color(0x00000000));
     layout().setFlexDirection(FlexDirection::Row);
     layout().setAlignItems(Align::Center);
-    layout().setGap(ROW_GAP);
-    layout().setMinHeight(Length::points(ROW_MIN_HEIGHT));
 
     m_title = std::move(title);
     m_label = std::make_shared<Label>(m_title);
-    m_label->setFont(Font(16.f));
-    m_label->setTextRole(TextRole::Muted); // form field label — muted (design text/muted)
     m_label->setNumberOfLines(0); // a long title wraps instead of being cut; the row grows with it
-    m_label->layout().setWidth(Length::points(m_labelWidth));
     m_label->layout().setFlexShrink(0.f); // the label keeps the column width
     addSubview(m_label);
+    applyAppearance();
+}
+
+void PropertyRow::setAppearance(const PropertyRowAppearance &appearance) {
+    m_appearance = appearance;
+    applyAppearance();
+}
+
+void PropertyRow::applyAppearance() {
+    layout().setGap(m_appearance.gap);
+    layout().setMinHeight(Length::points(m_appearance.minHeight));
+    m_label->setFont(m_appearance.labelFont);
+    m_label->setTextColor(m_appearance.labelColor);
+    m_label->layout().setWidth(Length::points(m_appearance.labelWidth));
 }
 
 PropertyRow::PropertyRow(std::string title, std::shared_ptr<View> editor, bool fill)
@@ -57,7 +65,7 @@ void PropertyRow::setLabelNumberOfLines(int numberOfLines) {
 }
 
 void PropertyRow::setLabelWidth(float width) {
-    m_labelWidth = width;
+    m_appearance.labelWidth = width;
     m_label->layout().setWidth(Length::points(width));
 }
 
