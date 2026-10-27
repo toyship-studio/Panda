@@ -47,7 +47,8 @@ and background jobs (`PandaAsync`).
   package and registers them through the generated `pandaRegisterModules()`. Details are in
   `context/plugins.md`.
 - `PandaUI`: the retained-mode UI library, independent of Panda, Miren and Fern
-  (`context/pandaui.md`). `PandaUITest`: the PandaUI gallery.
+  (`context/pandaui.md`); its gallery, `PandaUI/examples/gallery`, is a library the editor shows under
+  Help → UI Gallery.
 - `Vendor`: third-party dependencies.
 
 ### Dependency direction
@@ -149,7 +150,8 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   whole UI, `Button::defaultAppearance(ButtonStyle::Neutral)` for the plates) and every control
   follows; `setAppearance` restyles one instance. `ButtonStyle` is a preset of the appearance,
   `ButtonSize` its metrics (`Button::defaultMetrics`). The themes stay what they are, colors; the
-  appearance is the shape too. PandaUITest, section "Skins", is the proof: the same controls with
+  appearance is the shape too. The gallery (`PandaUI/examples/gallery`), section "Skins", is the
+  proof: the same controls with
   the editor look and with the "Fantasy" skin (procedural nine-slice plates, a serif face of the
   system, outlines, gradients, a rounded clip) side by side.
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every

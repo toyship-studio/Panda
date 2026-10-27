@@ -2,7 +2,8 @@
 
 A retained-mode UI library for games, editor tools and standalone applications. It is closer to
 UIKit / AppKit than to immediate-mode ImGui. Code: `PandaUI/` (structure: `Core`, `Elements`,
-`Layout`, `Rendering`, `Runtime`); the demo gallery is `PandaUITest/`.
+`Layout`, `Rendering`, `Runtime`); the gallery is `PandaUI/examples/gallery/` — a library of pure
+PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone example runs on a backend.
 
 ## Principles and independence
 
@@ -15,7 +16,7 @@ UIKit / AppKit than to immediate-mode ImGui. Code: `PandaUI/` (structure: `Core`
   Combobox, TreeView, Menu, Popup and so on). Editor-specific widgets (those that know about
   Entity, Asset or ScriptFieldType) live in `PandaEditor/src/UI/` (namespace `Editor`: panels in
   `UI/Panels/`, widgets in `UI/Widgets/`) and in `PandaEditorKit`. Every new universal primitive
-  must have a demonstration in the PandaUITest gallery.
+  must have a demonstration in the gallery.
 
 ## Structure
 
@@ -81,6 +82,11 @@ header box. A single-line `Label` is centered vertically even when the box is lo
 
 - Runtime and editor: the `PandaUIImpl*` bridges map Fern events into PandaUI and pass draw data
   to the Miren path. The bridge is thin and has no hidden logic.
+- The gallery is pure PandaUI too. What it needs from an application — textures from pixels, the
+  logo image, a serif face for its "Fantasy" skin, extra windows, a theme switch — comes through
+  `PandaUI::Gallery::Host` (`examples/gallery/include/PandaUIGallery/Gallery.hpp`); a capability
+  the host does not give hides the sections that need it. The editor gives textures and the face
+  only: the gallery is a tab of its window and follows the theme chosen in Plugins.
 - PandaSDK: scripts work with PandaUI directly as an SDK library (Bamboo does not duplicate its
   concepts; only events, draw data and handles cross the ABI).
   Script bundles are shared libraries: their static SDK graph (`PandaSDK`, `PandaUI`,

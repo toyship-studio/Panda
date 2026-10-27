@@ -106,8 +106,10 @@ the pixels of a texture asset, so a plate drawn in an image editor and dropped i
 becomes a nine-slice through a `TextureHandle` field. `destroyTexture` frees one; everything goes
 with the scripts on Stop.
 
-## The demo
+## The gallery
 
-PandaUITest, the section **Skins**, shows the same controls with the editor look and with a
-"Fantasy" skin — nine-slice plates drawn at start, a serif face of the system, outlines, gradients
-and a rounded clip — built only with the means above (`PandaUITest/src/UI/Sections/SkinsSection.cpp`).
+The PandaUI gallery (`PandaUI/examples/gallery`; in the editor **Help → UI Gallery**) shows every
+element of the library with a live example under the theme in use. Its section **Skins** shows the
+same controls with the editor look and with a "Fantasy" skin — nine-slice plates drawn at start, a
+serif face of the system, outlines, gradients and a rounded clip — built only with the means above
+(`PandaUI/examples/gallery/src/Sections/SkinsSection.cpp`).

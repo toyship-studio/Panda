@@ -62,7 +62,6 @@ target_include_directories(Fern PUBLIC ${PROJECT_SOURCE_DIR}/include)
 if (PLATFORM_WIN32)
     # Native Win32 backend: WGL needs opengl32, the D3D11 context needs d3d11+dxgi.
     target_link_libraries(Fern opengl32 d3d11 dxgi)
-    target_include_directories(Fern SYSTEM PRIVATE ${VENDOR_DIRECTORY}/glad/include)
 elseif (PLATFORM_LINUX)
     # Dependencies - GLFW, only for Linux
     target_link_libraries(Fern glfw)
@@ -96,6 +95,13 @@ elseif (PLATFORM_IOS)
 #    )
 endif ()
 
+# Dependencies - glad: the OpenGL loader of the GL contexts of Fern on the desktop platforms. It used
+# to arrive through Miren's public include directories; Fern carries its own dependency now.
+if (DESKTOP)
+    target_link_libraries(Fern glad)
+    target_include_directories(Fern SYSTEM PRIVATE ${VENDOR_DIRECTORY}/glad/include)
+endif ()
+
 # Dependencies - Foundation
 target_link_libraries(Fern Foundation)
 
@@ -111,8 +117,8 @@ elseif (PLATFORM_LINUX)
     target_link_libraries(Fern CURL::libcurl)
 endif ()
 
-# Dependencies - Miren
-target_link_libraries(Fern Miren)
+# Fern does not depend on Miren: Miren builds on Fern (the graphics context), not the other way
+# round, and a mirror of Fern must not fetch Miren. Anything that renders links Miren itself.
 
 # The smoke test of the network layer: a loopback server inside the test (context/networking.md).
 if (DESKTOP)

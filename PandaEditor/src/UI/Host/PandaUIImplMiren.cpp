@@ -143,6 +143,15 @@ PandaUI::TextureHandle PandaUIImplMiren::createTextureFromStaticResource(const s
     return createTextureFromDecoded(Panda::AssetImporterBase::load2DTexture(path));
 }
 
+void PandaUIImplMiren::destroyTexture(PandaUI::TextureHandle handle) {
+    auto it = m_data->textures.find(handle.id);
+    if (it == m_data->textures.end()) { return; }
+    const bool owned = m_data->external.find(handle.id) == m_data->external.end();
+    if (owned && it->second.isValid()) { Miren::deleteTexture(it->second); }
+    m_data->external.erase(handle.id);
+    m_data->textures.erase(it);
+}
+
 PandaUI::TextureHandle PandaUIImplMiren::wrapNativeTexture(Miren::TextureHandle native, PandaUI::Size size) {
     if (!native.isValid()) { return {}; }
     PandaUI::TextureHandle texture;

@@ -4,7 +4,7 @@
 
 namespace Editor {
 
-// Base for editor-specific views in PandaUITest.
+// Base for the editor-specific views of the editor and of the editor parts of modules.
 class EditorView : public PandaUI::Panel {
 public:
     EditorView() = default;

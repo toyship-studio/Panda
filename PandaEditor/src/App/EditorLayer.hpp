@@ -126,6 +126,7 @@ private:
     void selectTheme(const std::string &id) override; // the Plugins tab: store, apply, save
     void installDevPlugin() override;
     PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId) override;
+    PandaUI::Gallery::Host galleryHost() override;
     // Editor parts of the project modules (context/plugins.md, stage 2): registered once both an
     // open project and the coordinator (the parts host) exist; new icon folders go into the
     // library, panels with contribution sections are rebuilt.
@@ -160,6 +161,7 @@ private:
     void menuBarExportGame() override;
     void menuBarOpenExportProject(ExportProjectTarget target) override;
     void menuBarOpenPlugins() override;
+    void menuBarOpenUiGallery() override;
 
     void startScreenDidRequestOpenProjectDialog() override;
     void startScreenDidRequestOpenRecentProject(size_t index) override;
@@ -217,6 +219,11 @@ private:
     UIRootMode m_uiRootMode = UIRootMode::None;
     PandaUI::TextureHandle m_sceneTexture; // engine scene FBO wrapped for the PandaUI viewport (seam #1)
     Miren::TextureHandle m_sceneNative;    // last wrapped native handle — re-wrap only if it changes
+    // The PandaUI gallery (Help → UI Gallery): its logo and the serif face of its skin are loaded
+    // once, on the first opening, and stay for the process.
+    PandaUI::TextureHandle m_galleryLogo;
+    PandaUI::FontFamily m_galleryDisplayFont = PandaUI::FontFamily::Sans;
+    bool m_galleryFontSearched = false;
 
     // Asset previews/thumbnails: the entire cache and rendering are in the manager, panels go through
     // shared().

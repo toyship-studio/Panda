@@ -38,6 +38,11 @@ else()
     message(FATAL_ERROR "Only desktop platform supported for editor")
 endif()
 
+# The PandaUI gallery (Help → UI Gallery, PandaUI/examples/gallery): its images come along as
+# Resources/panda-ui-gallery.
+get_target_property(PANDA_UI_GALLERY_RESOURCE_FOLDER PandaUIGallery PANDAUI_GALLERY_RESOURCE_FOLDER)
+list(APPEND RESOURCE_FOLDERS "${PANDA_UI_GALLERY_RESOURCE_FOLDER}")
+
 list(FILTER RESOURCE_FOLDERS EXCLUDE REGEX "\\.DS_Store")
 
 # The license and the third-party notices ship inside the bundle (scripts/third_party_notices.py).
@@ -187,8 +192,8 @@ target_link_libraries(PandaEditor Panda PandaEditorKit ${PANDA_STATIC_MODULE_TAR
 # Dependencies - PandaAsync
 target_link_libraries(PandaEditor PandaAsync)
 
-# Dependencies - PandaUI
-target_link_libraries(PandaEditor PandaUI)
+# Dependencies - PandaUI and its gallery (the UI Gallery tab)
+target_link_libraries(PandaEditor PandaUI PandaUIGallery)
 
 # Dependencies - Miren
 target_link_libraries(PandaEditor Miren)

@@ -44,14 +44,13 @@ both need version 14 or newer on Apple Silicon. iOS is an export target; Android
 | `Miren`, `MirenTools` | rendering backend library and the shader tools |
 | `Rain` | field reflection and serialization (JSON, YAML, binary) |
 | `PandaAsync` | worker pool, priority queues, main-thread completions |
-| `PandaUI` | retained-mode UI library for games and tools |
+| `PandaUI` | retained-mode UI library for games and tools; `PandaUI/examples/gallery` shows every element |
 | `Panda` | the engine: world, assets, renderer, physics, script host |
 | `Modules` | engine modules: `Terrain`, `Particles` |
 | `PandaEditorKit` | editor extension API for the editor parts of modules |
 | `PandaEditor` | the editor |
 | `PandaRuntime` | the runtime of exported games |
 | `PandaSDK` | the public SDK: the Bamboo scripting API, CMake package, documentation |
-| `PandaUITest` | PandaUI demo application |
 | `Vendor` | third-party libraries |
 | `context` | engineering documentation: subsystem contracts and plans |
 | `scripts` | configure, build and run scripts |

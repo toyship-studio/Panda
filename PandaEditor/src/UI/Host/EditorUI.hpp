@@ -56,6 +56,11 @@ public:
     // The face of a font asset of the project in the chrome (the preview of the font tab): rasterized
     // once from the bytes, registered as the family "asset:<id>" with the bundled Sans as the fallback.
     PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId, const std::vector<uint8_t> &bytes);
+    // A face installed on this machine under a PandaUI family of the caller's choice (the gallery's
+    // "Fantasy" skin wants a serif): the closest face of the weight, rasterized once, the bundled
+    // Sans of that weight for the glyphs it lacks. False — the family is not installed or its file
+    // cannot be read; nothing is registered then.
+    bool loadInstalledFace(const std::string &installedFamily, int weightClass, PandaUI::FontFamily as);
     void loadEditorIcons(); // editor-icons + file-icons → the global Editor::IconLibrary (panel icons)
     // Folders of the packages' PNG icons (absolute paths; EditorExtensions::iconFolders) — into the same
     // library, on top of what is already loaded.
@@ -82,6 +87,14 @@ public:
     PandaUI::TextureHandle loadImage(const std::filesystem::path &path) {
         return m_renderer.createTextureFromStaticResource(path);
     }
+    // A texture from RGBA8 pixels drawn at run time (the plates of the gallery skin); destroyTexture
+    // releases what loadImage or createTexture made.
+    PandaUI::TextureHandle createTexture(const unsigned char *pixels, uint16_t width, uint16_t height) {
+        return m_renderer.createTextureRGBA8(pixels, width, height);
+    }
+    void destroyTexture(PandaUI::TextureHandle texture) {
+        m_renderer.destroyTexture(texture);
+    }
 
 private:
     PandaUIImplMiren m_renderer;
@@ -105,6 +118,7 @@ private:
         std::shared_ptr<PandaUI::FontAtlas> atlas; // null — the bytes are not a face the rasterizer reads
     };
     std::unordered_map<uint32_t, AssetFont> m_assetFonts; // by asset id
+    std::vector<std::shared_ptr<PandaUI::FontAtlas>> m_installedFaces; // loadInstalledFace: alive with the Context
     bool m_bundledFontsLoaded = false;
     void loadBundledFonts();
     void loadCustomFamily(FontRole &role, const std::string &family);

@@ -32,6 +32,7 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId RestartToUpdate = 22;
     constexpr Fern::MenuCommandId ReleaseNotes = 23;
     constexpr Fern::MenuCommandId Plugins = 24;
+    constexpr Fern::MenuCommandId UiGallery = 25;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
 } // namespace EditorMenuCommand
 
@@ -142,6 +143,10 @@ void EditorMenuBar::rebuild() {
     helpMenu.addItem("Check for Updates", EditorMenuCommand::CheckForUpdates);
     if (m_output->menuBarUpdateReady()) { helpMenu.addItem("Restart to Update", EditorMenuCommand::RestartToUpdate); }
     helpMenu.addItem("Release Notes", EditorMenuCommand::ReleaseNotes);
+    if (hasProject) { // a tab of the editor window: every PandaUI element under the theme in use
+        helpMenu.addSeparator();
+        helpMenu.addItem("UI Gallery", EditorMenuCommand::UiGallery);
+    }
     helpMenu.addSeparator();
     helpMenu.addItem("About", EditorMenuCommand::About);
 
@@ -241,6 +246,9 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
             break;
         case EditorMenuCommand::Plugins:
             m_output->menuBarOpenPlugins();
+            break;
+        case EditorMenuCommand::UiGallery:
+            m_output->menuBarOpenUiGallery();
             break;
         default:
             break;

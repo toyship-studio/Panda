@@ -460,7 +460,14 @@ Nothing the editor sends identifies a person.
     covers the mirror repositories (Contents: read and write). A library joins the workflow when its
     repository exists, in the order Rain, PandaUI, then Foundation, PandaAsync, Fern and Miren (Fern
     builds on Foundation and, for its network layer, on PandaAsync; Miren builds on Fern). Issues and pull requests go to the engine repository; the mirrors have Issues off.
-13. PandaUI is complete like Dear ImGui: `backends/` and `examples/` live inside `PandaUI/` and
-    are compiled only when the folder is the top-level project (`PANDAUI_BUILD_BACKENDS`,
-    `PANDAUI_BUILD_EXAMPLES` default to `PROJECT_IS_TOP_LEVEL`). The engine backend (Miren and
-    Fern) stays in `Panda`; `PandaUITest` remains the demo of that backend.
+13. PandaUI is complete like Dear ImGui: `backends/` and `examples/` live inside `PandaUI/`; the
+    backends and the example applications are compiled only when the folder is the top-level
+    project (`PANDAUI_BUILD_BACKENDS`, `PANDAUI_BUILD_EXAMPLES` default to `PROJECT_IS_TOP_LEVEL`).
+    The gallery, `examples/gallery`, is a library of pure PandaUI (`PANDAUI_BUILD_GALLERY`): the
+    standalone example runs it on a backend, and the editor shows the same gallery in a tab (Help →
+    UI Gallery) under the theme in use — a theme author sees every element at once, and the engine
+    backend (Miren and Fern, in `Panda` and in the editor) is exercised by the editor itself. What
+    the gallery needs from its host — textures, a display face, extra windows, a theme switch —
+    comes through `PandaUI::Gallery::Host`; a missing capability hides the sections that need it.
+    The separate PandaUITest application was removed in October 2026: it duplicated the editor's
+    backend and showed nothing the tab does not.

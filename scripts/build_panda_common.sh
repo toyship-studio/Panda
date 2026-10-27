@@ -92,7 +92,7 @@ panda_build() {
         fi
         # The applications of the output directory; an application that builds the engine as a
         # subproject names its own in PANDA_BUILD_APPS.
-        for PANDA_BUILD_APP in ${PANDA_BUILD_APPS:-PandaEditor PandaUITest PandaSmoke}; do
+        for PANDA_BUILD_APP in ${PANDA_BUILD_APPS:-PandaEditor PandaSmoke}; do
             rm -rf "$PANDA_BUILD_BIN/$PANDA_BUILD_APP$PANDA_BUILD_APP_SUFFIX"
         done
     fi

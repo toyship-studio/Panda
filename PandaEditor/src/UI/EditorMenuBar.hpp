@@ -52,6 +52,9 @@ public:
     virtual void menuBarOpenExportProject(ExportProjectTarget target) = 0;
     // The Plugins tab (Window → Plugins): installing, updating and removing plugins, applying themes.
     virtual void menuBarOpenPlugins() = 0;
+    // The UI Gallery tab (Help → UI Gallery): every PandaUI element with a live example under the
+    // theme in use — what a theme author looks at.
+    virtual void menuBarOpenUiGallery() = 0;
 };
 
 class EditorMenuBar final {

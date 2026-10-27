@@ -4,6 +4,7 @@
 #include <Panda/Extensions/Settings.hpp>
 #include <PandaUI/Core/Base.hpp> // PandaUI::Point
 #include <PandaUI/Rendering/TextLayout.hpp> // PandaUI::FontFamily
+#include <PandaUIGallery/Gallery.hpp>       // PandaUI::Gallery::Host
 
 #include <cstdint>
 #include <string>
@@ -66,6 +67,11 @@ public:
     // The face of a font asset for the editor's own UI (the preview of the font tab): rasterized once
     // by the UI host from the bytes of the asset; Sans when it cannot be read.
     virtual PandaUI::FontFamily fontFamilyForAsset(uint32_t assetId) = 0;
+    // The PandaUI gallery (UI/Documents/UiGalleryDocument): what it needs from the UI host of the
+    // application — textures from pixels and from the bundle, the serif face of its "Fantasy" skin.
+    // No window and no theme capability: the gallery is a tab of the editor window, and the theme
+    // is the plugin chosen in Plugins.
+    virtual PandaUI::Gallery::Host galleryHost() = 0;
 };
 
 } // namespace Editor

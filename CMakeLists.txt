@@ -60,6 +60,14 @@ include(cmake/platform.cmake)
 # games do not: the SDK build scripts switch it off, so a game carries no editor code on any
 # platform. Panda/CMakeLists.txt applies it; the editor is configured only with it on.
 option(PANDA_EDITOR_API "Compile the engine libraries with the editor-side API (PND_EDITOR)" ${DESKTOP})
+# The editor is built when the engine tree is the top-level project, on the desktop, with the
+# editor-side API (the SDK trees build the engine without it); with it come the editor layer for
+# the editor parts of modules and the PandaUI gallery the editor shows (Help → UI Gallery).
+set(PANDA_BUILD_EDITOR OFF)
+if (DESKTOP AND PANDA_EDITOR_API AND PROJECT_IS_TOP_LEVEL)
+    set(PANDA_BUILD_EDITOR ON)
+endif ()
+set(PANDAUI_BUILD_GALLERY ${PANDA_BUILD_EDITOR}) # a normal variable: the option() of PandaUI yields to it (CMP0077)
 include(cmake/shader_bake.cmake)
 include(cmake/bundled_cmake.cmake)
 include(cmake/bundled_slang.cmake)
@@ -107,7 +115,7 @@ add_subdirectory(Miren)
 add_subdirectory(MirenTools)
 add_subdirectory(PandaUI)
 add_subdirectory(Panda)
-if (DESKTOP AND PANDA_EDITOR_API AND PROJECT_IS_TOP_LEVEL)
+if (PANDA_BUILD_EDITOR)
     add_subdirectory(PandaEditorKit) # the editor layer for the editor parts of modules: the editor's alone
 endif ()
 # Modules (context/plugins.md) are the folders of Modules/ with a module.json: cmake/modules.cmake
@@ -152,9 +160,8 @@ endif ()
 # brings its own and gets none of these (a configured bundle target leaves an empty .app shell in
 # BIN_DIRECTORY even when it is never built).
 if (DESKTOP AND PROJECT_IS_TOP_LEVEL)
-    add_subdirectory(PandaUITest)
     add_subdirectory(Panda/Smoke)
-    if (PANDA_EDITOR_API) # the SDK trees build the engine without the editor
+    if (PANDA_BUILD_EDITOR)
         add_subdirectory(PandaEditor)
     endif ()
 endif ()

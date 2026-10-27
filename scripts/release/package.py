@@ -40,10 +40,10 @@ ROOT = Path(__file__).resolve().parents[2]
 VERSION_HEADER = ROOT / "Panda" / "include" / "Panda" / "Base" / "Version.hpp"
 VOLUME_NAME = "Panda Editor"
 KINDS = {"macos": "dmg", "windows": "zip", "linux": "tar.gz"}
-# Entries of bin/ that are not the editor: the other desktop applications of the tree and the
-# documentation site; the dot files are the stamps of the build scripts, the suffixes are MSVC
-# by-products of the link.
-EXCLUDED_ENTRIES = {"PandaUITest", "PandaUITest.exe", "PandaSmoke", "PandaSmoke.exe", "docs"}
+# Entries of bin/ that are not the editor: the smoke test of the engine and the documentation
+# site; the dot files are the stamps of the build scripts, the suffixes are MSVC by-products of
+# the link.
+EXCLUDED_ENTRIES = {"PandaSmoke", "PandaSmoke.exe", "docs"}
 EXCLUDED_SUFFIXES = {".pdb", ".ilk", ".exp", ".lib", ".manifest"}
 
 

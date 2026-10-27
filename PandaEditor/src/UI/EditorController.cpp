@@ -6,6 +6,7 @@
 #include "UI/Documents/CoreAssetEditors.hpp"
 #include "UI/Documents/PluginsDocument.hpp"
 #include "UI/Documents/SettingsDocuments.hpp"
+#include "UI/Documents/UiGalleryDocument.hpp"
 #include "UI/EditorDialogs.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
 #include <PandaEditorKit/Widgets/Icons.hpp>
@@ -91,6 +92,7 @@ namespace {
     constexpr const char *PROJECT_SETTINGS_DOCUMENT = "projectSettings";
     constexpr const char *EDITOR_SETTINGS_DOCUMENT = "editorSettings";
     constexpr const char *PLUGINS_DOCUMENT = "plugins";
+    constexpr const char *UI_GALLERY_DOCUMENT = "uiGallery";
 
 } // namespace
 
@@ -205,6 +207,18 @@ void EditorController::registerDocumentTypes() {
         return std::unique_ptr<Document>(std::make_unique<PluginsDocument>(std::move(host)));
     };
     editorExtensions().documentTypes.add(std::move(plugins));
+
+    // The UI Gallery tab (PandaUI/examples/gallery): the textures and the display face come from the
+    // UI host of the application layer, behind the bridge.
+    DocumentType gallery;
+    gallery.id = UI_GALLERY_DOCUMENT;
+    gallery.title = "UI Gallery";
+    gallery.create = [] {
+        PandaUI::Gallery::Host host;
+        if (EngineBridge *bridge = s_controller->m_bridge) { host = bridge->galleryHost(); }
+        return std::unique_ptr<Document>(std::make_unique<UiGalleryDocument>(host));
+    };
+    editorExtensions().documentTypes.add(std::move(gallery));
 }
 
 Panda::DockLayoutState EditorController::captureDockLayout() const {
@@ -1209,6 +1223,10 @@ void EditorController::commitSettings(Panda::SettingsScope scope, Foundation::Sh
 
 void EditorController::openPlugins() {
     if (m_editorTabs) { m_editorTabs->openDocumentType(PLUGINS_DOCUMENT, Dock::Center); }
+}
+
+void EditorController::openUiGallery() {
+    if (m_editorTabs) { m_editorTabs->openDocumentType(UI_GALLERY_DOCUMENT, Dock::Center); }
 }
 
 void EditorController::openSettings(Panda::SettingsScope scope, const std::string &section) {

@@ -44,7 +44,7 @@ target_link_libraries(Panda PandaUI)
 target_link_libraries(Panda Rain)
 
 # Dependencies - Fern
-target_link_libraries(Panda Fern)
+target_link_libraries(Panda Fern Miren) # Miren came through Fern before; Panda renders, so it names its dependency
 
 # Dependencies - GLM
 target_link_libraries(Panda glm)

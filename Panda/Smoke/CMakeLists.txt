@@ -3,7 +3,7 @@ project(PandaSmoke)
 set(CMAKE_CXX_STANDARD 20)
 
 # Engine smoke test (World → offscreen render → pixel checks): a bundle with the engine
-# resources, as in PandaUITest — StaticResources load the builtin shaders/textures from the bundle.
+# resources, as in PandaEditor — StaticResources load the builtin shaders/textures from the bundle.
 file(GLOB RESOURCE_FOLDERS
     ${PANDA_DIRECTORY}/resources/*
 )

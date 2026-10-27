@@ -29,6 +29,10 @@ public:
     // next frame (icon plugins swap the editor icons live). The old native texture is deleted
     // unless it is a wrapped foreign one. False — the handle is unknown or the pixels are empty.
     bool replaceTexture(PandaUI::TextureHandle handle, Miren::TextureCreate create);
+    // Releases a texture of createTextureRGBA8 / createTextureFromDecoded / createTextureFromStaticResource:
+    // the views holding the handle draw white from the next frame. A wrapped foreign one is only
+    // forgotten; an unknown handle is ignored.
+    void destroyTexture(PandaUI::TextureHandle handle);
     void render(const PandaUI::DrawList &drawList, uint16_t viewId);
 
 private:

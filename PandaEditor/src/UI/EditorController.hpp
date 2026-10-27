@@ -194,6 +194,7 @@ public:
     void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) override;
     void openSettings(Panda::SettingsScope scope, const std::string &section = {}) override;
     void openPlugins(); // the Plugins tab in the center dock (Window → Plugins, the "+" menu)
+    void openUiGallery(); // the UI Gallery tab in the center dock (Help → UI Gallery, the "+" menu)
     void restartEditor() override;
 
     // ContentBrowserOutput.

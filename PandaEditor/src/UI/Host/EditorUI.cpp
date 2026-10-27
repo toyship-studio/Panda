@@ -219,6 +219,24 @@ PandaUI::FontFamily EditorUI::fontFamilyForAsset(uint32_t assetId, const std::ve
     return family;
 }
 
+bool EditorUI::loadInstalledFace(const std::string &installedFamily, int weightClass, PandaUI::FontFamily as) {
+    const std::optional<Fern::Fonts::Face> face = Fern::Fonts::find(installedFamily, weightClass);
+    if (!face) { return false; }
+    std::vector<FontJob> jobs(1);
+    jobs[0].bytes = readWholeFile(face->file);
+    jobs[0].faceIndex = face->index;
+    if (jobs[0].bytes.empty()) { return false; }
+    std::shared_ptr<PandaUI::FontAtlas> atlas;
+    jobs[0].targets.push_back(&atlas);
+    rasterizeFonts(jobs);
+    if (!atlas) { return false; } // a color or variable face the rasterizer does not read
+    const int weight = weightClass >= 700 ? 2 : weightClass >= 500 ? 1 : 0;
+    atlas->setFallback(m_sansRole.bundled[weight]);
+    m_installedFaces.push_back(atlas);
+    m_context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, as);
+    return true;
+}
+
 void EditorUI::bindFonts() {
     for (int w = 0; w < kWeightCount; ++w) {
         const std::shared_ptr<PandaUI::FontAtlas> &sans = m_sansRole.custom[w] ? m_sansRole.custom[w] : m_sansRole.bundled[w];

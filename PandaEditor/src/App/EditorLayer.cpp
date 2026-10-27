@@ -1206,6 +1206,32 @@ void EditorLayer::menuBarOpenPlugins() {
     if (m_editorController) { m_editorController->openPlugins(); }
 }
 
+void EditorLayer::menuBarOpenUiGallery() {
+    if (m_editorController) { m_editorController->openUiGallery(); }
+}
+
+PandaUI::Gallery::Host EditorLayer::galleryHost() {
+    PandaUI::Gallery::Host host;
+    host.createTexture = [this](const unsigned char *pixels, uint16_t width, uint16_t height) {
+        return m_editorUI.createTexture(pixels, width, height);
+    };
+    host.destroyTexture = [this](PandaUI::TextureHandle texture) { m_editorUI.destroyTexture(texture); };
+    if (!m_galleryLogo) { m_galleryLogo = m_editorUI.loadImage("panda-ui-gallery/ship_logo.png"); }
+    host.logo = m_galleryLogo;
+    // The "Fantasy" skin shows a serif: the first installed one of the usual names, found once.
+    if (!m_galleryFontSearched) {
+        m_galleryFontSearched = true;
+        for (const char *family : {"Georgia", "Palatino", "Baskerville", "Times New Roman", "DejaVu Serif", "Liberation Serif"}) {
+            if (m_editorUI.loadInstalledFace(family, 700, PandaUI::fontFamily("Fantasy"))) {
+                m_galleryDisplayFont = PandaUI::fontFamily("Fantasy");
+                break;
+            }
+        }
+    }
+    host.displayFont = m_galleryDisplayFont;
+    return host; // no openWindow (a tab, not a window), no applyTheme (the theme is the plugin chosen in Plugins)
+}
+
 void EditorLayer::menuBarAbout() {
     Editor::AboutInfo info;
     info.version = EditorUpdater::versionString();

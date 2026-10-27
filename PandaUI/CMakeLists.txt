@@ -22,3 +22,11 @@ target_link_libraries(PandaUI
         stb_truetype
         yogacore
 )
+
+# The gallery (examples/gallery) is a library: the editor shows it in a tab (Help → UI Gallery) and
+# the standalone example runs it on a backend. The engine root switches it on together with the
+# editor; the folder built alone brings it with its examples.
+option(PANDAUI_BUILD_GALLERY "Build the PandaUI gallery library (examples/gallery)" ${PROJECT_IS_TOP_LEVEL})
+if (PANDAUI_BUILD_GALLERY)
+    add_subdirectory(examples/gallery)
+endif ()
