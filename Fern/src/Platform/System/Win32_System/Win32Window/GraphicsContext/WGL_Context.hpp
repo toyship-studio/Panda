@@ -22,6 +22,7 @@ public:
     void swapBuffers() override;
     void update() override;
     uint32_t getDefaultFrameBufferId() override;
+    void *getProcAddress(const char *name) override;
 
     HGLRC getHandle() {
         return m_context;

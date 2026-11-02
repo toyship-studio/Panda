@@ -2,14 +2,12 @@
 
 #include <Foundation/Logger.hpp>
 
-#include <glad/glad.h>
-
 namespace Fern {
 
 namespace {
 
-    // glad needs a loader that first asks WGL (extension functions) and then
-    // falls back to opengl32.dll exports (GL 1.1 core entry points).
+    // The GL loader of the renderer asks WGL first (extension functions) and falls back to the
+    // opengl32.dll exports (GL 1.1 core entry points).
     void *wglLoaderFunction(const char *name) {
         void *pointer = reinterpret_cast<void *>(wglGetProcAddress(name));
         if (pointer && pointer != reinterpret_cast<void *>(1) && pointer != reinterpret_cast<void *>(2) &&
@@ -95,13 +93,6 @@ WGL_Context::WGL_Context(HWND window, WGL_Context *sharedContext)
     }
 
     wglMakeCurrent(m_deviceContext, m_context);
-    static bool s_gladLoaded = false;
-    if (!s_gladLoaded) {
-        s_gladLoaded = true;
-        if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(wglLoaderFunction)) == 0) {
-            LOG_CRITICAL("Failed to initialize GLAD");
-        }
-    }
     // Enable v-sync
     auto swapInterval = reinterpret_cast<SwapIntervalFn>(wglGetProcAddress("wglSwapIntervalEXT"));
     if (swapInterval) { swapInterval(1); }
@@ -130,6 +121,10 @@ void WGL_Context::update() {}
 
 uint32_t WGL_Context::getDefaultFrameBufferId() {
     return 0;
+}
+
+void *WGL_Context::getProcAddress(const char *name) {
+    return wglLoaderFunction(name); // the context is current on the calling thread (the renderer's)
 }
 
 } // namespace Fern

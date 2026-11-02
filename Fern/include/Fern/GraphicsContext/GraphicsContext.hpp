@@ -21,6 +21,14 @@ public:
     virtual void swapBuffers() = 0;
     virtual void update() = 0;
     virtual uint32_t getDefaultFrameBufferId() = 0;
+    // GL contexts: the address of an OpenGL function of this context's implementation, for the
+    // loader of the renderer (Miren loads glad once, with the context current on its thread). The
+    // window library creates contexts and knows their loader; the renderer is the one that calls
+    // GL. The explicit-API backends (D3D11, Metal) keep the default.
+    virtual void *getProcAddress(const char *name) {
+        (void)name;
+        return nullptr;
+    }
     // Native handles of explicit-API backends (D3D11/Metal); GL backends keep the
     // defaults. The active API is a build-time constant (Foundation::GraphicsAPI).
     // Metal mapping: nativeDevice=MTLDevice, nativeDeviceContext=MTLCommandQueue,

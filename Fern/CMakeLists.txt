@@ -95,13 +95,6 @@ elseif (PLATFORM_IOS)
 #    )
 endif ()
 
-# Dependencies - glad: the OpenGL loader of the GL contexts of Fern on the desktop platforms. It used
-# to arrive through Miren's public include directories; Fern carries its own dependency now.
-if (DESKTOP)
-    target_link_libraries(Fern glad)
-    target_include_directories(Fern SYSTEM PRIVATE ${VENDOR_DIRECTORY}/glad/include)
-endif ()
-
 # Dependencies - Foundation
 target_link_libraries(Fern Foundation)
 

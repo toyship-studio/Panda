@@ -3,13 +3,12 @@
 #import <Foundation/Logger.hpp>
 #import <Cocoa/Cocoa.h>
 #import <OpenGL/OpenGL.h>
-#import <glad/glad.h>
 
 typedef void (*glproc)(void);
 
 static CFBundleRef s_framework;
 
-static glproc getProcAddress(const char* procname) {
+static glproc loadFrameworkSymbol(const char* procname) {
     CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault,
                                                        procname,
                                                        kCFStringEncodingASCII);
@@ -60,9 +59,6 @@ OSX_GLContext::OSX_GLContext(NSView* view, NSOpenGLContext *shareContext)
     int interval = 1;
     [m_context setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
     [m_context makeCurrentContext];
-    if (gladLoadGLLoader((GLADloadproc)getProcAddress) == false) {
-        LOG_CRITICAL("Failed to initialize GLAD");
-    }
 }
 
 OSX_GLContext::~OSX_GLContext() {
@@ -106,6 +102,10 @@ void OSX_GLContext::update() {
 
 uint32_t OSX_GLContext::getDefaultFrameBufferId() {
     return 0;
+}
+
+void *OSX_GLContext::getProcAddress(const char *name) {
+    return s_framework ? (void *)loadFrameworkSymbol(name) : nullptr;
 }
 
 NSOpenGLContext *OSX_GLContext::getNativeContext() {

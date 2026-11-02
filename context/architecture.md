@@ -58,6 +58,10 @@ and background jobs (`PandaAsync`).
   live on the application or engine side, never inside an independent library. The engine links
   PandaUI for the draw-list and event types of the script ABI; the dependency never points the
   other way.
+- `Fern` does not depend on `Miren` or on any GL loader: it creates the GL contexts and knows
+  their loader (`GraphicsContext::getProcAddress`), and `Miren`, the one that calls GL, loads the
+  OpenGL functions (glad) once through it, on its render thread with the context current. `Miren`
+  depends on `Fern` for the context interface, never the other way.
 - Editor logic lives in `PandaEditor`. Runtime asset loading lives in `PandaRuntime` and reads
   cooked `.Panda` data, not authoring formats.
 - `PandaEditorKit` depends on `Panda` and `PandaUI`, not on `PandaEditor`: the editor implements

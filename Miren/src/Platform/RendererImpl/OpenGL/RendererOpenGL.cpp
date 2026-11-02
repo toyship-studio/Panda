@@ -19,6 +19,16 @@ static void addUniqueContext(std::vector<Fern::GraphicsContext *> &contexts, Fer
     if (std::find(contexts.begin(), contexts.end(), context) == contexts.end()) { contexts.push_back(context); }
 }
 
+#if defined(PLATFORM_DESKTOP)
+// The OpenGL function pointers of the process are loaded once, through the context the renderer
+// was given: the window library creates contexts and knows their loader
+// (Fern::GraphicsContext::getProcAddress), the renderer is the one that calls GL.
+static Fern::GraphicsContext *s_loaderContext = nullptr;
+static void *loadGLFunction(const char *name) {
+    return s_loaderContext ? s_loaderContext->getProcAddress(name) : nullptr;
+}
+#endif
+
 void gpuErrorCallback(
     GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam
 ) {
@@ -56,6 +66,10 @@ RendererOpenGL::RendererOpenGL(Fern::GraphicsContext *ctx)
     , m_vertexLayouts()
     , m_vertexBuffers()
     , m_textures() {
+#if defined(PLATFORM_DESKTOP)
+    s_loaderContext = ctx; // current on this thread: the init command made it so
+    if (gladLoadGLLoader(loadGLFunction) == 0) { LOG_CRITICAL("Failed to load the OpenGL functions (glad)"); }
+#endif
     GL_CALL(glEnable(GL_BLEND));
     GL_CALL(glDisable(GL_STENCIL_TEST));
     // GL_CALL(glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS));
