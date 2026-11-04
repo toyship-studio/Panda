@@ -65,6 +65,7 @@ _panda_sdk_add_static_library(PandaSDK::PandaSDK PandaSDK)
 _panda_sdk_add_static_library(PandaSDK::box2d box2d)
 _panda_sdk_add_static_library(PandaSDK::box3d box3d)
 _panda_sdk_add_static_library(PandaSDK::cgltf cgltf)
+_panda_sdk_add_static_library(PandaSDK::miniaudio miniaudio)
 _panda_sdk_add_static_library(PandaSDK::glad glad)
 _panda_sdk_add_static_library(PandaSDK::stb_image stb_image)
 _panda_sdk_add_static_library(PandaSDK::yogacore yogacore)
@@ -95,6 +96,21 @@ set(_PANDA_RUNTIME_LINK_LIBRARIES
 set_property(TARGET PandaSDK::PandaUI APPEND PROPERTY
     INTERFACE_LINK_LIBRARIES PandaSDK::yogacore
 )
+
+# miniaudio (Vendor/miniaudio/CMakeLists.txt) is linked by the Audio module only, not by every
+# game: its options and platform dependencies are repeated here on the imported target.
+set_property(TARGET PandaSDK::miniaudio APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS MA_NO_ENCODING)
+if(APPLE)
+    set_property(TARGET PandaSDK::miniaudio APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS MA_NO_RUNTIME_LINKING)
+    set_property(TARGET PandaSDK::miniaudio APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
+    )
+    if(IOS)
+        set_property(TARGET PandaSDK::miniaudio APPEND PROPERTY INTERFACE_LINK_LIBRARIES "-framework AVFoundation")
+    endif()
+elseif(UNIX)
+    set_property(TARGET PandaSDK::miniaudio APPEND PROPERTY INTERFACE_LINK_LIBRARIES pthread m dl)
+endif()
 
 # A script bundle links Fern as well: Bamboo::Net is a layer over Fern::Net inside the bundle
 # (context/networking.md, section 7). Only the network objects of the archive are pulled in; they

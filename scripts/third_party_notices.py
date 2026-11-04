@@ -55,6 +55,14 @@ def stb_license():
     return "\n".join(lines[start:end]).strip()
 
 
+def stb_vorbis_license():
+    """The dual MIT / public domain block at the end of stb_vorbis.c (the miniaudio extras copy)."""
+    lines = (ROOT / "Vendor/miniaudio/stb_vorbis.c").read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if "This software is available under 2 licenses" in line)
+    end = next(i for i in range(start, len(lines)) if lines[i].strip() == "*/")
+    return "\n".join(lines[start:end]).strip()
+
+
 def slang_license():
     """The bundled compiler is downloaded, not tracked; the text is embedded in case it is absent."""
     bundled = ROOT / "Vendor/tools/slang/mac/aarch64/LICENSE"
@@ -148,6 +156,8 @@ ENTRIES = [
     ("yaml-cpp", "MIT", "Rain/Vendor/yaml-cpp", lambda: file_text("Rain/Vendor/yaml-cpp/LICENSE")),
     ("Native File Dialog", "zlib", "Vendor/nfd", lambda: file_text("Vendor/nfd/LICENSE")),
     ("miniz", "MIT", "Vendor/miniz", lambda: file_text("Vendor/miniz/LICENSE")),
+    ("miniaudio", "public domain or MIT No Attribution", "Vendor/miniaudio", lambda: file_text("Vendor/miniaudio/LICENSE")),
+    ("stb_vorbis", "MIT or public domain, at the user's choice", "Vendor/miniaudio/stb_vorbis.c", stb_vorbis_license),
     ("ImGuizmo, the origin of the viewport gizmo code", "MIT", "PandaEditor/src/Viewport/Gizmo/Gizmo.cpp",
      lambda: line_comment_header("PandaEditor/src/Viewport/Gizmo/Gizmo.cpp")),
     ("Inter", "SIL Open Font License 1.1", "Panda/resources/default-fonts/Inter",

@@ -25,6 +25,10 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `CharacterMoverAPI.hpp` — character movement on top of physics; provided by the Physics
   module. Without the module the physics calls do nothing and return zeros.
 - `TerrainAPI.hpp` — terrain queries (height etc.); provided by the Terrain module.
+- `AudioAPI.hpp`, `Components/AudioSourceComponentAPI.hpp` — the buses of the mixer and the
+  audio source of an entity (play, stop, pause, one-shots, volume, pitch); provided by the Audio
+  module. A script reaches a sound through the entity that carries the Audio Source (an
+  `EntityHandle` field); the clip and the spatial settings are set in the inspector.
 - `UI/` — PandaUI from scripts; `UI/FontAPI.hpp` — a font of the project (a `FontHandle`
   field) in that UI; the look of a game — `docs/ui.md`.
 - `Async.hpp` — background jobs (the work/complete model).

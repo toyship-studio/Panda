@@ -33,7 +33,8 @@ two steps (0..1) — what the Physics module uses to write interpolated poses in
 
 A system that must also live while the world does not run (the editor's EDIT mode) gets no
 phase hooks there: the particles keep their own clock and advance in `submit`, which runs in
-every frame that draws.
+every frame that draws. A service that is not about a world at all — a device, a mixer, a network
+state — is an application system (below).
 
 ## The order among systems
 
@@ -103,6 +104,27 @@ The Physics module is the reference: `physics` carries the life cycle and opens 
 `fixed`, `physics.step` steps the worlds after the scripts; the Terrain module puts its static
 bodies into the physics world from its own `start` (`after = {"physics"}`) and takes them out in
 its `stop`, `entityRemoved` and `transformChanged`.
+
+## Application systems
+
+Some state belongs to the application and not to a world: the audio mixer and its device, which
+must survive the Play copy of the editor and a world switch of a game. Such a service is an
+`AppSystem` of `extensions.appSystems`:
+
+```cpp
+AppSystem system;
+system.name = "audio";
+system.start = startEngine;   // the application exists: open the device
+system.tick = tickEngine;     // every frame, after the layers, before the scheduler completions
+system.stop = stopEngine;     // the application goes away, after its layers and worlds
+extensions.appSystems.add(std::move(system));
+```
+
+`start` runs at registration when the application is already live (the editor registers the
+modules of a project after it started) or when the application is created; `stop` runs in the
+reverse order of registration, and not at all where the process is killed without a teardown
+(iOS). A per-world consumer of the service — the voices of the entities of a world — is still a
+world system with its state in `World::context<T>`; the Audio module is the example.
 
 ## What a system may use
 

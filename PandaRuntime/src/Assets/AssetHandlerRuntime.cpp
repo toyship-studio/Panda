@@ -267,7 +267,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
     }
     if (forcedReload && m_loadedAssets.contains(id)) {
         Asset *prevAsset = m_loadedAssets.at(id).asset;
-        F_FREE(m_allocator, prevAsset);
+        F_DELETE(m_allocator, prevAsset); // the destructor releases what the asset owns
     }
     AssetEntry entry;
     entry.asset = asset;

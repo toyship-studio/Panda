@@ -56,7 +56,7 @@ though the usual way is to look for its state in the world (`World::findContext<
 
 ## The registries
 
-`Panda::Extensions` (`GameContext::getExtensions()`) has eight registries. The contributions
+`Panda::Extensions` (`GameContext::getExtensions()`) has nine registries. The contributions
 live until the end of the process; nothing is unregistered.
 
 | Registry | Contribution | Page |
@@ -69,6 +69,7 @@ live until the end of the process; nothing is unregistered.
 | `shaderTemplates` | `ShaderTemplate`: a built-in material shader for the editor's picker and `.mat` reconciliation | [Static resources and shaders](resources.md) |
 | `meshLayouts` | `MeshLayoutPrograms`: a custom vertex layout with its programs for the depth and id passes | [Static resources and shaders](resources.md) |
 | `scriptHostApis` | `ScriptHostApiTable`: a flat C table of functions for scripts, by name and version | [The script API](script-api.md) |
+| `appSystems` | `AppSystem`: a service of the application — started when the application exists, ticked every frame whether a world runs or not, stopped at the end | [World systems](world-systems.md), "Application systems" |
 
 A contribution that arrives after the process started (the editor registers the modules of a
 project when the project opens, after the first world exists) is integrated by the hosts:

@@ -141,7 +141,7 @@ the package page and the future registry; the engine does not enforce them today
 | `id`, `name`, `version` | reverse domain; UI name; semver (a pre-release suffix such as `-beta.1` is the channel) |
 | `authors` | optional, `"Name <mail>"`: attribution outside the registry |
 | `description` | one line for lists; the long text is `readme` |
-| `category` | one of: world, rendering, physics, assets, editor, scripting, ui, tools, themes, localization, samples |
+| `category` | one of: world, rendering, physics, audio, assets, editor, scripting, ui, tools, themes, localization, samples |
 | `tags` | free search tags |
 | `license` | SPDX identifier; custom: `LicenseRef-<name>` plus a file (the engine's own packages: `LicenseRef-Panda-Engine-License-1.0`, the license of the repository) |
 | `engine` | engine version range against `Panda::ENGINE_VERSION`: `"0.1.0"` exact, `"^0.1.0"` compatible, `">=0.1.0 <0.3.0"` comparisons separated by spaces |
@@ -163,6 +163,7 @@ the package page and the future registry; the engine does not enforce them today
 | `settings` | `SettingsType {scope, name, encode, decode, copy, reset}` (`settingsType<T>(scope, name)` for a Rain-Codable value): a section of a settings scope — `World` (a top-level `.world` key, the data in `World::context<T>()`, `reset` on load and by `World::clear`, `copy` when the world is copied for Play), `Project` (`.Panda/project.json`) or `Editor` (the user's `settings.json`). `SettingsMapper` reads and writes the sections of a scope from a `TypeContext`; the core registers `lighting`, `graphics` and `wind` through it, the editor its project and editor sections; a key without a type is kept in `ForeignSettings` |
 | `resourceProviders`, `shaderTemplates`, `meshLayouts` | `ResourceProvider {name, init, release}` creates the static assets of a contribution after the core; `ShaderTemplate` feeds the shader picker and `.mat` field reconciliation; `MeshLayoutPrograms` gives the programs for a custom vertex layout (shadow depth, ids) |
 | `scriptHostApis` | `ScriptHostApiTable {name, version, table}`: a flat C table of the contribution; a script bundle finds it through `ScriptHostApi::hostApiTable_Find(name, version)` |
+| `appSystems` | `AppSystem {name, start, tick, stop}`: a service of the APPLICATION, not of a world (the audio mixer): `Application` starts it when it exists (at registration for a module loaded later), ticks it every frame after the layers and before the completions of the scheduler, stops it after the layers and their worlds are destroyed (`context/audio.md`) |
 
 Frame order is described in `context/architecture.md` (World): simulate (the phases PreFixed,
 Fixed per physics step, PostPhysics, Update, PostUpdate over all world systems, the core ones
@@ -256,6 +257,10 @@ palette.
 - `Modules/Particles` (`dev.pandaengine.particles`; targets `PandaParticles`,
   `PandaParticlesEditor`): `particleEmitterComponent`, CPU simulation with its own clock in
   `submit`, instanced camera-facing quads. It was added without touching the core.
+- `Modules/Audio` (`dev.pandaengine.audio`; targets `PandaAudio`, `PandaAudioEditor`): audio
+  clips as a file-based asset kind, the mixer of the application on the vendored miniaudio (an
+  application system), the clip tab of the editor; the components, the world system and the
+  script API are the next stage. See `context/audio.md`.
 
 ## Open items
 

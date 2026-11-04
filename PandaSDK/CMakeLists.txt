@@ -166,6 +166,7 @@ set(PANDA_SDK_PACKAGED_FILE_GLOBS
         ${VENDOR_DIRECTORY}/entt/src/entt/*
         ${VENDOR_DIRECTORY}/box2d/include/box2d/*
         ${VENDOR_DIRECTORY}/box3d/include/box3d/*
+        ${VENDOR_DIRECTORY}/miniaudio/include/miniaudio/*
 )
 foreach (_SDK_DIR ${PANDA_BUILTIN_MODULE_SDK_DIRS})
     list(APPEND PANDA_SDK_PACKAGED_FILE_GLOBS ${_SDK_DIR}/include/*)
@@ -208,6 +209,7 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/miniaudio
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_DIRECTORY}/include/Panda ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Panda
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${FOUNDATION_DIRECTORY}/include/Foundation ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Foundation
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${MIREN_DIRECTORY}/include/Miren ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Miren
@@ -218,6 +220,7 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/entt/src/entt ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box2d/include/box2d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box3d/include/box3d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/miniaudio/include/miniaudio ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/miniaudio
         ${PANDA_SDK_MODULE_COPY_COMMANDS}
 
         # === 1b. Docs — the agent package (.world/.mat formats, scripting, overview) ===

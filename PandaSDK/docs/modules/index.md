@@ -21,6 +21,7 @@ three modules of the distribution are the worked examples:
 | `Modules/Particles` | the minimum: one component, one world system, static resources with a shader, one inspector section — about 500 lines, no change to the core |
 | `Modules/Physics` | lifecycle hooks of a running world, a script table behind Bamboo headers, a viewport overlay, an editor-scope setting, a module other modules depend on |
 | `Modules/Terrain` | the whole surface: asset kinds, world settings, shader templates and a custom vertex layout, a viewport tool, an asset editor tab with dialogs and an undo stack, statistics, material previews, icons, a dependency on Physics |
+| `Modules/Audio` | an application system (the mixer lives with the process, not with a world), a vendored library with platform frameworks packaged into the SDK, a file-based asset kind with a tab that plays the asset, an editor-scope setting applied every frame |
 
 ## Pages
 

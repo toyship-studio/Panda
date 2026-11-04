@@ -72,10 +72,11 @@ Invariants:
 `particleEmitterComponent`, `rigidbody2dComponent`, `boxCollider2dComponent`,
 `rigidbody3dComponent`, `boxCollider3dComponent`, `sphereCollider3dComponent`,
 `capsuleCollider3dComponent`, `revoluteJoint2dComponent`, `distanceJoint2dComponent`,
-`revoluteJoint3dComponent`, `sphericalJoint3dComponent`, `wheelJoint3dComponent` (the keys
-from `rigidbody2dComponent` on belong to the Physics module, the terrain ones to the Terrain
-module, the emitter to the Particles module; a key of a module that is not in the game is kept
-as it is).
+`revoluteJoint3dComponent`, `sphericalJoint3dComponent`, `wheelJoint3dComponent`,
+`audioSourceComponent`, `audioListenerComponent` (the keys from `rigidbody2dComponent` to
+`wheelJoint3dComponent` belong to the Physics module, the terrain ones to the Terrain module, the
+emitter to the Particles module, the audio ones to the Audio module; a key of a module that is
+not in the game is kept as it is).
 
 A joint sits on one entity and names the other in `connectedEntity`; both need a rigid body. The
 anchor and the axes are in the local space of the entity that carries the joint, and the joint
@@ -91,7 +92,11 @@ The exact fields of the core components are in
 `Panda/include/Panda/Serialization/ComponentDtos.hpp` (C++ field name = JSON key); module
 components keep their DTOs in the module
 (`Modules/Terrain/engine/include/Panda/Terrain/TerrainDtos.hpp`,
-`Modules/Particles/engine/include/Panda/Particles/ParticleDtos.hpp`). The reliable practical way: build
+`Modules/Particles/engine/include/Panda/Particles/ParticleDtos.hpp`,
+`Modules/Audio/engine/include/Panda/Audio/AudioDtos.hpp`: `audioSourceComponent` is `{clip` — the
+id of an audio asset, `bus` — "master" / "music" / "sfx" / "ui", `volume`, `pitch`, `loop`,
+`playOnStart`, `spatial`, `minDistance`, `maxDistance`, `attenuation` — 0 none, 1 inverse,
+2 linear, 3 exponential, `dopplerFactor}`; `audioListenerComponent` is `true`). The reliable practical way: build
 the component you need in the editor once, save the world and use the resulting JSON as a sample.
 A key is the name of a component type in the engine registry (`terrain2dComponent`,
 `terrain3dComponent` — the Terrain module, `particleEmitterComponent` — the Particles module); a

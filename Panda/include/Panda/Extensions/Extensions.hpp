@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panda/Extensions/AppSystems.hpp"
 #include "Panda/Extensions/AssetKinds.hpp"
 #include "Panda/Extensions/ComponentTypes.hpp"
 #include "Panda/Extensions/ResourceProviders.hpp"
@@ -27,6 +28,7 @@ public:
     ShaderTemplateRegistry shaderTemplates;
     MeshLayoutRegistry meshLayouts;
     ScriptHostApiRegistry scriptHostApis;
+    AppSystemRegistry appSystems; // driven by Application: start / tick / stop of the process-wide services
 };
 
 } // namespace Panda

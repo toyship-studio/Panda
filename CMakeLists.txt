@@ -87,6 +87,7 @@ add_subdirectory(Vendor/dylib)
 add_subdirectory(Vendor/box2d)
 add_subdirectory(Vendor/box3d)
 add_subdirectory(Vendor/cgltf)
+add_subdirectory(Vendor/miniaudio) # the audio backend of the Audio module; packaged into the SDK with the other vendor libraries
 add_subdirectory(Vendor/spirv-cross)
 
 if (PLATFORM_LINUX)
@@ -104,6 +105,7 @@ if (NOT MSVC)
     target_compile_options(box3d PRIVATE $<$<CONFIG:Debug>:-O2>)
 endif ()
 panda_silence_target_warnings(cgltf)
+panda_silence_target_warnings(miniaudio)
 
 include(cmake/add_app.cmake)
 

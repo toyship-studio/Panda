@@ -288,8 +288,10 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
     }
     PND_ASSERT(asset != nullptr, "ASSET IS NOT LOADED");
     if (forcedReload && m_loadedAssets.contains(id)) {
+        // The destructor runs: an asset owns resources beyond its bytes (GPU textures, the buffers
+        // of a module kind) and AssetRef fields whose counters have to drop.
         Asset *prevAsset = m_loadedAssets.at(id).asset;
-        F_FREE(m_allocator, prevAsset);
+        F_DELETE(m_allocator, prevAsset);
     }
     AssetEntry entry;
     entry.asset = asset;
@@ -705,7 +707,7 @@ void AssetHandlerEditor::removeAsset(AssetId id) {
     if (!mainPath.empty()) { std::filesystem::remove(AssetPmeta::sidecarPathFor(m_projectPath / mainPath), errorCode); }
     removeDerivedAssetFiles(m_projectPath, info.type, mainPath);
     if (m_loadedAssets.contains(id)) {
-        F_FREE(m_allocator, m_loadedAssets.at(id).asset);
+        F_DELETE(m_allocator, m_loadedAssets.at(id).asset); // the destructor releases what the asset owns
         m_loadedAssets.erase(id);
     }
     m_registry.erase(id);

@@ -25,6 +25,9 @@ contract moves.
   registries, the package layout and manifest.
 - `physics.md`: the Physics module, the physics step, 3D bodies and joints (the wheel joint),
   the physics script API, what the vehicle models of PhysicsTest taught the API.
+- `audio.md`: the Audio module: clips as assets, the mixer of the application on miniaudio
+  (voices, buses, the listener), the application systems registry of the core, the editor part;
+  what the world stage adds.
 
 ## Plans
 

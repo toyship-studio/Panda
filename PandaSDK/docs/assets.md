@@ -33,7 +33,9 @@ name within a folder — LOD variants of one object share one `.mat`). `.world`,
 `.postfx`, `.terrain` are registered as is. `.ttf`, `.otf`, `.ttc` — fonts: registered as is (no
 `meta`, the file is the asset; the export copies it into `Fonts/`), shown in the editor with a
 preview of the face; a script takes one through a `FontHandle` field (scripting.md, "Fonts in the
-UI").
+UI"). `.wav`, `.ogg`, `.mp3`, `.flac` — audio clips of the Audio module: registered as is (the
+file is the asset; the export copies it into `Audio/`), the tab plays them; a kind of a module has
+a hashed `type` id (`AssetKind::idOf("audio")`), not a small number.
 
 ## Material `.mat`
 

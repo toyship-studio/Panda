@@ -61,6 +61,7 @@ set(PANDA_RUNTIME_PACKAGE_TARGETS
     box2d
     box3d
     cgltf
+    miniaudio
     glad
     stb_image
     yogacore
@@ -84,6 +85,7 @@ set(PANDA_RUNTIME_PACKAGE_LIB_NAMES
     box2d
     box3d
     cgltf
+    miniaudio
     glad
     stb_image
     yogacore

@@ -22,6 +22,8 @@ each lives next to its sources.
 | yaml-cpp | `Rain/Vendor/yaml-cpp` | MIT | `Rain/Vendor/yaml-cpp/LICENSE` |
 | Native File Dialog | `Vendor/nfd` | zlib | `Vendor/nfd/LICENSE` |
 | miniz 3.1.2, the zip archives of the plugin store and of the editor updater | `Vendor/miniz` | MIT | `Vendor/miniz/LICENSE` |
+| miniaudio 0.11.26, the audio backend of the Audio module (the device backends, the decoders, the mixing engine) | `Vendor/miniaudio` | public domain or MIT No Attribution, at the user's choice | `Vendor/miniaudio/LICENSE` |
+| stb_vorbis 1.22 (from the miniaudio extras), the Vorbis decoder of the Audio module | `Vendor/miniaudio/stb_vorbis.c` | MIT or public domain, at the user's choice | the end of the file |
 | ImGuizmo, the origin of the viewport gizmo code | `PandaEditor/src/Viewport/Gizmo/Gizmo.cpp` | MIT | the header of the file |
 | Inter | `Panda/resources/default-fonts/Inter` | SIL Open Font License 1.1 | `Panda/resources/default-fonts/Inter/LICENSE.txt` |
 | JetBrains Mono | `Panda/resources/default-fonts/JetBrainsMono` | SIL Open Font License 1.1 | `Panda/resources/default-fonts/JetBrainsMono/LICENSE.txt` |

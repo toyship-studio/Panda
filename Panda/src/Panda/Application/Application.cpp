@@ -3,6 +3,8 @@
 //
 
 #include "Panda/Application/Application.hpp"
+#include "Panda/Extensions/Extensions.hpp"
+#include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/GameLogic/Input.hpp"
 #include "Panda/Random/Random.hpp"
 #include "Panda/UI/PandaUIImpl.hpp"
@@ -49,6 +51,9 @@ uint64_t getMillis() {
 Application::~Application() {
     LOG_INFO("APP SHUTDOWN BEGIN");
     F_DELETE(Foundation::getAllocator(), m_layerStack);
+    // The application systems of the contributions stop after the layers and their worlds are
+    // gone: a world that stops on the way out may still talk to them.
+    GameContext::getExtensions().appSystems.setLive(false);
     s_instance = nullptr;
     LOG_INFO("APP SHUTDOWN END");
 }
@@ -83,6 +88,9 @@ Application::Application()
     m_startTimeMillis = m_timeMillis;
     m_layerStack = F_NEW(Foundation::getAllocator(), LayerStack);
     Random::init();
+    // The application exists: the application systems registered so far start, the ones that
+    // modules register later start at registration.
+    GameContext::getExtensions().appSystems.setLive(true);
 }
 
 void Application::setMainWindow(Fern::Window *window) {
@@ -131,6 +139,10 @@ bool Application::tick(double deltaTime) {
         for (Layer *layer : layerStack) {
             layer->onUpdate(deltaTime);
         }
+    }
+    {
+        PANDA_PROFILE_SCOPE_N("App systems tick");
+        GameContext::getExtensions().appSystems.tick(deltaTime); // the process-wide services of the contributions
     }
     {
         PANDA_PROFILE_SCOPE_N("Scheduler completions");

@@ -37,7 +37,7 @@ and background jobs (`PandaAsync`).
   on desktop: the editor and the authoring tools that build the engine as a subproject need it.
   The SDK build scripts switch it off, so the SDK libraries and the games carry no editor code on
   any platform; `PandaEditor` and `PandaEditorKit` are configured only with it on.
-- `Modules/<Name>`: engine modules (`Modules/Physics`, `Modules/Terrain`, `Modules/Particles`). The engine part of a
+- `Modules/<Name>`: engine modules (`Modules/Physics`, `Modules/Terrain`, `Modules/Particles`, `Modules/Audio`). The engine part of a
   module is written against the engine API, the editor part against `PandaEditorKit`. Modules are
   static libraries built by `panda_package()` (`PandaSDK/cmake/PandaPackage.cmake`); there is no
   dynamic loading. The editor links both parts and registers them through the table of built-in
