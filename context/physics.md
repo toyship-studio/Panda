@@ -30,7 +30,7 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
   (`EntityAPI::addComponent(entity, "rigidbody3dComponent")`).
 - The editor part registers the inspector sections of the eleven components (an edit during
   Play rebuilds the bodies of the targets from the new values), the collider outlines as a
-  viewport overlay (`EditorExtensions::viewportOverlays`, EDIT and SIMULATE) and the PHYSICS
+  viewport overlay (`EditorExtensions::viewportOverlays`, the Scene tab in EDIT and PLAY) and the PHYSICS
   section of the editor settings (`physics` of `settings.json`: Show Colliders).
 - Other modules put their bodies into the 3D world through `World::findContext<Physics3D>()`
   from a system that names `physics` in `after`: its `start` runs after the physics world

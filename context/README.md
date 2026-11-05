@@ -35,6 +35,11 @@ contract moves.
   release workflow and the two download storages, the documentation build, editor auto-update,
   the Plugins tab, what the editor reports. The portal itself and the launch plan (repositories,
   secrets, the order of work) are documented in the private `panda-portal` repository.
+- `networking.md`: the network layer of Fern: HTTP, WebSocket, UDP and TCP sockets, the state of
+  the network; the system stacks, PandaAsync completions, secure defaults, `Bamboo::Net`, phases.
+- `atmosphere.md`: the look of a landscape: one atmosphere model for the sun, the sky light and
+  the haze (stages A and B), foliage as a lit mass (C), volumetric light (D); what else the Photon
+  shader pack has to teach.
 - `roadmap.md`: finished directions in one line each and what is ahead.
 
 User-facing documentation shipped with the SDK is in `PandaSDK/docs/`; the same pages become the

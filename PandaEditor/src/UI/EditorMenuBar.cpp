@@ -33,6 +33,7 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId ReleaseNotes = 23;
     constexpr Fern::MenuCommandId Plugins = 24;
     constexpr Fern::MenuCommandId UiGallery = 25;
+    constexpr Fern::MenuCommandId GameView = 26;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
 } // namespace EditorMenuCommand
 
@@ -133,6 +134,7 @@ void EditorMenuBar::rebuild() {
 
         auto &windowMenu = menuBar.addMenu("Window");
         windowMenu.addItem("World Settings", EditorMenuCommand::WorldSettings); // the viewport sidebar
+        windowMenu.addItem("Game", EditorMenuCommand::GameView); // the Game tab: the frame of the game
         windowMenu.addSeparator();
         windowMenu.addItem("Plugins", EditorMenuCommand::Plugins); // the Plugins tab (themes are applied there)
     }
@@ -249,6 +251,9 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
             break;
         case EditorMenuCommand::UiGallery:
             m_output->menuBarOpenUiGallery();
+            break;
+        case EditorMenuCommand::GameView:
+            m_output->menuBarOpenGameView();
             break;
         default:
             break;

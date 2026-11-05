@@ -55,6 +55,8 @@ public:
     // The UI Gallery tab (Help → UI Gallery): every PandaUI element with a live example under the
     // theme in use — what a theme author looks at.
     virtual void menuBarOpenUiGallery() = 0;
+    // The Game tab (Window → Game): the frame of the game — the main camera, the game UI and input.
+    virtual void menuBarOpenGameView() = 0;
 };
 
 class EditorMenuBar final {

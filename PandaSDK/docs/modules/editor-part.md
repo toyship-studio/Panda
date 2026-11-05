@@ -36,7 +36,7 @@ rebuilds the settings and statistics sections; nothing is ever unregistered.
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: the icon and the color of an asset kind in the Content Browser and on tabs, the form of its tab (`AssetEditor`) |
 | `assetCreators` | `AssetCreator {title, create(directory) → path}`: a "New …" entry of the Content Browser; the core registers and selects the new file |
 | `viewportTools` | `ViewportTool` (an owned object): runs before the world update in EDIT, may capture the left mouse button, draws helper lines |
-| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the viewport shows, in EDIT and SIMULATE |
+| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the Scene tab shows, in EDIT and PLAY |
 | `settingsSections` | `SettingsSection {scope, title, build(section, store)}`: the form of a settings section ([Settings](settings.md)) |
 | `documentTypes` | `DocumentType {id, title, icon, create}`: a document the "+" of a dock and the Window menu open, one instance at a time |
 | `statistics` | `StatisticsSection {title, rows, collect(values)}`: a section of the Statistics panel, polled once a frame |
@@ -168,8 +168,8 @@ and calls `onStop` when the user stops or closes the tab; the tool releases itse
 `endViewportEditing`. A stroke is one command on the document's stack.
 
 A `ViewportOverlay` draws without input: `appendHelperLines(world, lines, viewProj, frame)` is
-called once a frame in EDIT and SIMULATE, over the world the viewport shows, with the editor
-camera. `HelperLine` is a segment in window coordinates — the overlay projects its world
+called once a frame while the Scene tab renders (EDIT, and PLAY looked at through the Scene),
+over the world it shows, with the editor camera. `HelperLine` is a segment in window coordinates — the overlay projects its world
 geometry itself and appends the lines in the order of importance, nearest first: the
 viewport draws as many as its share of the draw list holds. An overlay reads its own setting
 (the Physics module: `showColliders` of the editor scope) and appends nothing when it is off.

@@ -76,9 +76,6 @@ public:
     void setGizmoActive(bool active) { // the gizmo claims the LMB → the scene does not start a rect-select
         m_scene->setGizmoActive(active);
     }
-    void setGameInputMode(bool gameInput) { // PLAY: the scene input goes to the game (Alt+LMB — editor pick)
-        m_scene->setGameInputMode(gameInput);
-    }
     void setToolCapture(bool capture) { // a viewport tool takes the LMB away from rect-select
         m_scene->setToolCapture(capture);
     }

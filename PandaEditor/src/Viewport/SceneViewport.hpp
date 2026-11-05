@@ -1,18 +1,20 @@
-//
-// Created by Michael Andreichev on 14.09.2023.
-//
-
 #pragma once
 
-#include "Viewport/Gizmos.hpp"
 #include "Camera/CameraController.hpp"
+#include "Viewport/Gizmos.hpp"
+#include "Viewport/ViewportTargets.hpp"
 
-#include <Viewport/Viewport.hpp>
-#include <Panda/GameLogic/Camera.hpp>
 #include <Miren/Miren.hpp>
+#include <Panda/GameLogic/Camera.hpp>
+
+#include <unordered_set>
+#include <vector>
 
 namespace Panda {
 
+// The editor's side of the Scene viewport: the gizmo and the rect selection (mouse picking through
+// the id buffer of the shared scene targets). The frame is the on-screen frame of the Scene tab;
+// the render targets and the camera are owned by EditorViewports.
 class SceneViewport final {
 public:
     struct ReadFrameBufferRequest {
@@ -33,44 +35,24 @@ public:
         bool isEqualTo(IRect rect);
     };
 
-    explicit SceneViewport(CameraController *cameraController);
+    SceneViewport(CameraController *cameraController, SceneRenderTargets *targets);
     ~SceneViewport();
 
-    void initWithSize(Vec2 size);
     void setCamera(Camera *camera);
     void setWorld(World *world);
-    void drawOutline(float dt);
-    void focus();
-    bool isFocused();
-    bool isHovered();
-    Rect getFrame();
-    // Seam #1: drive the engine viewport from an externally-provided on-screen frame (the PandaUI viewport panel).
-    void syncExternalFrame(Rect frame);
-    Miren::TextureHandle getResultTexture() {
-        return m_viewport.getResultTexture();
-    }
-    Miren::TextureHandle getSceneColorTexture() {
-        return m_viewport.getSceneColorTexture();
-    }
-    Miren::TextureHandle getSceneEmissiveTexture() {
-        return m_viewport.getSceneEmissiveTexture();
-    }
-    Miren::TextureHandle getSceneDepthTexture() {
-        return m_viewport.getSceneDepthTexture();
-    }
-    void setPostprocessedColor(Miren::TextureHandle texture) {
-        m_viewport.setPostprocessedColor(texture);
+    void setFrame(Rect frame); // the on-screen frame of the Scene tab (points)
+    Rect getFrame() const {
+        return m_frame;
     }
     Gizmos &gizmo() { // the viewport panel drives the gizmo itself (EditorLayer::drivePandaUIGizmo → manipulate)
         return m_gizmos;
     }
-    // Seam #2: rect-select (and 1×1 single-click) driven from the PandaUI viewport.
-    // start/current are viewport-local points; committed=true on mouse-up. Writes to SelectionContext.
+    // Rect-select (and 1×1 single-click) driven from the PandaUI viewport. start/current are
+    // viewport-local points; committed=true on mouse-up. Writes to SelectionContext.
     void driveRectSelection(IVec2 startPoint, IVec2 currentPoint, bool additive, bool committed);
     void pollSelection(); // apply async IDS reads queued by driveRectSelection (call each frame)
 
 private:
-    void updateViewportSize(Size size);
     std::unordered_set<UUID> getEntitiesFromRequest(const ReadFrameBufferRequest &request);
     void readIdsMemoryIfNeed();
     void beginRectSelection(IVec2 viewportPoint, bool appendSelection);
@@ -79,13 +61,11 @@ private:
     void cancelRectSelection();
     void unselectAll();
 
-    Viewport m_viewport;
+    SceneRenderTargets *m_targets;
     Gizmos m_gizmos;
     Camera *m_camera;
     CameraController *m_cameraController;
-    bool m_focusNextFrame;
-    bool m_focused;
-    bool m_hovered;
+    Rect m_frame;
     RectSelection m_rectSelection;
 };
 

@@ -31,6 +31,8 @@ Large directions that are still ahead. Finished work is one line with a pointer 
 - **Safer script handles**: `resolveScriptEntity` guards across the whole ABI.
 - **Modules and plugins**: engine and editor registries, terrain and particles as modules, theme
   plugins (`context/plugins.md`).
+- **Scene and Game tabs**: the editor's view and the game's frame as two viewport tabs over one
+  world render per frame; Simulate is gone (`context/architecture.md`, "The Scene and the Game").
 
 ## Ahead (order is open to discussion)
 
@@ -42,40 +44,47 @@ Large directions that are still ahead. Finished work is one line with a pointer 
    (frame phases, core systems and physics through the registries, the settings scopes, the
    document model, the module author guide) is done. Later a Bamboo API reference generated from
    the SDK headers, on the documentation site and as help inside the editor.
-2. **Richer scenes and editor UI polish**: models through `scripts/fbx_to_gltf.sh`, vegetation
+2. **Atmosphere and the light of the sky**: one atmosphere model for the color of the sun, the
+   light of the sky and the haze of the distance; foliage as a lit mass to the horizon;
+   volumetric light (`context/atmosphere.md`).
+3. **Richer scenes and editor UI polish**: models through `scripts/fbx_to_gltf.sh`, vegetation
    assets.
-3. **Sound**: asset import and cooking, runtime playback, spatial audio, SDK API, editor preview.
-4. **Demo games**: bring workflows to production quality regularly (quality, not quantity).
-5. **Multiple worlds / scene management**: a scene list and a start scene in project settings.
-6. **Prefabs**: after world, assets and script fields stabilize; a prefab is an asset with
+4. **Sound** (in progress, `context/audio.md`): the Audio module on miniaudio — clips as assets,
+   the mixer, the source and listener components with their world system, the script API and the
+   editor side are done; ahead are music across world switches, import settings per clip, a clip
+   field type for scripts, the iOS audio session.
+5. **Demo games**: bring workflows to production quality regularly (quality, not quantity).
+6. **Multiple worlds / scene management**: a scene list and a start scene in project settings.
+7. **Prefabs**: after world, assets and script fields stabilize; a prefab is an asset with
    overrides.
-7. **Input actions**: a mapping layer over raw input (mobile, gamepad, remapping).
-8. **Cooking and packaging**: finish "the runtime never reads authoring formats". Deferred: a
+8. **Input actions**: a mapping layer over raw input (mobile, gamepad, remapping).
+9. **Cooking and packaging**: finish "the runtime never reads authoring formats". Deferred: a
    cached snapshot of the asset registry in `.Panda/` (path → id, mtime), needed only at tens of
    thousands of assets; a cache is never the truth and never goes into git.
-9. **Skeletal animation**: import, runtime pose, clips, skinning, preview.
-10. **UI and text**: clipboard and IME basics, accessibility basics, richer controls. A view
+10. **Skeletal animation**: import, runtime pose, clips, skinning, preview.
+11. **UI and text**: clipboard and IME basics, accessibility basics, richer controls. A view
     hierarchy debugger for game UI in the editor (Play → Pause → snapshot of all UI windows →
     tree, properties and a frozen preview) is planned but not started.
-11. **Editor scene UX, next steps**: better hierarchy, prefab workflow, scene operations.
+12. **Editor scene UX, next steps**: better hierarchy, prefab workflow, scene operations.
     A command palette as in Zed and VS Code: editor commands and theme selection go there instead
     of growing the menus. Copy
     and paste of components in the inspector — also the way to carry values tuned in Play over
     to the world being edited (Play edits are discarded on Stop, and Save in Play does not save
     them). Undecided: auto save on a timeout (the doubt is terrain, whose `.terrain` file is
     rewritten as a whole); if done, a timeout in Settings plus a debounce.
-12. **Editor structure**: `EditorLayer` is wide rather than long (it implements several output
-    protocols at once); splitting it by axis of change is analyzed but not done.
-13. **Vulkan**: not implemented; on Apple use MoltenVK to check performance; do not block
+13. **Editor structure**: `EditorLayer` is wide rather than long (it implements several output
+    protocols at once); the viewports moved out into `EditorViewports`, the rest of the split by
+    axis of change is analyzed but not done.
+14. **Vulkan**: not implemented; on Apple use MoltenVK to check performance; do not block
     export or mobile on it (the GLES path exists).
-14. **Android**: do not name mobile logic iOS-specific; the GLES path suits Android too.
-15. **Swift scripting**: possible with a flat C ABI; not a priority, do not complicate ahead.
-16. **Dev tools** (independent of each other): debug drawing (the engine has none: command
+15. **Android**: do not name mobile logic iOS-specific; the GLES path suits Android too.
+16. **Swift scripting**: possible with a flat C ABI; not a priority, do not complicate ahead.
+17. **Dev tools** (independent of each other): debug drawing (the engine has none: command
     buffers rendered under a dev flag, wanted in the script ABI), compound undo
     (`BeginCompound` / `EndCompound` in `CommandHistory`: multi-selection and "add component plus
     defaults" in one Cmd+Z), a file watcher over `AssetHandlerEditor::reload`, a dev build of the
     game separate from `PND_EDITOR`.
-17. **Editor localization**: `tr()` across the editor plus string plugins, once the UI settles.
-18. **Vegetation as a module**: the flora impostors and the vegetation material templates out of
+18. **Editor localization**: `tr()` across the editor plus string plugins, once the UI settles.
+19. **Vegetation as a module**: the flora impostors and the vegetation material templates out of
     the core into `dev.pandaengine.vegetation`, which Terrain and the authoring tools depend on
     (`context/plugins.md`, open items).

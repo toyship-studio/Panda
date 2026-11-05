@@ -171,14 +171,18 @@ undo/redo or a reload). The tab chrome (`EditorTabs` over `DockManager`) knows n
 dirty dot, Cmd+Z and the close question (Save / Don't Save / Cancel) come from the interface.
 The documents:
 
-- the **world** (`WorldDocument` in the coordinator): the viewport tab, dirty is the world's
-  change flag, the undo stack is the world's, Save goes through the layer (the world and every
-  dirty asset). Its settings are the sidebar of the viewport (the N-panel of Blender): the
-  sections of the world scope over the world's context, opaque, shown and hidden by the overlay
-  button and Window → World Settings, remembered in the layout. Edits are undo steps of the
-  world (`SettingsUpdate<T>`, Kit `commitSettings<T>`); the sidebar rereads the world on load,
-  on Play/Stop and after undo. The "Settings" link under a system field of a material opens it
-  at the section of that value (`MaterialSystemValues::section`).
+- the **world** (`WorldDocument` in the coordinator): the Scene tab (the panel id stays
+  `viewport` in saved layouts), dirty is the world's change flag, the undo stack is the world's,
+  Save goes through the layer (the world and every dirty asset). Its settings are the sidebar of
+  the viewport (the N-panel of Blender): the sections of the world scope over the world's
+  context, opaque, shown and hidden by the overlay button and Window → World Settings, remembered
+  in the layout. Edits are undo steps of the world (`SettingsUpdate<T>`, Kit
+  `commitSettings<T>`); the sidebar rereads the world on load, on Play/Stop and after undo. The
+  "Settings" link under a system field of a material opens it at the section of that value
+  (`MaterialSystemValues::section`).
+- the **Game** (`GameDocument`, a document type `game`): the frame of the game — the main camera
+  of the world, the game UI and the game input, no editor layer; see "The Scene and the Game"
+  below. Nothing to save or undo; opened by Play, Window → Game and the "+" of a dock.
 - an **entity tab** (`EditorTabs::EntityDocument`): a view of the world document — the form of
   `EntityEditorView` over the live targets (the core component sections and the module sections
   from `componentInspectors`), the edits dirty the world and go into its stack through a per-tab
@@ -213,6 +217,36 @@ session (the terrain brush) means the document of its asset.
 Limits: an asset form is built only for a single selected asset. With several entities selected
 the inspector shows the primary entity, marks the fields that differ as "mixed" and applies an
 edit to all selected entities. Entity selection and asset selection are mutually exclusive.
+
+#### The Scene and the Game
+
+Two viewports over one world (`PandaEditor/src/Viewport/EditorViewports.hpp`), the model of
+Unity's Scene and Game views:
+
+- **Scene** — the editor's view of the current world through the editor camera: selection and its
+  outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
+  In EDIT it shows the editing world; in PLAY the playing copy, as it runs (what a separate
+  Simulate mode used to do: Simulate is gone, the Scene tab during Play is it).
+- **Game** — the frame of the game: the main camera, the game PandaUI on top (`GAME_UI_VIEW` draws
+  into the Game surface), the input of the game (`Panda::Input` and the game UI get the events
+  while the Game renders; `Input`'s viewport frame is the Game tab's). No editor layer ever lands
+  in it. In EDIT it is a still view of the main camera over the editing world; a world without a
+  main camera is shown through the editor camera with a caption.
+- **One world render per frame.** The world renders once, into one set of scene targets
+  (`SceneRenderTargets`: the HDR frame, the selection mask, the id buffer), sized to the viewport
+  that is *live*: in PLAY the Game when its tab is visible (the selected tab of a visible dock),
+  otherwise the Scene; in EDIT the Scene when visible, otherwise the Game. Every tab owns its
+  output (`ViewportSurface`, the composite `EDITOR_VIEWPORT_VIEW` is bound to the live one each
+  frame). The other viewport keeps its last frame and its panel says so. Two live cameras would
+  mean a second set of views and targets and a second fit of the camera-dependent state (CSM,
+  exposure, terrain LOD, the occlusion window) — not done.
+- `SceneState` is EDIT or PLAY; Play opens (or raises) the Game tab and gives it the focus, Stop
+  raises the Scene. Edits made in PLAY land in the playing copy and are discarded on Stop, as
+  before: the tabs change where one looks, not what survives.
+- `EditorLayer` keeps the worlds and the states; `EditorViewports` owns the targets, the surfaces,
+  the editor camera, the gizmo and the selection (`SceneViewport`), the grid, the helpers and the
+  postprocessing, and renders the frame of the live viewport (`beginFrame` → `World::update` →
+  `finishFrame`).
 
 #### Asset previews
 
@@ -297,8 +331,9 @@ component types (`Extensions::components`), and contribution settings are top-le
   with the same game time (`context/physics.md`). The scripts are a world system of the core
   (`CoreWorldSystems`), the physics the two systems of the Physics module; `World` only runs the
   phases and keeps the fixed-step clock. Callers: the runtime and Play in the editor pass
-  `{mainCamera, simulate}`; the editor passes `{matrices}` in EDIT and `{matrices, simulate}` in
-  SIMULATE.
+  `{mainCamera, simulate}`; the editor passes `{matrices}` for the Scene in EDIT,
+  `{matrices, simulate}` for the Scene in PLAY and `{mainCamera, simulate}` for the Game in PLAY
+  ("The Scene and the Game" above).
 - `World::renderPass(mode, view, frame)` is an additional pass with the same frame (the editor:
   IDS picking). The selection overlay and picking live in
   `PandaEditor/src/Viewport/EditorWorldPasses.hpp`; `EditorLayer` calls them after `update`.
@@ -329,7 +364,7 @@ component types (`Extensions::components`), and contribution settings are top-le
 
 ### Data and copies
 
-- A world copy (`operator=`, used by Play and Simulate) copies every pool of the registry without
+- A world copy (`operator=`, used by Play) copies every pool of the registry without
   knowing the types (`registry.storage()` → `push(entity, value)`). `duplicateEntity` goes through
   `ComponentTypeRegistry` (the `duplicated` flag; `IdComponent` and `RelationshipComponent` have it
   `false`: a duplicate gets a new id and its children are rebuilt). A new component is one line of
@@ -357,7 +392,7 @@ component types (`Extensions::components`), and contribution settings are top-le
   it) are unconditional mechanisms of `World`. The editor reacts to the structure version
   (`EditorController::syncWorldStructure`: reload the Hierarchy panel and drop invalid ids from the
   selection).
-- Play and Simulate run on a copy, and nothing flows back from it: Stop discards what the
+- Play runs on a copy, and nothing flows back from it: Stop discards what the
   simulation and the inspector changed there, and Save (Cmd+S) in any state writes the world
   being edited (`EditorLayer::saveWorld`). A value tuned in Play is carried over by hand after
   Stop.

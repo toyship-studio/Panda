@@ -11,6 +11,7 @@
 #include "UI/Panels/ProfilerPanel.hpp"
 #include "UI/Panels/Toolbar.hpp"
 #include "UI/Panels/ViewportPanel.hpp"
+#include "UI/Panels/GameViewportView.hpp"
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 #include "UI/DockManager.hpp"
 #include "UI/EditorTabs.hpp"
@@ -36,6 +37,16 @@ class CommandHistory;
 namespace Editor {
 
 class WorldDocument;
+class GameDocument;
+
+// The on-screen frames of the two viewport tabs (points): what the engine renders into and which
+// of them is visible this frame (the selected tab of a visible dock).
+struct ViewportSurfaces {
+    PandaUI::Rect scene;
+    bool sceneVisible = false;
+    PandaUI::Rect game;
+    bool gameVisible = false;
+};
 
 // The editor COORDINATOR — the carrier of the logic. Implements the Output of all panels; the panels consume
 // the engine DIRECTLY (entities by UUID from World, assets from the registry, entity selection —
@@ -62,13 +73,31 @@ public:
         return m_root;
     }
 
-    // Migration seam #1: engine pushes the live scene texture in and reads the viewport panel's frame out.
+    // The engine pushes the output textures of the viewports in and reads their frames out
+    // (EditorViewports: the Scene and the Game surfaces).
     void setViewportSceneTexture(PandaUI::TextureHandle texture, bool flip) {
         if (m_viewportView) { m_viewportView->setSceneTexture(texture, flip); }
+    }
+    void setGameViewportTexture(PandaUI::TextureHandle texture, bool flip) {
+        if (m_gameView) { m_gameView->setTexture(texture, flip); }
     }
     PandaUI::Rect viewportSceneFrame() const {
         return m_viewportView ? m_viewportView->sceneWorldFrame() : PandaUI::Rect();
     }
+    ViewportSurfaces viewportSurfaces() const;
+    // The Game tab: whether its surface renders this frame (otherwise it shows its last frame and
+    // says so), a caption over the frame (empty — none), the keyboard focus of the game.
+    void setGameViewportLive(bool live) {
+        if (m_gameView) { m_gameView->setLive(live); }
+    }
+    void setGameViewportMessage(const std::string &text) {
+        if (m_gameView) { m_gameView->setMessage(text); }
+    }
+    bool isGameViewportFocused() const {
+        return m_gameView && m_gameView->isFocused();
+    }
+    void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
+    void showSceneView(); // activates the Scene tab — Stop
     bool isViewportFocused() const {
         return m_viewportView && m_viewportView->isSceneFocused();
     }
@@ -81,16 +110,13 @@ public:
     void setGizmoActive(bool active) {
         if (m_viewportView) { m_viewportView->setGizmoActive(active); }
     }
-    void setViewportGameInput(bool gameInput) { // PLAY: viewport clicks/keys go to the game (Alt+LMB — pick)
-        if (m_viewportView) { m_viewportView->setGameInputMode(gameInput); }
-    }
     void setViewportToolCapture(bool capture) { // a viewport tool takes over LMB (set by Layer every frame)
         if (m_viewportView) { m_viewportView->setToolCapture(capture); }
     }
     void setBridge(EngineBridge *bridge) { m_bridge = bridge; } // engine/host bridge (implemented by EditorLayer)
 
     void setWorld(Panda::World *world);       // project open: the panels' world + asset registry rescan
-    void setActiveWorld(Panda::World *world); // Play/Simulate/Stop: the panels switch to the live world
+    void setActiveWorld(Panda::World *world); // Play/Stop: the panels switch to the live world
     void syncWorldStructure(); // per frame: scripts change the world in PLAY → reload Hierarchy by version
     void thumbnailDidBecomeReady(Panda::AssetId assetId); // the thumbnail is ready → update the grid cell
     void refreshAssetPanels();          // content + asset manager reread the registry (project change)
@@ -253,6 +279,7 @@ public:
 
 private:
     friend class WorldDocument;
+    friend class GameDocument;
     void buildLayout();
     void registerDocumentTypes(); // the settings of the project and of the editor in the "+" menu
     void registerShortcuts();
@@ -309,6 +336,7 @@ private:
     std::shared_ptr<StatisticsPanelView> m_statisticsView;
     std::shared_ptr<ProfilerPanelView> m_profilerView;
     std::shared_ptr<ViewportPanelView> m_viewportView;
+    std::shared_ptr<GameViewportView> m_gameView; // the surface of the Game tab (one instance, the tab comes and goes)
     EngineBridge *m_bridge = nullptr; // requests to the engine/host (save/play/gizmo/rect-select)
     std::shared_ptr<PandaUI::View> m_root;
     std::unique_ptr<DockManager> m_dockManager;

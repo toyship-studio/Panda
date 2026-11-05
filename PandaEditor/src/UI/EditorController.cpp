@@ -93,6 +93,19 @@ namespace {
     constexpr const char *EDITOR_SETTINGS_DOCUMENT = "editorSettings";
     constexpr const char *PLUGINS_DOCUMENT = "plugins";
     constexpr const char *UI_GALLERY_DOCUMENT = "uiGallery";
+    constexpr const char *GAME_DOCUMENT = "game";
+    constexpr const char *GAME_TAB_ID = "doc:game"; // EditorTabs names a document tab doc:<type>
+    constexpr const char *SCENE_TAB_ID = "viewport";
+
+    // A view is on screen when nothing up its chain is hidden (a tab that is not the selected one
+    // of its dock is hidden by the TabView) and it belongs to a window.
+    bool isViewOnScreen(const PandaUI::View *view) {
+        for (const PandaUI::View *current = view; current != nullptr; current = current->getSuperview()) {
+            if (current->isHidden()) { return false; }
+            if (current->getSuperview() == nullptr) { return current->getContext() != nullptr; }
+        }
+        return false;
+    }
 
 } // namespace
 
@@ -123,6 +136,27 @@ public:
     void refresh() override {
         if (m_controller->m_panelsWorld) { m_controller->m_panelsWorld->setChanged(); }
         m_controller->refreshFromWorld();
+    }
+
+private:
+    EditorController *m_controller;
+};
+
+// The Game document: the Game tab. The frame of the game, rendered by the engine into the Game
+// surface; nothing to save or undo.
+class GameDocument final : public Document {
+public:
+    explicit GameDocument(EditorController *controller)
+        : m_controller(controller) {}
+
+    std::string title() override {
+        return "Game";
+    }
+    std::string icon() override {
+        return Ic::Play;
+    }
+    std::shared_ptr<PandaUI::View> view() override {
+        return m_controller->m_gameView;
     }
 
 private:
@@ -219,6 +253,39 @@ void EditorController::registerDocumentTypes() {
         return std::unique_ptr<Document>(std::make_unique<UiGalleryDocument>(host));
     };
     editorExtensions().documentTypes.add(std::move(gallery));
+
+    // The Game tab: the frame of the game (EditorViewports). Opened by Play, Window → Game and the "+".
+    DocumentType game;
+    game.id = GAME_DOCUMENT;
+    game.title = "Game";
+    game.icon = Ic::Play;
+    game.create = [] { return std::unique_ptr<Document>(std::make_unique<GameDocument>(s_controller)); };
+    editorExtensions().documentTypes.add(std::move(game));
+}
+
+ViewportSurfaces EditorController::viewportSurfaces() const {
+    ViewportSurfaces surfaces;
+    if (m_viewportView) {
+        surfaces.scene = m_viewportView->sceneWorldFrame();
+        surfaces.sceneVisible = isViewOnScreen(m_viewportView.get()) && surfaces.scene.size.width >= 1.f &&
+                                surfaces.scene.size.height >= 1.f;
+    }
+    if (m_gameView) {
+        surfaces.game = m_gameView->getWorldFrame();
+        surfaces.gameVisible =
+            isViewOnScreen(m_gameView.get()) && surfaces.game.size.width >= 1.f && surfaces.game.size.height >= 1.f;
+    }
+    return surfaces;
+}
+
+void EditorController::openGameView() {
+    if (!m_editorTabs || !m_dockManager) { return; }
+    m_editorTabs->openDocumentType(GAME_DOCUMENT, Dock::Center); // an open tab is activated in its dock
+    m_dockManager->showPanel(GAME_TAB_ID);                       // the focus: the keys go to the game
+}
+
+void EditorController::showSceneView() {
+    if (m_dockManager) { m_dockManager->showPanel(SCENE_TAB_ID); }
 }
 
 Panda::DockLayoutState EditorController::captureDockLayout() const {
@@ -431,7 +498,7 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     Panda::CommandHistory *stack = document ? document->undoStack() : nullptr;
     const bool canUndo = stack && stack->CAN_UNDO();
     const bool canRedo = stack && stack->CAN_REDO();
-    const bool canPlay = isEditMode && scriptingReady; // Play+Simulate: only from Edit and with scripting loaded
+    const bool canPlay = isEditMode && scriptingReady; // Play: only from Edit and with scripting loaded
     const bool canStop = !isEditMode;                  // Stop: only while the world is running
 
     if (canUndo != m_tbCanUndo) { m_tbCanUndo = canUndo; m_toolbarView->setCanUndo(canUndo); }
@@ -441,7 +508,7 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     if (isEditMode != m_tbCanReload) {
         m_tbCanReload = isEditMode;
         m_toolbarView->setCanReloadScripts(isEditMode);
-        if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY/SIMULATE
+        if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
     }
 
     // The "unsaved" indicator on the scene tab (viewport) — by World::isChanged() (reset on save/load).
@@ -464,9 +531,10 @@ void EditorController::buildLayout() {
     auto centerTabs = std::make_shared<TabView>();
     std::vector<DockPanel> panels;
     m_viewportView = std::make_shared<ViewportPanelView>(this);
-    // The viewport is fixed: it is not hidden (not in the strip), has no close button and is not dragged
-    // out of the center.
-    panels.push_back({"viewport", "Viewport", Ic::PanelViewport, m_viewportView, Dock::Center, true, false, false});
+    m_gameView = std::make_shared<GameViewportView>(); // the Game tab is a document (GameDocument) over this surface
+    // The Scene is fixed: it is not hidden (not in the strip), has no close button and is not dragged
+    // out of the center. Its panel id stays "viewport" (the saved layouts know it by that name).
+    panels.push_back({"viewport", "Scene", Ic::PanelViewport, m_viewportView, Dock::Center, true, false, false});
     panels.push_back({"hierarchy", "Hierarchy", Ic::PanelHierarchy, m_hierarchyView, Dock::Left});
     // The Inspector panel is gone: the selection opens as transient tabs (EditorTabs) in the right dock.
     panels.push_back({"contentBrowser", "Content Browser", Ic::PanelContentBrowser, m_contentView, Dock::Bottom});
@@ -1110,10 +1178,8 @@ void EditorController::assetManagerDidRequestOpenWorld(Panda::AssetId id) {
 /* ----------------------------- Toolbar output ---------------------------- */
 
 void EditorController::toolbarDidPickSceneState(SceneState state) {
-    if (m_bridge) { m_bridge->setSceneState(state); } // the actual play/simulate/stop
-    const char *message = state == SceneState::Play       ? "Entered Play mode"
-                          : state == SceneState::Simulate ? "Entered Simulate mode"
-                                                          : "Returned to Edit mode";
+    if (m_bridge) { m_bridge->setSceneState(state); } // the actual play/stop
+    const char *message = state == SceneState::Play ? "Entered Play mode" : "Returned to Edit mode";
     m_outputView->appendLog(OutputPanelView::LogLevel::Info, message);
 }
 

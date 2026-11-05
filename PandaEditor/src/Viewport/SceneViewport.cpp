@@ -12,32 +12,15 @@ bool SceneViewport::RectSelection::isEqualTo(IRect _rect) {
     return rect.size.width == _rect.size.width && rect.size.height == _rect.size.height;
 }
 
-SceneViewport::SceneViewport(CameraController *cameraController)
-    : m_viewport()
-    , m_rectSelection()
+SceneViewport::SceneViewport(CameraController *cameraController, SceneRenderTargets *targets)
+    : m_targets(targets)
+    , m_gizmos(nullptr)
     , m_camera(nullptr)
     , m_cameraController(cameraController)
-    , m_focused(false)
-    , m_hovered(false)
-    , m_focusNextFrame(true)
-    , m_gizmos(nullptr) {}
+    , m_frame()
+    , m_rectSelection() {}
 
 SceneViewport::~SceneViewport() {}
-
-void SceneViewport::initWithSize(Vec2 size) {
-    m_viewport.initWithSize(size);
-}
-
-void SceneViewport::updateViewportSize(Size size) {
-    if (size.width < 1 || size.height < 1) { return; }
-    if (m_camera) { m_camera->setViewportSize(size); }
-    m_viewport.updateSize(size);
-}
-
-void SceneViewport::drawOutline(float dt) {
-    std::unordered_set<UUID> selection = SelectionContext::getSelectedEntities();
-    m_viewport.drawOutline(dt, selection);
-}
 
 std::unordered_set<UUID> SceneViewport::getEntitiesFromRequest(const SceneViewport::ReadFrameBufferRequest &request) {
     std::unordered_set<UUID> ids;
@@ -163,9 +146,9 @@ void SceneViewport::updateRectSelection(IVec2 viewportPoint) {
         sizeof(uint32_t) * selectedRegion.size.width * dpi.width * selectedRegion.size.height * dpi.height;
     request.mem = Foundation::Memory::alloc(bufferSize);
     memset(request.mem.data, 0, bufferSize);
-    uint32_t textureHeight = m_viewport.getFrame().size.height * dpi.y;
+    uint32_t textureHeight = m_frame.size.height * dpi.y;
     request.ready = Miren::readFrameBuffer(
-        m_viewport.getIdsFrameBuffer(),
+        m_targets->idsFrameBuffer(),
         0,
         selectedRegion.origin.x,
         // Since the texture is stored flipped, the Y coordinate is flipped here
@@ -199,29 +182,17 @@ void SceneViewport::unselectAll() {
 void SceneViewport::setCamera(Camera *camera) {
     m_camera = camera;
     m_gizmos.setCamera(camera);
-    if (m_camera) { m_camera->setViewportSize(m_viewport.getFrame().size); }
+    if (m_camera && m_frame.size.width >= 1.f && m_frame.size.height >= 1.f) { m_camera->setViewportSize(m_frame.size); }
 }
 
 void SceneViewport::setWorld(World *world) {
     m_gizmos.setWorld(world);
 }
 
-bool SceneViewport::isFocused() {
-    return m_focused;
-}
-
-bool SceneViewport::isHovered() {
-    return m_hovered;
-}
-
-Rect SceneViewport::getFrame() {
-    return m_viewport.getFrame();
-}
-
-void SceneViewport::syncExternalFrame(Rect frame) {
-    if (m_viewport.getFrame().size != frame.size) { updateViewportSize(frame.size); }
-    m_viewport.updateOrigin(frame.origin);
-    Input::setViewportFrame(m_viewport.getFrame());
+void SceneViewport::setFrame(Rect frame) {
+    if (frame.size.width < 1.f || frame.size.height < 1.f) { return; }
+    m_frame = frame;
+    if (m_camera) { m_camera->setViewportSize(frame.size); }
 }
 
 void SceneViewport::driveRectSelection(IVec2 startPoint, IVec2 currentPoint, bool additive, bool committed) {
@@ -234,10 +205,6 @@ void SceneViewport::driveRectSelection(IVec2 startPoint, IVec2 currentPoint, boo
 
 void SceneViewport::pollSelection() {
     readIdsMemoryIfNeed(); // apply async IDS reads queued by driveRectSelection (call each frame)
-}
-
-void SceneViewport::focus() {
-    m_focusNextFrame = true;
 }
 
 } // namespace Panda

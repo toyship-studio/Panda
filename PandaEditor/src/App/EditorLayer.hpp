@@ -2,23 +2,18 @@
 
 #include "App/EditorUpdater.hpp"
 #include "UI/Panels/UpdateIndicator.hpp"
-#include "Camera/EditorCamera.hpp"
-#include "Camera/CameraController.hpp"
-#include "Viewport/EditorHelpersRenderer.hpp"
 #include "App/SceneState.hpp"
 #include "Preview/ThumbnailsManager.hpp"
 #include "UI/EditorMenuBar.hpp"
-#include "Viewport/SceneViewport.hpp"
+#include "Viewport/EditorViewports.hpp"
 #include "UI/EngineBridge.hpp"
 #include "Project/Build/ProjectBuilder.hpp"
 #include "Project/Loader/ProjectLoader.hpp"
 #include "Project/Plugins/PluginStore.hpp"
-#include "Viewport/SceneGrid.hpp"
 #include "UI/Host/EditorUI.hpp"
 #include "UI/Panels/StartScreen.hpp"
 
 #include <Panda/Application/Layer.hpp>
-#include <Panda/Renderer/PostprocessingPipeline.hpp>
 #include <Panda/UI/PandaUIImpl.hpp>
 
 #include <cstdint>
@@ -47,7 +42,6 @@ public:
     void onEvent(Fern::Event *event) override;
 
     void play();
-    void simulate();
     void stop();
 
 #pragma region Project loader output
@@ -95,8 +89,8 @@ private:
     void showEditorChrome();
     void syncStartScreenModel();
     path_t defaultProjectParentPath() const;
-    void syncPandaUIViewportFrame();
-    void syncPandaUIEditorViewport();   // seam #1: size engine viewport from PandaUI panel + feed scene texture
+    void syncPandaUIViewportFrame();    // the game UI follows the Game surface
+    void syncViewports();               // the frames of the Scene and Game tabs → the engine viewports; their textures → the panels
     void updatePandaUICameraActivity(); // seam #2: gate camera nav on PandaUI viewport focus/hover
     void drivePandaUIGizmo(); // seam #3: feed gizmo from Panda::Input + manipulate + show/hide overlay
     // EngineBridge — requests from the editor chrome to the engine/host.
@@ -134,7 +128,6 @@ private:
     void updateViewportTools(double deltaTime); // EDIT: viewport tools (brushes) before the world update
     void pumpProjectBuild(); // once per frame: output lines → CMake panel; on scripts Build success — reload dylib
     void updateViewportHelperLines(); // once per frame: wireframe collider outlines → viewport overlay
-    void updatePostprocessing();      // once per frame: main camera chain → outline reads the result
     bool menuBarHasOpenedProject() override;
     void menuBarOpenProject() override;
     void menuBarOpenProject(const RecentProject &project) override;
@@ -162,6 +155,7 @@ private:
     void menuBarOpenExportProject(ExportProjectTarget target) override;
     void menuBarOpenPlugins() override;
     void menuBarOpenUiGallery() override;
+    void menuBarOpenGameView() override;
 
     void startScreenDidRequestOpenProjectDialog() override;
     void startScreenDidRequestOpenRecentProject(size_t index) override;
@@ -202,14 +196,12 @@ private:
     void selectThemeIndex(int index);
     EditorViewportSettings m_viewportSettings;
     AssetId m_pendingWorldLoad;
-    EditorCamera m_editorCamera;
-    CameraController m_cameraController;
-    EditorHelpersRenderer m_editorHelpers;
-    SceneGrid m_grid;
     Fern::Window *m_window;
     EditorMenuBar m_menuBar;
     PandaUIImpl m_pandaUI;
-    SceneViewport m_viewport; // engine viewport (FBO/gizmo/selection), direct member, feeds PandaUI one (seams #1-3)
+    // The Scene and Game viewports: the targets, the editor camera, the gizmo and the selection, the
+    // grid and the helpers, the postprocessing; which one renders this frame (Viewport/EditorViewports.hpp).
+    EditorViewports m_viewports;
 
     // The editor chrome is built entirely on PandaUI. The coordinator is `Editor::EditorController`, panels
     // read the engine directly.
@@ -217,8 +209,10 @@ private:
     std::unique_ptr<Editor::EditorController> m_editorController;
     std::unique_ptr<Editor::StartScreenController> m_startScreenController;
     UIRootMode m_uiRootMode = UIRootMode::None;
-    PandaUI::TextureHandle m_sceneTexture; // engine scene FBO wrapped for the PandaUI viewport (seam #1)
+    PandaUI::TextureHandle m_sceneTexture; // the output of the Scene surface wrapped for its PandaUI panel
     Miren::TextureHandle m_sceneNative;    // last wrapped native handle — re-wrap only if it changes
+    PandaUI::TextureHandle m_gameTexture;  // the same for the Game surface
+    Miren::TextureHandle m_gameNative;
     // The PandaUI gallery (Help → UI Gallery): its logo and the serif face of its skin are loaded
     // once, on the first opening, and stay for the process.
     PandaUI::TextureHandle m_galleryLogo;
@@ -228,8 +222,6 @@ private:
     // Asset previews/thumbnails: the entire cache and rendering are in the manager, panels go through
     // shared().
     std::unique_ptr<ThumbnailsManager> m_thumbnails;
-    // Viewport postprocessing (main camera chain of the world); lazily — Miren must be ready.
-    std::unique_ptr<PostprocessingPipeline> m_postprocessing;
 };
 
 } // namespace Panda

@@ -72,9 +72,6 @@ bool ViewportView::pointerDown(PointerEvent &event) {
     if (m_toolCapture) {
         return false; // a viewport tool is driving → LMB goes to it (through Panda::Input), not rect-select
     }
-    if (m_gameInput && !event.isAltDown) {
-        return false; // PLAY: the click belongs to the game (digging etc.); Alt+LMB — editor pick
-    }
     m_pressed = true;
     m_pressPosition = event.position;
     m_dragAdditive = event.isShiftDown || event.isControlDown || event.isSuperDown;
@@ -128,7 +125,6 @@ void ViewportView::hideMarquee() {
 }
 
 bool ViewportView::keyDown(KeyEvent &event) {
-    if (m_gameInput) { return false; } // PLAY: the keys belong to the game (hotbar 1-0 etc.)
     switch (event.key) {
         case Key::Key1: m_output->viewportViewDidRequestGizmoMode(0); return true;
         case Key::Key2: m_output->viewportViewDidRequestGizmoMode(1); return true;

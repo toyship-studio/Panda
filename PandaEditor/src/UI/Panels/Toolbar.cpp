@@ -89,7 +89,7 @@ void ToolbarPanelView::addSubviews() {
 
     addSubview(left);
 
-    // CENTER: the Play / Simulate / Stop transport capsule (recessed track, colored icons).
+    // CENTER: the Play / Stop transport capsule (recessed track, colored icons).
     auto capsule = std::make_shared<Panel>();
     capsule->setBackgroundColor(ThemeColor::inputDeep);
     capsule->layout().setFlexDirection(FlexDirection::Row);
@@ -112,11 +112,6 @@ void ToolbarPanelView::addSubviews() {
     m_play->setTooltip("Play");
     m_play->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Play); });
     capsule->addSubview(m_play);
-
-    m_simulate = makeTransport(Ic::Simulate, std::nullopt);
-    m_simulate->setTooltip("Simulate");
-    m_simulate->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Simulate); });
-    capsule->addSubview(m_simulate);
 
     m_stop = makeTransport(Ic::Stop, ThemeColor::danger);
     m_stop->setTooltip("Stop");
@@ -169,7 +164,6 @@ void ToolbarPanelView::setCanRedo(bool canRedo) {
 
 void ToolbarPanelView::setCanPlay(bool canPlay) {
     if (m_play) { m_play->setEnabled(canPlay); }
-    if (m_simulate) { m_simulate->setEnabled(canPlay); }
 }
 
 void ToolbarPanelView::setCanStop(bool canStop) {

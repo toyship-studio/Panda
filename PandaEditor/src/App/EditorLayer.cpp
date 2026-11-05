@@ -83,14 +83,10 @@ EditorLayer::EditorLayer(Fern::Window *window)
     , m_sceneState(SceneState::EDIT)
     , m_loader(&m_editingWorld, this)
     , m_pendingWorldLoad(0)
-    , m_editorCamera()
-    , m_cameraController()
-    , m_editorHelpers()
-    , m_grid(&m_cameraController)
     , m_window(window)
     , m_menuBar(window, this)
     , m_pandaUI(window)
-    , m_viewport(&m_cameraController) {}
+    , m_viewports() {}
 
 EditorLayer::~EditorLayer() = default; // Editor::EditorController is complete here (see include) — for unique_ptr
 
@@ -118,10 +114,9 @@ void EditorLayer::onAttach() {
     Miren::setViewport(
         Views::GLOBAL_VIEW, Miren::Rect(0, 0, windowSize.width * dpi.width, windowSize.height * dpi.height)
     );
-    m_viewport.initWithSize(Size(100.f, 100.f));
-    m_viewport.setCamera(&m_editorCamera);
-    m_viewport.setWorld(m_currentWorld);
-    m_cameraController.setPosition({0.f, 0.f, 4.f});
+    m_viewports.init();
+    m_viewports.scene().setWorld(m_currentWorld);
+    m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
     m_loader.loadInitialData();
     // The wind of the loaded world goes into SceneWind BEFORE the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
@@ -182,7 +177,7 @@ void EditorLayer::onAttach() {
     loadEditorParts(); // parts host: the coordinator itself (since its creation) // project open at startup: module parts before layout (tab forms wait for them)
     m_editorController->applyDockLayout(m_loader.getDockLayout()); // saved dock layout (if any)
     m_viewportSettings = m_loader.editorSettings().get<EditorViewportSettings>();
-    m_cameraController.setMoveSpeed(m_viewportSettings.cameraSpeed);
+    m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
     if (m_loader.hasOpenedProject()) {
         showEditorChrome();
     } else {
@@ -221,80 +216,37 @@ void EditorLayer::onUpdate(double deltaTime) {
     // Size the engine viewport from the PandaUI panel BEFORE the scene renders this frame,
     // and gate camera navigation on the PandaUI viewport's focus/hover.
     if (m_loader.hasOpenedProject()) {
-        syncPandaUIEditorViewport();
+        syncViewports();
         updatePandaUICameraActivity();
-        m_viewport.pollSelection(); // apply async rect-select / click-picking results
+        m_viewports.scene().pollSelection(); // apply async rect-select / click-picking results
         m_editorController->syncSelectionFromEngine(); // SelectionContext → panels (viewport → Hierarchy/Inspector)
         m_editorController->syncWorldStructure(); // scripts created/deleted entities → live Hierarchy
         m_editorController->updateChromeFromState(m_sceneState == SceneState::EDIT); // toolbar + dirty scene tab
-        m_editorController->setViewportGameInput(m_sceneState == SceneState::PLAY); // viewport clicks go to the game
         pumpProjectBuild(); // cmake output → CMake panel; on a successful scripts Build — reload the dylib
     }
 
     if (m_loader.hasOpenedProject()) {
-        // Every frame, applied to the CURRENT world: the playing world is created on Play with a fresh renderer.
-        m_currentWorld->getRenderer3D().setForceWireframe(m_viewportSettings.wireframe);
-        switch (m_sceneState) {
-            case SceneState::EDIT: {
-                m_cameraController.update(deltaTime);
-                glm::mat4 view = m_cameraController.getViewMatrix();
-                glm::mat4 proj = m_editorCamera.getProjection();
-                glm::mat4 cameraViewProj = proj * m_cameraController.getSkyViewMatrix();
-                glm::mat4 viewProj = proj * view;
-                updateViewportTools(deltaTime); // brushes — before the world update: edits are remeshed this frame
-                const WorldFrame frame{
-                    .viewProj = viewProj, .skyViewProj = cameraViewProj, .cameraPosition = m_cameraController.getPosition()
-                };
-                m_editingWorld.update(deltaTime, frame);
-                EditorWorldPasses::renderSelectionOverlay(m_editingWorld, viewProj);
-                EditorWorldPasses::renderPicking(m_editingWorld, frame);
-                m_grid.update(viewProj);
-                if (m_viewportSettings.showHelperIcons) {
-                    m_editorHelpers.render(&m_editingWorld, viewProj, m_editorCamera.getViewportSize());
-                }
-                break;
-            }
-            case SceneState::PLAY: {
-                m_viewport.setCamera(m_playingWorld.findMainCamera());
-                if (m_playingWorld.isRunning()) {
-                    m_playingWorld.update(deltaTime, WorldFrame{.mainCamera = true, .simulate = true});
-                }
-                syncPandaUIViewportFrame();
-                m_pandaUI.update(static_cast<float>(deltaTime));
-                loadPendingWorldRequest();
-                break;
-            }
-            case SceneState::SIMULATE: {
-                m_cameraController.update(deltaTime);
-                glm::mat4 view = m_cameraController.getViewMatrix();
-                glm::mat4 proj = m_editorCamera.getProjection();
-                glm::mat4 cameraViewProj = proj * m_cameraController.getSkyViewMatrix();
-                glm::mat4 viewProj = proj * view;
-                m_playingWorld.update(
-                    deltaTime, WorldFrame{
-                                   .viewProj = viewProj,
-                                   .skyViewProj = cameraViewProj,
-                                   .cameraPosition = m_cameraController.getPosition(),
-                                   .simulate = true,
-                               }
-                );
-                EditorWorldPasses::renderSelectionOverlay(m_playingWorld, viewProj);
-                syncPandaUIViewportFrame();
-                m_pandaUI.update(static_cast<float>(deltaTime));
-                loadPendingWorldRequest();
-                m_grid.update(viewProj);
-                break;
-            }
+        // The frame of the CURRENT world (the playing copy in Play) through the live viewport: the Scene
+        // sees it with the editor camera, the Game with the main camera of the world.
+        const bool playing = m_sceneState == SceneState::PLAY;
+        const WorldFrame frame = m_viewports.beginFrame(*m_currentWorld, deltaTime, playing, m_viewportSettings);
+        if (!playing) {
+            updateViewportTools(deltaTime); // brushes — before the world update: edits are remeshed this frame
+        }
+        if (!playing || m_playingWorld.isRunning()) { m_currentWorld->update(deltaTime, frame); }
+        m_viewports.finishFrame(*m_currentWorld, m_viewportSettings, Application::get()->getTime());
+        if (playing) {
+            syncPandaUIViewportFrame();
+            m_pandaUI.update(static_cast<float>(deltaTime)); // the game UI draws into the Game surface
+            loadPendingWorldRequest();
         }
         updateViewportHelperLines(); // after the camera update — collider outlines without a one-frame lag
         m_thumbnails->update();      // live material preview + one thumbnail from the queue
-        updatePostprocessing();      // main camera chain: outline reads its result
-        m_viewport.drawOutline(deltaTime);
         GameContext::getAssetHandler()->cleanup();
     }
 
     if (m_loader.hasOpenedProject()) {
-        // Live statistics: the current world has already rendered the frame (EDIT/PLAY/SIMULATE) —
+        // Live statistics: the current world has already rendered the frame (EDIT/PLAY) —
         // the stats are current.
         // Layout passes of the chrome UI accumulate over a one-second window: the panel itself dirties
         // the layout by changing text (background ~2-3/s), so a per-frame value would flicker; a
@@ -334,24 +286,38 @@ void EditorLayer::onUpdate(double deltaTime) {
     m_editorUI.update(deltaTime); // PandaUI chrome on top of the scene
 }
 
-void EditorLayer::syncPandaUIEditorViewport() {
+void EditorLayer::syncViewports() {
     if (!m_editorController) { return; }
-    const PandaUI::Rect frame = m_editorController->viewportSceneFrame();
-    if (frame.size.width < 1.f || frame.size.height < 1.f) { return; } // PandaUI layout not computed yet
-    // Drive the engine viewport (FBO size + camera aspect + origin) from the PandaUI panel's on-screen frame.
-    m_viewport.syncExternalFrame(
-        Rect(frame.origin.x, frame.origin.y, frame.size.width, frame.size.height)
+    const Editor::ViewportSurfaces surfaces = m_editorController->viewportSurfaces();
+    ViewportFrames frames;
+    frames.scene = Rect(surfaces.scene.origin.x, surfaces.scene.origin.y, surfaces.scene.size.width, surfaces.scene.size.height);
+    frames.sceneVisible = surfaces.sceneVisible;
+    frames.game = Rect(surfaces.game.origin.x, surfaces.game.origin.y, surfaces.game.size.width, surfaces.game.size.height);
+    frames.gameVisible = surfaces.gameVisible;
+    m_viewports.sync(frames, m_sceneState == SceneState::PLAY);
+    // Wrap the output textures once (the native handles are stable across resizes) and feed the panels.
+    // The wrap waits for a laid-out tab: an ImageView draws nothing for a texture of size zero, and the
+    // size is frozen at the wrap (the panel stretches the image to its frame anyway).
+    // GL renders FBO textures bottom-left origin (needs flip), D3D — top-left.
+    const bool flip = Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft;
+    const auto laidOut = [](const PandaUI::Rect &frame) { return frame.size.width >= 1.f && frame.size.height >= 1.f; };
+    const Miren::TextureHandle sceneNative = m_viewports.sceneResult();
+    if (sceneNative.isValid() && sceneNative.id != m_sceneNative.id && laidOut(surfaces.scene)) {
+        m_sceneTexture = m_editorUI.wrapNativeTexture(sceneNative, PandaUI::Size(surfaces.scene.size.width, surfaces.scene.size.height));
+        m_sceneNative = sceneNative;
+    }
+    if (m_sceneTexture.isValid()) { m_editorController->setViewportSceneTexture(m_sceneTexture, flip); }
+    const Miren::TextureHandle gameNative = m_viewports.gameResult();
+    if (gameNative.isValid() && gameNative.id != m_gameNative.id && laidOut(surfaces.game)) {
+        m_gameTexture = m_editorUI.wrapNativeTexture(gameNative, PandaUI::Size(surfaces.game.size.width, surfaces.game.size.height));
+        m_gameNative = gameNative;
+    }
+    if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
+    m_editorController->setGameViewportLive(m_viewports.isGameLive());
+    m_editorController->setGameViewportMessage(
+        m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
+                                                                : ""
     );
-    // Wrap the scene's result texture once (the native handle is stable across resizes) and feed the panel.
-    Miren::TextureHandle native = m_viewport.getResultTexture();
-    if (native.isValid() && native.id != m_sceneNative.id) {
-        m_sceneTexture = m_editorUI.wrapNativeTexture(native, PandaUI::Size(frame.size.width, frame.size.height));
-        m_sceneNative = native;
-    }
-    if (m_sceneTexture.isValid()) {
-        // GL renders FBO textures bottom-left origin (needs flip), D3D — top-left.
-        m_editorController->setViewportSceneTexture(m_sceneTexture, Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft);
-    }
 }
 
 void EditorLayer::updatePandaUICameraActivity() {
@@ -363,8 +329,10 @@ void EditorLayer::updatePandaUICameraActivity() {
     // the camera movement is explicitly suppressed while any text input is focused.
     PandaUI::View *focusedView = m_editorUI.context().getFocusedView();
     const bool textInputFocused = focusedView && focusedView->isTextInput();
-    m_cameraController.setRotationActive((Input::isTrackpadScroll() && hovered) || focused);
-    m_cameraController.setMoveActive((focused || hovered) && !textInputFocused);
+    // The editor camera flies only while the Scene renders: in a Game frame WASD belongs to the game.
+    const bool sceneLive = m_viewports.isSceneLive();
+    m_viewports.cameraController().setRotationActive(sceneLive && ((Input::isTrackpadScroll() && hovered) || focused));
+    m_viewports.cameraController().setMoveActive(sceneLive && (focused || hovered) && !textInputFocused);
 }
 
 // EngineBridge — requests from the editor chrome (EditorController) to the engine/host.
@@ -400,8 +368,6 @@ void EditorLayer::openWorldAsset(uint32_t worldAssetId) {
 void EditorLayer::setSceneState(Editor::SceneState state) {
     if (state == Editor::SceneState::Play) {
         play();
-    } else if (state == Editor::SceneState::Simulate) {
-        simulate();
     } else {
         stop();
     }
@@ -451,19 +417,19 @@ void EditorLayer::setGizmoOperation(int mode) {
     const Gizmos::Operation op = mode == 1   ? Gizmos::Operation::Rotate
                                  : mode == 2 ? Gizmos::Operation::Scale
                                              : Gizmos::Operation::Translate;
-    m_viewport.gizmo().setOperation(op);
+    m_viewports.gizmo().setOperation(op);
 }
 
 void EditorLayer::setGizmoSpace(bool worldSpace) {
-    m_viewport.gizmo().setSpace(worldSpace ? Gizmos::Space::World : Gizmos::Space::Local);
+    m_viewports.gizmo().setSpace(worldSpace ? Gizmos::Space::World : Gizmos::Space::Local);
 }
 
 void EditorLayer::resetCamera() {
-    m_cameraController.reset({0.f, 0.f, 0.f});
+    m_viewports.cameraController().reset({0.f, 0.f, 0.f});
 }
 
 void EditorLayer::focusSelection() {
-    if (!SelectionContext::isEmpty()) { m_cameraController.reset(SelectionContext::getMedianPosition()); }
+    if (!SelectionContext::isEmpty()) { m_viewports.cameraController().reset(SelectionContext::getMedianPosition()); }
 }
 
 void EditorLayer::startScriptsBuild(BuildAction action, ScriptsBuildConfig config) {
@@ -523,7 +489,7 @@ TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
 void EditorLayer::editorSettingsChanged() {
     // The editor scope applies at once and is written on every change.
     m_viewportSettings = m_loader.editorSettings().get<EditorViewportSettings>();
-    m_cameraController.setMoveSpeed(m_viewportSettings.cameraSpeed);
+    m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
     m_updater.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_pluginStore.setAutoUpdate(m_loader.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_editorUI.applyFonts(fontSettings()); // a changed font or size: the atlases reload and the texts re-measure
@@ -539,14 +505,14 @@ void EditorLayer::revertProjectSettings() {
 }
 
 void EditorLayer::updateViewportTools(double deltaTime) {
-    const glm::mat4 view = m_cameraController.getViewMatrix();
+    // The tools work in the Scene with the editor camera; in a Game frame they see no viewport.
     const Editor::ViewportToolFrame frame{
         .world = m_editingWorld,
-        .camera = m_editorCamera,
-        .view = view,
-        .viewProj = m_editorCamera.getProjection() * view,
-        .cameraPosition = m_cameraController.getPosition(),
-        .viewportHovered = m_editorController->isViewportHovered(),
+        .camera = m_viewports.editorCamera(),
+        .view = m_viewports.sceneView(),
+        .viewProj = m_viewports.sceneViewProj(),
+        .cameraPosition = m_viewports.cameraController().getPosition(),
+        .viewportHovered = m_viewports.isSceneLive() && m_editorController->isViewportHovered(),
         .deltaTime = deltaTime,
     };
     Editor::ViewportToolRegistry &tools = Editor::editorExtensions().viewportTools;
@@ -573,76 +539,26 @@ void EditorLayer::loadEditorParts() {
     m_editorController->extensionsChanged();
 }
 
-void EditorLayer::updatePostprocessing() {
-    // HDR: the scene is linear 16F, the pipeline ALWAYS runs (at minimum an implicit Tonemap).
-    // The Settings toggle and camera.postprocessingEnabled control only the user chain.
-    World *world = m_sceneState == SceneState::EDIT ? &m_editingWorld : &m_playingWorld;
-    Entity cameraEntity = world->findMainCameraEntity();
-    AssetRef<PostprocessingAsset> chain;
-    PostprocessingFrameInputs inputs;
-    inputs.color = m_viewport.getSceneColorTexture();
-    inputs.emissive = m_viewport.getSceneEmissiveTexture();
-    inputs.depth = m_viewport.getSceneDepthTexture();
-    inputs.cameraNear = m_editorCamera.getNear(); // the viewport looks through the editor camera
-    inputs.sunScreen = world->getFrameSunScreen(); // glare for bloom_apply
-    inputs.cameraFar = m_editorCamera.getFar();
-    if (cameraEntity.isValid()) {
-        CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
-        if (m_viewportSettings.showPostprocessing && camera.postprocessingEnabled) {
-            chain = camera.postprocessing.as<PostprocessingAsset>();
-        }
-        inputs.bloom.enabled = m_viewportSettings.showPostprocessing && camera.bloomEnabled;
-        inputs.bloom.intensity = camera.bloomIntensity;
-        inputs.bloom.radius = camera.bloomRadius;
-        inputs.exposure.enabled = m_viewportSettings.showPostprocessing && camera.autoExposureEnabled;
-        inputs.exposure.key = camera.autoExposureKey;
-        inputs.exposure.speed = camera.autoExposureSpeed;
-        inputs.exposure.minExposure = camera.autoExposureMin;
-        inputs.exposure.maxExposure = camera.autoExposureMax;
-        if (m_sceneState != SceneState::EDIT) { // in PLAY/SIMULATE — the game camera
-            inputs.cameraNear = camera.camera.getNear();
-            inputs.cameraFar = camera.camera.getFar();
-        }
-    }
-    if (!m_postprocessing) { m_postprocessing = std::make_unique<PostprocessingPipeline>(); }
-    const Fern::Size dpi = Application::get()->getMainWindow()->getDpi();
-    const Rect frame = m_viewport.getFrame();
-    const Miren::TextureHandle output = m_postprocessing->apply(
-        chain,
-        inputs,
-        (uint32_t)(frame.size.width * dpi.width),
-        (uint32_t)(frame.size.height * dpi.height),
-        Application::get()->getTime()
-    );
-    Miren::TextureHandle result; // invalid (zero-size frame) — outline reads the raw scene
-    if (output.id != inputs.color.id) { result = output; }
-    m_viewport.setPostprocessedColor(result);
-}
-
 void EditorLayer::updateViewportHelperLines() {
-    // Helper lines are drawn with the editor camera over the world the viewport shows: EDIT — the
-    // editing world, SIMULATE — the playing world (the runtime state lives there). In PLAY the
-    // view is the game's — helpers are not shown.
-    World *world = nullptr;
-    if (m_sceneState == SceneState::EDIT) {
-        world = &m_editingWorld;
-    } else if (m_sceneState == SceneState::SIMULATE) {
-        world = &m_playingWorld;
-    }
-    // The overlay draws as many lines as its share of the UI draw list holds, so they go in the
-    // order of importance: the lines of the tools (the feedback of the edit in progress), then the
-    // overlays of the modules (collider outlines from the nearest one).
+    // Helper lines are drawn with the editor camera over the world the Scene shows (the editing
+    // world, or the playing copy in Play — the runtime state lives there). In a Game frame the
+    // Scene does not render and gets no lines.
     std::vector<HelperLine> lines;
-    const glm::mat4 viewProj = m_editorCamera.getProjection() * m_cameraController.getViewMatrix();
-    const PandaUI::Rect frame = m_editorController->viewportSceneFrame();
-    if (m_sceneState == SceneState::EDIT) {
-        for (const std::unique_ptr<Editor::ViewportTool> &tool : Editor::editorExtensions().viewportTools.tools()) {
-            tool->appendHelperLines(lines, viewProj, frame);
+    if (m_viewports.isSceneLive()) {
+        // The overlay draws as many lines as its share of the UI draw list holds, so they go in the
+        // order of importance: the lines of the tools (the feedback of the edit in progress), then
+        // the overlays of the modules (collider outlines from the nearest one).
+        const glm::mat4 &viewProj = m_viewports.sceneViewProj();
+        const PandaUI::Rect frame = m_editorController->viewportSceneFrame();
+        if (m_sceneState == SceneState::EDIT) {
+            for (const std::unique_ptr<Editor::ViewportTool> &tool : Editor::editorExtensions().viewportTools.tools()) {
+                tool->appendHelperLines(lines, viewProj, frame);
+            }
         }
-    }
-    if (world) {
         for (const Editor::ViewportOverlay &overlay : Editor::editorExtensions().viewportOverlays) {
-            if (overlay.appendHelperLines != nullptr) { overlay.appendHelperLines(*world, lines, viewProj, frame); }
+            if (overlay.appendHelperLines != nullptr) {
+                overlay.appendHelperLines(*m_currentWorld, lines, viewProj, frame);
+            }
         }
     }
     m_editorController->setViewportHelperLines(std::move(lines));
@@ -666,7 +582,7 @@ void EditorLayer::pumpProjectBuild() {
 }
 
 void EditorLayer::rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) {
-    m_viewport.driveRectSelection(
+    m_viewports.scene().driveRectSelection(
         IVec2(static_cast<int>(start.x), static_cast<int>(start.y)),
         IVec2(static_cast<int>(current.x), static_cast<int>(current.y)),
         additive,
@@ -676,6 +592,12 @@ void EditorLayer::rectSelect(PandaUI::Point start, PandaUI::Point current, bool 
 
 void EditorLayer::drivePandaUIGizmo() {
     if (!m_editorController) { return; }
+    // The gizmo lives in the Scene: in a Game frame there is nothing to manipulate in.
+    if (!m_viewports.isSceneLive()) {
+        m_editorController->setGizmoVisible(false);
+        m_editorController->setGizmoActive(false);
+        return;
+    }
     // Gizmo input from Panda::Input (events not consumed by PandaUI leak into Input — see onEvent). The
     // position is in absolute screen points (like the getDrawData coordinates). blockedByUi=false: clicks
     // on the PandaUI toolbar are consumed by PandaUI itself and never reach Input.
@@ -690,22 +612,9 @@ void EditorLayer::drivePandaUIGizmo() {
     // center and the inspector's Transform fields) is refreshed once per frame; otherwise the gizmo
     // freezes at the body's starting position.
     if (m_currentWorld->isRunning() && !SelectionContext::isEmpty()) { SelectionContext::updateValues(); }
-    // View of the active viewport camera: in PLAY the game camera (manipulation in its screen rays),
-    // otherwise the editor camera.
-    glm::mat4 view;
-    const glm::mat4 *viewPtr = nullptr;
-    if (m_sceneState == SceneState::PLAY) {
-        Entity cameraEntity = m_currentWorld->findMainCameraEntity();
-        if (cameraEntity.isValid()) {
-            view = glm::inverse(m_currentWorld->getWorldSpaceTransformMatrix(cameraEntity));
-            viewPtr = &view;
-        }
-    } else {
-        view = m_cameraController.getViewMatrix();
-        viewPtr = &view;
-    }
-    Gizmos &gizmo = m_viewport.gizmo();
-    const bool visible = gizmo.manipulate(m_viewport.getFrame(), input, viewPtr);
+    const glm::mat4 view = m_viewports.sceneView(); // the editor camera: the Scene manipulates in its screen rays
+    Gizmos &gizmo = m_viewports.gizmo();
+    const bool visible = gizmo.manipulate(m_viewports.scene().getFrame(), input, &view);
     m_editorController->setGizmoVisible(visible);
     m_editorController->setGizmoActive(gizmo.isHovered()); // hover over a handle / drag → takes LMB from rect-select
 }
@@ -713,9 +622,9 @@ void EditorLayer::drivePandaUIGizmo() {
 void EditorLayer::onEvent(Fern::Event *event) {
     if (m_menuBar.handleEvent(event, m_editorUI.context().modals().isPresenting())) { return; }
 
-    // In play/simulate the game's runtime UI (m_pandaUI) receives input first (as an overlay under the
-    // editor chrome).
-    if (m_sceneState != SceneState::EDIT) {
+    // In Play, while the Game renders, the game's runtime UI (m_pandaUI) receives input first (the
+    // Game tab is the game's surface); while the Scene renders the input is the editor's.
+    if (m_sceneState == SceneState::PLAY && m_viewports.isGameLive()) {
         syncPandaUIViewportFrame();
         if (event->type == Fern::EventType::WindowResize) { m_pandaUI.syncWindow(event->getWindow()); }
         if (m_pandaUI.handleEvent(event)) {
@@ -751,38 +660,29 @@ void EditorLayer::windowSizeChanged(Size size) {
 }
 
 void EditorLayer::play() {
+    if (m_sceneState == SceneState::PLAY) { return; }
     m_sceneState = SceneState::PLAY;
     m_playingWorld = m_editingWorld;
     m_currentWorld = &m_playingWorld;
     GameContext::setCurrentWorld(m_currentWorld);
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
-    m_viewport.setWorld(m_currentWorld);
+    m_viewports.scene().setWorld(m_currentWorld);
     m_pendingWorldLoad = AssetId(0);
+    // The Game tab opens (or comes to the front) and takes the focus: the frame and the input of
+    // the game are there; the Scene tab stays the editor's view of the playing world.
+    if (m_editorController) {
+        m_editorController->openGameView();
+        m_editorController->setActiveWorld(m_currentWorld); // panels → the live world
+    }
+    syncViewports();
     syncPandaUIViewportFrame();
     m_pandaUI.initialize();
-    if (m_editorController) { m_editorController->setActiveWorld(m_currentWorld); } // panels → the live world
     m_playingWorld.startRunning();
     loadPendingWorldRequest();
-    m_viewport.focus();
-}
-
-void EditorLayer::simulate() {
-    m_sceneState = SceneState::SIMULATE;
-    m_playingWorld = m_editingWorld;
-    m_currentWorld = &m_playingWorld;
-    GameContext::setCurrentWorld(m_currentWorld);
-    GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
-    m_viewport.setWorld(m_currentWorld);
-    m_pendingWorldLoad = AssetId(0);
-    syncPandaUIViewportFrame();
-    m_pandaUI.initialize();
-    if (m_editorController) { m_editorController->setActiveWorld(m_currentWorld); } // panels → the live world
-    m_playingWorld.startRunning();
-    loadPendingWorldRequest();
-    m_viewport.focus();
 }
 
 void EditorLayer::stop() {
+    if (m_sceneState == SceneState::EDIT) { return; }
     m_playingWorld.finishRunning();
     Fern::setCursorLocked(false);
     m_pandaUI.shutdown();
@@ -790,11 +690,13 @@ void EditorLayer::stop() {
     m_sceneState = SceneState::EDIT;
     m_pendingWorldLoad = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
-    m_viewport.setCamera(&m_editorCamera);
     m_currentWorld = &m_editingWorld;
     GameContext::setCurrentWorld(m_currentWorld);
-    m_viewport.setWorld(m_currentWorld);
-    if (m_editorController) { m_editorController->setActiveWorld(m_currentWorld); } // panels → the editing world
+    m_viewports.scene().setWorld(m_currentWorld);
+    if (m_editorController) {
+        m_editorController->setActiveWorld(m_currentWorld); // panels → the editing world
+        m_editorController->showSceneView();                // back to editing: the Scene tab comes to the front
+    }
     // Play is a simulation: its asset mutations (script ABI, e.g. terrain digging) do not
     // survive Stop — the affected assets are reloaded from disk. Unsaved EDITOR edits
     // in such an asset (only editor tools set dirty) are rolled back as well.
@@ -807,7 +709,6 @@ void EditorLayer::stop() {
             assetHandler->reload(id);
         }
     }
-    m_viewport.focus();
 }
 
 void EditorLayer::requestWorldLoad(AssetId worldAssetId) {
@@ -861,8 +762,7 @@ bool EditorLayer::loadWorldAssetIntoPlayingWorld(AssetId worldAssetId) {
         return false;
     }
     m_playingWorld.updateScriptsAndFields();
-    m_viewport.setWorld(&m_playingWorld);
-    if (m_sceneState == SceneState::PLAY) { m_viewport.setCamera(m_playingWorld.findMainCamera()); }
+    m_viewports.scene().setWorld(&m_playingWorld);
     if (wasRunning) { m_playingWorld.startRunning(); }
     return true;
 }
@@ -904,7 +804,7 @@ path_t EditorLayer::defaultProjectParentPath() const {
 
 void EditorLayer::syncPandaUIViewportFrame() {
     Fern::Size dpi = m_window->getDpi();
-    m_pandaUI.setMainViewportFrame(m_viewport.getFrame(), Size(dpi.width, dpi.height));
+    m_pandaUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height)); // the game UI lives in the Game tab
 }
 
 #pragma region Project loader output
@@ -974,14 +874,14 @@ void EditorLayer::loaderDidCreateNewWorld() {
 
 EditorCameraSettings EditorLayer::getEditorCameraSettings() {
     EditorCameraSettings settings;
-    settings.position = m_cameraController.getPosition();
-    settings.rotation = m_cameraController.getRotation();
+    settings.position = m_viewports.cameraController().getPosition();
+    settings.rotation = m_viewports.cameraController().getRotation();
     return settings;
 }
 
 void EditorLayer::setEditorCameraSettings(EditorCameraSettings settings) {
-    m_cameraController.setPosition(settings.position);
-    m_cameraController.setRotation(settings.rotation);
+    m_viewports.cameraController().setPosition(settings.position);
+    m_viewports.cameraController().setRotation(settings.rotation);
 }
 
 #pragma endregion
@@ -1208,6 +1108,10 @@ void EditorLayer::menuBarOpenPlugins() {
 
 void EditorLayer::menuBarOpenUiGallery() {
     if (m_editorController) { m_editorController->openUiGallery(); }
+}
+
+void EditorLayer::menuBarOpenGameView() {
+    if (m_editorController) { m_editorController->openGameView(); }
 }
 
 PandaUI::Gallery::Host EditorLayer::galleryHost() {
@@ -1602,8 +1506,8 @@ void EditorLayer::updateWindowState() {
 }
 
 bool EditorLayer::saveWorld() {
-    // Save always writes the world being edited. Play and Simulate run on its copy: what the
-    // simulation and the inspector change there lives until Stop and is not saved.
+    // Save always writes the world being edited. Play runs on its copy: what the simulation and the
+    // inspector change there lives until Stop and is not saved.
     const bool saved = m_loader.saveWorld();
     if (saved) {
         if (m_sceneState == SceneState::EDIT) {
