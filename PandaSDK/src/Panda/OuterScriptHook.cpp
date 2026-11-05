@@ -134,6 +134,20 @@ namespace InternalCalls {
         script->start();
     }
 
+    void invokeApplicationFocusAtScript(Handle entityHandle, Handle scriptID, bool focused) {
+        Bamboo::Shared<Bamboo::Script> script =
+            Bamboo::getScriptRegistry()->getEntryWithId(Bamboo::EntityHandle(entityHandle), scriptID).script;
+        if (!script) { return; }
+        script->onApplicationFocus(focused);
+    }
+
+    void invokeApplicationPauseAtScript(Handle entityHandle, Handle scriptID, bool paused) {
+        Bamboo::Shared<Bamboo::Script> script =
+            Bamboo::getScriptRegistry()->getEntryWithId(Bamboo::EntityHandle(entityHandle), scriptID).script;
+        if (!script) { return; }
+        script->onApplicationPause(paused);
+    }
+
     void invokeBeginCollisionTouch(Handle entityHandle, Handle scriptID, Handle collisionEntityHandle) {
         Bamboo::Shared<Bamboo::Script> script =
             Bamboo::getScriptRegistry()->getEntryWithId(Bamboo::EntityHandle(entityHandle), scriptID).script;
@@ -216,6 +230,8 @@ namespace {
         .async_CancelAll = asyncCancelAll,
         .async_WaitAll = asyncWaitAll,
         .invokeFixedUpdateAtScript = InternalCalls::invokeFixedUpdateAtScript,
+        .invokeApplicationFocusAtScript = InternalCalls::invokeApplicationFocusAtScript,
+        .invokeApplicationPauseAtScript = InternalCalls::invokeApplicationPauseAtScript,
     };
 
     void bindHostApi(const ScriptHostApi &hostApi) {

@@ -30,6 +30,10 @@
 #include <Fern/Events/WindowEvents.hpp>
 #include <Fern/Events/Key.hpp>
 #include <Fern/Events/KeyEvents.hpp>
+#include <Fern/Events/MouseEvents.hpp>
+#include <Fern/Events/TouchEvents.hpp>
+#include <Panda/GameLogic/Systems/ScriptSystem.hpp>
+#include <Panda/GameLogic/Input.hpp>
 #include <PandaUI/PandaUI.hpp>
 
 #include "UI/EditorController.hpp" // shared coordinator of the PandaUI editor (migration)
@@ -44,6 +48,26 @@
 namespace Panda {
 
 namespace {
+
+    // The input of the window: EditorLayer::onEvent gives every such event either to the game or
+    // to the editor chrome, and nothing else of it reaches Panda::Input.
+    bool isInputEvent(const Fern::Event *event) {
+        switch (event->type) {
+            case Fern::EventType::KeyPressed:
+            case Fern::EventType::KeyReleased:
+            case Fern::EventType::InputCharacter:
+            case Fern::EventType::MouseMoved:
+            case Fern::EventType::MouseButtonPressed:
+            case Fern::EventType::MouseButtonReleased:
+            case Fern::EventType::MouseScrolled:
+            case Fern::EventType::TouchBegan:
+            case Fern::EventType::TouchMoved:
+            case Fern::EventType::TouchEnded:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     struct ExportProjectOpenCommand {
         const char *generatedProjectExtension;
@@ -213,11 +237,10 @@ void EditorLayer::onUpdate(double deltaTime) {
         m_pendingStop = false;
         if (m_sceneState != SceneState::EDIT) { stop(); }
     }
-    // Size the engine viewport from the PandaUI panel BEFORE the scene renders this frame,
-    // and gate camera navigation on the PandaUI viewport's focus/hover.
+    // Size the engine viewports from the PandaUI panels BEFORE the world renders this frame.
     if (m_loader.hasOpenedProject()) {
         syncViewports();
-        updatePandaUICameraActivity();
+        updateGameInput();
         m_viewports.scene().pollSelection(); // apply async rect-select / click-picking results
         m_editorController->syncSelectionFromEngine(); // SelectionContext → panels (viewport → Hierarchy/Inspector)
         m_editorController->syncWorldStructure(); // scripts created/deleted entities → live Hierarchy
@@ -229,7 +252,25 @@ void EditorLayer::onUpdate(double deltaTime) {
         // The frame of the CURRENT world (the playing copy in Play) through the live viewport: the Scene
         // sees it with the editor camera, the Game with the main camera of the world.
         const bool playing = m_sceneState == SceneState::PLAY;
-        const WorldFrame frame = m_viewports.beginFrame(*m_currentWorld, deltaTime, playing, m_viewportSettings);
+        // What the user did over the Scene surface since the last frame: the flight of the editor
+        // camera, the pointer of the gizmo and of the tools. Taken every frame (the surface
+        // accumulates), meaningful only while the Scene renders.
+        const Editor::SceneNavigation sceneNavigation = m_editorController->takeSceneNavigation();
+        m_scenePointer = m_editorController->takeScenePointer();
+        CameraController::Navigation navigation;
+        if (m_viewports.isSceneLive()) {
+            navigation.forward = sceneNavigation.forward;
+            navigation.backward = sceneNavigation.backward;
+            navigation.left = sceneNavigation.left;
+            navigation.right = sceneNavigation.right;
+            navigation.blocked = sceneNavigation.blocked;
+            navigation.rotate = glm::vec2(sceneNavigation.rotate.x, sceneNavigation.rotate.y);
+            navigation.zoom = sceneNavigation.zoom;
+        } else {
+            m_scenePointer = Editor::ScenePointer{};
+        }
+        const WorldFrame frame =
+            m_viewports.beginFrame(*m_currentWorld, deltaTime, playing, m_viewportSettings, navigation);
         if (!playing) {
             updateViewportTools(deltaTime); // brushes — before the world update: edits are remeshed this frame
         }
@@ -320,19 +361,80 @@ void EditorLayer::syncViewports() {
     );
 }
 
-void EditorLayer::updatePandaUICameraActivity() {
-    if (!m_editorController) { return; }
-    const bool focused = m_editorController->isViewportFocused();
-    const bool hovered = m_editorController->isViewportHovered();
-    // WASD while hovering the viewport (like scroll-rotation) — BUT not while typing into a text field:
-    // TextField takes characters via char events, while the raw KeyDown still falls through to Input, so
-    // the camera movement is explicitly suppressed while any text input is focused.
-    PandaUI::View *focusedView = m_editorUI.context().getFocusedView();
-    const bool textInputFocused = focusedView && focusedView->isTextInput();
-    // The editor camera flies only while the Scene renders: in a Game frame WASD belongs to the game.
-    const bool sceneLive = m_viewports.isSceneLive();
-    m_viewports.cameraController().setRotationActive(sceneLive && ((Input::isTrackpadScroll() && hovered) || focused));
-    m_viewports.cameraController().setMoveActive(sceneLive && (focused || hovered) && !textInputFocused);
+// The game owns the input of the window while it plays, the Game tab renders and has the keyboard
+// focus (a click on the game gives it; a click anywhere else in the editor takes it away) and the
+// window is focused. Panda::Input is the game's input (onEvent routes it only the game's events);
+// this is its focus, a transition is the application focus of the scripts (onApplicationFocus).
+// The loss releases what the game held (the releases will go to the editor) and the cursor lock:
+// an FPS is left by clicking elsewhere, and locks again in onApplicationFocus(true).
+void EditorLayer::updateGameInput() {
+    const bool active = m_sceneState == SceneState::PLAY && m_windowFocused && m_viewports.isGameLive() &&
+                        m_editorController->isGameViewportFocused() && !m_editorUI.context().modals().isPresenting();
+    if (active == m_gameInputActive) { return; }
+    m_gameInputActive = active;
+    Input::setFocused(active);
+    if (!active) {
+        Input::releaseAll();
+        Fern::setCursorLocked(false);
+    }
+    if (m_playingWorld.isRunning()) { ScriptSystem::applicationFocus(m_playingWorld, active); }
+}
+
+// Which input events are the game's while it plays and the Game renders: the pointer over the Game
+// surface, the keys while the Game tab has the focus. A button's release goes where its press went
+// (m_gameMouseButtons): a drag that started on the game may leave the surface, one that started on
+// the chrome (a splitter) may end over it. A dialog of the editor on top takes the new interactions;
+// the releases still follow their presses.
+bool EditorLayer::eventBelongsToGame(Fern::Event *event) {
+    const bool modal = m_editorUI.context().modals().isPresenting();
+    const auto inGameFrame = [this](double x, double y) {
+        const Rect &frame = m_viewports.gameFrame();
+        return x >= frame.origin.x && y >= frame.origin.y && x < frame.origin.x + frame.size.width &&
+               y < frame.origin.y + frame.size.height;
+    };
+    const auto cursorInGameFrame = [this, &inGameFrame]() {
+        const Fern::Vec2 cursor = m_window->getCursorPosition();
+        return inGameFrame(cursor.x, cursor.y);
+    };
+    switch (event->type) {
+        case Fern::EventType::MouseMoved: {
+            const auto *ev = static_cast<const Fern::MouseMovedEvent *>(event);
+            return m_gameMouseButtons != 0 || (!modal && inGameFrame(ev->x, ev->y));
+        }
+        case Fern::EventType::MouseButtonPressed: {
+            const auto *ev = static_cast<const Fern::MouseKeyEvent *>(event);
+            const uint32_t bit = 1u << static_cast<uint32_t>(ev->button);
+            const bool game = !modal && cursorInGameFrame();
+            m_gameMouseButtons = game ? (m_gameMouseButtons | bit) : (m_gameMouseButtons & ~bit);
+            // A click on the game gives the Game tab the keyboard focus: the keys follow the mouse.
+            if (game) { m_editorController->focusGameView(); }
+            return game;
+        }
+        case Fern::EventType::MouseButtonReleased: {
+            const auto *ev = static_cast<const Fern::MouseKeyEvent *>(event);
+            const uint32_t bit = 1u << static_cast<uint32_t>(ev->button);
+            if ((m_gameMouseButtons & bit) == 0) { return false; }
+            m_gameMouseButtons &= ~bit;
+            return true;
+        }
+        case Fern::EventType::MouseScrolled:
+            return !modal && cursorInGameFrame();
+        case Fern::EventType::TouchBegan: {
+            const auto *ev = static_cast<const Fern::TouchBeganEvent *>(event);
+            return !modal && inGameFrame(ev->x, ev->y);
+        }
+        case Fern::EventType::TouchMoved: {
+            const auto *ev = static_cast<const Fern::TouchMovedEvent *>(event);
+            return !modal && inGameFrame(ev->x, ev->y);
+        }
+        case Fern::EventType::TouchEnded:
+        case Fern::EventType::KeyPressed:
+        case Fern::EventType::KeyReleased:
+        case Fern::EventType::InputCharacter:
+            return !modal && m_editorController->isGameViewportFocused();
+        default:
+            return false;
+    }
 }
 
 // EngineBridge — requests from the editor chrome (EditorController) to the engine/host.
@@ -505,14 +607,17 @@ void EditorLayer::revertProjectSettings() {
 }
 
 void EditorLayer::updateViewportTools(double deltaTime) {
-    // The tools work in the Scene with the editor camera; in a Game frame they see no viewport.
+    // The tools work in the Scene with the editor camera and the pointer of its surface; in a Game
+    // frame they see no viewport (the pointer is empty).
     const Editor::ViewportToolFrame frame{
         .world = m_editingWorld,
         .camera = m_viewports.editorCamera(),
         .view = m_viewports.sceneView(),
         .viewProj = m_viewports.sceneViewProj(),
         .cameraPosition = m_viewports.cameraController().getPosition(),
-        .viewportHovered = m_viewports.isSceneLive() && m_editorController->isViewportHovered(),
+        .viewportHovered = m_scenePointer.hovered,
+        .pointerPosition = glm::vec2(m_scenePointer.local.x, m_scenePointer.local.y),
+        .pointerDown = m_scenePointer.leftDown,
         .deltaTime = deltaTime,
     };
     Editor::ViewportToolRegistry &tools = Editor::editorExtensions().viewportTools;
@@ -598,14 +703,14 @@ void EditorLayer::drivePandaUIGizmo() {
         m_editorController->setGizmoActive(false);
         return;
     }
-    // Gizmo input from Panda::Input (events not consumed by PandaUI leak into Input — see onEvent). The
-    // position is in absolute screen points (like the getDrawData coordinates). blockedByUi=false: clicks
-    // on the PandaUI toolbar are consumed by PandaUI itself and never reach Input.
+    // Gizmo input from the Scene surface (the pointer it recorded this frame). The position is in
+    // window points (like the getDrawData coordinates). blockedByUi=false: clicks on the PandaUI
+    // toolbar are consumed by PandaUI itself and never reach the surface.
     const Gizmo::InputState input{
-        .mousePosition = Vec2(static_cast<float>(Input::getMousePositionX()), static_cast<float>(Input::getMousePositionY())),
-        .mouseDown = Input::isMouseButtonPressed(Fern::MouseButton::LEFT),
-        .mouseClicked = Input::isMouseButtonJustPressed(Fern::MouseButton::LEFT),
-        .viewportHovered = m_editorController->isViewportHovered(),
+        .mousePosition = Vec2(m_scenePointer.position.x, m_scenePointer.position.y),
+        .mouseDown = m_scenePointer.leftDown,
+        .mouseClicked = m_scenePointer.leftPressed,
+        .viewportHovered = m_scenePointer.hovered,
         .blockedByUi = false,
     };
     // At runtime the physics moves the selected bodies by itself, so the selection median (the gizmo
@@ -622,20 +727,42 @@ void EditorLayer::drivePandaUIGizmo() {
 void EditorLayer::onEvent(Fern::Event *event) {
     if (m_menuBar.handleEvent(event, m_editorUI.context().modals().isPresenting())) { return; }
 
-    // In Play, while the Game renders, the game's runtime UI (m_pandaUI) receives input first (the
-    // Game tab is the game's surface); while the Scene renders the input is the editor's.
-    if (m_sceneState == SceneState::PLAY && m_viewports.isGameLive()) {
-        syncPandaUIViewportFrame();
-        if (event->type == Fern::EventType::WindowResize) { m_pandaUI.syncWindow(event->getWindow()); }
-        if (m_pandaUI.handleEvent(event)) {
-            event->isHandled = true;
-            return;
+    // The focus and the minimizing of the editor window: the game's focus follows them
+    // (updateGameInput), a minimized editor pauses the playing world's scripts.
+    if (event->getWindow() == nullptr || event->getWindow() == m_window) {
+        switch (event->type) {
+            case Fern::EventType::WindowFocus: m_windowFocused = true; break;
+            case Fern::EventType::WindowLostFocus: m_windowFocused = false; break;
+            case Fern::EventType::WindowMinimized:
+                if (m_sceneState == SceneState::PLAY) { ScriptSystem::applicationPause(m_playingWorld, true); }
+                break;
+            case Fern::EventType::WindowRestored:
+                if (m_sceneState == SceneState::PLAY) { ScriptSystem::applicationPause(m_playingWorld, false); }
+                break;
+            default: break;
         }
     }
 
-    // All the remaining input goes to the PandaUI Context (editor chrome); quit/close/resize are
-    // handled right here.
-    bool handledByUI = m_editorUI.handleEvent(event); // Fern → PandaUI Context (WindowResize syncs the viewport)
+    // The input of the window is either the game's or the editor's, never both. In Play, while
+    // the Game renders, the game owns the pointer over the Game surface and the keys of the
+    // focused Game tab (eventBelongsToGame): its UI (m_pandaUI) sees them first, the rest
+    // Application feeds to Panda::Input. Everything else is the editor's: the PandaUI chrome,
+    // whose Scene surface collects the camera navigation and the pointer of the gizmo and of the
+    // tools; none of it reaches Panda::Input.
+    if (isInputEvent(event)) {
+        if (m_sceneState == SceneState::PLAY && m_viewports.isGameLive() && eventBelongsToGame(event)) {
+            syncPandaUIViewportFrame();
+            if (m_pandaUI.handleEvent(event)) { event->isHandled = true; }
+            return;
+        }
+        m_editorUI.handleEvent(event);
+        event->isHandled = true;
+        return;
+    }
+
+    // The window events: the chrome and the game UI follow the size, quit/close are answered here.
+    // They are not marked handled: Panda::Input learns the window size and the focus loss from them.
+    m_editorUI.handleEvent(event); // WindowResize syncs the viewport of the chrome
     if (event->type == Fern::EventType::QuitRequest ||
         (event->type == Fern::EventType::WindowCloseRequest && event->getWindow() == m_window)) {
         closeAppRequest();
@@ -643,11 +770,11 @@ void EditorLayer::onEvent(Fern::Event *event) {
     } else if (event->type == Fern::EventType::WindowResize && event->getWindow() == m_window) {
         const Fern::WindowResizeEvent *ev = static_cast<const Fern::WindowResizeEvent *>(event);
         windowSizeChanged(Size(ev->getWidth(), ev->getHeight()));
-    } else if (handledByUI) {
-        event->isHandled = true; // a PandaUI view consumed it (button/field/docking) — not passed to Input
+        if (m_sceneState == SceneState::PLAY) {
+            syncPandaUIViewportFrame();
+            m_pandaUI.syncWindow(event->getWindow());
+        }
     }
-    // Otherwise do NOT mark it handled: Application feeds the event to Panda::Input (camera/picking
-    // in the viewport).
 }
 
 void EditorLayer::windowSizeChanged(Size size) {
@@ -668,6 +795,9 @@ void EditorLayer::play() {
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
     m_viewports.scene().setWorld(m_currentWorld);
     m_pendingWorldLoad = AssetId(0);
+    m_gameInputActive = false; // updateGameInput hands the input to the game when its tab renders and has the focus
+    m_gameMouseButtons = 0;
+    Input::setFocused(false);
     // The Game tab opens (or comes to the front) and takes the focus: the frame and the input of
     // the game are there; the Scene tab stays the editor's view of the playing world.
     if (m_editorController) {
@@ -688,6 +818,10 @@ void EditorLayer::stop() {
     m_pandaUI.shutdown();
     m_pandaUI.clearMainViewportFrame();
     m_sceneState = SceneState::EDIT;
+    m_gameInputActive = false;
+    m_gameMouseButtons = 0;
+    Input::setFocused(false);
+    Input::releaseAll(); // what the game still held: its releases go to the editor now
     m_pendingWorldLoad = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
     m_currentWorld = &m_editingWorld;

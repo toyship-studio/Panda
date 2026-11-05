@@ -44,14 +44,14 @@ void EditorViewports::sync(const ViewportFrames &frames, bool playing) {
     m_scene.setFrame(frames.scene);
     m_gameSurface.setFrame(frames.game);
     const ViewportSurface &live = liveSurface();
-    if (live.isReady()) {
-        m_targets.resize(live.frame().size);
-        Input::setViewportFrame(live.frame()); // the mouse of the game and of the editor is relative to the live viewport
-    }
+    if (live.isReady()) { m_targets.resize(live.frame().size); }
+    // Panda::Input is the game's: its viewport is the Game surface, whichever viewport renders.
+    if (m_gameSurface.isReady()) { Input::setViewportFrame(m_gameSurface.frame()); }
 }
 
 WorldFrame EditorViewports::beginFrame(
-    World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings
+    World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings,
+    const CameraController::Navigation &navigation
 ) {
     // The debug wireframe is a display option of the Scene; the Game shows the game.
     world.getRenderer3D().setForceWireframe(settings.wireframe && isSceneLive());
@@ -68,7 +68,7 @@ WorldFrame EditorViewports::beginFrame(
         return m_frame;
     }
     // The editor camera: the Scene, or the Game of a world without a main camera.
-    m_cameraController.update(deltaTime);
+    m_cameraController.update(static_cast<float>(deltaTime), navigation);
     const ViewportSurface &surface = liveSurface();
     if (surface.isReady()) { m_editorCamera.setViewportSize(surface.frame().size); }
     const glm::mat4 projection = m_editorCamera.getProjection();

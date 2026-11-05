@@ -18,21 +18,25 @@ struct CharacterInputEvent : public Event {
 };
 
 struct KeyPressedEvent : public Event {
-    KeyPressedEvent(Key key, Window *window, bool isRepeat = false)
+    KeyPressedEvent(Key key, Window *window, bool isRepeat = false, Modifiers modifiers = 0)
         : Event(EventType::KeyPressed, window)
         , key(key)
-        , isRepeat(isRepeat) {}
+        , isRepeat(isRepeat)
+        , modifiers(modifiers) {}
 
     Key key;
     bool isRepeat;
+    Modifiers modifiers; // the modifiers held at the moment of the press, the key itself included
 };
 
 struct KeyReleasedEvent : public Event {
-    KeyReleasedEvent(Key key, Window *window)
+    KeyReleasedEvent(Key key, Window *window, Modifiers modifiers = 0)
         : Event(EventType::KeyReleased, window)
-        , key(key) {}
+        , key(key)
+        , modifiers(modifiers) {}
 
     Key key;
+    Modifiers modifiers;
 };
 
 } // namespace Fern

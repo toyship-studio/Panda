@@ -61,12 +61,12 @@ public:
     PandaUI::Rect sceneWorldFrame() const {
         return m_scene->getWorldFrame();
     }
-    // Focus/hover of the scene surface — engine gates camera navigation on these (seam #2).
-    bool isSceneFocused() const {
-        return m_scene->isFocused();
+    // Once a frame, by the engine: the navigation and the pointer the Scene surface collected.
+    SceneNavigation takeSceneNavigation() {
+        return m_scene->takeNavigation();
     }
-    bool isSceneHovered() const {
-        return m_scene->isHovered();
+    ScenePointer takeScenePointer() {
+        return m_scene->takePointer();
     }
     // Gizmo visibility (the engine decides: there is a selection and not PLAY). The overlay reads the
     // geometry from the engine itself (seam #3).

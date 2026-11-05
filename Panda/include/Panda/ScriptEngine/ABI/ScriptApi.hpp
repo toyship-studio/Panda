@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 32;
+constexpr uint32_t SCRIPT_ABI_VERSION = 33;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -36,6 +36,10 @@ using UIWindowClosedFn = void (*)(Handle windowHandle);
 // destroyed and before the dynamic library is unloaded.
 // async_WaitAll does not execute the completion queue — it waits for the workers and
 // discards unsafe deferred calls.
+// v33: the application gained or lost the focus of the game (the editor: the Game tab; the game: the
+// window), was suspended or resumed (minimized, the background of a mobile platform).
+using InvokeApplicationFocusAtScriptFn = void (*)(Handle entityHandle, Handle scriptId, bool focused);
+using InvokeApplicationPauseAtScriptFn = void (*)(Handle entityHandle, Handle scriptId, bool paused);
 using AsyncUpdateFn = void (*)(uint32_t maxCompletions, double maxMilliseconds);
 using AsyncCancelAllFn = void (*)();
 using AsyncWaitAllFn = void (*)();
@@ -182,6 +186,9 @@ struct ScriptPluginApi final {
     AsyncWaitAllFn async_WaitAll = nullptr;
     // v27: the fixed physics step.
     InvokeFixedUpdateAtScriptFn invokeFixedUpdateAtScript = nullptr;
+    // v33: the focus and the pause of the application.
+    InvokeApplicationFocusAtScriptFn invokeApplicationFocusAtScript = nullptr;
+    InvokeApplicationPauseAtScriptFn invokeApplicationPauseAtScript = nullptr;
 };
 
 struct ScriptHostApi final {

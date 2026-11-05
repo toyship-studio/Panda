@@ -18,16 +18,11 @@ CameraController::CameraController()
     , m_pitch(0.0f)
     , m_mouseSpeed(0.2f)
     , m_moveSpeed(20.f)
-    , m_cursorStarted(false)
-    , m_isMoveActive(false)
-    , m_isRotationActive(false)
-    , m_lastMouseX(0)
-    , m_lastMouseY(0)
     , m_animation() {
     syncAnglesFromRotation(m_transform.getRotation());
 }
 
-void CameraController::update(float deltaTime) {
+void CameraController::update(float deltaTime, const Navigation &navigation) {
     if (m_animation.isActive) {
         float distanceToEnd = m_animation.endTransform.distanceTo(m_transform);
         if (distanceToEnd < 0.1) {
@@ -49,58 +44,22 @@ void CameraController::update(float deltaTime) {
             updateVectors();
         }
     }
-    bool ctrl = Input::isKeyPressed(Fern::Key::KEY_LEFT_CONTROL) || Input::isKeyPressed(Fern::Key::KEY_RIGHT_CONTROL);
-    bool shift = Input::isKeyPressed(Fern::Key::KEY_LEFT_SHIFT) || Input::isKeyPressed(Fern::Key::KEY_RIGHT_SHIFT);
-    if (ctrl || shift) {
-        m_cursorStarted = false;
-        return;
-    }
-    if (m_isMoveActive) {
-        float speed = m_moveSpeed * deltaTime;
-        if (Input::isKeyPressed(Fern::Key::KEY_W)) { m_transform.translate(m_front * speed); }
-        if (Input::isKeyPressed(Fern::Key::KEY_S)) { m_transform.translate(-m_front * speed); }
-        if (Input::isKeyPressed(Fern::Key::KEY_A)) { m_transform.translate(-m_right * speed); }
-        if (Input::isKeyPressed(Fern::Key::KEY_D)) { m_transform.translate(m_right * speed); }
-    }
-    if (!m_isRotationActive) {
-        m_cursorStarted = false;
-        return;
-    }
-    if (Input::isTrackpadScroll() || Input::isMouseButtonPressed(Fern::MouseButton::RIGHT)) {
-        double deltaX;
-        double deltaY;
-        if (Input::isTrackpadScroll()) {
-            deltaX = Input::getMouseScrollX() * 40;
-            deltaY = Input::getMouseScrollY() * 40;
-        } else {
-            double mouseX = Input::getMousePositionX();
-            double mouseY = Input::getMousePositionY();
-            deltaX = mouseX - m_lastMouseX;
-            deltaY = mouseY - m_lastMouseY;
-            if (!m_cursorStarted) {
-                m_cursorStarted = true;
-                deltaX = 0;
-                deltaY = 0;
-            }
-            m_lastMouseX = mouseX;
-            m_lastMouseY = mouseY;
-        }
-        // DeltaX is the mouse offset in real time, so it does not need to be multiplied by deltaTime.
-        // Real-world actions must not be multiplied by deltaTime; only game-world actions are.
-        m_pitch += glm::radians(static_cast<float>(-deltaY * m_mouseSpeed));
-        m_yaw += glm::radians(static_cast<float>(-deltaX * m_mouseSpeed));
+    if (navigation.blocked) { return; } // Shift / Control: the keys belong to a shortcut
+    const float speed = m_moveSpeed * deltaTime;
+    if (navigation.forward) { m_transform.translate(m_front * speed); }
+    if (navigation.backward) { m_transform.translate(-m_front * speed); }
+    if (navigation.left) { m_transform.translate(-m_right * speed); }
+    if (navigation.right) { m_transform.translate(m_right * speed); }
+    if (navigation.rotate.x != 0.f || navigation.rotate.y != 0.f) {
+        // The rotation is a mouse offset in real time: it is not scaled by deltaTime (only
+        // game-world actions are).
+        m_pitch += glm::radians(-navigation.rotate.y * m_mouseSpeed);
+        m_yaw += glm::radians(-navigation.rotate.x * m_mouseSpeed);
         const float maxPitch = glm::radians(89.0f);
         m_pitch = glm::clamp(m_pitch, -maxPitch, maxPitch);
         syncRotationFromAngles();
-    } else {
-        m_cursorStarted = false;
     }
-
-    double scroll = Input::getMouseScrollY();
-    if (!Input::isTrackpadScroll() && scroll != 0) {
-        float zoom = scroll * 0.5;
-        m_transform.translate(zoom * m_front);
-    }
+    if (navigation.zoom != 0.f) { m_transform.translate(navigation.zoom * 0.5f * m_front); }
 }
 
 void CameraController::updateVectors() {
@@ -132,14 +91,6 @@ glm::quat CameraController::getRotation() {
 
 void CameraController::setRotation(glm::quat quat) {
     syncAnglesFromRotation(quat);
-}
-
-void CameraController::setMoveActive(bool flag) {
-    m_isMoveActive = flag;
-}
-
-void CameraController::setRotationActive(bool flag) {
-    m_isRotationActive = flag;
 }
 
 void CameraController::reset(glm::vec3 pos) {

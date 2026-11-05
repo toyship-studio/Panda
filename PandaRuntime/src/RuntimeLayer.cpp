@@ -11,6 +11,7 @@
 #include <Panda/Assets/StaticResources.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/Input.hpp>
+#include <Panda/GameLogic/Systems/ScriptSystem.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Renderer/SceneWind.hpp>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
@@ -174,6 +175,18 @@ void RuntimeLayer::onEvent(Fern::Event *event) {
     if (event->type == Fern::EventType::WindowResize) {
         syncViewportWithWindow();
         if (m_pandaUI) { m_pandaUI->syncWindow(event->getWindow()); }
+    }
+    // In a game the window is the game: its focus and its minimizing are the application's.
+    if (event->type == Fern::EventType::WindowFocus) { Input::setFocused(true); }
+    if (event->type == Fern::EventType::WindowLostFocus) { Input::setFocused(false); }
+    if (m_world && m_world->isRunning()) {
+        switch (event->type) {
+            case Fern::EventType::WindowFocus: ScriptSystem::applicationFocus(*m_world, true); break;
+            case Fern::EventType::WindowLostFocus: ScriptSystem::applicationFocus(*m_world, false); break;
+            case Fern::EventType::WindowMinimized: ScriptSystem::applicationPause(*m_world, true); break;
+            case Fern::EventType::WindowRestored: ScriptSystem::applicationPause(*m_world, false); break;
+            default: break;
+        }
     }
 
     if (m_pandaUI && m_pandaUI->handleEvent(event)) { event->isHandled = true; }

@@ -122,6 +122,8 @@ struct ViewportToolFrame {
     glm::mat4 viewProj;
     glm::vec3 cameraPosition;
     bool viewportHovered;
+    glm::vec2 pointerPosition; // the cursor in the viewport (points, relative to the Scene surface)
+    bool pointerDown;          // the left button is held over the Scene surface
     double deltaTime;
 };
 

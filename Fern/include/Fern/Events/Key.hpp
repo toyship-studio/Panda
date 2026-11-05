@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace Fern {
 
 enum class MouseButton { LEFT = 0, RIGHT = 1, MIDDLE = 2 };
@@ -137,5 +139,11 @@ enum class Key {
     KEY_MOD_ALT = 4,
     KEY_MOD_SUPER = 8
 };
+
+// The modifier keys held at the moment of an input event: a mask of KEY_MOD_SHIFT, KEY_MOD_CONTROL,
+// KEY_MOD_ALT and KEY_MOD_SUPER, filled by the platform from the state the OS reports with the
+// event (NSEvent.modifierFlags, GLFW mods, GetKeyState) — the truth, not a reconstruction from
+// the key events seen so far, so a release the window never saw cannot leave a modifier stuck.
+using Modifiers = uint32_t;
 
 } // namespace Fern

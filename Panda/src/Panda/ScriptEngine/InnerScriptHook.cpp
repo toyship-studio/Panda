@@ -62,6 +62,7 @@ namespace InternalCalls {
     }
 
     void application_SetCursorLocked(bool locked) {
+        if (locked && !Input::isFocused()) { return; } // the game has no input focus: lock it again in onApplicationFocus(true)
         Fern::setCursorLocked(locked);
     }
 
@@ -688,6 +689,8 @@ namespace ExternalCalls {
     InvokeFixedUpdateAtScript invokeFixedUpdateAtScript = nullptr;
     InvokeLateUpdateAtScript invokeLateUpdateAtScript = nullptr;
     InvokeStartAtScript invokeStartAtScript = nullptr;
+    InvokeApplicationFocusAtScript invokeApplicationFocusAtScript = nullptr;
+    InvokeApplicationPauseAtScript invokeApplicationPauseAtScript = nullptr;
     InvokeBeginCollisionTouch invokeBeginCollisionTouch = nullptr;
     InvokeEndCollisionTouch invokeEndCollisionTouch = nullptr;
     InvokeBeginSensorOverlap invokeBeginSensorOverlap = nullptr;
@@ -796,6 +799,8 @@ void bindScriptPluginApi(const ScriptPluginApi *api) {
     invokeFixedUpdateAtScript = api->invokeFixedUpdateAtScript;
     invokeLateUpdateAtScript = api->invokeLateUpdateAtScript;
     invokeStartAtScript = api->invokeStartAtScript;
+    invokeApplicationFocusAtScript = api->invokeApplicationFocusAtScript;
+    invokeApplicationPauseAtScript = api->invokeApplicationPauseAtScript;
     invokeBeginCollisionTouch = api->invokeBeginCollisionTouch;
     invokeEndCollisionTouch = api->invokeEndCollisionTouch;
     invokeBeginSensorOverlap = api->invokeBeginSensorOverlap;
@@ -820,6 +825,8 @@ void clearScriptPluginApi() {
     invokeFixedUpdateAtScript = nullptr;
     invokeLateUpdateAtScript = nullptr;
     invokeStartAtScript = nullptr;
+    invokeApplicationFocusAtScript = nullptr;
+    invokeApplicationPauseAtScript = nullptr;
     invokeBeginCollisionTouch = nullptr;
     invokeEndCollisionTouch = nullptr;
     invokeBeginSensorOverlap = nullptr;

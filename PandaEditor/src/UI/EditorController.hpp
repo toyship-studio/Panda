@@ -98,11 +98,13 @@ public:
     }
     void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
     void showSceneView(); // activates the Scene tab — Stop
-    bool isViewportFocused() const {
-        return m_viewportView && m_viewportView->isSceneFocused();
+    void focusGameView(); // the keyboard focus to the Game surface (a click on the game)
+    // Once a frame: what the Scene surface collected for the editor camera, the gizmo and the tools.
+    SceneNavigation takeSceneNavigation() {
+        return m_viewportView ? m_viewportView->takeSceneNavigation() : SceneNavigation{};
     }
-    bool isViewportHovered() const {
-        return m_viewportView && m_viewportView->isSceneHovered();
+    ScenePointer takeScenePointer() {
+        return m_viewportView ? m_viewportView->takeScenePointer() : ScenePointer{};
     }
     void setGizmoVisible(bool visible) {
         if (m_viewportView) { m_viewportView->setGizmoVisible(visible); }

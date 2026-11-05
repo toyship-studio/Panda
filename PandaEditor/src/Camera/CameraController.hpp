@@ -8,6 +8,10 @@
 
 namespace Panda {
 
+// The fly camera of the Scene viewport. It reads no input itself: the Scene surface of the editor
+// (a PandaUI view) collects what the user did over it this frame — the held WASD, the rotation of
+// a right-button drag or a trackpad gesture, the zoom of the wheel — and hands it in as a
+// Navigation. The input of the window (Panda::Input) belongs to the game.
 class CameraController {
     struct Animation {
         bool isActive = false;
@@ -18,16 +22,24 @@ class CameraController {
     };
 
 public:
+    struct Navigation {
+        bool forward = false;
+        bool backward = false;
+        bool left = false;
+        bool right = false;
+        bool blocked = false;  // Shift or Control is held: a shortcut is being typed, not a flight
+        glm::vec2 rotate{0.f}; // the rotation of the frame in points (a drag) or scaled scroll units
+        float zoom = 0.f;      // the wheel of the frame, in notches
+    };
+
     CameraController();
-    void update(float deltaTime);
+    void update(float deltaTime, const Navigation &navigation);
     const glm::mat4 getViewMatrix();
     const glm::mat4 getSkyViewMatrix();
     glm::vec3 getPosition();
     void setPosition(glm::vec3 position);
     glm::quat getRotation();
     void setRotation(glm::quat quat);
-    void setMoveActive(bool flag);
-    void setRotationActive(bool flag);
     void setMoveSpeed(float metersPerSecond) {
         m_moveSpeed = metersPerSecond;
     }
@@ -39,11 +51,6 @@ private:
     void syncRotationFromAngles();
     void syncAnglesFromRotation(glm::quat rotation);
 
-    bool m_isMoveActive;
-    bool m_isRotationActive;
-    bool m_cursorStarted;
-    double m_lastMouseX;
-    double m_lastMouseY;
     TransformComponent m_transform;
     Animation m_animation;
     glm::vec4 m_front;

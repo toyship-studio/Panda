@@ -39,4 +39,24 @@ public:
         : Event(EventType::QuitRequest) {}
 };
 
+// WindowFocus / WindowLostFocus: the window got or lost the keyboard focus.
+class WindowFocusEvent : public Event {
+public:
+    WindowFocusEvent(bool focused, Window *window)
+        : Event(focused ? EventType::WindowFocus : EventType::WindowLostFocus, window)
+        , focused(focused) {}
+
+    bool focused;
+};
+
+// WindowMinimized / WindowRestored.
+class WindowMinimizeEvent : public Event {
+public:
+    WindowMinimizeEvent(bool minimized, Window *window)
+        : Event(minimized ? EventType::WindowMinimized : EventType::WindowRestored, window)
+        , minimized(minimized) {}
+
+    bool minimized;
+};
+
 } // namespace Fern

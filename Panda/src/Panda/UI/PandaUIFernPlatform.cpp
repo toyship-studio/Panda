@@ -20,15 +20,6 @@ namespace Panda {
 
 namespace PandaUIInternal {
 
-    static bool s_leftShiftDown = false;
-    static bool s_rightShiftDown = false;
-    static bool s_leftControlDown = false;
-    static bool s_rightControlDown = false;
-    static bool s_leftAltDown = false;
-    static bool s_rightAltDown = false;
-    static bool s_leftSuperDown = false;
-    static bool s_rightSuperDown = false;
-
     static PandaUI::PointerButton toPointerButton(Fern::MouseButton button) {
         switch (button) {
             case Fern::MouseButton::LEFT:
@@ -72,56 +63,19 @@ namespace PandaUIInternal {
         return Fern::Cursor::ARROW;
     }
 
-    static void updateModifierState(PandaUI::Key key, bool isDown) {
-        switch (key) {
-            case PandaUI::Key::LeftShift:
-                s_leftShiftDown = isDown;
-                break;
-            case PandaUI::Key::RightShift:
-                s_rightShiftDown = isDown;
-                break;
-            case PandaUI::Key::LeftControl:
-                s_leftControlDown = isDown;
-                break;
-            case PandaUI::Key::RightControl:
-                s_rightControlDown = isDown;
-                break;
-            case PandaUI::Key::LeftAlt:
-                s_leftAltDown = isDown;
-                break;
-            case PandaUI::Key::RightAlt:
-                s_rightAltDown = isDown;
-                break;
-            case PandaUI::Key::LeftSuper:
-                s_leftSuperDown = isDown;
-                break;
-            case PandaUI::Key::RightSuper:
-                s_rightSuperDown = isDown;
-                break;
-            default:
-                break;
-        }
+    // The PandaUI modifier flags of an event, from the modifiers Fern reports with it.
+    static void applyModifiers(PandaUI::KeyEvent &event, Fern::Modifiers modifiers) {
+        event.isShiftDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SHIFT)) != 0;
+        event.isControlDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_CONTROL)) != 0;
+        event.isAltDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_ALT)) != 0;
+        event.isSuperDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SUPER)) != 0;
     }
 
-    void resetModifierState() {
-        s_leftShiftDown = false;
-        s_rightShiftDown = false;
-        s_leftControlDown = false;
-        s_rightControlDown = false;
-        s_leftAltDown = false;
-        s_rightAltDown = false;
-        s_leftSuperDown = false;
-        s_rightSuperDown = false;
-    }
-
-    static PandaUI::KeyEvent makeKeyEvent(PandaUI::Key key) {
-        PandaUI::KeyEvent event;
-        event.key = key;
-        event.isShiftDown = s_leftShiftDown || s_rightShiftDown;
-        event.isControlDown = s_leftControlDown || s_rightControlDown;
-        event.isAltDown = s_leftAltDown || s_rightAltDown;
-        event.isSuperDown = s_leftSuperDown || s_rightSuperDown;
-        return event;
+    static void applyModifiers(PandaUI::PointerEvent &event, Fern::Modifiers modifiers) {
+        event.isShiftDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SHIFT)) != 0;
+        event.isControlDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_CONTROL)) != 0;
+        event.isAltDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_ALT)) != 0;
+        event.isSuperDown = (modifiers & static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SUPER)) != 0;
     }
 
     PandaUIWindowEntry *findWindow(Handle handle) {
@@ -214,18 +168,16 @@ namespace PandaUIInternal {
                 return true;
             case Fern::EventType::KeyPressed: {
                 const auto *keyEvent = static_cast<const Fern::KeyPressedEvent *>(event);
-                const PandaUI::Key key = toKey(keyEvent->key);
-                updateModifierState(key, true);
                 outEvent.type = PandaUI::EventType::KeyDown;
-                outEvent.key = makeKeyEvent(key);
+                outEvent.key.key = toKey(keyEvent->key);
+                applyModifiers(outEvent.key, keyEvent->modifiers);
                 return true;
             }
             case Fern::EventType::KeyReleased: {
                 const auto *keyEvent = static_cast<const Fern::KeyReleasedEvent *>(event);
-                const PandaUI::Key key = toKey(keyEvent->key);
                 outEvent.type = PandaUI::EventType::KeyUp;
-                outEvent.key = makeKeyEvent(key);
-                updateModifierState(key, false);
+                outEvent.key.key = toKey(keyEvent->key);
+                applyModifiers(outEvent.key, keyEvent->modifiers);
                 return true;
             }
             case Fern::EventType::InputCharacter: {
@@ -241,6 +193,7 @@ namespace PandaUIInternal {
                 outEvent.pointer.position =
                     toPandaUIPoint(*entry, static_cast<float>(mouseEvent->x), static_cast<float>(mouseEvent->y));
                 outEvent.pointer.delta = {static_cast<float>(mouseEvent->dx), static_cast<float>(mouseEvent->dy)};
+                applyModifiers(outEvent.pointer, mouseEvent->modifiers);
                 return true;
             }
             case Fern::EventType::MouseButtonPressed:
@@ -252,6 +205,7 @@ namespace PandaUIInternal {
                 outEvent.pointer.type = PandaUI::PointerType::Mouse;
                 outEvent.pointer.button = toPointerButton(mouseEvent->button);
                 outEvent.pointer.position = toPandaUIPoint(*entry, cursorPosition.x, cursorPosition.y);
+                applyModifiers(outEvent.pointer, mouseEvent->modifiers);
                 return true;
             }
             case Fern::EventType::MouseScrolled: {

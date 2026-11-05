@@ -3,7 +3,6 @@
 #include <PandaEditorKit/EditorHost.hpp>
 
 #include <Panda/GameLogic/GameContext.hpp>
-#include <Panda/GameLogic/Input.hpp>
 #include <Panda/Terrain/TerrainCommands.hpp>
 #include <Panda/Terrain/TerrainComponents.hpp>
 #include <Panda/WorldCommands/CommandHistory.hpp>
@@ -378,10 +377,7 @@ void TerrainTool::update(const Editor::ViewportToolFrame &frame) {
     m_viewportHovered = viewportHovered;
 
     // Ray from the cursor: viewport-local position → far point → direction.
-    const Vec2 screen(
-        static_cast<float>(Input::getMouseViewportPositionX()),
-        static_cast<float>(Input::getMouseViewportPositionY())
-    );
+    const Vec2 screen(frame.pointerPosition.x, frame.pointerPosition.y);
     const Vec3 farPoint = camera.screenCoordToWorld(view, screen, camera.getFar());
     const glm::vec3 worldDir =
         glm::normalize(glm::vec3(farPoint.x, farPoint.y, farPoint.z) - cameraPosition);
@@ -389,7 +385,7 @@ void TerrainTool::update(const Editor::ViewportToolFrame &frame) {
     Target target;
     const bool hasTarget =
         m_settings.isActive() && resolveTarget(world, cameraPosition, worldDir, camera.getFar(), target);
-    const bool mouseDown = Input::isMouseButtonPressed(Fern::MouseButton::LEFT);
+    const bool mouseDown = frame.pointerDown;
     if (!hasTarget || (m_strokeActive && AssetId(m_settings.assetId) != m_strokeAssetId)) {
         finishStroke();
         if (!hasTarget) { return; }

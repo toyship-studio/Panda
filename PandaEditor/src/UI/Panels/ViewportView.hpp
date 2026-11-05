@@ -18,33 +18,62 @@ public:
     virtual void viewportViewDidRequestGizmoMode(int mode) = 0; // keys 1/2/3 → 0/1/2
 };
 
-// 3D scene surface. INTENTIONALLY narrow (see migration-readiness): shows the scene texture through
-// ImageView (the engine's FBO is fed into setSceneTexture on migration — seam #1), catches focus,
-// handles the gizmo switching keys (1/2/3, as in PandaEditor) and records the local coordinates of a
-// click for mouse-picking. Does NOT implement camera navigation (trackpad rotation + WASD) — it stays
-// in PandaEditor CameraController as is and is connected on migration.
+// The navigation of the editor camera collected by the Scene surface since the last take: the
+// held WASD (while the surface has the focus), the rotation of a right-button drag or a trackpad
+// gesture, the zoom of the wheel.
+struct SceneNavigation {
+    bool forward = false;
+    bool backward = false;
+    bool left = false;
+    bool right = false;
+    bool blocked = false; // Shift or Control is held: the keys belong to a shortcut
+    PandaUI::Point rotate;
+    float zoom = 0.f;
+};
+
+// The pointer over the Scene surface, for the gizmo and the viewport tools of the editor parts.
+struct ScenePointer {
+    PandaUI::Point position;    // window points
+    PandaUI::Point local;       // relative to the surface
+    bool hovered = false;
+    bool leftDown = false;      // the left button is held (it went down over the surface)
+    bool leftPressed = false;   // it went down since the last take
+};
+
+// The Scene surface: shows the frame of the Scene viewport (the engine feeds its texture) and is
+// the input surface of the editor's 3D work — the camera navigation (WASD, right-button drag,
+// trackpad, wheel), the gizmo and the tools of the editor parts read the pointer from here, the
+// left button starts a rect-select. Nothing of it goes through Panda::Input, which is the game's.
 class ViewportView final : public PandaUI::Panel {
 public:
     explicit ViewportView(ViewportViewOutput *output);
+    // Once a frame, by the engine: what the user did over the surface since the last take (the
+    // accumulated rotation and zoom are reset) and where the pointer is.
+    SceneNavigation takeNavigation();
+    ScenePointer takePointer();
     // Scene FBO texture (seam #1; empty before the migration). flipVertical=true for the engine's
     // render-to-texture (it arrives flipped along Y).
     void setSceneTexture(PandaUI::TextureHandle texture, bool flipVertical = false);
-    // The gizmo is "over a handle"/being dragged → ViewportView does not consume the LMB (rect-select),
-    // lets it through to the gizmo's Panda::Input.
+    // The gizmo is "over a handle"/being dragged → the LMB is its (it reads the pointer through
+    // takePointer), rect-select does not start.
     void setGizmoActive(bool active) {
         m_gizmoActive = active;
     }
-    // A viewport tool (terrain brush etc., EditorExtensions::viewportTools) drives the LMB → it goes
-    // to the tool (Panda::Input), rect-select does not start. Set by EditorLayer every frame.
+    // A viewport tool (terrain brush etc., EditorExtensions::viewportTools) drives the LMB → it is
+    // the tool's (ViewportToolFrame carries the pointer), rect-select does not start. Set by
+    // EditorLayer every frame.
     void setToolCapture(bool capture) {
         m_toolCapture = capture;
     }
 
 protected:
-    bool pointerDown(PandaUI::PointerEvent &event) override; // focus + start of rect-select (LMB)
-    bool pointerMove(PandaUI::PointerEvent &event) override; // dragging the rectangle → selection update
+    bool pointerDown(PandaUI::PointerEvent &event) override; // focus; LMB — rect-select / gizmo / tool, RMB — rotation
+    bool pointerMove(PandaUI::PointerEvent &event) override; // the pointer, the rectangle, the rotation
     bool pointerUp(PandaUI::PointerEvent &event) override;   // release → rect-select commit
-    bool keyDown(PandaUI::KeyEvent &event) override;         // 1/2/3 — gizmo mode; the rest is passed through
+    bool scroll(PandaUI::ScrollEvent &event) override;       // trackpad — rotation, wheel — zoom
+    bool keyDown(PandaUI::KeyEvent &event) override;         // 1/2/3 — gizmo mode; WASD — flight; the rest is passed through
+    bool keyUp(PandaUI::KeyEvent &event) override;
+    void focusChanged(bool focused) override;                // the held keys are forgotten with the focus
 
 private:
     PandaUI::Point toLocal(PandaUI::Point screenPoint) const; // screen points → local (relative to the viewport)
@@ -60,6 +89,15 @@ private:
     bool m_gizmoActive = false;                       // gizmo claims the LMB (over a handle/dragged) → no rect-select
     bool m_toolCapture = false;                       // a viewport tool drives the LMB → no rect-select
     PandaUI::Point m_pressPosition;                   // fixed corner of the rectangle (screen points)
+    // The navigation and the pointer since the last take.
+    bool m_heldForward = false, m_heldBackward = false, m_heldLeft = false, m_heldRight = false;
+    bool m_shiftHeld = false, m_controlHeld = false;
+    bool m_rightDown = false; // a right-button drag rotates the camera
+    PandaUI::Point m_rotate;
+    float m_zoom = 0.f;
+    PandaUI::Point m_pointer;
+    bool m_leftDown = false;
+    bool m_leftPressed = false;
 };
 
 } // namespace Editor

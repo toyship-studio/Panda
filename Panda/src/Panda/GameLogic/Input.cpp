@@ -15,6 +15,7 @@ namespace Panda {
 
 uint64_t Input::frame = 1;
 uint64_t Input::fixedTick = 1;
+bool Input::focused = true;
 bool Input::inFixedTick;
 bool Input::keys[1024];
 uint64_t Input::keyPressFrames[1024];
@@ -42,6 +43,13 @@ void Input::onEvent(Fern::Event *event) {
         case EventType::WindowCloseRequest:
             break;
         case EventType::QuitRequest:
+            break;
+        case EventType::WindowFocus:
+        case EventType::WindowMinimized:
+        case EventType::WindowRestored:
+            break;
+        case EventType::WindowLostFocus:
+            Input::releaseAll();
             break;
         case EventType::WindowResize: {
             const WindowResizeEvent *ev = static_cast<const WindowResizeEvent *>(event);
@@ -196,6 +204,20 @@ void Input::postScrollEvent(double x, double y, bool isTrackpad, bool isMomentum
 
 void Input::setWindowSize(Size size) {
     windowSize = size;
+}
+
+void Input::releaseAll() {
+    for (bool &key : keys) { key = false; }
+    for (bool &button : mouseButtons) { button = false; }
+    activeTouches.clear();
+}
+
+void Input::setFocused(bool _focused) {
+    focused = _focused;
+}
+
+bool Input::isFocused() {
+    return focused;
 }
 
 Size Input::getWindowSize() {

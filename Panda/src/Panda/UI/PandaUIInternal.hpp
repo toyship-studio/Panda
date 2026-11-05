@@ -67,7 +67,6 @@ namespace PandaUIInternal {
     // Fern::Event → PandaUI::Event (false — the event is not about the UI); tracks the modifier
     // state.
     bool makeRuntimeEvent(Fern::Event *event, PandaUI::Event &outEvent);
-    void resetModifierState();
     // Platform ui_*: windows, viewport, cursor, clipboard, static resources.
     void bindPlatformHostApi(ScriptHostApi &hostApi);
 

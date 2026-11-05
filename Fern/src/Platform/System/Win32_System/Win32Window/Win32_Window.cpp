@@ -21,6 +21,18 @@ namespace {
     constexpr wchar_t WINDOW_CLASS_NAME[] = L"FernWin32Window";
     constexpr UINT_PTR MENU_COMMAND_ID_BASE = 1000;
 
+    // The modifiers held right now, for the input events (Key.hpp, Modifiers).
+    Modifiers inputModifiers() {
+        Modifiers result = 0;
+        if (GetKeyState(VK_SHIFT) & 0x8000) { result |= static_cast<Modifiers>(Key::KEY_MOD_SHIFT); }
+        if (GetKeyState(VK_CONTROL) & 0x8000) { result |= static_cast<Modifiers>(Key::KEY_MOD_CONTROL); }
+        if (GetKeyState(VK_MENU) & 0x8000) { result |= static_cast<Modifiers>(Key::KEY_MOD_ALT); }
+        if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) {
+            result |= static_cast<Modifiers>(Key::KEY_MOD_SUPER);
+        }
+        return result;
+    }
+
     MenuModifiers modifiersFromKeyboardState() {
         MenuModifiers result = MenuShortcut::None;
         if (GetKeyState(VK_SHIFT) & 0x8000) { result |= MenuShortcut::Shift; }
@@ -812,7 +824,7 @@ void Win32_Window::setCursorLockActive(bool active) {
         ClipCursor(&clip);
         ignoreNextMouseEvents();
         const float scale = getContentScale();
-        getEventQueue()->postMouseEvent(center.x / scale, center.y / scale, 0, 0, this);
+        getEventQueue()->postMouseEvent(center.x / scale, center.y / scale, 0, 0, this, inputModifiers());
     } else {
         ClipCursor(nullptr);
         m_hasPrevMousePosition = false;
@@ -832,12 +844,12 @@ void Win32_Window::postDirectManipulationScroll(float dxPixels, float dyPixels, 
     // Match the Cocoa backend: precise trackpad deltas are logical points * 0.025.
     const double deltaX = static_cast<double>(dxPixels) / scale * 0.025;
     const double deltaY = static_cast<double>(dyPixels) / scale * 0.025;
-    getEventQueue()->postScrollEvent(deltaX, deltaY, true, isMomentum, false, this);
+    getEventQueue()->postScrollEvent(deltaX, deltaY, true, isMomentum, false, this, inputModifiers());
 }
 
 void Win32_Window::postDirectManipulationGestureEnd() {
     // Fingers lifted: mirrors Cocoa's NSEventPhaseEnded event that precedes momentum.
-    getEventQueue()->postScrollEvent(0.0, 0.0, true, false, true, this);
+    getEventQueue()->postScrollEvent(0.0, 0.0, true, false, true, this, inputModifiers());
 }
 
 void Win32_Window::postSizeEventFromClient() {
@@ -849,6 +861,14 @@ void Win32_Window::postSizeEventFromClient() {
         static_cast<uint32_t>(std::round((client.bottom - client.top) / scale)),
         this
     );
+}
+
+void Win32_Window::releaseHeldKeys() {
+    for (int index = 0; index < static_cast<int>(sizeof(m_keyDown) / sizeof(m_keyDown[0])); index++) {
+        if (!m_keyDown[index]) { continue; }
+        m_keyDown[index] = false;
+        getEventQueue()->postKeyEvent(static_cast<Key>(index), false, this, false, 0);
+    }
 }
 
 void Win32_Window::postMouseMove(double x, double y) {
@@ -877,11 +897,11 @@ void Win32_Window::postMouseMove(double x, double y) {
             m_prevMouseX = center.x;
             m_prevMouseY = center.y;
         }
-        getEventQueue()->postMouseEvent(center.x / scale, center.y / scale, dx / scale, dy / scale, this);
+        getEventQueue()->postMouseEvent(center.x / scale, center.y / scale, dx / scale, dy / scale, this, inputModifiers());
         return;
     }
 
-    getEventQueue()->postMouseEvent(x / scale, y / scale, dx / scale, dy / scale, this);
+    getEventQueue()->postMouseEvent(x / scale, y / scale, dx / scale, dy / scale, this, inputModifiers());
 }
 
 LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -890,6 +910,13 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
             if (m_isClosable) { getEventQueue()->postWindowCloseRequest(this); }
             return 0;
         case WM_SIZE:
+            if (wParam == SIZE_MINIMIZED && !m_isMinimized) {
+                m_isMinimized = true;
+                getEventQueue()->postWindowMinimizedEvent(true, this);
+            } else if (wParam != SIZE_MINIMIZED && m_isMinimized) {
+                m_isMinimized = false;
+                getEventQueue()->postWindowMinimizedEvent(false, this);
+            }
             postSizeEventFromClient();
             return 0;
         case WM_DPICHANGED: {
@@ -907,10 +934,15 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
         }
         case WM_SETFOCUS:
             m_isFocused = true;
+            getEventQueue()->postWindowFocusEvent(true, this);
             return 0;
         case WM_KILLFOCUS:
             m_isFocused = false;
             if (m_isCursorLockActive) { setCursorLockActive(false); }
+            // Windows sends no WM_KEYUP for the keys held across the loss: the window posts them,
+            // so every consumer sees a release for every press.
+            releaseHeldKeys();
+            getEventQueue()->postWindowFocusEvent(false, this);
             return 0;
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT) {
@@ -930,7 +962,7 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
             const MouseButton button = message == WM_LBUTTONDOWN ? MouseButton::LEFT
                                        : message == WM_RBUTTONDOWN ? MouseButton::RIGHT
                                                                    : MouseButton::MIDDLE;
-            getEventQueue()->postMouseButtonEvent(button, true, this);
+            getEventQueue()->postMouseButtonEvent(button, true, this, inputModifiers());
             return 0;
         }
         case WM_LBUTTONUP:
@@ -939,7 +971,7 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
             const MouseButton button = message == WM_LBUTTONUP ? MouseButton::LEFT
                                        : message == WM_RBUTTONUP ? MouseButton::RIGHT
                                                                  : MouseButton::MIDDLE;
-            getEventQueue()->postMouseButtonEvent(button, false, this);
+            getEventQueue()->postMouseButtonEvent(button, false, this, inputModifiers());
             if ((wParam & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) == 0) { ReleaseCapture(); }
             return 0;
         }
@@ -949,14 +981,14 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
             // Precision touchpads report sub-notch deltas; a physical wheel sends
             // multiples of WHEEL_DELTA. Momentum phases are unknown at this layer.
             const bool isTrackpad = (rawDelta % WHEEL_DELTA) != 0;
-            getEventQueue()->postScrollEvent(0.0, delta, isTrackpad, false, false, this);
+            getEventQueue()->postScrollEvent(0.0, delta, isTrackpad, false, false, this, inputModifiers());
             return 0;
         }
         case WM_MOUSEHWHEEL: {
             const short rawDelta = GET_WHEEL_DELTA_WPARAM(wParam);
             const double delta = static_cast<double>(rawDelta) / WHEEL_DELTA;
             const bool isTrackpad = (rawDelta % WHEEL_DELTA) != 0;
-            getEventQueue()->postScrollEvent(-delta, 0.0, isTrackpad, false, false, this);
+            getEventQueue()->postScrollEvent(-delta, 0.0, isTrackpad, false, false, this, inputModifiers());
             return 0;
         }
         case DM_POINTERHITTEST:
@@ -968,7 +1000,8 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
             if (key != Key::KEY_UNKNOWN) {
                 const bool isRepeat = (lParam & (1ll << 30)) != 0;
                 if (!isRepeat && dispatchMenuShortcut(key)) { return 0; }
-                getEventQueue()->postKeyEvent(key, true, this, isRepeat);
+                m_keyDown[static_cast<int>(key)] = true;
+                getEventQueue()->postKeyEvent(key, true, this, isRepeat, inputModifiers());
             }
             if (message == WM_SYSKEYDOWN) { break; } // let DefWindowProc run Alt+menu navigation
             return 0;
@@ -976,7 +1009,10 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_KEYUP:
         case WM_SYSKEYUP: {
             const Key key = keyFromVirtualKey(wParam, lParam);
-            if (key != Key::KEY_UNKNOWN) { getEventQueue()->postKeyEvent(key, false, this); }
+            if (key != Key::KEY_UNKNOWN) {
+                m_keyDown[static_cast<int>(key)] = false;
+                getEventQueue()->postKeyEvent(key, false, this, false, inputModifiers());
+            }
             if (message == WM_SYSKEYUP) { break; }
             return 0;
         }

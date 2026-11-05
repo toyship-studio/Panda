@@ -1,5 +1,6 @@
 #import "CocoaWindowDelegate.h"
 #import "CocoaWindow.h"
+#import "WonderView.h"
 
 using namespace Fern;
 
@@ -26,10 +27,24 @@ EventQueue* getEventQueue();
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
     window->didBecomeKey();
+    getEventQueue()->postWindowFocusEvent(true, window);
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
     window->didResignKey();
+    // The releases of the keys held across the loss (Cmd+Tab, a system shortcut that takes the
+    // keyboard) never reach the window: the view posts them itself, then the focus goes.
+    NSView *view = [window->getNative() contentView];
+    if ([view isKindOfClass:[WonderView class]]) { [(WonderView *)view releaseHeldKeys]; }
+    getEventQueue()->postWindowFocusEvent(false, window);
+}
+
+- (void)windowDidMiniaturize:(NSNotification *)notification {
+    getEventQueue()->postWindowMinimizedEvent(true, window);
+}
+
+- (void)windowDidDeminiaturize:(NSNotification *)notification {
+    getEventQueue()->postWindowMinimizedEvent(false, window);
 }
 
 - (BOOL)windowShouldClose:(id)sender {

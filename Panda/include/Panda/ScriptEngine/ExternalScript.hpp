@@ -69,6 +69,18 @@ public:
         ExternalCalls::invokeLateUpdateAtScript(entityId, id, deltaTime);
     }
 
+    void invokeApplicationFocus(bool focused) {
+        if (ExternalCalls::invokeApplicationFocusAtScript) {
+            ExternalCalls::invokeApplicationFocusAtScript(entityId, id, focused);
+        }
+    }
+
+    void invokeApplicationPause(bool paused) {
+        if (ExternalCalls::invokeApplicationPauseAtScript) {
+            ExternalCalls::invokeApplicationPauseAtScript(entityId, id, paused);
+        }
+    }
+
     void invokeBeginCollisionTouch(Handle other) {
         ExternalCalls::invokeBeginCollisionTouch(entityId, id, other);
     }

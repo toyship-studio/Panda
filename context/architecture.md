@@ -13,9 +13,16 @@ and background jobs (`PandaAsync`).
   callback, asserts, the allocator and the memory blob, the profiler, platform and graphics API
   detection, the command buffer, a semaphore, thread names, a file reader, SHA-256.
 - `Rain`: serialization (text coders for JSON and YAML, and a binary coder).
-- `Fern`: the platform layer: windows, OS events, input, graphics context, native menu,
-  application lifecycle, and the network layer `Fern::Net` on the stacks of the systems
-  (`context/networking.md`); it links PandaAsync for the completions of requests.
+- `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
+  window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
+  context, native menu, and the network layer `Fern::Net` on the stacks of the systems
+  (`context/networking.md`); it links PandaAsync for the completions of requests. Every input
+  event carries the modifiers of its moment (`Fern::Modifiers`, read from the OS by the
+  platform), so no consumer tracks the modifier state: the PandaUI hosts copy it into their
+  events. Every press gets its release: a focus loss posts the releases of the keys still held
+  (the OS swallows them), on macOS a modifier release the window never saw (Cmd+Shift+4, Cmd+Tab)
+  is posted by the next event; `Panda::Input` also drops its buttons and touches on the loss
+  (`Input::releaseAll`).
 - `Miren`: the renderer abstraction with Metal, Direct3D 11 and OpenGL/GLES backends. The backend
   is fixed at build time by the CMake option `PANDA_SHADER_BACKEND` (`cmake/shader_bake.cmake`):
   Metal is the default on macOS, D3D11 on Windows, OpenGL elsewhere (GLES on mobile targets). The
@@ -228,9 +235,9 @@ Unity's Scene and Game views:
   In EDIT it shows the editing world; in PLAY the playing copy, as it runs (what a separate
   Simulate mode used to do: Simulate is gone, the Scene tab during Play is it).
 - **Game** — the frame of the game: the main camera, the game PandaUI on top (`GAME_UI_VIEW` draws
-  into the Game surface), the input of the game (`Panda::Input` and the game UI get the events
-  while the Game renders; `Input`'s viewport frame is the Game tab's). No editor layer ever lands
-  in it. In EDIT it is a still view of the main camera over the editing world; a world without a
+  into the Game surface), the input of the game (`Panda::Input` and the game UI get the game's
+  events while the Game renders; `Input`'s viewport frame is always the Game tab's). No editor
+  layer ever lands in it. In EDIT it is a still view of the main camera over the editing world; a world without a
   main camera is shown through the editor camera with a caption.
 - **One world render per frame.** The world renders once, into one set of scene targets
   (`SceneRenderTargets`: the HDR frame, the selection mask, the id buffer), sized to the viewport
@@ -243,6 +250,24 @@ Unity's Scene and Game views:
 - `SceneState` is EDIT or PLAY; Play opens (or raises) the Game tab and gives it the focus, Stop
   raises the Scene. Edits made in PLAY land in the playing copy and are discarded on Stop, as
   before: the tabs change where one looks, not what survives.
+- **`Panda::Input` is the game's input, and only the game's.** `EditorLayer::onEvent` gives
+  every input event either to the game or to the editor chrome, never to both, and marks the
+  editor's as handled so `Application` feeds `Input` nothing of them. In Play, while the Game
+  renders, the game's are the pointer over the Game surface and the keys of the focused Game tab
+  (`eventBelongsToGame`; a button's release goes where its press went, so a drag may cross the
+  surface edge either way); the game UI sees them first, then `Input`. A click on the game
+  focuses the tab. The game *has* the input (`Input::setFocused`, `EditorLayer::updateGameInput`)
+  while the Game tab renders and has the focus, the window is focused and no modal is up: a
+  transition is the scripts' `onApplicationFocus`, the loss releases what the game held
+  (`Input::releaseAll`) and the cursor lock (an FPS is left by clicking elsewhere; it locks again
+  on focus — `setCursorLocked` is ignored while the game has no focus).
+- **The editor's 3D input lives in the Scene surface** (`ViewportView`, a PandaUI view), not in
+  `Panda::Input`: it collects the flight of the editor camera (WASD while it has the focus, a
+  right-button drag or a trackpad gesture rotate, the wheel zooms) and the pointer, and the
+  engine takes them once a frame (`takeNavigation` → `CameraController::Navigation` →
+  `EditorViewports::beginFrame`; `takePointer` → the gizmo's `InputState` and
+  `ViewportToolFrame::pointerPosition` / `pointerDown` of the tools). The camera therefore reads
+  no input of its own, and the editor keeps no flags about whose input it is.
 - `EditorLayer` keeps the worlds and the states; `EditorViewports` owns the targets, the surfaces,
   the editor camera, the gizmo and the selection (`SceneViewport`), the grid, the helpers and the
   postprocessing, and renders the frame of the live viewport (`beginFrame` → `World::update` →
@@ -445,7 +470,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (32 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (33 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
@@ -454,7 +479,12 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK the bytes of a font asset (the `FontHandle` fields) in the "return the size / fill the
   buffer" pattern of `ui_LoadStaticResource`. v31 and v32 changed the layout of
   `PandaUI::DrawCommand`, which crosses the ABI with the draw list (the rounded clip mask of a
-  command, with a radius per corner).
+  command, with a radius per corner). v33 appended `invokeApplicationFocusAtScript` and
+  `invokeApplicationPauseAtScript` to `ScriptPluginApi` (`Script::onApplicationFocus` /
+  `onApplicationPause`): the editor fires the focus with the input of the Game tab
+  (`EditorLayer::updateGameInput`), the runtime with the focus of the window; the pause comes from
+  the window being minimized (`Fern` `WindowMinimized` / `WindowRestored`) and later from the
+  background of a mobile platform.
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity

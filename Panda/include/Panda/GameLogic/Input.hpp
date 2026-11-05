@@ -46,6 +46,14 @@ public:
     static bool isMomentumScroll();
     static Size getWindowSize();
     static void onEvent(Fern::Event *event);
+    // Every key, mouse button and touch is released: the window lost the focus and the releases of
+    // what was held will never arrive (also called by onEvent for WindowLostFocus).
+    static void releaseAll();
+    // Whether the game has the input right now: in a game the window is focused, in the editor
+    // the Game tab renders and has the focus. The host sets it; a transition is the scripts'
+    // onApplicationFocus. While it is false the cursor is not locked for the game.
+    static void setFocused(bool focused);
+    static bool isFocused();
     static void setViewportFrame(Rect frame);
     static void nextFrame();
     // Steps of the simulation (World::update). Inside a step the just-pressed queries answer per
@@ -71,6 +79,7 @@ private:
     // press arrays below means "never pressed", also before the first frame of the application.
     static uint64_t frame;
     static uint64_t fixedTick;
+    static bool focused;
     static bool inFixedTick;
     // Key states
     static bool keys[1024];

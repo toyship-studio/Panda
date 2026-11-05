@@ -13,4 +13,8 @@
 @property(nonatomic, assign) int ignoreMouseEvents;
 @property(nonatomic, assign) void *eventWindow;
 
+// Posts the releases of the keys the view has posted as pressed and not yet released: the window
+// resigned key and macOS will not deliver them.
+- (void)releaseHeldKeys;
+
 @end

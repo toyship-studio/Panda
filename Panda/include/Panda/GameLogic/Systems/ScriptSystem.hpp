@@ -25,6 +25,11 @@ namespace ScriptSystem {
     // same frame), then update and lateUpdate in class order.
     void update(World &world, double deltaTime);
     void lateUpdate(World &world, double deltaTime);
+    // The application gained or lost the focus of the game (the editor: the Game tab, the game: the
+    // window), was suspended or resumed (minimized; the background of a mobile platform): every
+    // script of the running world, in class order.
+    void applicationFocus(World &world, bool focused);
+    void applicationPause(World &world, bool paused);
 
 } // namespace ScriptSystem
 

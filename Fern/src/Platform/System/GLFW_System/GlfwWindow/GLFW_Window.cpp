@@ -709,6 +709,22 @@ GLFWwindow *GLFW_Window::getHandle() {
     return m_windowHandle;
 }
 
+namespace {
+    // The modifiers held right now (the cursor and scroll callbacks carry none; the key and button
+    // callbacks carry GLFW mods, whose bits are those of Key::KEY_MOD_*).
+    Modifiers glfwModifiers(GLFWwindow *window) {
+        const auto held = [window](int left, int right) {
+            return glfwGetKey(window, left) == GLFW_PRESS || glfwGetKey(window, right) == GLFW_PRESS;
+        };
+        Modifiers result = 0;
+        if (held(GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT)) { result |= static_cast<Modifiers>(Key::KEY_MOD_SHIFT); }
+        if (held(GLFW_KEY_LEFT_CONTROL, GLFW_KEY_RIGHT_CONTROL)) { result |= static_cast<Modifiers>(Key::KEY_MOD_CONTROL); }
+        if (held(GLFW_KEY_LEFT_ALT, GLFW_KEY_RIGHT_ALT)) { result |= static_cast<Modifiers>(Key::KEY_MOD_ALT); }
+        if (held(GLFW_KEY_LEFT_SUPER, GLFW_KEY_RIGHT_SUPER)) { result |= static_cast<Modifiers>(Key::KEY_MOD_SUPER); }
+        return result;
+    }
+} // namespace
+
 void GLFW_Window::addEventHandlers() {
     glfwSetWindowUserPointer(m_windowHandle, this);
     glfwSetWindowSizeCallback(m_windowHandle, [](GLFWwindow *windowHandle, int width, int height) {
@@ -735,11 +751,12 @@ void GLFW_Window::addEventHandlers() {
     });
     glfwSetKeyCallback(m_windowHandle, [](GLFWwindow *windowHandle, int key, int scancode, int action, int mods) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
+        const Modifiers modifiers = static_cast<Modifiers>(mods); // GLFW_MOD_* are the KEY_MOD_* bits
         if (action == GLFW_PRESS || action == GLFW_REPEAT) {
             if (action == GLFW_PRESS && self->dispatchMenuShortcut(static_cast<Key>(key), mods)) { return; }
-            getEventQueue()->postKeyEvent(static_cast<Key>(key), true, self, action == GLFW_REPEAT);
+            getEventQueue()->postKeyEvent(static_cast<Key>(key), true, self, action == GLFW_REPEAT, modifiers);
         } else if (action == GLFW_RELEASE) {
-            getEventQueue()->postKeyEvent(static_cast<Key>(key), false, self);
+            getEventQueue()->postKeyEvent(static_cast<Key>(key), false, self, false, modifiers);
         }
     });
     glfwSetCharCallback(m_windowHandle, [](GLFWwindow *windowHandle, unsigned int c) {
@@ -760,21 +777,34 @@ void GLFW_Window::addEventHandlers() {
         }
         Size unitScale = self->getUnitScale();
         getEventQueue()->postMouseEvent(
-            x / unitScale.width, y / unitScale.height, dx / unitScale.width, dy / unitScale.height, self
+            x / unitScale.width, y / unitScale.height, dx / unitScale.width, dy / unitScale.height, self,
+            glfwModifiers(windowHandle)
         );
     });
     glfwSetScrollCallback(m_windowHandle, [](GLFWwindow *windowHandle, double xoffset, double yoffset) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
-        getEventQueue()->postScrollEvent(xoffset, yoffset, false, false, false, self);
+        getEventQueue()->postScrollEvent(xoffset, yoffset, false, false, false, self, glfwModifiers(windowHandle));
     });
     glfwSetMouseButtonCallback(m_windowHandle, [](GLFWwindow *windowHandle, int button, int action, int mods) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
-        getEventQueue()->postMouseButtonEvent(static_cast<MouseButton>(button), action == GLFW_PRESS, self);
+        getEventQueue()->postMouseButtonEvent(
+            static_cast<MouseButton>(button), action == GLFW_PRESS, self, static_cast<Modifiers>(mods)
+        );
     });
     glfwSetWindowCloseCallback(m_windowHandle, [](GLFWwindow *windowHandle) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
         if (!self->m_isClosable) { return; }
         getEventQueue()->postWindowCloseRequest(self);
+    });
+    // GLFW itself releases the held keys and buttons when the focus goes; the event lets the
+    // consumers drop what they track on their own (modifier state).
+    glfwSetWindowFocusCallback(m_windowHandle, [](GLFWwindow *windowHandle, int focused) {
+        GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
+        getEventQueue()->postWindowFocusEvent(focused == GLFW_TRUE, self);
+    });
+    glfwSetWindowIconifyCallback(m_windowHandle, [](GLFWwindow *windowHandle, int iconified) {
+        GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
+        getEventQueue()->postWindowMinimizedEvent(iconified == GLFW_TRUE, self);
     });
     int width, height;
     glfwGetWindowSize(m_windowHandle, &width, &height);

@@ -45,7 +45,7 @@ public:
 
     // Once a frame, before the world updates: the frames of the tabs → the surfaces, the live
     // viewport of the frame (the rule above), the shared targets at its size, the viewport frame
-    // of Panda::Input.
+    // of Panda::Input (the Game's: the input of the window is the game's).
     void sync(const ViewportFrames &frames, bool playing);
     ViewportKind live() const {
         return m_live;
@@ -57,11 +57,14 @@ public:
         return m_live == ViewportKind::Game;
     }
 
-    // The frame of the world through the live viewport. Scene: the editor camera, updated here
-    // with the frame time. Game: the main camera of the world, whose aspect follows the Game
-    // surface; a world without a main camera is seen through the editor camera (gameHasCamera()
-    // tells the panel). simulate — physics and scripts run (Play).
-    WorldFrame beginFrame(World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings);
+    // The frame of the world through the live viewport. Scene: the editor camera, flown here by
+    // what the Scene surface collected this frame (navigation). Game: the main camera of the
+    // world, whose aspect follows the Game surface; a world without a main camera is seen through
+    // the editor camera (gameHasCamera() tells the panel). simulate — physics and scripts run (Play).
+    WorldFrame beginFrame(
+        World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings,
+        const CameraController::Navigation &navigation
+    );
     // After World::update of the same frame: the editor passes of the Scene (selection outline,
     // picking, grid, helper icons), the postprocessing chain of the main camera, the composite into
     // the output of the live surface. The game UI view is bound to the Game surface every frame.

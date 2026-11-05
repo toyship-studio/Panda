@@ -288,6 +288,11 @@ void EditorController::showSceneView() {
     if (m_dockManager) { m_dockManager->showPanel(SCENE_TAB_ID); }
 }
 
+void EditorController::focusGameView() {
+    if (!m_gameView || !m_root) { return; }
+    if (Context *context = m_root->getContext()) { context->setFocusedView(m_gameView.get()); }
+}
+
 Panda::DockLayoutState EditorController::captureDockLayout() const {
     Panda::DockLayoutState state = m_dockManager->captureLayout();
     state.worldSettingsVisible = m_viewportView && m_viewportView->isSidebarVisible();

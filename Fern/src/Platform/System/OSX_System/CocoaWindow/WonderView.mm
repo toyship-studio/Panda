@@ -6,6 +6,7 @@
 
 #import "WonderView.h"
 #import "Fern/Events/EventQueue.hpp"
+#import <IOKit/hidsystem/IOLLEvent.h> // NX_DEVICE*KEYMASK: the left / right modifier bits of NSEvent.modifierFlags
 #ifdef PANDA_GRAPHICS_METAL
 #import <QuartzCore/CAMetalLayer.h>
 #endif
@@ -153,29 +154,40 @@ static bool isKnownKey(Fern::Key key) {
     return key != Fern::Key::KEY_UNKNOWN;
 }
 
-static NSUInteger pandaKeyToCocoaModifierFlag(Fern::Key key) {
-    switch (key) {
-        case Fern::Key::KEY_LEFT_SHIFT:
-        case Fern::Key::KEY_RIGHT_SHIFT:
-            return NSEventModifierFlagShift;
-        case Fern::Key::KEY_LEFT_CONTROL:
-        case Fern::Key::KEY_RIGHT_CONTROL:
-            return NSEventModifierFlagControl;
-        case Fern::Key::KEY_LEFT_ALT:
-        case Fern::Key::KEY_RIGHT_ALT:
-            return NSEventModifierFlagOption;
-        case Fern::Key::KEY_LEFT_SUPER:
-        case Fern::Key::KEY_RIGHT_SUPER:
-            return NSEventModifierFlagCommand;
-        case Fern::Key::KEY_CAPS_LOCK:
-            return NSEventModifierFlagCapsLock;
-        default: return 0;
-    }
+// The eight modifier keys as Cocoa reports them: the generic flag of the pair and the
+// device-dependent bits of each side.
+struct ModifierKeyPair {
+    NSUInteger genericFlag;
+    NSUInteger leftFlag;
+    NSUInteger rightFlag;
+    Fern::Key leftKey;
+    Fern::Key rightKey;
+};
+
+static const ModifierKeyPair kModifierKeys[] = {
+    {NSEventModifierFlagShift, NX_DEVICELSHIFTKEYMASK, NX_DEVICERSHIFTKEYMASK, Fern::Key::KEY_LEFT_SHIFT, Fern::Key::KEY_RIGHT_SHIFT},
+    {NSEventModifierFlagControl, NX_DEVICELCTLKEYMASK, NX_DEVICERCTLKEYMASK, Fern::Key::KEY_LEFT_CONTROL, Fern::Key::KEY_RIGHT_CONTROL},
+    {NSEventModifierFlagOption, NX_DEVICELALTKEYMASK, NX_DEVICERALTKEYMASK, Fern::Key::KEY_LEFT_ALT, Fern::Key::KEY_RIGHT_ALT},
+    {NSEventModifierFlagCommand, NX_DEVICELCMDKEYMASK, NX_DEVICERCMDKEYMASK, Fern::Key::KEY_LEFT_SUPER, Fern::Key::KEY_RIGHT_SUPER},
+};
+static const size_t kModifierKeyCount = sizeof(kModifierKeys) / sizeof(kModifierKeys[0]);
+
+// The modifiers held at the moment of an event, as the event itself reports them.
+static Fern::Modifiers modifiersOf(NSEvent *event) {
+    const NSUInteger flags = [event modifierFlags];
+    Fern::Modifiers modifiers = 0;
+    if (flags & NSEventModifierFlagShift) { modifiers |= static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SHIFT); }
+    if (flags & NSEventModifierFlagControl) { modifiers |= static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_CONTROL); }
+    if (flags & NSEventModifierFlagOption) { modifiers |= static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_ALT); }
+    if (flags & NSEventModifierFlagCommand) { modifiers |= static_cast<Fern::Modifiers>(Fern::Key::KEY_MOD_SUPER); }
+    return modifiers;
 }
 
 @implementation WonderView {
     WonderHelper m_helper;
     BOOL m_multiTouchScroll;
+    bool m_modifierDown[2 * 4]; // [2 * pair + side]: what the window believes about the modifier keys
+    bool m_keyDown[512];        // by Fern::Key: the other keys posted as pressed and not yet released
 }
 
 @synthesize eventWindow;
@@ -218,9 +230,60 @@ static NSUInteger pandaKeyToCocoaModifierFlag(Fern::Key key) {
     return YES;
 }
 
+// MARK: - Modifier keys
+
+// Modifier keys do not come as key down / key up pairs: they come as flagsChanged, and the
+// release is lost whenever the keyboard is taken away between the press and the release (Cmd+Tab,
+// the screenshot shortcut Cmd+Shift+4, a system dialog). Every NSEvent carries the current
+// modifier flags, so the state of the eight keys is taken from the flags of every event the view
+// receives and the differences are posted as key events: a stuck Cmd is released by the first
+// mouse move after the shortcut. A generic flag without a side bit (synthetic events) is the left key.
+- (void)syncModifierKeys:(NSEvent *)event {
+    const NSUInteger flags = [event modifierFlags];
+    for (size_t i = 0; i < kModifierKeyCount; i++) {
+        const ModifierKeyPair &pair = kModifierKeys[i];
+        const bool generic = (flags & pair.genericFlag) != 0;
+        bool left = generic && (flags & pair.leftFlag) != 0;
+        bool right = generic && (flags & pair.rightFlag) != 0;
+        if (generic && !left && !right) { left = true; }
+        const bool sides[2] = {left, right};
+        const Fern::Key keys[2] = {pair.leftKey, pair.rightKey};
+        for (int side = 0; side < 2; side++) {
+            bool &known = m_modifierDown[2 * i + side];
+            if (known == sides[side]) { continue; }
+            known = sides[side];
+            getEventQueue()->postKeyEvent(
+                keys[side], known, static_cast<Fern::Window *>(self.eventWindow), false, modifiersOf(event)
+            );
+        }
+    }
+}
+
+// Every press gets its release. The keys held when the window resigns key (Cmd+Tab, a system
+// shortcut, a dialog) are released here, with no modifiers; the modifier keys themselves are
+// re-synced by the first event after the focus returns.
+- (void)releaseHeldKeys {
+    Fern::Window *window = static_cast<Fern::Window *>(self.eventWindow);
+    for (int index = 0; index < (int)(sizeof(m_keyDown) / sizeof(m_keyDown[0])); index++) {
+        if (!m_keyDown[index]) { continue; }
+        m_keyDown[index] = false;
+        getEventQueue()->postKeyEvent(static_cast<Fern::Key>(index), false, window, false, 0);
+    }
+    for (size_t i = 0; i < kModifierKeyCount; i++) {
+        const Fern::Key keys[2] = {kModifierKeys[i].leftKey, kModifierKeys[i].rightKey};
+        for (int side = 0; side < 2; side++) {
+            bool &known = m_modifierDown[2 * i + side];
+            if (!known) { continue; }
+            known = false;
+            getEventQueue()->postKeyEvent(keys[side], false, window, false, 0);
+        }
+    }
+}
+
 // MARK: - Mouse
 
 - (void)mouseMoved:(NSEvent *)event {
+    [self syncModifierKeys:event];
     // NOTE: The returned location uses base 0,1 not 0,0
     const NSPoint pos = [event locationInWindow];
     double xpos = pos.x;
@@ -233,7 +296,9 @@ static NSUInteger pandaKeyToCocoaModifierFlag(Fern::Key key) {
         deltaY = 0;
         self.ignoreMouseEvents--;
     }
-    getEventQueue()->postMouseEvent(xpos, ypos, deltaX, deltaY, static_cast<Fern::Window *>(self.eventWindow));
+    getEventQueue()->postMouseEvent(
+        xpos, ypos, deltaX, deltaY, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event)
+    );
 }
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -245,27 +310,31 @@ static NSUInteger pandaKeyToCocoaModifierFlag(Fern::Key key) {
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::LEFT, true, static_cast<Fern::Window *>(self.eventWindow));
+    [self syncModifierKeys:event];
+    getEventQueue()->postMouseButtonEvent(MouseButton::LEFT, true, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)mouseUp:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::LEFT, false, static_cast<Fern::Window *>(self.eventWindow));
+    [self syncModifierKeys:event];
+    getEventQueue()->postMouseButtonEvent(MouseButton::LEFT, false, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::RIGHT, true, static_cast<Fern::Window *>(self.eventWindow));
+    [self syncModifierKeys:event];
+    getEventQueue()->postMouseButtonEvent(MouseButton::RIGHT, true, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::RIGHT, false, static_cast<Fern::Window *>(self.eventWindow));
+    [self syncModifierKeys:event];
+    getEventQueue()->postMouseButtonEvent(MouseButton::RIGHT, false, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::MIDDLE, true, static_cast<Fern::Window *>(self.eventWindow));
+    getEventQueue()->postMouseButtonEvent(MouseButton::MIDDLE, true, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
-    getEventQueue()->postMouseButtonEvent(MouseButton::MIDDLE, false, static_cast<Fern::Window *>(self.eventWindow));
+    getEventQueue()->postMouseButtonEvent(MouseButton::MIDDLE, false, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event));
 }
 
 - (void)scrollWheel:(NSEvent *)event {
@@ -288,37 +357,43 @@ static NSUInteger pandaKeyToCocoaModifierFlag(Fern::Key key) {
         m_multiTouchScroll || [event hasPreciseScrollingDeltas],
         isMomentum,
         isGestureEnded,
-        static_cast<Fern::Window *>(self.eventWindow)
+        static_cast<Fern::Window *>(self.eventWindow),
+        modifiersOf(event)
     );
 }
 
 // MARK: - Keys
 
 - (void)keyDown:(NSEvent *)event {
+    [self syncModifierKeys:event];
     Fern::Key key = cocoaKeyToPandaKey(m_helper, [event keyCode]);
     if (isKnownKey(key)) {
-        getEventQueue()->postKeyEvent(key, true, static_cast<Fern::Window *>(self.eventWindow), [event isARepeat]);
+        m_keyDown[static_cast<int>(key)] = true;
+        getEventQueue()->postKeyEvent(
+            key, true, static_cast<Fern::Window *>(self.eventWindow), [event isARepeat], modifiersOf(event)
+        );
     }
     [self interpretKeyEvents:@[event]];
 }
 
 - (void)flagsChanged:(NSEvent *)event {
+    // Caps lock is the only modifier that is not one of the eight keys above.
     Fern::Key key = cocoaKeyToPandaKey(m_helper, [event keyCode]);
-    if (!isKnownKey(key)) {
-        return;
+    if (key == Fern::Key::KEY_CAPS_LOCK) {
+        const bool down = ([event modifierFlags] & NSEventModifierFlagCapsLock) != 0;
+        getEventQueue()->postKeyEvent(key, down, static_cast<Fern::Window *>(self.eventWindow), false, modifiersOf(event));
     }
-    const NSUInteger keyFlag = pandaKeyToCocoaModifierFlag(key);
-    const NSUInteger modifierFlags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
-    bool down = keyFlag & modifierFlags;
-    getEventQueue()->postKeyEvent(key, down, static_cast<Fern::Window *>(self.eventWindow));
+    [self syncModifierKeys:event];
 }
 
 - (void)keyUp:(NSEvent *)event {
+    [self syncModifierKeys:event];
     Fern::Key key = cocoaKeyToPandaKey(m_helper, [event keyCode]);
     if (!isKnownKey(key)) {
         return;
     }
-    getEventQueue()->postKeyEvent(key, false, static_cast<Fern::Window *>(self.eventWindow));
+    m_keyDown[static_cast<int>(key)] = false;
+    getEventQueue()->postKeyEvent(key, false, static_cast<Fern::Window *>(self.eventWindow), false, modifiersOf(event));
 }
 
 // MARK: Text input client

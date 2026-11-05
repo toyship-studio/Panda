@@ -159,4 +159,14 @@ void lateUpdate(World &world, double deltaTime) {
     for (ExternalScript *script : inExecutionOrder(world)) { script->invokeLateUpdate(deltaTime); }
 }
 
+void applicationFocus(World &world, bool focused) {
+    if (!world.isRunning()) { return; }
+    for (ExternalScript *script : inExecutionOrder(world)) { script->invokeApplicationFocus(focused); }
+}
+
+void applicationPause(World &world, bool paused) {
+    if (!world.isRunning()) { return; }
+    for (ExternalScript *script : inExecutionOrder(world)) { script->invokeApplicationPause(paused); }
+}
+
 } // namespace Panda::ScriptSystem

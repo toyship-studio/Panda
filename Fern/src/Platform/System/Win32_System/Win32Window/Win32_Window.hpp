@@ -70,6 +70,7 @@ private:
     void enterFullScreen();
     void exitFullScreen();
     bool dispatchMenuShortcut(Key key);
+    void releaseHeldKeys(); // posts the releases of the keys still down (a focus loss swallows them)
     void postMouseMove(double x, double y);
     void postSizeEventFromClient();
     DWORD makeStyle() const;
@@ -83,6 +84,8 @@ private:
     bool m_isFullScreen;
     bool m_isModified;
     bool m_isFocused;
+    bool m_isMinimized = false;
+    bool m_keyDown[512] = {}; // by Key: what the window has posted as pressed and not yet released
     bool m_isCursorHidden;
     bool m_isCursorLockActive;
     bool m_hasPrevMousePosition;

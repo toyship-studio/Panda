@@ -60,7 +60,6 @@ static void shutdownRuntime() {
     shutdownRenderer();
     s_mainViewportFrame = {};
     s_nextWindowHandle = MAIN_WINDOW_HANDLE + 1;
-    resetModifierState();
     if (s_pendingWindowDisposals.empty()) { s_nextViewId = UI_VIEW_BEGIN + 1; }
     s_initialized = false;
 }

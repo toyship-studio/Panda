@@ -33,7 +33,14 @@ REGISTER_SCRIPT(MoveScript)
   world's `scriptListComponent`).
 - Lifecycle (all methods are optional): `start`, `fixedUpdate(step)`, `update(dt)`,
   `lateUpdate(dt)`, `beginCollisionTouch(other)` / `endCollisionTouch(other)`,
-  `beginSensorOverlap(sensor)` / `endSensorOverlap(sensor)`, `shutdown`.
+  `beginSensorOverlap(sensor)` / `endSensorOverlap(sensor)`, `onApplicationFocus(focused)`,
+  `onApplicationPause(paused)`, `shutdown`.
+- Focus and pause. `onApplicationFocus(false)` — the game lost the input: in the editor the Game
+  tab lost the keyboard focus (a click on another panel), in a game the window did. Until the
+  focus comes back `Input` reports nothing pressed, no mouse deltas and no touches, and a locked
+  cursor is released; a game that wants the cursor locked locks it again in
+  `onApplicationFocus(true)`. `onApplicationPause(true)` — the game is suspended (the window was
+  minimized; on a mobile platform it went to the background) and `false` when it resumes.
 - Physics runs with a fixed step (60 per second). `fixedUpdate` is called before every step, with
   the step length — zero, one or several times a frame: forces, impulses, motor targets, the
   character mover and everything that drives bodies belong there, and the transforms of bodies
@@ -46,7 +53,11 @@ REGISTER_SCRIPT(MoveScript)
   clock.
 - Input. `isKeyPressed` is the state of a key. `isKeyJustPressed` reports a press once: in
   `update` during the frame of the press, in `fixedUpdate` by exactly one step — so a one-shot
-  action can be read where it is used.
+  action can be read where it is used. In the editor the input belongs to the game only while
+  the Game tab renders and has the keyboard focus (a click on the game gives it; the mouse over
+  the Game tab counts for pointer input): typing into the inspector or clicking the Hierarchy
+  during Play does not reach the scripts. The keys of the window are released when it loses the
+  focus.
 - `WorldAPI::destroyEntity` may be called from any callback, for any entity, the script's own
   included: the entity is destroyed after the callbacks that are running now, and until then it
   is still in the world.

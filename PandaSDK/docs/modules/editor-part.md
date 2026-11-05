@@ -161,7 +161,9 @@ s_tool = static_cast<TerrainTool *>(&extensions.viewportTools.add(std::make_uniq
 ```
 
 `ViewportToolFrame` gives the world being edited, the viewport camera, the matrices, the
-camera position, whether the viewport is hovered and the frame time. A tool that edits an
+camera position, the pointer over the Scene surface (`viewportHovered`, `pointerPosition` in
+viewport points, `pointerDown` — the left button went down over the surface and is held) and
+the frame time. A tool reads no `Panda::Input`: that is the game's. A tool that edits an
 asset runs an editing session: `editorHost().beginViewportEditing(title, assetId, onStop)`
 shows the border and the banner with Stop, routes Undo from the viewport to that document
 and calls `onStop` when the user stops or closes the tab; the tool releases itself and calls

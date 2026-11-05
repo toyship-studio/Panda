@@ -61,16 +61,43 @@ void ViewportView::setSceneTexture(TextureHandle texture, bool flipVertical) {
     m_placeholder->layout().setDisplay(hasTexture ? Display::None : Display::Flex);
 }
 
+SceneNavigation ViewportView::takeNavigation() {
+    SceneNavigation navigation;
+    navigation.forward = m_heldForward;
+    navigation.backward = m_heldBackward;
+    navigation.left = m_heldLeft;
+    navigation.right = m_heldRight;
+    navigation.blocked = m_shiftHeld || m_controlHeld;
+    navigation.rotate = m_rotate;
+    navigation.zoom = m_zoom;
+    m_rotate = Point();
+    m_zoom = 0.f;
+    return navigation;
+}
+
+ScenePointer ViewportView::takePointer() {
+    ScenePointer pointer;
+    pointer.position = m_pointer;
+    pointer.local = toLocal(m_pointer);
+    pointer.hovered = isHovered();
+    pointer.leftDown = m_leftDown;
+    pointer.leftPressed = m_leftPressed;
+    m_leftPressed = false;
+    return pointer;
+}
+
 bool ViewportView::pointerDown(PointerEvent &event) {
     if (Context *context = getContext()) { context->setFocusedView(this); } // focus → gizmo keys/camera
-    if (event.button != PointerButton::Left) {
-        return false; // camera rotation/movement (RMB/trackpad/WASD) — in CameraController, not here
+    m_pointer = event.position;
+    if (event.button == PointerButton::Right) {
+        m_rightDown = true; // the drag rotates the camera (captured: the moves come until the release)
+        return true;
     }
-    if (m_gizmoActive) {
-        return false; // LMB over a gizmo handle → goes to it (through Panda::Input), not rect-select
-    }
-    if (m_toolCapture) {
-        return false; // a viewport tool is driving → LMB goes to it (through Panda::Input), not rect-select
+    if (event.button != PointerButton::Left) { return false; }
+    m_leftDown = true;
+    m_leftPressed = true;
+    if (m_gizmoActive || m_toolCapture) {
+        return true; // the gizmo / the viewport tool reads the pointer (takePointer): no rect-select, but captured for the release
     }
     m_pressed = true;
     m_pressPosition = event.position;
@@ -82,7 +109,13 @@ bool ViewportView::pointerDown(PointerEvent &event) {
 }
 
 bool ViewportView::pointerMove(PointerEvent &event) {
-    if (!m_pressed) { return false; }
+    m_pointer = event.position;
+    if (m_rightDown) {
+        m_rotate.x += event.delta.x;
+        m_rotate.y += event.delta.y;
+        return true;
+    }
+    if (!m_pressed) { return false; } // a hover: the pointer is recorded for the gizmo and the tools
     if (std::abs(event.position.x - m_pressPosition.x) > CLICK_SLOP ||
         std::abs(event.position.y - m_pressPosition.y) > CLICK_SLOP) {
         positionMarquee(m_pressPosition, event.position); // dragging — show the rubber-band marquee
@@ -92,13 +125,30 @@ bool ViewportView::pointerMove(PointerEvent &event) {
 }
 
 bool ViewportView::pointerUp(PointerEvent &event) {
-    if (event.button == PointerButton::Left && m_pressed) {
+    m_pointer = event.position;
+    if (event.button == PointerButton::Right) {
+        m_rightDown = false;
+        return true;
+    }
+    if (event.button != PointerButton::Left) { return false; }
+    m_leftDown = false;
+    if (m_pressed) {
         hideMarquee();
         m_output->viewportViewDidRectSelect(toLocal(m_pressPosition), toLocal(event.position), m_dragAdditive, true);
         m_pressed = false;
-        return true;
     }
-    return false; // not captured here (the LMB went to the gizmo) → let the up through to Panda::Input
+    return true;
+}
+
+bool ViewportView::scroll(ScrollEvent &event) {
+    if (event.isTrackpad) {
+        // The two-finger gesture rotates (the scale of the former Input path: scroll units × 40).
+        m_rotate.x += event.delta.x * 40.f;
+        m_rotate.y += event.delta.y * 40.f;
+    } else {
+        m_zoom += event.delta.y; // the wheel zooms, in notches
+    }
+    return true;
 }
 
 Point ViewportView::toLocal(Point screenPoint) const {
@@ -125,12 +175,39 @@ void ViewportView::hideMarquee() {
 }
 
 bool ViewportView::keyDown(KeyEvent &event) {
+    m_shiftHeld = event.isShiftDown;
+    m_controlHeld = event.isControlDown;
     switch (event.key) {
         case Key::Key1: m_output->viewportViewDidRequestGizmoMode(0); return true;
         case Key::Key2: m_output->viewportViewDidRequestGizmoMode(1); return true;
         case Key::Key3: m_output->viewportViewDidRequestGizmoMode(2); return true;
-        default: return false; // WASD/trackpad → camera (CameraController), the rest → shortcuts
+        // The flight keys are recorded, not consumed: a shortcut on the same key still fires.
+        case Key::W: m_heldForward = true; return false;
+        case Key::S: m_heldBackward = true; return false;
+        case Key::A: m_heldLeft = true; return false;
+        case Key::D: m_heldRight = true; return false;
+        default: return false; // the rest → shortcuts
     }
+}
+
+bool ViewportView::keyUp(KeyEvent &event) {
+    m_shiftHeld = event.isShiftDown;
+    m_controlHeld = event.isControlDown;
+    switch (event.key) {
+        case Key::W: m_heldForward = false; break;
+        case Key::S: m_heldBackward = false; break;
+        case Key::A: m_heldLeft = false; break;
+        case Key::D: m_heldRight = false; break;
+        default: break;
+    }
+    return false;
+}
+
+void ViewportView::focusChanged(bool focused) {
+    if (focused) { return; }
+    // The releases of the keys held when the focus left will not come here.
+    m_heldForward = m_heldBackward = m_heldLeft = m_heldRight = false;
+    m_shiftHeld = m_controlHeld = false;
 }
 
 } // namespace Editor

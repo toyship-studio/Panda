@@ -34,6 +34,12 @@ namespace ExternalCalls {
     using InvokeStartAtScript = Scripting::InvokeStartAtScriptFn;
     extern InvokeStartAtScript invokeStartAtScript;
 
+    using InvokeApplicationFocusAtScript = Scripting::InvokeApplicationFocusAtScriptFn;
+    extern InvokeApplicationFocusAtScript invokeApplicationFocusAtScript;
+
+    using InvokeApplicationPauseAtScript = Scripting::InvokeApplicationPauseAtScriptFn;
+    extern InvokeApplicationPauseAtScript invokeApplicationPauseAtScript;
+
     using InvokeBeginCollisionTouch = Scripting::InvokeBeginCollisionTouchFn;
     extern InvokeBeginCollisionTouch invokeBeginCollisionTouch;
 

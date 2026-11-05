@@ -12,6 +12,7 @@
 #include "Project/Plugins/PluginStore.hpp"
 #include "UI/Host/EditorUI.hpp"
 #include "UI/Panels/StartScreen.hpp"
+#include "UI/Panels/ViewportView.hpp" // Editor::ScenePointer
 
 #include <Panda/Application/Layer.hpp>
 #include <Panda/UI/PandaUIImpl.hpp>
@@ -91,8 +92,9 @@ private:
     path_t defaultProjectParentPath() const;
     void syncPandaUIViewportFrame();    // the game UI follows the Game surface
     void syncViewports();               // the frames of the Scene and Game tabs → the engine viewports; their textures → the panels
-    void updatePandaUICameraActivity(); // seam #2: gate camera nav on PandaUI viewport focus/hover
-    void drivePandaUIGizmo(); // seam #3: feed gizmo from Panda::Input + manipulate + show/hide overlay
+    void updateGameInput();             // once a frame: the input of the game follows the focus of the Game tab
+    bool eventBelongsToGame(Fern::Event *event); // Play: a pointer over the Game surface, a key while the Game tab has the focus
+    void drivePandaUIGizmo(); // seam #3: feed the gizmo from the Scene pointer + manipulate + show/hide overlay
     // EngineBridge — requests from the editor chrome to the engine/host.
     void save() override;
     void openWorldAsset(uint32_t worldAssetId) override;
@@ -177,6 +179,10 @@ private:
     World *m_currentWorld;
     SceneState m_sceneState;
     bool m_pendingStop = false; // script quit → Stop at the start of the next frame (not in the middle of update)
+    bool m_windowFocused = true;    // the editor window has the keyboard focus (Fern WindowFocus / WindowLostFocus)
+    bool m_gameInputActive = false; // the game owns the input: Play, the Game tab renders and has the focus
+    uint32_t m_gameMouseButtons = 0; // the buttons the game pressed (bit = Fern::MouseButton): their releases are its
+    Editor::ScenePointer m_scenePointer; // the pointer over the Scene surface this frame (the gizmo, the tools)
     ProjectLoader m_loader;
     EditorUpdater m_updater;
     uint64_t m_shownUpdateRevision = ~uint64_t(0);
