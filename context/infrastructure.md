@@ -204,7 +204,7 @@ Workflows in the engine repository:
     `-DPANDA_BUILD_COMMIT=<sha>` of the run, in the code `ENGINE_BUILD_NUMBER` and
     `ENGINE_BUILD_COMMIT` (a local build is 0 without a commit); the About window shows them.
     `package.py` reads the header for the archive name.
-  - macOS (`macos-14`, arm64): `sign_macos.sh` signs the tools inside `Contents/Resources`
+  - macOS (`macos-15`, arm64): `sign_macos.sh` signs the tools inside `Contents/Resources`
     (slangc and its libraries, cmake) and then the bundle with the hardened runtime and
     `PandaEditor/native/OSX/PandaEditor.entitlements` (library validation off: the editor dlopens
     the script bundles it builds); `package.py` makes the dmg (`hdiutil`, an Applications link);
@@ -248,7 +248,7 @@ Workflows in the engine repository:
 - `docs.yml` (push to `main` that touches `PandaSDK/docs/` or the book config): builds the
   documentation site with mdBook (always, so a broken page fails the run) and uploads it to the
   object storage (below) when the storage secrets are set.
-- Runners: standard GitHub-hosted runners (`macos-14` on Apple Silicon, `windows-2022`,
+- Runners: standard GitHub-hosted runners (`macos-15` on Apple Silicon, `windows-2022`,
   `ubuntu-24.04`) are free for public repositories; larger runners are always billed. Code from
   external pull requests must never run on self-hosted machines. Backend and frontend deploy from
   GitHub-hosted Ubuntu over SSH. The same configure scripts, CMake targets and release scripts run

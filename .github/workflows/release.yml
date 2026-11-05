@@ -29,7 +29,7 @@ env:
 jobs:
   macos:
     name: macOS (Metal, arm64)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 180
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
