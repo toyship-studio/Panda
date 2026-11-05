@@ -23,11 +23,14 @@ ImportedMeshAsset::ImportedMeshAsset(std::vector<ImportedMeshData> meshes)
             if (primitiveData.vertices.empty()) { continue; }
             glm::vec3 minPoint(FLT_MAX);
             glm::vec3 maxPoint(-FLT_MAX);
+            primitive.geometry.positions.reserve(primitiveData.vertices.size());
             for (const Vertex &vertex : primitiveData.vertices) {
                 const glm::vec3 position(vertex.pos.x, vertex.pos.y, vertex.pos.z);
                 minPoint = glm::min(minPoint, position);
                 maxPoint = glm::max(maxPoint, position);
+                primitive.geometry.positions.push_back(position);
             }
+            primitive.geometry.indices = primitiveData.indices;
             primitive.boundsMin = minPoint;
             primitive.boundsMax = maxPoint;
             primitive.hasBounds = true;

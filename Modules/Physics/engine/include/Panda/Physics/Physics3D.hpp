@@ -5,12 +5,15 @@
 #include "Panda/Physics/PhysicsComponents.hpp"
 
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
 namespace Panda {
 
 class World;
+struct MeshColliderCook; // the box3d geometry of a mesh collider (Physics3D.cpp)
 
 // Result of a kinematic character step (Physics3D::moveCharacter).
 struct CharacterMoveResult {
@@ -40,7 +43,7 @@ struct MassData3D {
 // 3D physics on box3d — a mirror of Physics2D (the same life cycle: init at the world's start hook
 // of the physics system, steps of a fixed length driven by the frame phases, the poses written into
 // the transforms, contact/sensor events into scripts). Lives in World::context<Physics3D> while the
-// world runs. Bodies are registered by Rigidbody3D + at least one collider (Box/Sphere/Capsule
+// world runs. Bodies are registered by Rigidbody3D + at least one collider (Box/Sphere/Capsule/Mesh
 // Collider3D).
 class Physics3D {
     struct RuntimeBodyData {
@@ -50,6 +53,9 @@ class Physics3D {
         glm::vec3 previousPosition{0.f};
         glm::quat previousRotation{1.f, 0.f, 0.f, 0.f};
         uint32_t writePass = 0; // the pass of writeTransforms that has written the body
+        // The geometry the mesh collider shape of the body references (a mesh shape holds a
+        // pointer into it), shared by the bodies built from the same triangles.
+        std::shared_ptr<MeshColliderCook> meshCook;
     };
     struct RuntimeJointData {
         uint8_t data[8];
@@ -121,6 +127,11 @@ public:
     void setWheelSteeringAngle(Entity wheel, float angle);
     float getWheelSteeringAngle(Entity wheel);
     void setWheelSuspension(Entity wheel, float hertz, float dampingRatio);
+    /// The mesh collider of the entity gets a mesh (0 — the mesh the entity renders) and a kind of
+    /// shape, from a script. The triangles are read now: a runtime mesh updated later needs the
+    /// call again. While the kind of the shape stays, the shape changes in place and the body keeps
+    /// its pose, velocities and joints; otherwise the body is rebuilt like on a property edit.
+    void setMeshColliderMesh(Entity entity, AssetId mesh, bool convex);
     /// Kinematic capsule character step (box3d character mover: cast → collide → solve planes).
     /// The entity must be registered with CapsuleCollider3D (body type — KINEMATIC). Called from
     /// fixedUpdate, the move is drawn smoothly between the steps; called once a frame, the
@@ -159,10 +170,18 @@ private:
     // Body of a registered entity / live wheel joint of an entity; false — there is none.
     bool findBody(Entity entity, RuntimeBodyData &outBody);
     bool findWheelJoint(Entity entity, RuntimeJointData &outJoint);
+    // The box3d geometry of the entity's mesh collider, built from the triangles of its source
+    // once per simulation and shared by the bodies with the same source; nullptr — no triangles
+    // (the reason is logged).
+    std::shared_ptr<MeshColliderCook> cookMeshCollider(Entity entity, const MeshCollider3DComponent &collider);
 
     EntityBodies<RuntimeBodyData> m_bodies; // registerEntity and removeEntity are the only ones that fill it
     std::unordered_map<UUID, RuntimeJointData> m_wheelJointMap; // by the wheel entity
     std::unordered_map<uint32_t, Entity> m_bodyEntityMap;
+    // The cooked mesh colliders by source (MeshColliderGeometry.hpp). A body keeps its own
+    // reference: a cook dropped from here (the mesh was set again) lives on with the bodies built
+    // from it.
+    std::map<std::tuple<AssetId, uint32_t, uint32_t>, std::shared_ptr<MeshColliderCook>> m_meshCooks;
     uint32_t m_physicsWorldId = 0;
     uint32_t m_writePass = 0; // counts the passes of writeTransforms
     bool m_stepping = false; // between beginStep and the end of step

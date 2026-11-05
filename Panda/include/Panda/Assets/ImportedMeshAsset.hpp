@@ -3,6 +3,7 @@
 #include "Panda/Assets/Base/Asset.hpp"
 #include "Panda/Assets/Base/AssetRef.hpp"
 #include "Panda/Renderer/ImportedMeshData.hpp"
+#include "Panda/Renderer/MeshGeometry.hpp"
 
 #include <Miren/Miren.hpp>
 #include <glm/glm.hpp>
@@ -20,6 +21,9 @@ struct ImportedPrimitive {
     glm::vec3 boundsMin{0.f};
     glm::vec3 boundsMax{0.f};
     bool hasBounds = false;
+    // The triangles on the CPU (the positions and the indices, nothing else of the vertex): the
+    // mesh collider of the physics is built from them.
+    MeshGeometry geometry;
 };
 
 struct ImportedSubmesh {
@@ -41,6 +45,21 @@ public:
         outMin = data.boundsMin;
         outMax = data.boundsMax;
         return data.hasBounds;
+    }
+
+    // The triangles of a primitive (the mesh collider); nullptr — no such primitive.
+    const MeshGeometry *primitiveGeometry(size_t submesh, size_t primitive) const {
+        if (submesh >= m_submeshes.size()) { return nullptr; }
+        if (primitive >= m_submeshes[submesh].primitives.size()) { return nullptr; }
+        return &m_submeshes[submesh].primitives[primitive].geometry;
+    }
+    // The triangles of the whole mesh: every primitive of every submesh in one index space.
+    void appendGeometry(MeshGeometry &out) const {
+        for (const ImportedSubmesh &submesh : m_submeshes) {
+            for (const ImportedPrimitive &primitive : submesh.primitives) {
+                out.append(primitive.geometry);
+            }
+        }
     }
 
     // Read access to the primitive structure (baking impostor atlases, etc.).

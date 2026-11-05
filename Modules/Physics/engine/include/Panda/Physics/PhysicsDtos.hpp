@@ -123,6 +123,24 @@ struct CapsuleCollider3DComponentDto : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+struct MeshCollider3DComponentDto : public Rain::Codable {
+    bool isSensor = false;
+    UUID mesh = 0; // the asset reference as its id; 0 — the mesh the entity renders
+    bool convex = false;
+    float density = 1.f;
+    float friction = 0.5f;
+    float restitution = 0.f;
+
+    RAIN_FIELDS_BEGIN(MeshCollider3DComponentDto)
+    RAIN_FIELD(isSensor)
+    RAIN_FIELD(mesh)
+    RAIN_FIELD(convex)
+    RAIN_FIELD(density)
+    RAIN_FIELD(friction)
+    RAIN_FIELD(restitution)
+    RAIN_FIELDS_END
+};
+
 struct RevoluteJoint2DComponentDto : public Rain::Codable {
     UUID connectedEntity = 0;
     Vec2 anchor;

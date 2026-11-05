@@ -6,15 +6,15 @@
 
 // The physics function table for scripts — a named contribution table
 // (ScriptHostApi::hostApiTable_Find("physics", PHYSICS_HOST_API_VERSION)); the SDK side is
-// Bamboo::Rigidbody2DComponentAPI, Rigidbody3DComponentAPI, WheelJoint3DComponentAPI,
-// Physics3DAPI and CharacterMoverAPI. Entities are handles of the current world; a call on an
+// Bamboo::Rigidbody2DComponentAPI, Rigidbody3DComponentAPI, MeshCollider3DComponentAPI,
+// WheelJoint3DComponentAPI, Physics3DAPI and CharacterMoverAPI. Entities are handles of the current world; a call on an
 // entity without a body or a joint does nothing and returns zeros. The contact and sensor events
 // go the other way through the core plugin table (ScriptPluginApi::invokeBegin/EndCollisionTouch,
 // invokeBegin/EndSensorOverlap).
 namespace Panda::Scripting {
 
 constexpr const char *PHYSICS_HOST_API_NAME = "physics";
-constexpr uint32_t PHYSICS_HOST_API_VERSION = 1;
+constexpr uint32_t PHYSICS_HOST_API_VERSION = 2; // v2: the mesh collider
 
 using Rigidbody2DComponentApplyForceFn = void (*)(Handle entityHandle, float x, float y);
 using Rigidbody2DComponentApplyLinearImpulseFn = void (*)(Handle entityHandle, float x, float y);
@@ -83,6 +83,13 @@ using CharacterMoveFn = void (*)(Handle entityHandle, float dx, float dy, float 
                                  float *velX, float *velY, float *velZ, float *outDx, float *outDy,
                                  float *outDz, uint32_t *outGrounded);
 
+// The mesh of a mesh collider (MeshCollider3DComponent). meshHandle — a runtime mesh of the game
+// (0 — the mesh the entity renders); convex — the convex hull of the mesh, the shape of a moving
+// body, otherwise the triangles themselves, static bodies only. The geometry is read at the call;
+// while the kind of the shape stays, the body keeps its pose, velocities and joints.
+using MeshCollider3DComponentSetMeshFn = void (*)(Handle entityHandle, Handle meshHandle, uint32_t convex);
+using MeshCollider3DComponentGetMeshFn = void (*)(Handle entityHandle, Handle *meshHandle);
+
 struct PhysicsHostApi final {
     uint32_t version = PHYSICS_HOST_API_VERSION;
     Rigidbody2DComponentApplyForceFn rigidbody2DComponent_ApplyForce = nullptr;
@@ -112,6 +119,8 @@ struct PhysicsHostApi final {
     WheelJoint3DComponentGetSteeringAngleFn wheelJoint3DComponent_GetSteeringAngle = nullptr;
     WheelJoint3DComponentSetSuspensionFn wheelJoint3DComponent_SetSuspension = nullptr;
     CharacterMoveFn character_Move = nullptr;
+    MeshCollider3DComponentSetMeshFn meshCollider3DComponent_SetMesh = nullptr;
+    MeshCollider3DComponentGetMeshFn meshCollider3DComponent_GetMesh = nullptr;
 };
 
 } // namespace Panda::Scripting

@@ -75,9 +75,9 @@ namespace {
         if (isAnyOf<Rigidbody2DComponent, BoxCollider2DComponent>(typeId)) {
             if (Physics2D *physics2D = world.findContext<Physics2D>()) { physics2D->componentsUpdated(entity); }
         }
-        if (isAnyOf<Rigidbody3DComponent, BoxCollider3DComponent, SphereCollider3DComponent, CapsuleCollider3DComponent>(
-                typeId
-            )) {
+        if (isAnyOf<
+                Rigidbody3DComponent, BoxCollider3DComponent, SphereCollider3DComponent, CapsuleCollider3DComponent,
+                MeshCollider3DComponent>(typeId)) {
             if (Physics3D *physics3D = world.findContext<Physics3D>()) { physics3D->componentsUpdated(entity); }
         }
     }

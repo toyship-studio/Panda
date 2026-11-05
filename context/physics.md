@@ -9,7 +9,7 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 
 ## Module
 
-- The engine part registers the eleven component types (bodies, colliders, joints; the keys of
+- The engine part registers the twelve component types (bodies, colliders, joints; the keys of
   `.world` are unchanged), two world systems and the `physics` script table. `physics` carries
   the life cycle: `start` creates `Physics2D` and `Physics3D` in `World::context`, `stop` erases
   them; `entityRemoved` / `entityRestored`, `componentsChanged` (a body or a collider added or
@@ -23,15 +23,18 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 - Scripts reach the module through the named table (`ScriptHostApi::hostApiTable_Find("physics",
   1)`, `PhysicsScriptApi.hpp`); the Bamboo headers keep their paths
   (`Bamboo/Components/Rigidbody2DComponentAPI.hpp`, `Rigidbody3DComponentAPI.hpp`,
-  `WheelJoint3DComponentAPI.hpp`, `Bamboo/Physics3DAPI.hpp`, `Bamboo/CharacterMoverAPI.hpp`) and
-  ship with the SDK package from the module's `sdk/` part. The four contact and sensor callbacks
+  `MeshCollider3DComponentAPI.hpp`, `WheelJoint3DComponentAPI.hpp`, `Bamboo/Physics3DAPI.hpp`,
+  `Bamboo/CharacterMoverAPI.hpp`) and ship with the SDK package from the module's `sdk/` part.
+  The table layout is v2 (the mesh collider); a request must match the version exactly. The four contact and sensor callbacks
   of scripts stay in the core plugin ABI as generic contact events. The physics functions left
   `ScriptHostApi` (ABI v29). A script adds a physics component by its registry name
   (`EntityAPI::addComponent(entity, "rigidbody3dComponent")`).
-- The editor part registers the inspector sections of the eleven components (an edit during
+- The editor part registers the inspector sections of the twelve components (an edit during
   Play rebuilds the bodies of the targets from the new values), the collider outlines as a
   viewport overlay (`EditorExtensions::viewportOverlays`, the Scene tab in EDIT and PLAY) and the PHYSICS
-  section of the editor settings (`physics` of `settings.json`: Show Colliders).
+  section of the editor settings (`physics` of `settings.json`: Show Colliders). A mesh collider
+  is outlined by the box of its triangles; a selected entity shows the edges themselves (of the
+  hull for a convex one), thinned to a cap when the mesh is large.
 - Other modules put their bodies into the 3D world through `World::findContext<Physics3D>()`
   from a system that names `physics` in `after`: its `start` runs after the physics world
   exists and its `stop` before the physics world goes (the stop hooks run in reverse order). The
@@ -75,9 +78,28 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 
 ## Bodies
 
-- A body is `Rigidbody3D` plus at least one collider (Box / Sphere / Capsule, one of each kind per
-  entity). The body lives at the entity's world transform; the step writes the pose back into the
-  entity transform.
+- A body is `Rigidbody3D` plus at least one collider (Box / Sphere / Capsule / Mesh, one of each
+  kind per entity). The body lives at the entity's world transform; the step writes the pose back
+  into the entity transform.
+- **Mesh collider** (`MeshCollider3DComponent`): a collider shaped by a mesh, in the local space of
+  the entity (its scale applies, there is no offset). The mesh is an imported or a runtime mesh
+  asset; an empty reference means the mesh the entity renders — the primitive of its
+  `ImportedSubmesh`, the asset of its `RuntimeMesh` or `PrimitiveMesh`
+  (`Physics::meshColliderSource`). The triangles come from the CPU copy the mesh assets keep
+  (`MeshGeometry`: positions and indices, kept by `ImportedMeshAsset` per primitive and by
+  `RuntimeMeshAsset` on every update; the bare `RuntimeMesh` of the systems' chunks keeps none).
+  `convex` builds the convex hull of the points (`b3CreateHull`, box3d keeps at most 255 vertices
+  and simplifies), the shape a dynamic or kinematic body takes, with the mass from its volume; a
+  non-convex collider is the triangles themselves (`b3CreateMesh`, welded, with edge adjacency),
+  and box3d creates mesh contacts on static bodies only — on a moving body such a collider gives
+  no shape and a warning, nothing is substituted. The cooked geometry (`MeshColliderCook`) is
+  built once per simulation and source and shared by the bodies with the same source; a mesh
+  shape references it, so a body holds it alive. Cooking the BVH at export is not done: the
+  simulation builds it at start.
+- `Physics3D::setMeshColliderMesh` (the script API) reads the triangles again: while the kind of
+  the shape stays, the shape is replaced in place (`b3Shape_SetHull` / `b3Shape_SetMesh`, the mass
+  is reapplied) and the body keeps its pose, velocities and joints; a change of kind, or a
+  collider without a shape, rebuilds the body like a property edit.
 - A body entity may stand anywhere in the hierarchy, under another body or not. Bodies are
   simulated in world space, and the hierarchy does not hold them together — joints do: a parent
   that the solver or `moveCharacter` moves does not carry the bodies under it. What the
@@ -182,6 +204,13 @@ Main-thread only (guarded). Entities without a body or a joint give no-ops and z
   speed target with a torque limit: a target with a torque drives, a zero target with a torque
   brakes, a disabled motor lets the wheel roll.
 - `CharacterMoverAPI::move`: the kinematic capsule character.
+- `MeshCollider3DComponentAPI::setMesh(entity, mesh, convex)` / `getMesh`: the mesh of a mesh
+  collider at runtime — a runtime mesh of the game (`AssetManagerAPI::createMesh` +
+  `MeshAPI::update`), or an invalid handle for the mesh the entity renders. The geometry is read
+  at the call: after another `MeshAPI::update` of the same mesh the script calls `setMesh` again
+  (the core knows no physics and does not notify it). The component itself is added by name
+  (`EntityAPI::addComponent(entity, "meshCollider3dComponent")`). The other collider fields have
+  no script setters, like those of the box, the sphere and the capsule.
 
 ## Vehicles (PhysicsTest)
 
@@ -221,6 +250,10 @@ the inner wheel turns more). What the engine API learned from them:
   world. The vehicle scripts sit on root entities.
 - A center of mass offset and damping on `Rigidbody3D`; a cylinder collider for wheels; friction
   above 1 in the inspector.
+- The BVH of a mesh collider is built when the simulation starts (tens of milliseconds per
+  hundred thousand triangles, once per mesh); cooking it into the runtime package at export
+  (box3d versions its serialized data) when it shows. A mirrored (negative) scale is taken by its
+  absolute value, like the other colliders.
 - A ragdoll scene, a motor API for the revolute joint, helper drawing of joints in the viewport.
 
 ## Decision: finding the bodies under a moved entity

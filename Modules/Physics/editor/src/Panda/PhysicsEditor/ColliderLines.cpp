@@ -1,10 +1,15 @@
 #include "Panda/PhysicsEditor/ColliderLines.hpp"
 
+#include <Panda/GameLogic/SelectionContext.hpp>
 #include <Panda/GameLogic/Systems/RenderSystem.hpp>
 #include <Panda/GameLogic/World.hpp>
+#include <Panda/Physics/MeshColliderGeometry.hpp>
 #include <Panda/Physics/PhysicsComponents.hpp>
 
 #include <algorithm>
+#include <cfloat>
+#include <map>
+#include <unordered_set>
 
 namespace Panda::PhysicsEditor {
 
@@ -15,6 +20,75 @@ namespace {
     constexpr float MIN_OUTLINE_PIXELS = 4.f;
     constexpr int MIN_ARC_SEGMENTS = 6;
     constexpr int MAX_ARC_SEGMENTS = 24;
+    // A mesh collider of a selected entity shows its edges; a mesh has thousands, the overlay has
+    // a budget shared by every collider: beyond the cap every k-th edge is drawn, a sparser
+    // wireframe of the same shape.
+    constexpr size_t MAX_MESH_OUTLINE_EDGES = 3000;
+
+    // The outline of a mesh collider source, built once from its triangles and reused every frame
+    // (the geometry does not change under the editor; a runtime mesh a script rewrites is caught by
+    // its size). The box is for every collider; the edges — unique edges of the triangles, or the
+    // edges of the convex hull — for a selected one.
+    struct MeshOutline {
+        size_t positionCount = 0, indexCount = 0; // the signature of the geometry it was built from
+        glm::vec3 boundsMin{0.f}, boundsMax{0.f};
+        std::vector<glm::vec3> positions;                   // of the triangles
+        std::vector<std::pair<uint32_t, uint32_t>> edges;   // unique, into positions
+        std::vector<glm::vec3> hullPoints;                  // of the convex hull
+        std::vector<std::pair<uint32_t, uint32_t>> hullEdges; // into hullPoints
+        bool hullBuilt = false;
+        bool valid = false; // the source has triangles
+    };
+
+    // The outline of a source; nullptr — the source has no triangles. The cache lives with the
+    // editor: bounded by the distinct meshes the colliders of the open worlds use.
+    const MeshOutline *meshOutlineOf(const Physics::MeshColliderSource &source, bool withHull) {
+        static std::map<Physics::MeshColliderSource, MeshOutline> cache;
+        size_t positionCount = 0, indexCount = 0;
+        const bool hasGeometry = Physics::meshColliderGeometrySize(source, positionCount, indexCount);
+        MeshOutline &outline = cache[source];
+        const bool sameSize = outline.positionCount == positionCount && outline.indexCount == indexCount;
+        const bool stale = hasGeometry ? (!outline.valid || !sameSize) : outline.valid;
+        if (stale) {
+            outline = MeshOutline{};
+            MeshGeometry geometry;
+            if (hasGeometry && Physics::meshColliderGeometry(source, geometry)) {
+                outline.valid = true;
+                outline.positionCount = geometry.positions.size();
+                outline.indexCount = geometry.indices.size();
+                outline.boundsMin = glm::vec3(FLT_MAX);
+                outline.boundsMax = glm::vec3(-FLT_MAX);
+                for (const glm::vec3 &position : geometry.positions) {
+                    outline.boundsMin = glm::min(outline.boundsMin, position);
+                    outline.boundsMax = glm::max(outline.boundsMax, position);
+                }
+                // Unique edges: the smaller index first, one entry per pair.
+                std::unordered_set<uint64_t> seen;
+                const size_t triangles = geometry.indices.size() / 3;
+                for (size_t t = 0; t < triangles; t++) {
+                    for (int e = 0; e < 3; e++) {
+                        uint32_t a = geometry.indices[t * 3 + e];
+                        uint32_t b = geometry.indices[t * 3 + (e + 1) % 3];
+                        if (a == b || a >= geometry.positions.size() || b >= geometry.positions.size()) { continue; }
+                        if (a > b) { std::swap(a, b); }
+                        if (seen.insert((static_cast<uint64_t>(a) << 32) | b).second) {
+                            outline.edges.emplace_back(a, b);
+                        }
+                    }
+                }
+                outline.positions = std::move(geometry.positions);
+            }
+        }
+        if (!outline.valid) { return nullptr; }
+        if (withHull && !outline.hullBuilt) {
+            outline.hullBuilt = true;
+            MeshGeometry points;
+            points.positions = outline.positions;
+            points.indices = {0, 1, 2}; // the hull needs the points alone
+            Physics::meshColliderHullOutline(points, outline.hullPoints, outline.hullEdges);
+        }
+        return &outline;
+    }
 
     int arcSegments(float radiusPixels) {
         return glm::clamp(static_cast<int>(radiusPixels * 0.8f), MIN_ARC_SEGMENTS, MAX_ARC_SEGMENTS);
@@ -158,6 +232,56 @@ void appendColliderLines(World &world, std::vector<HelperLine> &lines, const glm
             addArc(top, z, y, radius, 0.f, pi, halfSegments);
             addArc(bottom, x, y, radius, pi, twoPi, halfSegments); // bottom hemisphere
             addArc(bottom, z, y, radius, pi, twoPi, halfSegments);
+            endOutline();
+        }
+    );
+    // MeshCollider3D: the box of its triangles; for a selected entity the triangles' edges (the
+    // hull's for a convex one), through the full world transform like the renderer.
+    world.getAllEntitiesWith<IdComponent, MeshCollider3DComponent>().each(
+        [&](IdComponent &idc, MeshCollider3DComponent &collider) {
+            Entity entity = world.getById(idc.id);
+            if (!entity.isValid()) { return; }
+            Physics::MeshColliderSource source;
+            if (!Physics::meshColliderSource(entity, collider, source)) { return; }
+            const bool selected = SelectionContext::isEntitySelected(idc.id);
+            const MeshOutline *outline = meshOutlineOf(source, selected && collider.convex);
+            if (outline == nullptr) { return; }
+            const glm::mat4 matrix = world.getWorldSpaceTransformMatrix(entity);
+            glm::vec3 corners[8];
+            glm::vec3 center(0.f);
+            for (int i = 0; i < 8; ++i) {
+                const glm::vec3 local(
+                    (i & 1) ? outline->boundsMax.x : outline->boundsMin.x,
+                    (i & 2) ? outline->boundsMax.y : outline->boundsMin.y,
+                    (i & 4) ? outline->boundsMax.z : outline->boundsMin.z
+                );
+                corners[i] = glm::vec3(matrix * glm::vec4(local, 1.f));
+                center += corners[i] * 0.125f;
+            }
+            float radius = 0.f;
+            for (const glm::vec3 &corner : corners) {
+                radius = glm::max(radius, glm::distance(corner, center));
+            }
+            float pixelsPerUnit = 0.f;
+            if (!beginOutline(center, radius, pixelsPerUnit)) { return; }
+            const std::vector<glm::vec3> &points = collider.convex ? outline->hullPoints : outline->positions;
+            const auto &meshEdges = collider.convex ? outline->hullEdges : outline->edges;
+            if (!selected || meshEdges.empty()) {
+                static const int boxEdges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
+                                                    {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+                for (const auto &edge : boxEdges) {
+                    addEdge(corners[edge[0]], corners[edge[1]]);
+                }
+            } else {
+                const size_t stride =
+                    glm::max<size_t>(1, (meshEdges.size() + MAX_MESH_OUTLINE_EDGES - 1) / MAX_MESH_OUTLINE_EDGES);
+                for (size_t i = 0; i < meshEdges.size(); i += stride) {
+                    const auto &[a, b] = meshEdges[i];
+                    const glm::vec3 from(matrix * glm::vec4(points[a], 1.f));
+                    const glm::vec3 to(matrix * glm::vec4(points[b], 1.f));
+                    addEdge(from, to);
+                }
+            }
             endOutline();
         }
     );

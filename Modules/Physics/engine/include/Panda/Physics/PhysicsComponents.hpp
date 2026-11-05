@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Panda/Assets/Base/AssetRef.hpp>
 #include <Panda/Base/Base.hpp>
 
 #include <glm/glm.hpp>
@@ -75,6 +76,29 @@ struct CapsuleCollider3DComponent final {
 
     // Storage for runtime
     uint8_t runtimeData[8];
+};
+
+// A collider shaped by a mesh, in the local space of the entity (its scale applies; no offset).
+// Convex: the convex hull of the mesh points, the shape a dynamic or kinematic body takes (the mass
+// comes from its volume). Not convex: the triangles themselves, for static bodies only — box3d
+// creates mesh contacts on static bodies alone, so on a moving body such a collider gives no shape
+// and a warning. The mesh: an imported or a runtime mesh asset; empty — the mesh the entity itself
+// renders (its ImportedSubmesh primitive, its RuntimeMesh or its PrimitiveMesh).
+struct MeshCollider3DComponent final {
+    AssetRef<Asset> mesh;
+    bool convex = false;
+    bool isSensor = false;
+
+    float density = 1.0f;
+    float friction = 0.5f;
+    float restitution = 0.0f;
+
+    // Storage for runtime
+    uint8_t runtimeData[8] = {};
+
+    MeshCollider3DComponent() = default;
+    MeshCollider3DComponent(const MeshCollider3DComponent &other) = default;
+    MeshCollider3DComponent &operator=(const MeshCollider3DComponent &other) = default;
 };
 
 // --- Joints. Created at simulation start between this entity's body and connectedEntity;

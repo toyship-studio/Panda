@@ -4,9 +4,12 @@ Rigid body physics for Panda: 2D on box2d and 3D on box3d. The module registers 
 collider and joint components, the `physics` and `physics.step` world systems (the fixed step
 of both worlds, the interpolated poses for the frame, contact and sensor events into scripts),
 the `physics` script table (`Bamboo/Components/Rigidbody2DComponentAPI.hpp`,
-`Rigidbody3DComponentAPI.hpp`, `WheelJoint3DComponentAPI.hpp`, `Bamboo/Physics3DAPI.hpp`,
-`Bamboo/CharacterMoverAPI.hpp`) and the editor part: the inspector sections of the components,
-the collider outlines of the viewport and the "Show Colliders" setting.
+`Rigidbody3DComponentAPI.hpp`, `MeshCollider3DComponentAPI.hpp`, `WheelJoint3DComponentAPI.hpp`,
+`Bamboo/Physics3DAPI.hpp`, `Bamboo/CharacterMoverAPI.hpp`) and the editor part: the inspector
+sections of the components, the collider outlines of the viewport and the "Show Colliders"
+setting. The 3D colliders are the box, the sphere, the capsule and the mesh (the triangles of a
+mesh asset or of the mesh the entity renders: convex for moving bodies, as they are for static
+ones).
 
 Scripts add a component of the module by its registry name
 (`Bamboo::EntityAPI::addComponent(entity, "rigidbody3dComponent")`). Other modules put their

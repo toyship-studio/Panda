@@ -1,10 +1,67 @@
 #include "Panda/Physics/Physics3D.hpp"
 #include "Panda/GameLogic/World.hpp"
 #include "Panda/Physics/Box3DHandles.hpp"
+#include "Panda/Physics/MeshColliderGeometry.hpp"
 
 #include <cfloat>
 
 namespace Panda {
+
+// The geometry of a mesh collider as box3d takes it, built from the triangles of the source on
+// demand: the triangle mesh with its BVH for the mesh shapes of static bodies (a shape references
+// the data, so it lives as long as the last body built from it), the convex hull of the points for
+// the hull shapes of moving bodies (box3d clones a hull into its database, the base one is reused).
+struct MeshColliderCook {
+    MeshGeometry geometry;
+    b3MeshData *mesh = nullptr;
+    b3HullData *hull = nullptr;
+    bool meshFailed = false;
+    bool hullFailed = false;
+
+    MeshColliderCook() = default;
+    MeshColliderCook(const MeshColliderCook &) = delete;
+    MeshColliderCook &operator=(const MeshColliderCook &) = delete;
+    ~MeshColliderCook() {
+        if (mesh != nullptr) { b3DestroyMesh(mesh); }
+        if (hull != nullptr) { b3DestroyHull(hull); }
+    }
+
+    b3MeshData *triangleMesh() {
+        if (mesh != nullptr || meshFailed) { return mesh; }
+        std::vector<b3Vec3> vertices(geometry.positions.size());
+        for (size_t i = 0; i < vertices.size(); i++) {
+            vertices[i] = {geometry.positions[i].x, geometry.positions[i].y, geometry.positions[i].z};
+        }
+        std::vector<int32_t> indices(geometry.indices.begin(), geometry.indices.end());
+        b3MeshDef def = {};
+        def.vertices = vertices.data();
+        def.indices = indices.data();
+        def.materialIndices = nullptr;
+        def.vertexCount = static_cast<int>(vertices.size());
+        def.triangleCount = static_cast<int>(indices.size() / 3);
+        // A rendering mesh splits its vertices along UV seams and hard edges: welded, the
+        // triangles share their edges and the contacts do not snag on internal ones.
+        def.weldVertices = true;
+        def.weldTolerance = 1e-4f;
+        def.useMedianSplit = false; // SAH: the triangles of a model are not a grid
+        def.identifyEdges = true;
+        mesh = b3CreateMesh(&def, nullptr, 0); // box3d copies the arrays
+        meshFailed = mesh == nullptr;
+        return mesh;
+    }
+
+    b3HullData *convexHull() {
+        if (hull != nullptr || hullFailed) { return hull; }
+        std::vector<b3Vec3> points(geometry.positions.size());
+        for (size_t i = 0; i < points.size(); i++) {
+            points[i] = {geometry.positions[i].x, geometry.positions[i].y, geometry.positions[i].z};
+        }
+        // box3d keeps at most 255 hull vertices and simplifies the hull to the budget itself.
+        hull = points.size() >= 4 ? b3CreateHull(points.data(), static_cast<int>(points.size()), UINT8_MAX) : nullptr;
+        hullFailed = hull == nullptr;
+        return hull;
+    }
+};
 
 namespace {
     // Allowed penetration of the mover into a dynamic body (soft plane), m. The penetration depth
@@ -73,6 +130,41 @@ namespace {
         return jointId;
     }
 
+    // Why a mesh collider has no shape: the game log and the editor console.
+    void warnMeshCollider(Entity entity, const char *reason) {
+        LOG_WARN("Mesh Collider 3D on '%s': %s", entity.getName().c_str(), reason);
+        LOG_WARN_EDITOR("Mesh Collider 3D on '%s': %s", entity.getName().c_str(), reason);
+    }
+
+    // The shape of a mesh collider on the body: the convex hull scaled by the entity, or the
+    // triangles themselves on a static body. Null — no shape, the reason is in the log.
+    b3ShapeId createMeshColliderShape(
+        b3BodyId bodyId, const b3ShapeDef &shapeDef, MeshColliderCook &cook, bool convex, bool staticBody,
+        glm::vec3 scale, Entity entity
+    ) {
+        const b3Vec3 b3Scale = {scale.x, scale.y, scale.z};
+        if (convex) {
+            b3HullData *hull = cook.convexHull();
+            if (hull == nullptr) {
+                warnMeshCollider(entity, "the mesh gives no convex hull (fewer than four points off a plane)");
+                return b3_nullShapeId;
+            }
+            return b3CreateTransformedHullShape(bodyId, &shapeDef, hull, b3Transform_identity, b3Scale);
+        }
+        if (!staticBody) {
+            warnMeshCollider(
+                entity, "a non-convex mesh collides on a static body only; make the collider convex or the body static"
+            );
+            return b3_nullShapeId;
+        }
+        b3MeshData *mesh = cook.triangleMesh();
+        if (mesh == nullptr) {
+            warnMeshCollider(entity, "the triangles give no collision mesh");
+            return b3_nullShapeId;
+        }
+        return b3CreateMeshShape(bodyId, &shapeDef, mesh, b3Scale);
+    }
+
     // Closest hit of a ray: every accepted shape clips the ray, so the last one written is the
     // closest. Sensors and the ignored body are passed through.
     struct RaycastContext {
@@ -132,6 +224,9 @@ void Physics3D::init(World *world) {
     );
     PND_STATIC_ASSERT(
         sizeof(b3ShapeId) <= sizeof(CapsuleCollider3DComponent::runtimeData), "Rigidbody3D runtime shape wrong data size"
+    );
+    PND_STATIC_ASSERT(
+        sizeof(b3ShapeId) <= sizeof(MeshCollider3DComponent::runtimeData), "Rigidbody3D runtime shape wrong data size"
     );
     PND_STATIC_ASSERT(sizeof(b3JointId) <= sizeof(RuntimeJointData::data), "Joint3D runtime joint wrong data size");
     m_world = world;
@@ -499,8 +594,94 @@ void Physics3D::registerEntity(Entity entity) {
         b3ShapeId shapeId = b3CreateCapsuleShape(bodyId, &shapeDef, &capsule);
         memcpy(&cc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
     }
+    if (entity.hasComponent<MeshCollider3DComponent>()) {
+        auto &mc3d = entity.getComponent<MeshCollider3DComponent>();
+        b3ShapeId shapeId = b3_nullShapeId;
+        runtimeData.meshCook = cookMeshCollider(entity, mc3d);
+        if (runtimeData.meshCook) {
+            const b3ShapeDef shapeDef = makeShapeDef(mc3d.isSensor, mc3d.density, mc3d.friction, mc3d.restitution);
+            shapeId = createMeshColliderShape(
+                bodyId, shapeDef, *runtimeData.meshCook, mc3d.convex,
+                rb3d.type == Rigidbody3DComponent::BodyType::STATIC, scale, entity
+            );
+        }
+        memcpy(&mc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
+    }
     m_bodyEntityMap[bodyId.index1] = entity;
     m_bodies.add(entity, runtimeData);
+}
+
+std::shared_ptr<MeshColliderCook> Physics3D::cookMeshCollider(Entity entity, const MeshCollider3DComponent &collider) {
+    Physics::MeshColliderSource source;
+    if (!Physics::meshColliderSource(entity, collider, source)) {
+        warnMeshCollider(entity, "no mesh: the component names none and the entity renders none");
+        return nullptr;
+    }
+    const auto key = std::make_tuple(source.asset, source.submesh, source.primitive);
+    const auto it = m_meshCooks.find(key);
+    if (it != m_meshCooks.end()) { return it->second; }
+    auto cook = std::make_shared<MeshColliderCook>();
+    if (!Physics::meshColliderGeometry(source, cook->geometry)) {
+        const std::string reason =
+            "mesh " + std::to_string((uint32_t)source.asset) + " has no triangles (missing, not a mesh or empty)";
+        warnMeshCollider(entity, reason.c_str());
+        return nullptr;
+    }
+    m_meshCooks.emplace(key, cook);
+    return cook;
+}
+
+void Physics3D::setMeshColliderMesh(Entity entity, AssetId mesh, bool convex) {
+    if (!entity.isValid() || !entity.hasComponent<MeshCollider3DComponent>()) { return; }
+    MeshCollider3DComponent &collider = entity.getComponent<MeshCollider3DComponent>();
+    const bool kindChanged = collider.convex != convex;
+    collider.mesh = AssetRef<Asset>(mesh);
+    collider.convex = convex;
+    if (!isInitialized()) { return; }
+    // The triangles are read again: the cook of this source is dropped (the bodies built from the
+    // old ones keep theirs), the next cook reads the asset as it is now.
+    Physics::MeshColliderSource source;
+    if (Physics::meshColliderSource(entity, collider, source)) {
+        m_meshCooks.erase(std::make_tuple(source.asset, source.submesh, source.primitive));
+    }
+    RuntimeBodyData *body = m_bodies.find(entity.getId());
+    if (body == nullptr) {
+        if (canUse(entity)) { registerEntity(entity); }
+        return;
+    }
+    b3ShapeId shapeId;
+    memcpy(&shapeId, &collider.runtimeData, sizeof(b3ShapeId));
+    // The shape is replaced in place while its kind stays (a hull for a hull, triangles for
+    // triangles): the body and its joints survive. Otherwise, or without a shape to replace, the
+    // body is rebuilt as on a property edit.
+    std::shared_ptr<MeshColliderCook> cook = nullptr;
+    if (!kindChanged && b3Shape_IsValid(shapeId)) { cook = cookMeshCollider(entity, collider); }
+    if (!cook) {
+        propertiesUpdated(entity);
+        return;
+    }
+    const glm::vec3 scale = glm::abs(entity.calculateWorldSpaceTransform().getScale());
+    const b3Vec3 b3Scale = {scale.x, scale.y, scale.z};
+    if (convex) {
+        b3HullData *hull = cook->convexHull();
+        if (hull == nullptr) {
+            propertiesUpdated(entity); // the rebuild logs why the collider has no shape
+            return;
+        }
+        // box3d clones the hull into its database: the scaled copy is ours to free.
+        b3HullData *scaled = b3CloneAndTransformHull(hull, b3Transform_identity, b3Scale);
+        b3Shape_SetHull(shapeId, scaled);
+        b3DestroyHull(scaled);
+        b3Body_ApplyMassFromShapes(bodyIdOf(*body));
+    } else {
+        b3MeshData *meshData = cook->triangleMesh();
+        if (meshData == nullptr) {
+            propertiesUpdated(entity);
+            return;
+        }
+        b3Shape_SetMesh(shapeId, meshData, b3Scale);
+    }
+    body->meshCook = cook;
 }
 
 void Physics3D::componentsUpdated(Entity entity) {
@@ -873,6 +1054,7 @@ void Physics3D::shutdown() {
     }
     m_bodyEntityMap.clear();
     m_bodies.clear();
+    m_meshCooks.clear(); // after the world: the mesh shapes referenced the cooked data
     m_wheelJointMap.clear();
     m_writePass = 0;
     m_stepping = false;
@@ -887,7 +1069,7 @@ bool Physics3D::isRegistered(Entity entity) {
 bool Physics3D::canUse(Entity entity) {
     return entity.isValid() && entity.hasComponent<Rigidbody3DComponent>() &&
            (entity.hasComponent<BoxCollider3DComponent>() || entity.hasComponent<SphereCollider3DComponent>() ||
-            entity.hasComponent<CapsuleCollider3DComponent>());
+            entity.hasComponent<CapsuleCollider3DComponent>() || entity.hasComponent<MeshCollider3DComponent>());
 }
 
 } // namespace Panda

@@ -17,8 +17,8 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `WorldLightingAPI.hpp` — world lighting (ambient color and intensity).
 - `Input.hpp`, `Key.hpp` — keyboard/mouse/touch.
 - `Components/` — access to engine components from scripts (transform, camera, directional
-  light, mesh, sprite renderer; rigid bodies and the wheel joint — motor, steering, suspension —
-  come with the Physics module).
+  light, mesh, sprite renderer; rigid bodies, the mesh collider — its mesh at runtime — and the
+  wheel joint — motor, steering, suspension — come with the Physics module).
 - `Assets/` — working with assets by id (textures, materials, meshes, the bytes of a font).
 - `Physics3DAPI.hpp` — queries against the 3D physics world: ray cast (entity, point, normal,
   distance and friction of the hit surface); provided by the Physics module.

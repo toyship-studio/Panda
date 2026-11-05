@@ -204,6 +204,32 @@ namespace {
         addColliderMaterialRows(form, emit, 1000.f);
     }
 
+    void buildMeshCollider3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
+        using T = Panda::MeshCollider3DComponent;
+        Section<T> form(section, context);
+        auto data = form.data;
+        auto emit = form.emitter(true);
+        // The mesh: an imported mesh of the project; empty — the mesh the entity itself renders.
+        addAssetRow(section, "Mesh", "mesh", static_cast<uint32_t>(data->mesh.getId()), [data, emit](uint32_t id) {
+            data->mesh = Panda::AssetRef<Panda::Asset>(Panda::AssetId(id));
+            emit();
+        });
+        addToggleRow(
+            section, "Convex", data->convex,
+            [data, emit](bool on) {
+                data->convex = on;
+                emit();
+            },
+            form.mixed([](T &c) { return c.convex; })
+        );
+        section.addContent(makeFormHint(
+            "Empty mesh: the one the entity renders. Convex: the hull of the mesh, for dynamic and kinematic "
+            "bodies. Not convex: the triangles themselves, static bodies only."
+        ));
+        addSensorRow(form, emit);
+        addColliderMaterialRows(form, emit, 1000.f);
+    }
+
     // --- Joints: the connected entity, the geometry, the limits and the motor.
 
     template<typename T>
@@ -438,6 +464,9 @@ void registerExtensions(EditorExtensions &extensions) {
     extensions.componentInspectors.add(inspector<CapsuleCollider3DComponent>(
         "capsuleCollider3dComponent", "Capsule Collider 3D", buildCapsuleCollider3DSection
     ));
+    extensions.componentInspectors.add(
+        inspector<MeshCollider3DComponent>("meshCollider3dComponent", "Mesh Collider 3D", buildMeshCollider3DSection)
+    );
     extensions.componentInspectors.add(inspector<RevoluteJoint2DComponent>(
         "revoluteJoint2dComponent", "Revolute Joint 2D", buildRevoluteJoint2DSection
     ));

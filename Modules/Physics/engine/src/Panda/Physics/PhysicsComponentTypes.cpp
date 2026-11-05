@@ -137,6 +137,29 @@ namespace {
         collider.restitution = dto.restitution;
     }
 
+    void encodeMeshCollider3D(Rain::Encoder &encoder, Entity entity) {
+        MeshCollider3DComponent &collider = entity.getComponent<MeshCollider3DComponent>();
+        MeshCollider3DComponentDto dto;
+        dto.isSensor = collider.isSensor;
+        dto.mesh = collider.mesh.getId();
+        dto.convex = collider.convex;
+        dto.density = collider.density;
+        dto.friction = collider.friction;
+        dto.restitution = collider.restitution;
+        encoder.encode("meshCollider3dComponent", dto);
+    }
+    void decodeMeshCollider3D(Rain::Decoder &decoder, Entity entity) {
+        MeshCollider3DComponentDto dto;
+        if (!decoder.decode("meshCollider3dComponent", dto)) { return; }
+        MeshCollider3DComponent &collider = entity.addComponent<MeshCollider3DComponent>();
+        collider.isSensor = dto.isSensor;
+        collider.mesh = AssetRef<Asset>(dto.mesh);
+        collider.convex = dto.convex;
+        collider.density = dto.density;
+        collider.friction = dto.friction;
+        collider.restitution = dto.restitution;
+    }
+
     // --- Joints.
 
     void encodeRevoluteJoint2D(Rain::Encoder &encoder, Entity entity) {
@@ -310,6 +333,9 @@ void registerComponentTypes(ComponentTypeRegistry &registry) {
     ));
     registry.add(componentType<CapsuleCollider3DComponent>(
         "capsuleCollider3dComponent", encodeCapsuleCollider3D, decodeCapsuleCollider3D
+    ));
+    registry.add(componentType<MeshCollider3DComponent>(
+        "meshCollider3dComponent", encodeMeshCollider3D, decodeMeshCollider3D
     ));
     registry.add(componentType<RevoluteJoint2DComponent>(
         "revoluteJoint2dComponent", encodeRevoluteJoint2D, decodeRevoluteJoint2D

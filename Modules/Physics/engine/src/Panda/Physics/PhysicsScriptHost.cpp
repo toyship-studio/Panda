@@ -265,6 +265,23 @@ namespace {
         *outGrounded = result.grounded ? 1 : 0;
     }
 
+    /// MESH COLLIDER 3D COMPONENT
+
+    void meshCollider3DComponent_SetMesh(Handle entityHandle, Handle meshHandle, uint32_t convex) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            physics->setMeshColliderMesh(entity, AssetId(meshHandle), convex != 0);
+        }
+    }
+
+    void meshCollider3DComponent_GetMesh(Handle entityHandle, Handle *meshHandle) {
+        *meshHandle = 0;
+        Entity entity = resolveScriptEntity(entityHandle);
+        if (entity.isValid() && entity.hasComponent<MeshCollider3DComponent>()) {
+            *meshHandle = static_cast<Handle>(entity.getComponent<MeshCollider3DComponent>().mesh.getId());
+        }
+    }
+
     Scripting::PhysicsHostApi makeTable() {
         Scripting::PhysicsHostApi api;
         api.rigidbody2DComponent_ApplyForce = rigidbody2DComponent_ApplyForce;
@@ -294,6 +311,8 @@ namespace {
         api.wheelJoint3DComponent_GetSteeringAngle = wheelJoint3DComponent_GetSteeringAngle;
         api.wheelJoint3DComponent_SetSuspension = wheelJoint3DComponent_SetSuspension;
         api.character_Move = character_Move;
+        api.meshCollider3DComponent_SetMesh = meshCollider3DComponent_SetMesh;
+        api.meshCollider3DComponent_GetMesh = meshCollider3DComponent_GetMesh;
         return api;
     }
 
