@@ -36,6 +36,10 @@ namespace EntityAPI {
     void addComponent(EntityHandle handle, ComponentType type);
     // A component by its registry name (an unknown name is reported by the engine and ignored).
     void addComponent(EntityHandle handle, const char *componentName);
+    bool hasComponent(EntityHandle handle, const char *componentName);
+    // Removes the component by its registry name; the systems follow (a removed joint component
+    // destroys the joint, a removed collider leaves the body). Nothing happens without the component.
+    void removeComponent(EntityHandle handle, const char *componentName);
 
     const char *getName(EntityHandle handle);
 }; // namespace EntityAPI

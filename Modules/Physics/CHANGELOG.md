@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Compound bodies: a collider on an entity without a body of its own joins the body of the
+  nearest entity above it (2D and 3D). A cabinet of boards or a table with legs is one body.
+- Joints: Weld, Prismatic, Distance, Filter and Motor joints in 3D; `collideConnected` on every
+  joint; a joint is made again when a body is rebuilt and lives with its component (added or
+  removed at runtime, edited in Play); the Scene tab draws the joints (Show Joints).
+- The script table `physics` v3: `Bamboo/Joint3DAPI.hpp` (the reaction of a joint, for breakable
+  connections), `Components/PrismaticJoint3DComponentAPI.hpp`, `DistanceJoint3DComponentAPI.hpp`,
+  `MotorJoint3DComponentAPI.hpp`. A ray cast reports the entity of the hit collider, a part of a
+  compound body included.
+
 ## 0.2.0
 
 - Mesh Collider 3D (`meshCollider3dComponent`): a collider shaped by a mesh — an imported or a

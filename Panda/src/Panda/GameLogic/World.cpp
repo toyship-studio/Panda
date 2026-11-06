@@ -289,8 +289,10 @@ void World::setParent(Entity entity, Entity parent, bool keepWorldTransform) {
         if (keepWorldTransform) { convertToLocalSpace(entity); }
     }
     // A transform taken as it is puts the subtree elsewhere in the world, maybe at another
-    // scale: the bodies under the entity are rebuilt where they stand now.
-    if (!keepWorldTransform) { transformChanged(entity, true); }
+    // scale: the bodies under the entity are rebuilt where they stand now. With the world pose
+    // kept the bodies stay put, but a collider that lends its shape to the body above it may
+    // have changed bodies: the systems hear of the move either way.
+    transformChanged(entity, !keepWorldTransform);
     bumpStructureVersion();
     m_changed = true;
 }

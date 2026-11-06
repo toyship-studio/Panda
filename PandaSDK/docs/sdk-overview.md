@@ -18,10 +18,12 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
 - `Input.hpp`, `Key.hpp` — keyboard/mouse/touch.
 - `Components/` — access to engine components from scripts (transform, camera, directional
   light, mesh, sprite renderer; rigid bodies, the mesh collider — its mesh at runtime — and the
-  wheel joint — motor, steering, suspension — come with the Physics module).
+  joints — the wheel's motor, steering and suspension, the prismatic and distance motors and
+  targets, the motor joint's velocities — come with the Physics module).
 - `Assets/` — working with assets by id (textures, materials, meshes, the bytes of a font).
 - `Physics3DAPI.hpp` — queries against the 3D physics world: ray cast (entity, point, normal,
-  distance and friction of the hit surface); provided by the Physics module.
+  distance and friction of the hit surface); `Joint3DAPI.hpp` — the reaction of a joint, for
+  connections that break; provided by the Physics module.
 - `CharacterMoverAPI.hpp` — character movement on top of physics; provided by the Physics
   module. Without the module the physics calls do nothing and return zeros.
 - `TerrainAPI.hpp` — terrain queries (height etc.); provided by the Terrain module.

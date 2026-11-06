@@ -35,6 +35,19 @@ namespace EntityAPI {
         Panda::ExternalCalls::entity_CreateComponent(handle.id, componentName);
     }
 
+    bool hasComponent(EntityHandle handle, const char *componentName) {
+        if (!Internal::requireMainThreadApi("EntityAPI::hasComponent")) { return false; }
+        if (componentName == nullptr || Panda::ExternalCalls::entity_HasComponent == nullptr) { return false; }
+        return Panda::ExternalCalls::entity_HasComponent(handle.id, componentName);
+    }
+
+    void removeComponent(EntityHandle handle, const char *componentName) {
+        if (!Internal::requireMainThreadApi("EntityAPI::removeComponent")) { return; }
+        if (componentName == nullptr || Panda::ExternalCalls::entity_RemoveComponent == nullptr) { return; }
+        if (!hasComponent(handle, componentName)) { return; }
+        Panda::ExternalCalls::entity_RemoveComponent(handle.id, componentName);
+    }
+
 } // namespace EntityAPI
 
 } // namespace Bamboo

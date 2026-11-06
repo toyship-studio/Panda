@@ -9,8 +9,8 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 
 ## Module
 
-- The engine part registers the twelve component types (bodies, colliders, joints; the keys of
-  `.world` are unchanged), two world systems and the `physics` script table. `physics` carries
+- The engine part registers the seventeen component types (bodies, colliders, joints; the keys
+  of `.world` are unchanged), two world systems and the `physics` script table. `physics` carries
   the life cycle: `start` creates `Physics2D` and `Physics3D` in `World::context`, `stop` erases
   them; `entityRemoved` / `entityRestored`, `componentsChanged` (a body or a collider added or
   removed) and `transformChanged` (a teleport, or a rebuild on a scale edit) are the generic
@@ -23,16 +23,21 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 - Scripts reach the module through the named table (`ScriptHostApi::hostApiTable_Find("physics",
   1)`, `PhysicsScriptApi.hpp`); the Bamboo headers keep their paths
   (`Bamboo/Components/Rigidbody2DComponentAPI.hpp`, `Rigidbody3DComponentAPI.hpp`,
-  `MeshCollider3DComponentAPI.hpp`, `WheelJoint3DComponentAPI.hpp`, `Bamboo/Physics3DAPI.hpp`,
+  `MeshCollider3DComponentAPI.hpp`, `WheelJoint3DComponentAPI.hpp`,
+  `PrismaticJoint3DComponentAPI.hpp`, `DistanceJoint3DComponentAPI.hpp`,
+  `MotorJoint3DComponentAPI.hpp`, `Bamboo/Joint3DAPI.hpp`, `Bamboo/Physics3DAPI.hpp`,
   `Bamboo/CharacterMoverAPI.hpp`) and ship with the SDK package from the module's `sdk/` part.
-  The table layout is v2 (the mesh collider); a request must match the version exactly. The four contact and sensor callbacks
+  The table layout is v3 (v2 the mesh collider, v3 the joints); a request must match the
+  version exactly. The four contact and sensor callbacks
   of scripts stay in the core plugin ABI as generic contact events. The physics functions left
   `ScriptHostApi` (ABI v29). A script adds a physics component by its registry name
   (`EntityAPI::addComponent(entity, "rigidbody3dComponent")`).
-- The editor part registers the inspector sections of the twelve components (an edit during
-  Play rebuilds the bodies of the targets from the new values), the collider outlines as a
-  viewport overlay (`EditorExtensions::viewportOverlays`, the Scene tab in EDIT and PLAY) and the PHYSICS
-  section of the editor settings (`physics` of `settings.json`: Show Colliders). A mesh collider
+- The editor part registers the inspector sections of the seventeen components (an edit during
+  Play rebuilds the body of a target from the new values, or makes its joint again), the collider
+  outlines and the joint drawings as a viewport overlay (`EditorExtensions::viewportOverlays`,
+  the Scene tab in EDIT and PLAY) and the PHYSICS section of the editor settings (`physics` of
+  `settings.json`: Show Colliders, Show Joints). A joint is drawn as authored: a cross at the
+  anchor, the axis through it, a line to the connected entity. A mesh collider
   is outlined by the box of its triangles; a selected entity shows the edges themselves (of the
   hull for a convex one), thinned to a cap when the mesh is large.
 - Other modules put their bodies into the 3D world through `World::findContext<Physics3D>()`
@@ -79,8 +84,22 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 ## Bodies
 
 - A body is `Rigidbody3D` plus at least one collider (Box / Sphere / Capsule / Mesh, one of each
-  kind per entity). The body lives at the entity's world transform; the step writes the pose back
-  into the entity transform.
+  kind per entity) on the entity or on the entities under it. The body lives at the entity's
+  world transform; the step writes the pose back into the entity transform.
+- **Compound bodies.** A collider on an entity without a `Rigidbody3D` of its own joins the body
+  of the nearest entity above it that has one, placed by its pose relative to that body (its own
+  rotation, position and scale; an entity with its own body takes its subtree, a tombstone takes
+  nothing). A cabinet is one body with nine box shapes, a table one body with five. box3d sums
+  the masses of the shapes. The parts are tracked in the world like bodies
+  (`Physics3D::m_compoundParts`), so a transform change reaches them: a part that moved relative
+  to its body rebuilds the body around it, a part that moved with the body (the body itself was
+  teleported) costs nothing. A collider added to or removed from a part, a part that comes or
+  goes, a part reparented or given a body of its own: the body is rebuilt from what stands under
+  it now, with its motion. The pose of a part is never written by the physics: it follows its body
+  through the hierarchy as any child does. A ray cast reports the entity of the hit collider (the
+  part), the contact events go to the body entity as before. A triangle mesh collider on a part
+  gets a cook of its own with the pose baked into the triangles (box3d mesh shapes have no frame);
+  a convex one is placed by `b3CreateTransformedHullShape`. Same rules in 2D (`BoxCollider2D`).
 - **Mesh collider** (`MeshCollider3DComponent`): a collider shaped by a mesh, in the local space of
   the entity (its scale applies, there is no offset). The mesh is an imported or a runtime mesh
   asset; an empty reference means the mesh the entity renders — the primitive of its
@@ -130,21 +149,25 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
   child; the body is not. The transform still gives back the pose of the body.
 - Mass comes from the collider volume and `density`; there is no mass, center of mass or damping
   field. The inspector limits friction to 0..1.
-- A property edit recreates the body (`propertiesUpdated`), which destroys its joints. A transform
-  edit from outside the simulation (script, gizmo, inspector) teleports the body and zeroes its
-  velocity (`syncTransform`); the joints survive.
+- A property edit recreates the body (`propertiesUpdated`) at the entity's transform, at rest; its
+  joints, and the joints of the other entities that name it, are made again from their
+  components at the relative pose of that moment (a limit measured from the start pose is
+  measured from this one now). A transform edit from outside the simulation (script, gizmo,
+  inspector) teleports the body and zeroes its velocity (`syncTransform`); the joints survive
+  untouched.
 - The simulation follows the entities while it runs:
   - the set of physics components changes (a script or the inspector adds or removes
     `Rigidbody3D` or a collider): `componentsUpdated` creates the body, removes it, or rebuilds
-    it from what the entity has now — in place, with its velocities, without its joints;
+    it from what the entity has now — in place, with its velocities, and its joints made again;
+    the body above whose shapes the entity's colliders are or were a part of is rebuilt too;
   - an entity leaves — it is destroyed (`World::destroy`) or deleted in the editor (the
     tombstone, with everything under it): the `entityRemoved` hook takes out its body, and the
     world systems take out the bodies they created for it (the terrain owns those and releases
     them with their data and registration in its own hook);
   - a deleted entity comes back (the deletion is undone), or an entity is duplicated in the
-    editor while the world runs: the `entityRestored` hook creates the body again, and the
-    world systems theirs (`World::duplicateEntity` runs the hooks for the whole new subtree once
-    it stands in the hierarchy); the joints are not restored.
+    editor while the world runs: the `entityRestored` hook creates the body again with its
+    joints, and the world systems theirs (`World::duplicateEntity` runs the hooks for the whole
+    new subtree once it stands in the hierarchy).
 
   A body is only for an entity the world sees (`canUse` asks `Entity::isValid`). The event
   dispatch skips a body whose entity is no longer valid.
@@ -154,12 +177,38 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 
 ## Joints
 
-Components `RevoluteJoint3D`, `SphericalJoint3D`, `WheelJoint3D` (and the 2D ones). A joint sits
-on one entity and names the other in `connectedEntity`; an entity carries at most one joint of a
-kind. Joints are created by the second pass of `Physics3D::init`, after all bodies exist. The
-anchor and the axes are authored in the local space of the entity that carries the joint (the
-anchor is multiplied by the entity scale), and the joint fixes the pose the bodies have at
-simulation start: limits are measured from it.
+Components `RevoluteJoint3D`, `SphericalJoint3D`, `WheelJoint3D`, `WeldJoint3D`, `PrismaticJoint3D`,
+`DistanceJoint3D`, `FilterJoint3D`, `MotorJoint3D` (and the 2D ones: `RevoluteJoint2D`,
+`DistanceJoint2D`). A joint sits on one entity and names the other in `connectedEntity`; an entity
+carries at most one joint of a kind; both entities need a body of their own (a part of a compound
+body carries no joint). The anchor and the axes are authored in the local space of the entity
+that carries the joint (the anchor is multiplied by the entity scale), and the joint fixes the
+pose the bodies have when it is created: limits are measured from it.
+
+- **Life cycle.** A joint lives while its component and both bodies do (`Physics3D::m_joints`, by
+  entity and kind, checked with `b3Joint_IsValid`): created at simulation start
+  (`createJoints`, after every body) or when the component arrives at runtime
+  (`jointComponentsUpdated` from the `componentsChanged` hook), destroyed with the component
+  (`EntityAPI::removeComponent` from a script — a breakable connection), made again when a body
+  of it is rebuilt (`recreateJointsTouching`: the entity's own joints and those of the entities
+  that name it). An inspector edit of a joint during Play makes it again.
+- `collideConnected` on every joint but the filter: whether the two bodies still collide with
+  each other; off by default, the parts of a mechanism overlap at the joint.
+- **Kinds.** Revolute: a hinge around `axis` through `anchor`, limit and motor (box3d frame Z).
+  Spherical: a ball joint, a cone around `axis` and a twist limit. Wheel: below. Weld: the bodies
+  keep their relative pose; zero `linearHertz` / `angularHertz` is rigid, a positive one a spring
+  (box3d warns that its approximate solver cannot hold many bodies together rigidly: a cabinet is
+  a compound body, not nine welds). Prismatic: a slide along `axis` through `anchor`, no relative
+  rotation (box3d frame X); limits in meters from the start pose, a spring to
+  `targetTranslation`, a motor on the speed. Distance: holds the distance between `anchor` on the
+  owner and `connectedAnchor` on the connected body (`length` 0 — the distance at start); rigid
+  without the spring, with it the limit and the motor apply. Filter: the two bodies never collide,
+  nothing else. Motor: drives the relative velocity (world axes; the angular one in degrees per
+  second in the component) with force and torque limits, and with a positive hertz a spring back
+  to the relative pose of the start.
+- The reaction of any joint — the force and the torque it applied during the last step, in world
+  space — is readable (`Physics3D::getJointReaction`, `Joint3DAPI::getReaction`): a script breaks
+  a weld by removing the component once the force exceeds what the material takes.
 
 ### Wheel joint
 
@@ -176,11 +225,10 @@ simulation start: limits are measured from it.
   (`1 / (1/mA + 1/mB + rotational terms)`, close to the wheel mass under a heavy chassis), not
   over the sprung mass. A car needs a joint frequency well above its ride frequency;
   `JointCar::applySuspension` does the conversion.
-- Runtime handles are in `Physics3D::m_wheelJointMap` (by the wheel entity) and are checked with
-  `b3Joint_IsValid`: the joint dies with either body. The joint setters of box3d do not wake the
-  bodies, so `Physics3D` wakes them itself: when a target changes, and on every call while the
-  motor drives (enabled, with a speed and a torque). A brake that is set every frame does not keep
-  a parked car awake.
+- The runtime handle is in `Physics3D::m_joints` like the others (the joint dies with either body).
+  The joint setters of box3d do not wake the bodies, so `Physics3D` wakes them itself: when a
+  target changes, and on every call while the motor drives (enabled, with a speed and a torque).
+  A brake that is set every frame does not keep a parked car awake.
 
 ## Script API
 
@@ -195,15 +243,24 @@ Main-thread only (guarded). Entities without a body or a joint give no-ops and z
   small.
 - `Physics3DAPI::raycast(origin, direction, maxDistance, hit, ignored)`: the closest solid shape;
   sensors are skipped; `ignored` is an entity whose body the ray passes through. The hit carries
-  the entity (invalid for a body without an entity), the point, the normal, the distance and the
-  friction of the hit shape. Terrain bodies are registered with their entities, so terrain is hit
-  like any body.
+  the entity whose collider was hit (a part of a compound body — the part; invalid for a body
+  without an entity), the point, the normal, the distance and the friction of the hit shape.
+  Terrain bodies are registered with their entities, so terrain is hit like any body.
 - `WheelJoint3DComponentAPI` (the entity is the wheel): `setMotor(enabled, speed, maxTorque)`,
   `getSpinSpeed`, `setSteeringAngle` (target), `getSteeringAngle` (current), `setSuspension`.
   Angles are in degrees and speeds in degrees per second, as in the component. The motor is a
   speed target with a torque limit: a target with a torque drives, a zero target with a torque
   brakes, a disabled motor lets the wheel roll.
 - `CharacterMoverAPI::move`: the kinematic capsule character.
+- `Joint3DAPI::getReaction(entity, kind, reaction)`: the force and the torque a joint applied
+  during the last step (world space); false without a live joint of the kind. The kinds are
+  numbered as the ABI numbers them (`Joint3DKind`).
+- `PrismaticJoint3DComponentAPI`: `setMotor(enabled, speed, maxForce)`, `setTarget(translation)`
+  (the spring must be on), `getTranslation`, `getSpeed`. `DistanceJoint3DComponentAPI`:
+  `setLength`, `setMotor`, `getCurrentLength`. `MotorJoint3DComponentAPI`:
+  `setVelocities(linear, angularDegreesPerSecond)`, `setLimits(maxForce, maxTorque)`. A joint
+  component is added and removed by name (`EntityAPI::addComponent` / `removeComponent`,
+  `hasComponent`); the joint follows the component.
 - `MeshCollider3DComponentAPI::setMesh(entity, mesh, convex)` / `getMesh`: the mesh of a mesh
   collider at runtime — a runtime mesh of the game (`AssetManagerAPI::createMesh` +
   `MeshAPI::update`), or an invalid handle for the mesh the entity renders. The geometry is read
@@ -239,17 +296,19 @@ the inner wheel turns more). What the engine API learned from them:
 - The step length is a constant of `World.cpp`; a project setting is not needed yet.
 - A kinematic body moved by a script on every step is a series of teleports (stepped, not
   interpolated): a "move to" call that lets the solver carry the body is not there yet.
-- A rebuilt body loses its joints (a property edit in the inspector during Play, a scale edit
-  of the entity or of anything above it, a collider added or removed, an undone deletion):
-  joints are created once, at simulation start, from the pose of that moment.
-- A collider of a child entity does not join the body of its parent (no compound bodies), and a
-  static or kinematic body under a body that the solver moves stays where it is: nothing
-  attaches a body to another one but a joint.
+- A rebuilt body gets its joints again from the relative pose of that moment: a limit measured
+  from the start pose is measured from the new one. A joint that has to keep its zero across a
+  rebuild would need the reference pose stored at creation.
+- A static or kinematic body under a body that the solver moves stays where it is: nothing
+  attaches a body to another one but a joint. A collider under a body joins it (a compound body);
+  an entity with a body of its own does not.
 - `TransformComponentAPI` is in the space of the parent and has no world-space getters, while
   the physics API is in world space: a script on a child body cannot ask where it is in the
   world. The vehicle scripts sit on root entities.
 - A center of mass offset and damping on `Rigidbody3D`; a cylinder collider for wheels; friction
-  above 1 in the inspector.
+  above 1 in the inspector. Joint events of box3d (`forceThreshold`, `torqueThreshold`) as a
+  script callback, instead of a script polling `Joint3DAPI::getReaction`. The parallel joint of
+  box3d (keeps a body upright) is not exposed.
 - The BVH of a mesh collider is built when the simulation starts (tens of milliseconds per
   hundred thousand triangles, once per mesh); cooking it into the runtime package at export
   (box3d versions its serialized data) when it shows. A mirrored (negative) scale is taken by its

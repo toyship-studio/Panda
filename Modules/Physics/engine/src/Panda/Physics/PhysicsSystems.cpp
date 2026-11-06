@@ -69,16 +69,27 @@ namespace {
         return ((typeId == entt::type_hash<TComponents>::value()) || ...);
     }
 
-    // A body or a collider came or went: the body of the entity is created, removed or rebuilt.
-    // The joints are a part of the world's start only (Physics2D/3D::createJoints).
+    // A body or a collider came or went: the body of the entity is created, removed or rebuilt
+    // (and the body above it, when the collider is a part of a compound body). A joint component
+    // came or went: the joints of the entity are made again from its components.
     void componentsChanged(World &world, Entity entity, entt::id_type typeId) {
         if (isAnyOf<Rigidbody2DComponent, BoxCollider2DComponent>(typeId)) {
             if (Physics2D *physics2D = world.findContext<Physics2D>()) { physics2D->componentsUpdated(entity); }
+        }
+        if (isAnyOf<RevoluteJoint2DComponent, DistanceJoint2DComponent>(typeId)) {
+            if (Physics2D *physics2D = world.findContext<Physics2D>()) { physics2D->jointComponentsUpdated(entity); }
         }
         if (isAnyOf<
                 Rigidbody3DComponent, BoxCollider3DComponent, SphereCollider3DComponent, CapsuleCollider3DComponent,
                 MeshCollider3DComponent>(typeId)) {
             if (Physics3D *physics3D = world.findContext<Physics3D>()) { physics3D->componentsUpdated(entity); }
+        }
+        if (isAnyOf<
+                RevoluteJoint3DComponent, SphericalJoint3DComponent, WheelJoint3DComponent, WeldJoint3DComponent,
+                PrismaticJoint3DComponent, DistanceJoint3DComponent, FilterJoint3DComponent, MotorJoint3DComponent>(
+                typeId
+            )) {
+            if (Physics3D *physics3D = world.findContext<Physics3D>()) { physics3D->jointComponentsUpdated(entity); }
         }
     }
 

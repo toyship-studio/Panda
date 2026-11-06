@@ -173,6 +173,7 @@ namespace {
         dto.enableMotor = joint.enableMotor;
         dto.motorSpeed = joint.motorSpeed;
         dto.maxMotorTorque = joint.maxMotorTorque;
+        dto.collideConnected = joint.collideConnected;
         encoder.encode("revoluteJoint2dComponent", dto);
     }
     void decodeRevoluteJoint2D(Rain::Decoder &decoder, Entity entity) {
@@ -187,6 +188,7 @@ namespace {
         joint.enableMotor = dto.enableMotor;
         joint.motorSpeed = dto.motorSpeed;
         joint.maxMotorTorque = dto.maxMotorTorque;
+        joint.collideConnected = dto.collideConnected;
     }
 
     void encodeDistanceJoint2D(Rain::Encoder &encoder, Entity entity) {
@@ -199,6 +201,7 @@ namespace {
         dto.enableSpring = joint.enableSpring;
         dto.hertz = joint.hertz;
         dto.dampingRatio = joint.dampingRatio;
+        dto.collideConnected = joint.collideConnected;
         encoder.encode("distanceJoint2dComponent", dto);
     }
     void decodeDistanceJoint2D(Rain::Decoder &decoder, Entity entity) {
@@ -212,6 +215,7 @@ namespace {
         joint.enableSpring = dto.enableSpring;
         joint.hertz = dto.hertz;
         joint.dampingRatio = dto.dampingRatio;
+        joint.collideConnected = dto.collideConnected;
     }
 
     void encodeRevoluteJoint3D(Rain::Encoder &encoder, Entity entity) {
@@ -226,6 +230,7 @@ namespace {
         dto.enableMotor = joint.enableMotor;
         dto.motorSpeed = joint.motorSpeed;
         dto.maxMotorTorque = joint.maxMotorTorque;
+        dto.collideConnected = joint.collideConnected;
         encoder.encode("revoluteJoint3dComponent", dto);
     }
     void decodeRevoluteJoint3D(Rain::Decoder &decoder, Entity entity) {
@@ -241,6 +246,7 @@ namespace {
         joint.enableMotor = dto.enableMotor;
         joint.motorSpeed = dto.motorSpeed;
         joint.maxMotorTorque = dto.maxMotorTorque;
+        joint.collideConnected = dto.collideConnected;
     }
 
     void encodeSphericalJoint3D(Rain::Encoder &encoder, Entity entity) {
@@ -254,6 +260,7 @@ namespace {
         dto.enableTwistLimit = joint.enableTwistLimit;
         dto.lowerTwistAngle = joint.lowerTwistAngle;
         dto.upperTwistAngle = joint.upperTwistAngle;
+        dto.collideConnected = joint.collideConnected;
         encoder.encode("sphericalJoint3dComponent", dto);
     }
     void decodeSphericalJoint3D(Rain::Decoder &decoder, Entity entity) {
@@ -268,6 +275,7 @@ namespace {
         joint.enableTwistLimit = dto.enableTwistLimit;
         joint.lowerTwistAngle = dto.lowerTwistAngle;
         joint.upperTwistAngle = dto.upperTwistAngle;
+        joint.collideConnected = dto.collideConnected;
     }
 
     void encodeWheelJoint3D(Rain::Encoder &encoder, Entity entity) {
@@ -293,6 +301,7 @@ namespace {
         dto.enableMotor = joint.enableMotor;
         dto.motorSpeed = joint.motorSpeed;
         dto.maxMotorTorque = joint.maxMotorTorque;
+        dto.collideConnected = joint.collideConnected;
         encoder.encode("wheelJoint3dComponent", dto);
     }
     void decodeWheelJoint3D(Rain::Decoder &decoder, Entity entity) {
@@ -319,6 +328,154 @@ namespace {
         joint.enableMotor = dto.enableMotor;
         joint.motorSpeed = dto.motorSpeed;
         joint.maxMotorTorque = dto.maxMotorTorque;
+        joint.collideConnected = dto.collideConnected;
+    }
+
+    void encodeWeldJoint3D(Rain::Encoder &encoder, Entity entity) {
+        WeldJoint3DComponent &joint = entity.getComponent<WeldJoint3DComponent>();
+        WeldJoint3DComponentDto dto;
+        dto.connectedEntity = joint.connectedEntity;
+        dto.anchor = Vec3(joint.anchor.x, joint.anchor.y, joint.anchor.z);
+        dto.linearHertz = joint.linearHertz;
+        dto.angularHertz = joint.angularHertz;
+        dto.linearDampingRatio = joint.linearDampingRatio;
+        dto.angularDampingRatio = joint.angularDampingRatio;
+        dto.collideConnected = joint.collideConnected;
+        encoder.encode("weldJoint3dComponent", dto);
+    }
+    void decodeWeldJoint3D(Rain::Decoder &decoder, Entity entity) {
+        WeldJoint3DComponentDto dto;
+        if (!decoder.decode("weldJoint3dComponent", dto)) { return; }
+        WeldJoint3DComponent &joint = entity.addComponent<WeldJoint3DComponent>();
+        joint.connectedEntity = dto.connectedEntity;
+        joint.anchor = {dto.anchor.x, dto.anchor.y, dto.anchor.z};
+        joint.linearHertz = dto.linearHertz;
+        joint.angularHertz = dto.angularHertz;
+        joint.linearDampingRatio = dto.linearDampingRatio;
+        joint.angularDampingRatio = dto.angularDampingRatio;
+        joint.collideConnected = dto.collideConnected;
+    }
+
+    void encodePrismaticJoint3D(Rain::Encoder &encoder, Entity entity) {
+        PrismaticJoint3DComponent &joint = entity.getComponent<PrismaticJoint3DComponent>();
+        PrismaticJoint3DComponentDto dto;
+        dto.connectedEntity = joint.connectedEntity;
+        dto.anchor = Vec3(joint.anchor.x, joint.anchor.y, joint.anchor.z);
+        dto.axis = Vec3(joint.axis.x, joint.axis.y, joint.axis.z);
+        dto.enableSpring = joint.enableSpring;
+        dto.hertz = joint.hertz;
+        dto.dampingRatio = joint.dampingRatio;
+        dto.targetTranslation = joint.targetTranslation;
+        dto.enableLimit = joint.enableLimit;
+        dto.lowerTranslation = joint.lowerTranslation;
+        dto.upperTranslation = joint.upperTranslation;
+        dto.enableMotor = joint.enableMotor;
+        dto.motorSpeed = joint.motorSpeed;
+        dto.maxMotorForce = joint.maxMotorForce;
+        dto.collideConnected = joint.collideConnected;
+        encoder.encode("prismaticJoint3dComponent", dto);
+    }
+    void decodePrismaticJoint3D(Rain::Decoder &decoder, Entity entity) {
+        PrismaticJoint3DComponentDto dto;
+        if (!decoder.decode("prismaticJoint3dComponent", dto)) { return; }
+        PrismaticJoint3DComponent &joint = entity.addComponent<PrismaticJoint3DComponent>();
+        joint.connectedEntity = dto.connectedEntity;
+        joint.anchor = {dto.anchor.x, dto.anchor.y, dto.anchor.z};
+        joint.axis = {dto.axis.x, dto.axis.y, dto.axis.z};
+        joint.enableSpring = dto.enableSpring;
+        joint.hertz = dto.hertz;
+        joint.dampingRatio = dto.dampingRatio;
+        joint.targetTranslation = dto.targetTranslation;
+        joint.enableLimit = dto.enableLimit;
+        joint.lowerTranslation = dto.lowerTranslation;
+        joint.upperTranslation = dto.upperTranslation;
+        joint.enableMotor = dto.enableMotor;
+        joint.motorSpeed = dto.motorSpeed;
+        joint.maxMotorForce = dto.maxMotorForce;
+        joint.collideConnected = dto.collideConnected;
+    }
+
+    void encodeDistanceJoint3D(Rain::Encoder &encoder, Entity entity) {
+        DistanceJoint3DComponent &joint = entity.getComponent<DistanceJoint3DComponent>();
+        DistanceJoint3DComponentDto dto;
+        dto.connectedEntity = joint.connectedEntity;
+        dto.anchor = Vec3(joint.anchor.x, joint.anchor.y, joint.anchor.z);
+        dto.connectedAnchor = Vec3(joint.connectedAnchor.x, joint.connectedAnchor.y, joint.connectedAnchor.z);
+        dto.length = joint.length;
+        dto.enableSpring = joint.enableSpring;
+        dto.hertz = joint.hertz;
+        dto.dampingRatio = joint.dampingRatio;
+        dto.enableLimit = joint.enableLimit;
+        dto.minLength = joint.minLength;
+        dto.maxLength = joint.maxLength;
+        dto.enableMotor = joint.enableMotor;
+        dto.motorSpeed = joint.motorSpeed;
+        dto.maxMotorForce = joint.maxMotorForce;
+        encoder.encode("distanceJoint3dComponent", dto);
+    }
+    void decodeDistanceJoint3D(Rain::Decoder &decoder, Entity entity) {
+        DistanceJoint3DComponentDto dto;
+        if (!decoder.decode("distanceJoint3dComponent", dto)) { return; }
+        DistanceJoint3DComponent &joint = entity.addComponent<DistanceJoint3DComponent>();
+        joint.connectedEntity = dto.connectedEntity;
+        joint.anchor = {dto.anchor.x, dto.anchor.y, dto.anchor.z};
+        joint.connectedAnchor = {dto.connectedAnchor.x, dto.connectedAnchor.y, dto.connectedAnchor.z};
+        joint.length = dto.length;
+        joint.enableSpring = dto.enableSpring;
+        joint.hertz = dto.hertz;
+        joint.dampingRatio = dto.dampingRatio;
+        joint.enableLimit = dto.enableLimit;
+        joint.minLength = dto.minLength;
+        joint.maxLength = dto.maxLength;
+        joint.enableMotor = dto.enableMotor;
+        joint.motorSpeed = dto.motorSpeed;
+        joint.maxMotorForce = dto.maxMotorForce;
+    }
+
+    void encodeFilterJoint3D(Rain::Encoder &encoder, Entity entity) {
+        FilterJoint3DComponentDto dto;
+        dto.connectedEntity = entity.getComponent<FilterJoint3DComponent>().connectedEntity;
+        encoder.encode("filterJoint3dComponent", dto);
+    }
+    void decodeFilterJoint3D(Rain::Decoder &decoder, Entity entity) {
+        FilterJoint3DComponentDto dto;
+        if (!decoder.decode("filterJoint3dComponent", dto)) { return; }
+        entity.addComponent<FilterJoint3DComponent>().connectedEntity = dto.connectedEntity;
+    }
+
+    void encodeMotorJoint3D(Rain::Encoder &encoder, Entity entity) {
+        MotorJoint3DComponent &joint = entity.getComponent<MotorJoint3DComponent>();
+        MotorJoint3DComponentDto dto;
+        dto.connectedEntity = joint.connectedEntity;
+        dto.linearVelocity = Vec3(joint.linearVelocity.x, joint.linearVelocity.y, joint.linearVelocity.z);
+        dto.maxVelocityForce = joint.maxVelocityForce;
+        dto.angularVelocity = Vec3(joint.angularVelocity.x, joint.angularVelocity.y, joint.angularVelocity.z);
+        dto.maxVelocityTorque = joint.maxVelocityTorque;
+        dto.linearHertz = joint.linearHertz;
+        dto.linearDampingRatio = joint.linearDampingRatio;
+        dto.maxSpringForce = joint.maxSpringForce;
+        dto.angularHertz = joint.angularHertz;
+        dto.angularDampingRatio = joint.angularDampingRatio;
+        dto.maxSpringTorque = joint.maxSpringTorque;
+        dto.collideConnected = joint.collideConnected;
+        encoder.encode("motorJoint3dComponent", dto);
+    }
+    void decodeMotorJoint3D(Rain::Decoder &decoder, Entity entity) {
+        MotorJoint3DComponentDto dto;
+        if (!decoder.decode("motorJoint3dComponent", dto)) { return; }
+        MotorJoint3DComponent &joint = entity.addComponent<MotorJoint3DComponent>();
+        joint.connectedEntity = dto.connectedEntity;
+        joint.linearVelocity = {dto.linearVelocity.x, dto.linearVelocity.y, dto.linearVelocity.z};
+        joint.maxVelocityForce = dto.maxVelocityForce;
+        joint.angularVelocity = {dto.angularVelocity.x, dto.angularVelocity.y, dto.angularVelocity.z};
+        joint.maxVelocityTorque = dto.maxVelocityTorque;
+        joint.linearHertz = dto.linearHertz;
+        joint.linearDampingRatio = dto.linearDampingRatio;
+        joint.maxSpringForce = dto.maxSpringForce;
+        joint.angularHertz = dto.angularHertz;
+        joint.angularDampingRatio = dto.angularDampingRatio;
+        joint.maxSpringTorque = dto.maxSpringTorque;
+        joint.collideConnected = dto.collideConnected;
     }
 
 } // namespace
@@ -350,6 +507,15 @@ void registerComponentTypes(ComponentTypeRegistry &registry) {
         "sphericalJoint3dComponent", encodeSphericalJoint3D, decodeSphericalJoint3D
     ));
     registry.add(componentType<WheelJoint3DComponent>("wheelJoint3dComponent", encodeWheelJoint3D, decodeWheelJoint3D));
+    registry.add(componentType<WeldJoint3DComponent>("weldJoint3dComponent", encodeWeldJoint3D, decodeWeldJoint3D));
+    registry.add(componentType<PrismaticJoint3DComponent>(
+        "prismaticJoint3dComponent", encodePrismaticJoint3D, decodePrismaticJoint3D
+    ));
+    registry.add(componentType<DistanceJoint3DComponent>(
+        "distanceJoint3dComponent", encodeDistanceJoint3D, decodeDistanceJoint3D
+    ));
+    registry.add(componentType<FilterJoint3DComponent>("filterJoint3dComponent", encodeFilterJoint3D, decodeFilterJoint3D));
+    registry.add(componentType<MotorJoint3DComponent>("motorJoint3dComponent", encodeMotorJoint3D, decodeMotorJoint3D));
 }
 
 } // namespace Panda::Physics

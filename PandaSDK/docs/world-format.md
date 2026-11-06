@@ -74,22 +74,28 @@ Invariants:
 `primitiveMeshComponent`, `terrain2dComponent`, `terrain3dComponent`,
 `particleEmitterComponent`, `rigidbody2dComponent`, `boxCollider2dComponent`,
 `rigidbody3dComponent`, `boxCollider3dComponent`, `sphereCollider3dComponent`,
-`capsuleCollider3dComponent`, `revoluteJoint2dComponent`, `distanceJoint2dComponent`,
-`revoluteJoint3dComponent`, `sphericalJoint3dComponent`, `wheelJoint3dComponent`,
+`capsuleCollider3dComponent`, `meshCollider3dComponent`, `revoluteJoint2dComponent`,
+`distanceJoint2dComponent`, `revoluteJoint3dComponent`, `sphericalJoint3dComponent`,
+`wheelJoint3dComponent`, `weldJoint3dComponent`, `prismaticJoint3dComponent`,
+`distanceJoint3dComponent`, `filterJoint3dComponent`, `motorJoint3dComponent`,
 `audioSourceComponent`, `audioListenerComponent` (the keys from `rigidbody2dComponent` to
-`wheelJoint3dComponent` belong to the Physics module, the terrain ones to the Terrain module, the
+`motorJoint3dComponent` belong to the Physics module, the terrain ones to the Terrain module, the
 emitter to the Particles module, the audio ones to the Audio module; a key of a module that is
 not in the game is kept as it is).
 
-A joint sits on one entity and names the other in `connectedEntity`; both need a rigid body. The
-anchor and the axes are in the local space of the entity that carries the joint, and the joint
-fixes the pose the two bodies have when the simulation starts. `wheelJoint3dComponent` sits on
-the WHEEL and names the chassis.
+A joint sits on one entity and names the other in `connectedEntity`; both need a rigid body of
+their own. The anchor and the axes are in the local space of the entity that carries the joint,
+and the joint fixes the pose the two bodies have when it is created. `wheelJoint3dComponent`
+sits on the WHEEL and names the chassis. `collideConnected` (false by default) lets the two
+bodies collide with each other.
 
 An entity with a rigid body may be a child of any entity, another body included (the wheels of a
 car under its chassis). In the simulation every body moves on its own and only a joint holds two
 bodies together; the hierarchy makes them one object for the rest: moving the parent from a
-script or in the editor moves the bodies under it.
+script or in the editor moves the bodies under it. A collider on an entity WITHOUT a rigid body
+joins the body of the nearest entity above it that has one (a compound body: a cabinet is one
+`rigidbody3dComponent` on the cabinet entity and a `boxCollider3dComponent` on each board under
+it); such an entity carries no joint.
 
 The exact fields of the core components are in
 `Panda/include/Panda/Serialization/ComponentDtos.hpp` (C++ field name = JSON key); module

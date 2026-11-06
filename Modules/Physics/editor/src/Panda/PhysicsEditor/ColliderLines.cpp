@@ -320,4 +320,151 @@ void appendColliderLines(World &world, std::vector<HelperLine> &lines, const glm
     }
 }
 
+void appendJointLines(World &world, std::vector<HelperLine> &lines, const glm::mat4 &viewProj, PandaUI::Rect viewportFrame) {
+    const PandaUI::Color color(1.f, 0.62f, 0.2f, 1.f); // orange: the joints, apart from the green colliders
+    const PandaUI::Color linkColor(1.f, 0.62f, 0.2f, 0.55f);
+    const RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProj);
+    const float pixelScale = 0.5f * viewportFrame.size.height *
+                             glm::length(glm::vec3(viewProj[0][1], viewProj[1][1], viewProj[2][1]));
+    std::vector<HelperLine> edges;
+    std::vector<Outline> outlines;
+    auto project = [&](const glm::vec3 &point, PandaUI::Point &out) {
+        const glm::vec4 clip = viewProj * glm::vec4(point, 1.f);
+        if (clip.w <= 0.f) { return false; }
+        out.x = viewportFrame.origin.x + (clip.x / clip.w * 0.5f + 0.5f) * viewportFrame.size.width;
+        out.y = viewportFrame.origin.y + (1.f - (clip.y / clip.w * 0.5f + 0.5f)) * viewportFrame.size.height;
+        return true;
+    };
+    auto addEdge = [&](const glm::vec3 &a, const glm::vec3 &b, const PandaUI::Color &edgeColor) {
+        HelperLine line;
+        line.color = edgeColor;
+        if (project(a, line.a) && project(b, line.b)) { edges.push_back(line); }
+    };
+    // Opens the drawing of a joint around its anchor; false — out of the view. worldPerPixel — the
+    // size of a pixel in world units at the anchor, for the marks to keep their size on screen.
+    auto beginJoint = [&](const glm::vec3 &anchor, float &worldPerPixel) {
+        const glm::vec3 extent(0.5f);
+        if (!frustum.visible(glm::mat4(1.f), anchor - extent, anchor + extent)) { return false; }
+        const float depth = (viewProj * glm::vec4(anchor, 1.f)).w;
+        worldPerPixel = glm::max(depth, 0.01f) / glm::max(pixelScale, 1e-3f);
+        outlines.push_back({depth, edges.size(), 0});
+        return true;
+    };
+    auto endJoint = [&] { outlines.back().count = edges.size() - outlines.back().first; };
+    auto cross = [&](const glm::vec3 &point, float half) {
+        addEdge(point - glm::vec3(half, 0.f, 0.f), point + glm::vec3(half, 0.f, 0.f), color);
+        addEdge(point - glm::vec3(0.f, half, 0.f), point + glm::vec3(0.f, half, 0.f), color);
+        addEdge(point - glm::vec3(0.f, 0.f, half), point + glm::vec3(0.f, 0.f, half), color);
+    };
+    auto axisLine = [&](const glm::vec3 &point, const glm::vec3 &axis, float half) {
+        if (glm::dot(axis, axis) < 1e-8f) { return; }
+        const glm::vec3 direction = glm::normalize(axis);
+        addEdge(point - direction * half, point + direction * half, color);
+    };
+    // The anchor of a joint in world space: the authored local anchor, scaled, through the entity.
+    auto worldAnchor = [](const TransformComponent &transform, const glm::vec3 &anchor) {
+        return transform.getPosition() + transform.getRotation() * (anchor * glm::abs(transform.getScale()));
+    };
+    auto connectedPosition = [&](UUID connectedId, glm::vec3 &out) {
+        Entity connected = world.getById(connectedId);
+        if (!connected.isValid()) { return false; }
+        out = connected.calculateWorldSpaceTransform().getPosition();
+        return true;
+    };
+    constexpr float CROSS_PIXELS = 6.f;
+    constexpr float AXIS_PIXELS = 28.f;
+
+    // A joint with an anchor and an axis: a cross, the axis through it, a line to the connected body.
+    auto anchorAxisJoint = [&](Entity entity, const glm::vec3 &anchor, const glm::vec3 &axis, bool withAxis, UUID connectedId) {
+        const TransformComponent transform = entity.calculateWorldSpaceTransform();
+        const glm::vec3 point = worldAnchor(transform, anchor);
+        float worldPerPixel = 0.f;
+        if (!beginJoint(point, worldPerPixel)) { return; }
+        cross(point, CROSS_PIXELS * worldPerPixel);
+        if (withAxis) { axisLine(point, transform.getRotation() * axis, AXIS_PIXELS * worldPerPixel); }
+        glm::vec3 connected;
+        if (connectedPosition(connectedId, connected)) { addEdge(point, connected, linkColor); }
+        endJoint();
+    };
+    world.getAllEntitiesWith<IdComponent, RevoluteJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        RevoluteJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { anchorAxisJoint(entity, joint.anchor, joint.axis, true, joint.connectedEntity); }
+    });
+    world.getAllEntitiesWith<IdComponent, SphericalJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        SphericalJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { anchorAxisJoint(entity, joint.anchor, joint.axis, true, joint.connectedEntity); }
+    });
+    world.getAllEntitiesWith<IdComponent, PrismaticJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        PrismaticJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { anchorAxisJoint(entity, joint.anchor, joint.axis, true, joint.connectedEntity); }
+    });
+    world.getAllEntitiesWith<IdComponent, WeldJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        WeldJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { anchorAxisJoint(entity, joint.anchor, glm::vec3(0.f), false, joint.connectedEntity); }
+    });
+    world.getAllEntitiesWith<IdComponent, WheelJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        WheelJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (!entity.isValid()) { return; }
+        const TransformComponent transform = entity.calculateWorldSpaceTransform();
+        const glm::vec3 point = worldAnchor(transform, joint.anchor);
+        float worldPerPixel = 0.f;
+        if (!beginJoint(point, worldPerPixel)) { return; }
+        cross(point, CROSS_PIXELS * worldPerPixel);
+        axisLine(point, transform.getRotation() * joint.axis, AXIS_PIXELS * worldPerPixel);              // spin
+        axisLine(point, transform.getRotation() * joint.suspensionAxis, AXIS_PIXELS * 0.5f * worldPerPixel); // travel
+        glm::vec3 chassis;
+        if (connectedPosition(joint.connectedEntity, chassis)) { addEdge(point, chassis, linkColor); }
+        endJoint();
+    });
+    // A distance joint: the two anchors and the segment between them.
+    world.getAllEntitiesWith<IdComponent, DistanceJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        DistanceJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (!entity.isValid()) { return; }
+        const glm::vec3 pointA = worldAnchor(entity.calculateWorldSpaceTransform(), joint.anchor);
+        float worldPerPixel = 0.f;
+        if (!beginJoint(pointA, worldPerPixel)) { return; }
+        cross(pointA, CROSS_PIXELS * worldPerPixel);
+        Entity connected = world.getById(joint.connectedEntity);
+        if (connected.isValid()) {
+            const glm::vec3 pointB = worldAnchor(connected.calculateWorldSpaceTransform(), joint.connectedAnchor);
+            cross(pointB, CROSS_PIXELS * worldPerPixel);
+            addEdge(pointA, pointB, color);
+        }
+        endJoint();
+    });
+    // A filter and a motor have no geometry: a line between the two entities.
+    auto linkJoint = [&](Entity entity, UUID connectedId) {
+        const glm::vec3 point = entity.calculateWorldSpaceTransform().getPosition();
+        float worldPerPixel = 0.f;
+        if (!beginJoint(point, worldPerPixel)) { return; }
+        cross(point, CROSS_PIXELS * worldPerPixel);
+        glm::vec3 connected;
+        if (connectedPosition(connectedId, connected)) { addEdge(point, connected, linkColor); }
+        endJoint();
+    };
+    world.getAllEntitiesWith<IdComponent, FilterJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        FilterJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { linkJoint(entity, joint.connectedEntity); }
+    });
+    world.getAllEntitiesWith<IdComponent, MotorJoint3DComponent>().each([&](IdComponent &idc,
+                                                                        MotorJoint3DComponent &joint) {
+        Entity entity = world.getById(idc.id);
+        if (entity.isValid()) { linkJoint(entity, joint.connectedEntity); }
+    });
+
+    std::stable_sort(outlines.begin(), outlines.end(), [](const Outline &a, const Outline &b) { return a.depth < b.depth; });
+    lines.reserve(lines.size() + edges.size());
+    for (const Outline &outline : outlines) {
+        const auto first = edges.begin() + static_cast<std::ptrdiff_t>(outline.first);
+        lines.insert(lines.end(), first, first + static_cast<std::ptrdiff_t>(outline.count));
+    }
+}
+
 } // namespace Panda::PhysicsEditor

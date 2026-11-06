@@ -151,6 +151,8 @@ struct RevoluteJoint2DComponentDto : public Rain::Codable {
     float motorSpeed = 90.f;
     float maxMotorTorque = 10.f;
 
+    bool collideConnected = false;
+
     RAIN_FIELDS_BEGIN(RevoluteJoint2DComponentDto)
     RAIN_FIELD(connectedEntity)
     RAIN_FIELD(anchor)
@@ -160,6 +162,7 @@ struct RevoluteJoint2DComponentDto : public Rain::Codable {
     RAIN_FIELD(enableMotor)
     RAIN_FIELD(motorSpeed)
     RAIN_FIELD(maxMotorTorque)
+    RAIN_FIELD(collideConnected)
     RAIN_FIELDS_END
 };
 
@@ -172,6 +175,8 @@ struct DistanceJoint2DComponentDto : public Rain::Codable {
     float hertz = 4.f;
     float dampingRatio = 0.5f;
 
+    bool collideConnected = false;
+
     RAIN_FIELDS_BEGIN(DistanceJoint2DComponentDto)
     RAIN_FIELD(connectedEntity)
     RAIN_FIELD(anchor)
@@ -180,6 +185,7 @@ struct DistanceJoint2DComponentDto : public Rain::Codable {
     RAIN_FIELD(enableSpring)
     RAIN_FIELD(hertz)
     RAIN_FIELD(dampingRatio)
+    RAIN_FIELD(collideConnected)
     RAIN_FIELDS_END
 };
 
@@ -194,6 +200,8 @@ struct RevoluteJoint3DComponentDto : public Rain::Codable {
     float motorSpeed = 90.f;
     float maxMotorTorque = 10.f;
 
+    bool collideConnected = false;
+
     RAIN_FIELDS_BEGIN(RevoluteJoint3DComponentDto)
     RAIN_FIELD(connectedEntity)
     RAIN_FIELD(anchor)
@@ -204,6 +212,7 @@ struct RevoluteJoint3DComponentDto : public Rain::Codable {
     RAIN_FIELD(enableMotor)
     RAIN_FIELD(motorSpeed)
     RAIN_FIELD(maxMotorTorque)
+    RAIN_FIELD(collideConnected)
     RAIN_FIELDS_END
 };
 
@@ -217,6 +226,8 @@ struct SphericalJoint3DComponentDto : public Rain::Codable {
     float lowerTwistAngle = -30.f;
     float upperTwistAngle = 30.f;
 
+    bool collideConnected = false;
+
     RAIN_FIELDS_BEGIN(SphericalJoint3DComponentDto)
     RAIN_FIELD(connectedEntity)
     RAIN_FIELD(anchor)
@@ -226,6 +237,7 @@ struct SphericalJoint3DComponentDto : public Rain::Codable {
     RAIN_FIELD(enableTwistLimit)
     RAIN_FIELD(lowerTwistAngle)
     RAIN_FIELD(upperTwistAngle)
+    RAIN_FIELD(collideConnected)
     RAIN_FIELDS_END
 };
 
@@ -250,6 +262,7 @@ struct WheelJoint3DComponentDto : public Rain::Codable {
     bool enableMotor = false;
     float motorSpeed = 0.f;
     float maxMotorTorque = 100.f;
+    bool collideConnected = false;
 
     RAIN_FIELDS_BEGIN(WheelJoint3DComponentDto)
     RAIN_FIELD(connectedEntity)
@@ -272,6 +285,131 @@ struct WheelJoint3DComponentDto : public Rain::Codable {
     RAIN_FIELD(enableMotor)
     RAIN_FIELD(motorSpeed)
     RAIN_FIELD(maxMotorTorque)
+    RAIN_FIELD(collideConnected)
+    RAIN_FIELDS_END
+};
+
+struct WeldJoint3DComponentDto : public Rain::Codable {
+    UUID connectedEntity = 0;
+    Vec3 anchor;
+    float linearHertz = 0.f;
+    float angularHertz = 0.f;
+    float linearDampingRatio = 1.f;
+    float angularDampingRatio = 1.f;
+    bool collideConnected = false;
+
+    RAIN_FIELDS_BEGIN(WeldJoint3DComponentDto)
+    RAIN_FIELD(connectedEntity)
+    RAIN_FIELD(anchor)
+    RAIN_FIELD(linearHertz)
+    RAIN_FIELD(angularHertz)
+    RAIN_FIELD(linearDampingRatio)
+    RAIN_FIELD(angularDampingRatio)
+    RAIN_FIELD(collideConnected)
+    RAIN_FIELDS_END
+};
+
+struct PrismaticJoint3DComponentDto : public Rain::Codable {
+    UUID connectedEntity = 0;
+    Vec3 anchor;
+    Vec3 axis = Vec3(1.f, 0.f, 0.f);
+    bool enableSpring = false;
+    float hertz = 2.f;
+    float dampingRatio = 0.5f;
+    float targetTranslation = 0.f;
+    bool enableLimit = false;
+    float lowerTranslation = -1.f;
+    float upperTranslation = 1.f;
+    bool enableMotor = false;
+    float motorSpeed = 0.f;
+    float maxMotorForce = 100.f;
+    bool collideConnected = false;
+
+    RAIN_FIELDS_BEGIN(PrismaticJoint3DComponentDto)
+    RAIN_FIELD(connectedEntity)
+    RAIN_FIELD(anchor)
+    RAIN_FIELD(axis)
+    RAIN_FIELD(enableSpring)
+    RAIN_FIELD(hertz)
+    RAIN_FIELD(dampingRatio)
+    RAIN_FIELD(targetTranslation)
+    RAIN_FIELD(enableLimit)
+    RAIN_FIELD(lowerTranslation)
+    RAIN_FIELD(upperTranslation)
+    RAIN_FIELD(enableMotor)
+    RAIN_FIELD(motorSpeed)
+    RAIN_FIELD(maxMotorForce)
+    RAIN_FIELD(collideConnected)
+    RAIN_FIELDS_END
+};
+
+struct DistanceJoint3DComponentDto : public Rain::Codable {
+    UUID connectedEntity = 0;
+    Vec3 anchor;
+    Vec3 connectedAnchor;
+    float length = 0.f;
+    bool enableSpring = false;
+    float hertz = 4.f;
+    float dampingRatio = 0.5f;
+    bool enableLimit = false;
+    float minLength = 0.f;
+    float maxLength = 1.f;
+    bool enableMotor = false;
+    float motorSpeed = 0.f;
+    float maxMotorForce = 100.f;
+
+    RAIN_FIELDS_BEGIN(DistanceJoint3DComponentDto)
+    RAIN_FIELD(connectedEntity)
+    RAIN_FIELD(anchor)
+    RAIN_FIELD(connectedAnchor)
+    RAIN_FIELD(length)
+    RAIN_FIELD(enableSpring)
+    RAIN_FIELD(hertz)
+    RAIN_FIELD(dampingRatio)
+    RAIN_FIELD(enableLimit)
+    RAIN_FIELD(minLength)
+    RAIN_FIELD(maxLength)
+    RAIN_FIELD(enableMotor)
+    RAIN_FIELD(motorSpeed)
+    RAIN_FIELD(maxMotorForce)
+    RAIN_FIELDS_END
+};
+
+struct FilterJoint3DComponentDto : public Rain::Codable {
+    UUID connectedEntity = 0;
+
+    RAIN_FIELDS_BEGIN(FilterJoint3DComponentDto)
+    RAIN_FIELD(connectedEntity)
+    RAIN_FIELDS_END
+};
+
+struct MotorJoint3DComponentDto : public Rain::Codable {
+    UUID connectedEntity = 0;
+    Vec3 linearVelocity;
+    float maxVelocityForce = 1000.f;
+    Vec3 angularVelocity;
+    float maxVelocityTorque = 1000.f;
+    float linearHertz = 0.f;
+    float linearDampingRatio = 1.f;
+    float maxSpringForce = 1000.f;
+    float angularHertz = 0.f;
+    float angularDampingRatio = 1.f;
+    float maxSpringTorque = 1000.f;
+    bool collideConnected = false;
+
+    RAIN_FIELDS_BEGIN(MotorJoint3DComponentDto)
+    RAIN_FIELD(connectedEntity)
+    RAIN_FIELD(linearVelocity)
+    RAIN_FIELD(maxVelocityForce)
+    RAIN_FIELD(angularVelocity)
+    RAIN_FIELD(maxVelocityTorque)
+    RAIN_FIELD(linearHertz)
+    RAIN_FIELD(linearDampingRatio)
+    RAIN_FIELD(maxSpringForce)
+    RAIN_FIELD(angularHertz)
+    RAIN_FIELD(angularDampingRatio)
+    RAIN_FIELD(maxSpringTorque)
+    RAIN_FIELD(collideConnected)
     RAIN_FIELDS_END
 };
 

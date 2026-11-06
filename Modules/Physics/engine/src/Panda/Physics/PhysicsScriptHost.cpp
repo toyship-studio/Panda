@@ -282,6 +282,88 @@ namespace {
         }
     }
 
+    /// JOINTS
+
+    uint32_t joint3D_GetReaction(Handle entityHandle, uint32_t kind, float *force, float *torque) {
+        for (int i = 0; i < 3; i++) {
+            force[i] = 0.f;
+            torque[i] = 0.f;
+        }
+        if (kind >= static_cast<uint32_t>(Joint3DKind::Count)) { return 0; }
+        Entity entity;
+        JointReaction3D reaction;
+        Physics3D *physics = physics3DOf(entityHandle, entity);
+        if (physics == nullptr || !physics->getJointReaction(entity, static_cast<Joint3DKind>(kind), reaction)) {
+            return 0;
+        }
+        force[0] = reaction.force.x;
+        force[1] = reaction.force.y;
+        force[2] = reaction.force.z;
+        torque[0] = reaction.torque.x;
+        torque[1] = reaction.torque.y;
+        torque[2] = reaction.torque.z;
+        return 1;
+    }
+
+    void prismaticJoint3D_SetMotor(Handle entityHandle, uint32_t enabled, float speed, float maxForce) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            physics->setPrismaticMotor(entity, enabled != 0, speed, maxForce);
+        }
+    }
+
+    void prismaticJoint3D_SetTarget(Handle entityHandle, float translation) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) { physics->setPrismaticTarget(entity, translation); }
+    }
+
+    void prismaticJoint3D_GetTranslation(Handle entityHandle, float *translation, float *speed) {
+        Entity entity;
+        *translation = 0.f;
+        *speed = 0.f;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            *translation = physics->getPrismaticTranslation(entity);
+            *speed = physics->getPrismaticSpeed(entity);
+        }
+    }
+
+    void distanceJoint3D_SetLength(Handle entityHandle, float length) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) { physics->setDistanceLength(entity, length); }
+    }
+
+    void distanceJoint3D_SetMotor(Handle entityHandle, uint32_t enabled, float speed, float maxForce) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            physics->setDistanceMotor(entity, enabled != 0, speed, maxForce);
+        }
+    }
+
+    void distanceJoint3D_GetCurrentLength(Handle entityHandle, float *length) {
+        Entity entity;
+        *length = 0.f;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) { *length = physics->getDistanceCurrentLength(entity); }
+    }
+
+    void motorJoint3D_SetVelocities(
+        Handle entityHandle, float linearX, float linearY, float linearZ, float angularX, float angularY, float angularZ
+    ) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            physics->setMotorJointVelocities(
+                entity, {linearX, linearY, linearZ},
+                {glm::radians(angularX), glm::radians(angularY), glm::radians(angularZ)}
+            );
+        }
+    }
+
+    void motorJoint3D_SetLimits(Handle entityHandle, float maxForce, float maxTorque) {
+        Entity entity;
+        if (Physics3D *physics = physics3DOf(entityHandle, entity)) {
+            physics->setMotorJointLimits(entity, maxForce, maxTorque);
+        }
+    }
+
     Scripting::PhysicsHostApi makeTable() {
         Scripting::PhysicsHostApi api;
         api.rigidbody2DComponent_ApplyForce = rigidbody2DComponent_ApplyForce;
@@ -313,6 +395,15 @@ namespace {
         api.character_Move = character_Move;
         api.meshCollider3DComponent_SetMesh = meshCollider3DComponent_SetMesh;
         api.meshCollider3DComponent_GetMesh = meshCollider3DComponent_GetMesh;
+        api.joint3D_GetReaction = joint3D_GetReaction;
+        api.prismaticJoint3D_SetMotor = prismaticJoint3D_SetMotor;
+        api.prismaticJoint3D_SetTarget = prismaticJoint3D_SetTarget;
+        api.prismaticJoint3D_GetTranslation = prismaticJoint3D_GetTranslation;
+        api.distanceJoint3D_SetLength = distanceJoint3D_SetLength;
+        api.distanceJoint3D_SetMotor = distanceJoint3D_SetMotor;
+        api.distanceJoint3D_GetCurrentLength = distanceJoint3D_GetCurrentLength;
+        api.motorJoint3D_SetVelocities = motorJoint3D_SetVelocities;
+        api.motorJoint3D_SetLimits = motorJoint3D_SetLimits;
         return api;
     }
 

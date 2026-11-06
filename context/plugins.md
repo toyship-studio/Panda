@@ -246,9 +246,10 @@ palette.
 - `Modules/Physics` (`dev.pandaengine.physics`; targets `PandaPhysics`, `PandaPhysicsEditor`):
   2D physics on box2d and 3D on box3d — bodies, colliders, joints, the kinematic character, ray
   casts, contact events; the `physics` and `physics.step` world systems, the `physics` script
-  table behind `Bamboo/Physics3DAPI.hpp`, `Bamboo/CharacterMoverAPI.hpp` and the
-  `Bamboo/Components/*ComponentAPI.hpp` of the bodies; the editor part (namespace
-  `PhysicsEditor`): the inspector sections, the collider outlines overlay, the PHYSICS section
+  table behind `Bamboo/Physics3DAPI.hpp`, `Bamboo/Joint3DAPI.hpp`, `Bamboo/CharacterMoverAPI.hpp`
+  and the `Bamboo/Components/*ComponentAPI.hpp` of the bodies, the mesh collider and the joints;
+  compound bodies (a collider under a body joins it); the editor part (namespace
+  `PhysicsEditor`): the inspector sections, the collider and joint overlay, the PHYSICS section
   of the editor settings. See `context/physics.md`.
 - `Modules/Terrain` (`dev.pandaengine.terrain`; targets `PandaTerrain`, `PandaTerrainEditor`;
   depends on the Physics module for its static bodies): heightmap and voxel terrain, flora,

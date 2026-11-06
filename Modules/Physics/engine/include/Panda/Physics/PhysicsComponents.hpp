@@ -10,8 +10,10 @@
 namespace Panda {
 
 // The components of the physics module (context/physics.md). A body is a Rigidbody plus at least
-// one collider on the same entity; joints connect the body of their entity with connectedEntity.
-// The runtime data of a collider is the shape id of the solver.
+// one collider on the same entity or on the entities under it that have no body of their own: such
+// colliders join the body of the nearest entity above them (a compound body — a cabinet of boards,
+// a table with legs — is one body with several shapes). Joints connect the body of their entity
+// with connectedEntity. The runtime data of a collider is the shape id of the solver.
 
 struct Rigidbody2DComponent final {
     enum class BodyType : uint32_t { STATIC = 0, DYNAMIC, KINEMATIC };
@@ -101,9 +103,11 @@ struct MeshCollider3DComponent final {
     MeshCollider3DComponent &operator=(const MeshCollider3DComponent &other) = default;
 };
 
-// --- Joints. Created at simulation start between this entity's body and connectedEntity;
-// --- they capture the CURRENT relative pose of the bodies, limits are measured from it. Angles
-// --- are in degrees.
+// --- Joints. A joint lives while its component and both bodies do: it is created when the
+// --- simulation starts or the component arrives, made again when a body is rebuilt, destroyed
+// --- with the component. It captures the CURRENT relative pose of the bodies, limits are measured
+// --- from it. Angles are in degrees. collideConnected — whether the two bodies still collide with
+// --- each other (off by default: the parts of a mechanism overlap at the joint).
 
 // 2D hinge (pendulum, bridge, cart wheel): rotation in the plane around the anchor point.
 struct RevoluteJoint2DComponent final {
@@ -115,6 +119,7 @@ struct RevoluteJoint2DComponent final {
     bool enableMotor = false;
     float motorSpeed = 90.0f; // degrees/s
     float maxMotorTorque = 10.0f;
+    bool collideConnected = false;
 };
 
 // 2D distance (suspension, cable): holds the distance between the anchors; with spring — a spring.
@@ -126,6 +131,7 @@ struct DistanceJoint2DComponent final {
     bool enableSpring = false;
     float hertz = 4.0f;
     float dampingRatio = 0.5f;
+    bool collideConnected = false;
 };
 
 // 3D hinge (door, knee): rotation around axis, which passes through anchor.
@@ -139,6 +145,7 @@ struct RevoluteJoint3DComponent final {
     bool enableMotor = false;
     float motorSpeed = 90.0f; // degrees/s
     float maxMotorTorque = 10.0f;
+    bool collideConnected = false;
 };
 
 // 3D spherical (ragdoll: shoulder, hip, vertebra): a cone around axis + twist around it.
@@ -151,6 +158,7 @@ struct SphericalJoint3DComponent final {
     bool enableTwistLimit = false;
     float lowerTwistAngle = -30.0f;
     float upperTwistAngle = 30.0f;
+    bool collideConnected = false;
 };
 
 // 3D wheel (a car wheel on a chassis). Unlike the other joints THIS entity is the wheel and
@@ -184,6 +192,84 @@ struct WheelJoint3DComponent final {
     bool enableMotor = false;
     float motorSpeed = 0.0f; // degrees/s
     float maxMotorTorque = 100.0f;
+    bool collideConnected = false;
+};
+
+// 3D weld (a board glued to a cabinet, a part that breaks off): the two bodies keep the relative
+// pose they have at start. Zero stiffness is rigid; a positive hertz makes a spring (a soft-body
+// look). The reaction of the joint is readable from scripts (Physics3D::getJointReaction): a weld
+// breaks when a script removes the component once the force exceeds what the material takes.
+struct WeldJoint3DComponent final {
+    UUID connectedEntity = 0;
+    glm::vec3 anchor = {0.0f, 0.0f, 0.0f}; // the joint point in this entity's local coordinates
+    float linearHertz = 0.0f;              // 0 — rigid
+    float angularHertz = 0.0f;             // 0 — rigid
+    float linearDampingRatio = 1.0f;
+    float angularDampingRatio = 1.0f;
+    bool collideConnected = false;
+};
+
+// 3D prismatic (a drawer, a piston, an elevator): the bodies slide along axis through anchor and
+// do not turn relative to each other. The translation is zero at the start pose; the limits are
+// meters from it; the spring drives to targetTranslation; the motor drives the speed.
+struct PrismaticJoint3DComponent final {
+    UUID connectedEntity = 0;
+    glm::vec3 anchor = {0.0f, 0.0f, 0.0f};
+    glm::vec3 axis = {1.0f, 0.0f, 0.0f}; // the slide axis in this entity's local coordinates
+    bool enableSpring = false;
+    float hertz = 2.0f;
+    float dampingRatio = 0.5f;
+    float targetTranslation = 0.0f;
+    bool enableLimit = false;
+    float lowerTranslation = -1.0f;
+    float upperTranslation = 1.0f;
+    bool enableMotor = false;
+    float motorSpeed = 0.0f;     // m/s
+    float maxMotorForce = 100.0f; // N
+    bool collideConnected = false;
+};
+
+// 3D distance (a rope, a strut, a spring): holds the distance between an anchor on each body.
+// Rigid unless the spring is on; with the spring the limit and the motor apply.
+struct DistanceJoint3DComponent final {
+    UUID connectedEntity = 0;
+    glm::vec3 anchor = {0.0f, 0.0f, 0.0f};          // anchor on this body, local
+    glm::vec3 connectedAnchor = {0.0f, 0.0f, 0.0f}; // anchor on the connected body, local
+    float length = 0.0f; // 0 — the distance between the anchors at start
+    bool enableSpring = false;
+    float hertz = 4.0f;
+    float dampingRatio = 0.5f;
+    bool enableLimit = false;
+    float minLength = 0.0f;
+    float maxLength = 1.0f;
+    bool enableMotor = false;
+    float motorSpeed = 0.0f;     // m/s
+    float maxMotorForce = 100.0f; // N
+};
+
+// 3D filter: the two bodies never collide with each other (a character and what it carries, the
+// links of a chain two apart). Nothing else.
+struct FilterJoint3DComponent final {
+    UUID connectedEntity = 0;
+};
+
+// 3D motor: drives the relative velocity of the two bodies, and with a positive hertz a spring
+// pulls them back to the relative pose they had at start (a kinematic-like drive on dynamic
+// bodies, a conveyor, a magnet). Velocities are in world axes, the angular one in degrees per
+// second. Set from scripts at runtime (MotorJoint3DComponentAPI).
+struct MotorJoint3DComponent final {
+    UUID connectedEntity = 0;
+    glm::vec3 linearVelocity = {0.0f, 0.0f, 0.0f};  // m/s
+    float maxVelocityForce = 1000.0f;               // N
+    glm::vec3 angularVelocity = {0.0f, 0.0f, 0.0f}; // degrees/s
+    float maxVelocityTorque = 1000.0f;              // N·m
+    float linearHertz = 0.0f;                       // 0 — no position spring
+    float linearDampingRatio = 1.0f;
+    float maxSpringForce = 1000.0f;
+    float angularHertz = 0.0f;
+    float angularDampingRatio = 1.0f;
+    float maxSpringTorque = 1000.0f;
+    bool collideConnected = false;
 };
 
 } // namespace Panda

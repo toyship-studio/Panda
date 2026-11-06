@@ -14,7 +14,13 @@
 namespace Panda::Scripting {
 
 constexpr const char *PHYSICS_HOST_API_NAME = "physics";
-constexpr uint32_t PHYSICS_HOST_API_VERSION = 2; // v2: the mesh collider
+// v2: the mesh collider; v3: the joints — weld, prismatic, distance, filter, motor, the reaction of
+// a joint, collideConnected.
+constexpr uint32_t PHYSICS_HOST_API_VERSION = 3;
+
+// The kinds of 3D joints as the table numbers them (Panda::Joint3DKind on the engine side,
+// Bamboo::Joint3DKind on the script side): revolute 0, spherical 1, wheel 2, weld 3, prismatic 4,
+// distance 5, filter 6, motor 7.
 
 using Rigidbody2DComponentApplyForceFn = void (*)(Handle entityHandle, float x, float y);
 using Rigidbody2DComponentApplyLinearImpulseFn = void (*)(Handle entityHandle, float x, float y);
@@ -90,6 +96,24 @@ using CharacterMoveFn = void (*)(Handle entityHandle, float dx, float dy, float 
 using MeshCollider3DComponentSetMeshFn = void (*)(Handle entityHandle, Handle meshHandle, uint32_t convex);
 using MeshCollider3DComponentGetMeshFn = void (*)(Handle entityHandle, Handle *meshHandle);
 
+// What the joint of the kind on the entity applied during the last step to hold the bodies, in
+// world space: force (3 values, N) and torque (3 values, N·m). Returns 1 when the joint lives.
+using Joint3DGetReactionFn = uint32_t (*)(Handle entityHandle, uint32_t kind, float *force, float *torque);
+// Prismatic joint (PrismaticJoint3DComponent): the motor (m/s, N), the spring target (m), the
+// translation from the start pose and its speed.
+using PrismaticJoint3DSetMotorFn = void (*)(Handle entityHandle, uint32_t enabled, float speed, float maxForce);
+using PrismaticJoint3DSetTargetFn = void (*)(Handle entityHandle, float translation);
+using PrismaticJoint3DGetTranslationFn = void (*)(Handle entityHandle, float *translation, float *speed);
+// Distance joint (DistanceJoint3DComponent): the rest length, the motor (m/s, N), the current length.
+using DistanceJoint3DSetLengthFn = void (*)(Handle entityHandle, float length);
+using DistanceJoint3DSetMotorFn = void (*)(Handle entityHandle, uint32_t enabled, float speed, float maxForce);
+using DistanceJoint3DGetCurrentLengthFn = void (*)(Handle entityHandle, float *length);
+// Motor joint (MotorJoint3DComponent): the velocities it drives (m/s; degrees per second, world
+// axes) and the force and torque it may use for them.
+using MotorJoint3DSetVelocitiesFn =
+    void (*)(Handle entityHandle, float linearX, float linearY, float linearZ, float angularX, float angularY, float angularZ);
+using MotorJoint3DSetLimitsFn = void (*)(Handle entityHandle, float maxForce, float maxTorque);
+
 struct PhysicsHostApi final {
     uint32_t version = PHYSICS_HOST_API_VERSION;
     Rigidbody2DComponentApplyForceFn rigidbody2DComponent_ApplyForce = nullptr;
@@ -121,6 +145,15 @@ struct PhysicsHostApi final {
     CharacterMoveFn character_Move = nullptr;
     MeshCollider3DComponentSetMeshFn meshCollider3DComponent_SetMesh = nullptr;
     MeshCollider3DComponentGetMeshFn meshCollider3DComponent_GetMesh = nullptr;
+    Joint3DGetReactionFn joint3D_GetReaction = nullptr;
+    PrismaticJoint3DSetMotorFn prismaticJoint3D_SetMotor = nullptr;
+    PrismaticJoint3DSetTargetFn prismaticJoint3D_SetTarget = nullptr;
+    PrismaticJoint3DGetTranslationFn prismaticJoint3D_GetTranslation = nullptr;
+    DistanceJoint3DSetLengthFn distanceJoint3D_SetLength = nullptr;
+    DistanceJoint3DSetMotorFn distanceJoint3D_SetMotor = nullptr;
+    DistanceJoint3DGetCurrentLengthFn distanceJoint3D_GetCurrentLength = nullptr;
+    MotorJoint3DSetVelocitiesFn motorJoint3D_SetVelocities = nullptr;
+    MotorJoint3DSetLimitsFn motorJoint3D_SetLimits = nullptr;
 };
 
 } // namespace Panda::Scripting

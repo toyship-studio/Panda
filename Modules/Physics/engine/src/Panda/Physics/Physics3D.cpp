@@ -63,6 +63,13 @@ struct MeshColliderCook {
     }
 };
 
+inline b3Quat toB3Quat(const glm::quat &q) {
+    b3Quat result;
+    result.v = {q.x, q.y, q.z};
+    result.s = q.w;
+    return result;
+}
+
 namespace {
     // Allowed penetration of the mover into a dynamic body (soft plane), m. The penetration depth
     // filled in by the solver in plane.push scales the push force: a touch without pressure — no
@@ -136,20 +143,43 @@ namespace {
         LOG_WARN_EDITOR("Mesh Collider 3D on '%s': %s", entity.getName().c_str(), reason);
     }
 
-    // The shape of a mesh collider on the body: the convex hull scaled by the entity, or the
-    // triangles themselves on a static body. Null — no shape, the reason is in the log.
+    b3Vec3 toB3Vec3(const glm::vec3 &v) {
+        return {v.x, v.y, v.z};
+    }
+
+    // Any collider on the entity itself.
+    bool hasOwnCollider(Entity entity) {
+        return entity.hasComponent<BoxCollider3DComponent>() || entity.hasComponent<SphereCollider3DComponent>() ||
+               entity.hasComponent<CapsuleCollider3DComponent>() || entity.hasComponent<MeshCollider3DComponent>();
+    }
+
+    bool isIdentityPose(const glm::vec3 &position, const glm::quat &rotation) {
+        return glm::all(glm::epsilonEqual(position, glm::vec3(0.f), 1e-6f)) && glm::abs(rotation.w) > 1.f - 1e-6f;
+    }
+
+    // The key of the live joint of a kind on an entity (Physics3D::m_joints).
+    uint64_t jointKey(UUID entity, Joint3DKind kind) {
+        return (static_cast<uint64_t>(static_cast<uint32_t>(entity)) << 8) | static_cast<uint64_t>(kind);
+    }
+
+    // The shape of a mesh collider on the body, placed by the pose of its entity relative to the
+    // body: the convex hull scaled by the entity, or the triangles themselves on a static body. A
+    // triangle mesh has no frame of its own in box3d, so a mesh collider on a part of a compound
+    // body gets a cook of its own with the pose baked into the triangles (the cook is replaced).
+    // Null — no shape, the reason is in the log.
     b3ShapeId createMeshColliderShape(
-        b3BodyId bodyId, const b3ShapeDef &shapeDef, MeshColliderCook &cook, bool convex, bool staticBody,
-        glm::vec3 scale, Entity entity
+        b3BodyId bodyId, const b3ShapeDef &shapeDef, std::shared_ptr<MeshColliderCook> &cook, bool convex,
+        bool staticBody, const glm::vec3 &position, const glm::quat &rotation, const glm::vec3 &scale, Entity entity
     ) {
-        const b3Vec3 b3Scale = {scale.x, scale.y, scale.z};
+        const b3Vec3 b3Scale = toB3Vec3(scale);
+        const b3Transform frame = {toB3Vec3(position), toB3Quat(rotation)};
         if (convex) {
-            b3HullData *hull = cook.convexHull();
+            b3HullData *hull = cook->convexHull();
             if (hull == nullptr) {
                 warnMeshCollider(entity, "the mesh gives no convex hull (fewer than four points off a plane)");
                 return b3_nullShapeId;
             }
-            return b3CreateTransformedHullShape(bodyId, &shapeDef, hull, b3Transform_identity, b3Scale);
+            return b3CreateTransformedHullShape(bodyId, &shapeDef, hull, frame, b3Scale);
         }
         if (!staticBody) {
             warnMeshCollider(
@@ -157,7 +187,22 @@ namespace {
             );
             return b3_nullShapeId;
         }
-        b3MeshData *mesh = cook.triangleMesh();
+        if (!isIdentityPose(position, rotation)) {
+            auto baked = std::make_shared<MeshColliderCook>();
+            baked->geometry.indices = cook->geometry.indices;
+            baked->geometry.positions.reserve(cook->geometry.positions.size());
+            for (const glm::vec3 &point : cook->geometry.positions) {
+                baked->geometry.positions.push_back(position + rotation * (point * scale));
+            }
+            cook = baked;
+            b3MeshData *mesh = cook->triangleMesh();
+            if (mesh == nullptr) {
+                warnMeshCollider(entity, "the triangles give no collision mesh");
+                return b3_nullShapeId;
+            }
+            return b3CreateMeshShape(bodyId, &shapeDef, mesh, {1.f, 1.f, 1.f});
+        }
+        b3MeshData *mesh = cook->triangleMesh();
         if (mesh == nullptr) {
             warnMeshCollider(entity, "the triangles give no collision mesh");
             return b3_nullShapeId;
@@ -207,13 +252,6 @@ inline b3BodyType rigidbody3DTypeToBox3DBody(Rigidbody3DComponent::BodyType body
 }
 
 
-inline b3Quat toB3Quat(const glm::quat &q) {
-    b3Quat result;
-    result.v = {q.x, q.y, q.z};
-    result.s = q.w;
-    return result;
-}
-
 void Physics3D::init(World *world) {
     PND_STATIC_ASSERT(sizeof(b3BodyId) <= sizeof(RuntimeBodyData::data), "Rigidbody3D runtime body wrong data size");
     PND_STATIC_ASSERT(
@@ -245,22 +283,27 @@ void Physics3D::init(World *world) {
     createJoints(world);
 }
 
-// Quaternion of the shortest rotation of the joint frame's Z axis onto the authored axis.
-static glm::quat axisFrameRotation(glm::vec3 axis) {
-    const glm::vec3 z(0.f, 0.f, 1.f);
+// Quaternion of the shortest rotation of a joint frame axis (box3d: Z for a hinge or a cone, X for
+// a slide) onto the authored axis.
+static glm::quat axisFrameRotation(glm::vec3 axis, glm::vec3 frameAxis) {
     const float lengthSq = glm::dot(axis, axis);
-    const glm::vec3 a = lengthSq > 1e-8f ? axis / glm::sqrt(lengthSq) : z;
-    const float d = glm::dot(z, a);
+    const glm::vec3 a = lengthSq > 1e-8f ? axis / glm::sqrt(lengthSq) : frameAxis;
+    const float d = glm::dot(frameAxis, a);
     if (d > 0.9999f) { return glm::quat(1.f, 0.f, 0.f, 0.f); }
-    if (d < -0.9999f) { return glm::quat(0.f, 1.f, 0.f, 0.f); } // 180° around X
-    const glm::vec3 c = glm::cross(z, a);
+    if (d < -0.9999f) { // 180° around an axis perpendicular to the frame axis
+        const glm::vec3 other = glm::abs(frameAxis.x) < 0.9f ? glm::vec3(1.f, 0.f, 0.f) : glm::vec3(0.f, 1.f, 0.f);
+        const glm::vec3 perpendicular = glm::normalize(glm::cross(frameAxis, other));
+        return glm::quat(0.f, perpendicular.x, perpendicular.y, perpendicular.z);
+    }
+    const glm::vec3 c = glm::cross(frameAxis, a);
     return glm::normalize(glm::quat(1.f + d, c.x, c.y, c.z));
 }
 
 // Joint frames from the authoring model "anchor+axis in the owner's local space": frame B is
 // computed so as to fix the CURRENT relative pose of the bodies (the limits are measured from it).
+// frameAxis — the axis of the joint frame that has to land on the authored axis.
 static void makeJointFrames(
-    Entity entity, Entity connected, glm::vec3 anchor, glm::vec3 axis, b3Transform &outFrameA,
+    Entity entity, Entity connected, glm::vec3 anchor, glm::vec3 axis, glm::vec3 frameAxis, b3Transform &outFrameA,
     b3Transform &outFrameB
 ) {
     TransformComponent ownerTransform = entity.calculateWorldSpaceTransform();
@@ -268,7 +311,7 @@ static void makeJointFrames(
     const glm::quat ownerRotation = ownerTransform.getRotation();
     const glm::quat connectedRotation = connectedTransform.getRotation();
     const glm::vec3 scaledAnchor = anchor * glm::abs(ownerTransform.getScale());
-    const glm::quat frameRotation = axisFrameRotation(axis);
+    const glm::quat frameRotation = axisFrameRotation(axis, frameAxis);
     const glm::vec3 worldAnchor = ownerTransform.getPosition() + ownerRotation * scaledAnchor;
     const glm::quat worldFrameRotation = ownerRotation * frameRotation;
     const glm::quat inverseConnected = glm::inverse(connectedRotation);
@@ -278,6 +321,25 @@ static void makeJointFrames(
     outFrameA.q = toB3Quat(frameRotation);
     outFrameB.p = {localAnchorB.x, localAnchorB.y, localAnchorB.z};
     outFrameB.q = toB3Quat(localFrameRotationB);
+}
+
+// Frames of a joint with an anchor on each body (the distance joint): the points in the local
+// spaces of their bodies, the rotations are not used. Returns the distance between the anchors.
+static float makeAnchorFrames(
+    Entity entity, Entity connected, glm::vec3 anchor, glm::vec3 connectedAnchor, b3Transform &outFrameA,
+    b3Transform &outFrameB
+) {
+    TransformComponent ownerTransform = entity.calculateWorldSpaceTransform();
+    TransformComponent connectedTransform = connected.calculateWorldSpaceTransform();
+    const glm::vec3 scaledA = anchor * glm::abs(ownerTransform.getScale());
+    const glm::vec3 scaledB = connectedAnchor * glm::abs(connectedTransform.getScale());
+    outFrameA.p = {scaledA.x, scaledA.y, scaledA.z};
+    outFrameA.q = toB3Quat(glm::quat(1.f, 0.f, 0.f, 0.f));
+    outFrameB.p = {scaledB.x, scaledB.y, scaledB.z};
+    outFrameB.q = outFrameA.q;
+    const glm::vec3 worldA = ownerTransform.getPosition() + ownerTransform.getRotation() * scaledA;
+    const glm::vec3 worldB = connectedTransform.getPosition() + connectedTransform.getRotation() * scaledB;
+    return glm::distance(worldA, worldB);
 }
 
 // Wheel joint frames from the authoring model "anchor + spin axis + suspension axis in the wheel's
@@ -311,17 +373,34 @@ static void makeWheelJointFrames(
     outChassisFrame.q = toB3Quat(glm::normalize(inverseChassis * wheelRotation * frameRotation));
 }
 
+// The joints of every entity, once the bodies exist (the bodies of the world systems, terrain
+// among them, come with their own start hooks after the physics).
 void Physics3D::createJoints(World *world) {
+    auto view = world->getAllEntitiesWith<IdComponent>();
+    for (auto entityHandle : view) {
+        if (!world->isValidEntt(entityHandle)) { continue; }
+        createJointsOf(world->entity(entityHandle));
+    }
+}
+
+void Physics3D::createJointsOf(Entity entity) {
+    for (uint8_t kind = 0; kind < static_cast<uint8_t>(Joint3DKind::Count); kind++) {
+        createJoint(entity, static_cast<Joint3DKind>(kind));
+    }
+}
+
+bool Physics3D::createJoint(Entity entity, Joint3DKind kind) {
+    if (!isInitialized() || !entity.isValid()) { return false; }
     b3WorldId worldId = intToB3WorldId(m_physicsWorldId);
     // Both bodies must exist; an unconnected joint (connectedEntity=0) is silently skipped.
-    auto findJointBodies = [this, world](
-                               Entity entity, UUID connectedId, b3BodyId &outBodyA, b3BodyId &outBodyB,
-                               Entity &outConnected
-                           ) {
+    auto bodies = [this, entity](UUID connectedId, b3BodyId &outBodyA, b3BodyId &outBodyB, Entity &outConnected) {
         if (!connectedId) { return false; }
         const RuntimeBodyData *body = m_bodies.find(entity.getId());
-        if (body == nullptr) { return false; }
-        outConnected = world->getById(connectedId);
+        if (body == nullptr) {
+            LOG_ERROR_EDITOR("Joint on '%s': the entity has no body (a Rigidbody3D with a collider)", entity.getName().c_str());
+            return false;
+        }
+        outConnected = m_world->getById(connectedId);
         const RuntimeBodyData *connectedBody = outConnected.isValid() ? m_bodies.find(connectedId) : nullptr;
         if (connectedBody == nullptr) {
             LOG_ERROR_EDITOR("Joint on '%s': connected entity has no Rigidbody3D", entity.getName().c_str());
@@ -331,81 +410,317 @@ void Physics3D::createJoints(World *world) {
         outBodyB = bodyIdOf(*connectedBody);
         return true;
     };
-    auto revoluteView = world->getAllEntitiesWith<RevoluteJoint3DComponent>();
-    for (auto entityHandle : revoluteView) {
-        if (!world->isValidEntt(entityHandle)) { continue; }
-        Entity entity = world->entity(entityHandle);
-        auto &joint = entity.getComponent<RevoluteJoint3DComponent>();
-        b3BodyId bodyA, bodyB;
-        Entity connected;
-        if (!findJointBodies(entity, joint.connectedEntity, bodyA, bodyB, connected)) { continue; }
-        b3RevoluteJointDef def = b3DefaultRevoluteJointDef();
-        def.base.bodyIdA = bodyA;
-        def.base.bodyIdB = bodyB;
-        makeJointFrames(entity, connected, joint.anchor, joint.axis, def.base.localFrameA, def.base.localFrameB);
-        def.enableLimit = joint.enableLimit;
-        def.lowerAngle = glm::radians(joint.lowerAngle);
-        def.upperAngle = glm::radians(joint.upperAngle);
-        def.enableMotor = joint.enableMotor;
-        def.motorSpeed = glm::radians(joint.motorSpeed);
-        def.maxMotorTorque = joint.maxMotorTorque;
-        b3CreateRevoluteJoint(worldId, &def);
-    }
-    auto sphericalView = world->getAllEntitiesWith<SphericalJoint3DComponent>();
-    for (auto entityHandle : sphericalView) {
-        if (!world->isValidEntt(entityHandle)) { continue; }
-        Entity entity = world->entity(entityHandle);
-        auto &joint = entity.getComponent<SphericalJoint3DComponent>();
-        b3BodyId bodyA, bodyB;
-        Entity connected;
-        if (!findJointBodies(entity, joint.connectedEntity, bodyA, bodyB, connected)) { continue; }
-        b3SphericalJointDef def = b3DefaultSphericalJointDef();
-        def.base.bodyIdA = bodyA;
-        def.base.bodyIdB = bodyB;
-        makeJointFrames(entity, connected, joint.anchor, joint.axis, def.base.localFrameA, def.base.localFrameB);
-        def.enableConeLimit = joint.enableConeLimit;
-        def.coneAngle = glm::radians(joint.coneAngle);
-        def.enableTwistLimit = joint.enableTwistLimit;
-        def.lowerTwistAngle = glm::radians(joint.lowerTwistAngle);
-        def.upperTwistAngle = glm::radians(joint.upperTwistAngle);
-        b3CreateSphericalJoint(worldId, &def);
-    }
-    auto wheelView = world->getAllEntitiesWith<WheelJoint3DComponent>();
-    for (auto entityHandle : wheelView) {
-        if (!world->isValidEntt(entityHandle)) { continue; }
-        Entity entity = world->entity(entityHandle);
-        auto &joint = entity.getComponent<WheelJoint3DComponent>();
-        b3BodyId wheelBody, chassisBody;
-        Entity chassis;
-        if (!findJointBodies(entity, joint.connectedEntity, wheelBody, chassisBody, chassis)) { continue; }
-        b3WheelJointDef def = b3DefaultWheelJointDef();
-        // In box3d body A is the chassis and body B is the wheel, while the component sits on the wheel.
-        def.base.bodyIdA = chassisBody;
-        def.base.bodyIdB = wheelBody;
-        makeWheelJointFrames(
-            entity, chassis, joint.anchor, joint.axis, joint.suspensionAxis, def.base.localFrameA, def.base.localFrameB
-        );
-        def.enableSuspensionSpring = joint.enableSuspensionSpring;
-        def.suspensionHertz = glm::max(joint.suspensionHertz, 0.f);
-        def.suspensionDampingRatio = glm::max(joint.suspensionDampingRatio, 0.f);
-        def.enableSuspensionLimit = joint.enableSuspensionLimit;
-        def.lowerSuspensionLimit = glm::min(joint.lowerSuspensionLimit, joint.upperSuspensionLimit);
-        def.upperSuspensionLimit = glm::max(joint.lowerSuspensionLimit, joint.upperSuspensionLimit);
-        def.enableSteering = joint.enableSteering;
-        def.steeringHertz = glm::max(joint.steeringHertz, 0.f);
-        def.steeringDampingRatio = glm::max(joint.steeringDampingRatio, 0.f);
-        def.maxSteeringTorque = glm::max(joint.maxSteeringTorque, 0.f);
-        def.enableSteeringLimit = joint.enableSteeringLimit;
-        def.lowerSteeringLimit = glm::radians(glm::min(joint.lowerSteeringAngle, joint.upperSteeringAngle));
-        def.upperSteeringLimit = glm::radians(glm::max(joint.lowerSteeringAngle, joint.upperSteeringAngle));
-        def.enableSpinMotor = joint.enableMotor;
-        def.spinSpeed = glm::radians(joint.motorSpeed);
-        def.maxSpinTorque = glm::max(joint.maxMotorTorque, 0.f);
-        const b3JointId jointId = b3CreateWheelJoint(worldId, &def);
+    auto store = [this, entity, kind](b3JointId jointId) {
         RuntimeJointData runtimeData;
         memcpy(&runtimeData.data, &jointId, sizeof(b3JointId));
-        m_wheelJointMap[entity.getId()] = runtimeData;
+        m_joints[jointKey(entity.getId(), kind)] = runtimeData;
+        return true;
+    };
+    const glm::vec3 frameZ(0.f, 0.f, 1.f);
+    const glm::vec3 frameX(1.f, 0.f, 0.f);
+    b3BodyId bodyA, bodyB;
+    Entity connected;
+    switch (kind) {
+        case Joint3DKind::Revolute: {
+            if (!entity.hasComponent<RevoluteJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<RevoluteJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3RevoluteJointDef def = b3DefaultRevoluteJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            def.base.collideConnected = joint.collideConnected;
+            makeJointFrames(entity, connected, joint.anchor, joint.axis, frameZ, def.base.localFrameA, def.base.localFrameB);
+            def.enableLimit = joint.enableLimit;
+            def.lowerAngle = glm::radians(joint.lowerAngle);
+            def.upperAngle = glm::radians(joint.upperAngle);
+            def.enableMotor = joint.enableMotor;
+            def.motorSpeed = glm::radians(joint.motorSpeed);
+            def.maxMotorTorque = joint.maxMotorTorque;
+            return store(b3CreateRevoluteJoint(worldId, &def));
+        }
+        case Joint3DKind::Spherical: {
+            if (!entity.hasComponent<SphericalJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<SphericalJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3SphericalJointDef def = b3DefaultSphericalJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            def.base.collideConnected = joint.collideConnected;
+            makeJointFrames(entity, connected, joint.anchor, joint.axis, frameZ, def.base.localFrameA, def.base.localFrameB);
+            def.enableConeLimit = joint.enableConeLimit;
+            def.coneAngle = glm::radians(joint.coneAngle);
+            def.enableTwistLimit = joint.enableTwistLimit;
+            def.lowerTwistAngle = glm::radians(joint.lowerTwistAngle);
+            def.upperTwistAngle = glm::radians(joint.upperTwistAngle);
+            return store(b3CreateSphericalJoint(worldId, &def));
+        }
+        case Joint3DKind::Wheel: {
+            if (!entity.hasComponent<WheelJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<WheelJoint3DComponent>();
+            b3BodyId wheelBody, chassisBody;
+            Entity chassis;
+            if (!bodies(joint.connectedEntity, wheelBody, chassisBody, chassis)) { return false; }
+            b3WheelJointDef def = b3DefaultWheelJointDef();
+            // In box3d body A is the chassis and body B is the wheel, while the component sits on the wheel.
+            def.base.bodyIdA = chassisBody;
+            def.base.bodyIdB = wheelBody;
+            def.base.collideConnected = joint.collideConnected;
+            makeWheelJointFrames(
+                entity, chassis, joint.anchor, joint.axis, joint.suspensionAxis, def.base.localFrameA, def.base.localFrameB
+            );
+            def.enableSuspensionSpring = joint.enableSuspensionSpring;
+            def.suspensionHertz = glm::max(joint.suspensionHertz, 0.f);
+            def.suspensionDampingRatio = glm::max(joint.suspensionDampingRatio, 0.f);
+            def.enableSuspensionLimit = joint.enableSuspensionLimit;
+            def.lowerSuspensionLimit = glm::min(joint.lowerSuspensionLimit, joint.upperSuspensionLimit);
+            def.upperSuspensionLimit = glm::max(joint.lowerSuspensionLimit, joint.upperSuspensionLimit);
+            def.enableSteering = joint.enableSteering;
+            def.steeringHertz = glm::max(joint.steeringHertz, 0.f);
+            def.steeringDampingRatio = glm::max(joint.steeringDampingRatio, 0.f);
+            def.maxSteeringTorque = glm::max(joint.maxSteeringTorque, 0.f);
+            def.enableSteeringLimit = joint.enableSteeringLimit;
+            def.lowerSteeringLimit = glm::radians(glm::min(joint.lowerSteeringAngle, joint.upperSteeringAngle));
+            def.upperSteeringLimit = glm::radians(glm::max(joint.lowerSteeringAngle, joint.upperSteeringAngle));
+            def.enableSpinMotor = joint.enableMotor;
+            def.spinSpeed = glm::radians(joint.motorSpeed);
+            def.maxSpinTorque = glm::max(joint.maxMotorTorque, 0.f);
+            return store(b3CreateWheelJoint(worldId, &def));
+        }
+        case Joint3DKind::Weld: {
+            if (!entity.hasComponent<WeldJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<WeldJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3WeldJointDef def = b3DefaultWeldJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            def.base.collideConnected = joint.collideConnected;
+            makeJointFrames(entity, connected, joint.anchor, frameZ, frameZ, def.base.localFrameA, def.base.localFrameB);
+            def.linearHertz = glm::max(joint.linearHertz, 0.f);
+            def.angularHertz = glm::max(joint.angularHertz, 0.f);
+            def.linearDampingRatio = glm::max(joint.linearDampingRatio, 0.f);
+            def.angularDampingRatio = glm::max(joint.angularDampingRatio, 0.f);
+            return store(b3CreateWeldJoint(worldId, &def));
+        }
+        case Joint3DKind::Prismatic: {
+            if (!entity.hasComponent<PrismaticJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<PrismaticJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3PrismaticJointDef def = b3DefaultPrismaticJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            def.base.collideConnected = joint.collideConnected;
+            // box3d slides along the X axis of frame A.
+            makeJointFrames(entity, connected, joint.anchor, joint.axis, frameX, def.base.localFrameA, def.base.localFrameB);
+            def.enableSpring = joint.enableSpring;
+            def.hertz = glm::max(joint.hertz, 0.f);
+            def.dampingRatio = glm::max(joint.dampingRatio, 0.f);
+            def.targetTranslation = joint.targetTranslation;
+            def.enableLimit = joint.enableLimit;
+            def.lowerTranslation = glm::min(joint.lowerTranslation, joint.upperTranslation);
+            def.upperTranslation = glm::max(joint.lowerTranslation, joint.upperTranslation);
+            def.enableMotor = joint.enableMotor;
+            def.motorSpeed = joint.motorSpeed;
+            def.maxMotorForce = glm::max(joint.maxMotorForce, 0.f);
+            return store(b3CreatePrismaticJoint(worldId, &def));
+        }
+        case Joint3DKind::Distance: {
+            if (!entity.hasComponent<DistanceJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<DistanceJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3DistanceJointDef def = b3DefaultDistanceJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            const float current = makeAnchorFrames(
+                entity, connected, joint.anchor, joint.connectedAnchor, def.base.localFrameA, def.base.localFrameB
+            );
+            def.length = joint.length > 0.f ? joint.length : current;
+            def.enableSpring = joint.enableSpring;
+            def.hertz = glm::max(joint.hertz, 0.f);
+            def.dampingRatio = glm::max(joint.dampingRatio, 0.f);
+            def.enableLimit = joint.enableLimit;
+            def.minLength = glm::max(glm::min(joint.minLength, joint.maxLength), 0.f);
+            def.maxLength = glm::max(joint.minLength, joint.maxLength);
+            def.enableMotor = joint.enableMotor;
+            def.motorSpeed = joint.motorSpeed;
+            def.maxMotorForce = glm::max(joint.maxMotorForce, 0.f);
+            return store(b3CreateDistanceJoint(worldId, &def));
+        }
+        case Joint3DKind::Filter: {
+            if (!entity.hasComponent<FilterJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<FilterJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3FilterJointDef def = b3DefaultFilterJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            return store(b3CreateFilterJoint(worldId, &def));
+        }
+        case Joint3DKind::Motor: {
+            if (!entity.hasComponent<MotorJoint3DComponent>()) { return false; }
+            auto &joint = entity.getComponent<MotorJoint3DComponent>();
+            if (!bodies(joint.connectedEntity, bodyA, bodyB, connected)) { return false; }
+            b3MotorJointDef def = b3DefaultMotorJointDef();
+            def.base.bodyIdA = bodyA;
+            def.base.bodyIdB = bodyB;
+            def.base.collideConnected = joint.collideConnected;
+            // The frames at the owner's origin fix the relative pose the position springs hold.
+            makeJointFrames(entity, connected, glm::vec3(0.f), frameZ, frameZ, def.base.localFrameA, def.base.localFrameB);
+            def.linearVelocity = toB3Vec3(joint.linearVelocity);
+            def.maxVelocityForce = glm::max(joint.maxVelocityForce, 0.f);
+            def.angularVelocity = toB3Vec3(glm::radians(joint.angularVelocity));
+            def.maxVelocityTorque = glm::max(joint.maxVelocityTorque, 0.f);
+            def.linearHertz = glm::max(joint.linearHertz, 0.f);
+            def.linearDampingRatio = glm::max(joint.linearDampingRatio, 0.f);
+            def.maxSpringForce = glm::max(joint.maxSpringForce, 0.f);
+            def.angularHertz = glm::max(joint.angularHertz, 0.f);
+            def.angularDampingRatio = glm::max(joint.angularDampingRatio, 0.f);
+            def.maxSpringTorque = glm::max(joint.maxSpringTorque, 0.f);
+            return store(b3CreateMotorJoint(worldId, &def));
+        }
+        case Joint3DKind::Count: break;
     }
+    return false;
+}
+
+void Physics3D::destroyJoint(Entity entity, Joint3DKind kind) {
+    const auto it = m_joints.find(jointKey(entity.getId(), kind));
+    if (it == m_joints.end()) { return; }
+    const b3JointId jointId = jointIdOf(it->second);
+    if (b3Joint_IsValid(jointId)) { b3DestroyJoint(jointId, true); } // gone already when a body of it went
+    m_joints.erase(it);
+}
+
+void Physics3D::destroyJointsOf(Entity entity) {
+    for (uint8_t kind = 0; kind < static_cast<uint8_t>(Joint3DKind::Count); kind++) {
+        destroyJoint(entity, static_cast<Joint3DKind>(kind));
+    }
+}
+
+// The joints that touch the entity are made again from their components, at the relative pose
+// the bodies have now (a limit is measured from it): its own, and those of the other entities that
+// name it as the connected one — they died with its old body.
+void Physics3D::recreateJointsTouching(Entity entity) {
+    destroyJointsOf(entity);
+    createJointsOf(entity);
+    const UUID id = entity.getId();
+    auto others = [this, id]<typename T>(Joint3DKind kind) {
+        for (auto handle : m_world->getAllEntitiesWith<T>()) {
+            if (!m_world->isValidEntt(handle)) { continue; }
+            Entity other = m_world->entity(handle);
+            if (other.getId() == id || other.getComponent<T>().connectedEntity != id) { continue; }
+            destroyJoint(other, kind);
+            createJoint(other, kind);
+        }
+    };
+    others.template operator()<RevoluteJoint3DComponent>(Joint3DKind::Revolute);
+    others.template operator()<SphericalJoint3DComponent>(Joint3DKind::Spherical);
+    others.template operator()<WheelJoint3DComponent>(Joint3DKind::Wheel);
+    others.template operator()<WeldJoint3DComponent>(Joint3DKind::Weld);
+    others.template operator()<PrismaticJoint3DComponent>(Joint3DKind::Prismatic);
+    others.template operator()<DistanceJoint3DComponent>(Joint3DKind::Distance);
+    others.template operator()<FilterJoint3DComponent>(Joint3DKind::Filter);
+    others.template operator()<MotorJoint3DComponent>(Joint3DKind::Motor);
+}
+
+void Physics3D::jointComponentsUpdated(Entity entity) {
+    if (!isInitialized()) { return; }
+    destroyJointsOf(entity);
+    createJointsOf(entity);
+}
+
+bool Physics3D::findJoint(Entity entity, Joint3DKind kind, RuntimeJointData &outJoint) {
+    if (!isInitialized()) { return false; }
+    auto it = m_joints.find(jointKey(entity.getId(), kind));
+    if (it == m_joints.end()) { return false; }
+    // The joint dies with either of its bodies (the other one was deleted or recreated).
+    if (!b3Joint_IsValid(jointIdOf(it->second))) {
+        m_joints.erase(it);
+        return false;
+    }
+    outJoint = it->second;
+    return true;
+}
+
+bool Physics3D::getJointReaction(Entity entity, Joint3DKind kind, JointReaction3D &outReaction) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, kind, joint)) { return false; }
+    const b3JointId jointId = jointIdOf(joint);
+    const b3Vec3 force = b3Joint_GetConstraintForce(jointId);
+    const b3Vec3 torque = b3Joint_GetConstraintTorque(jointId);
+    outReaction.force = Vec3(force.x, force.y, force.z);
+    outReaction.torque = Vec3(torque.x, torque.y, torque.z);
+    return true;
+}
+
+void Physics3D::setPrismaticMotor(Entity entity, bool enabled, float speed, float maxForce) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Prismatic, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3PrismaticJoint_EnableMotor(jointId, enabled);
+    b3PrismaticJoint_SetMotorSpeed(jointId, speed);
+    b3PrismaticJoint_SetMaxMotorForce(jointId, glm::max(maxForce, 0.f));
+    b3Joint_WakeBodies(jointId);
+}
+
+void Physics3D::setPrismaticTarget(Entity entity, float translation) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Prismatic, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3PrismaticJoint_SetTargetTranslation(jointId, translation);
+    b3Joint_WakeBodies(jointId);
+}
+
+float Physics3D::getPrismaticTranslation(Entity entity) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Prismatic, joint)) { return 0.f; }
+    return b3PrismaticJoint_GetTranslation(jointIdOf(joint));
+}
+
+float Physics3D::getPrismaticSpeed(Entity entity) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Prismatic, joint)) { return 0.f; }
+    return b3PrismaticJoint_GetSpeed(jointIdOf(joint));
+}
+
+void Physics3D::setDistanceLength(Entity entity, float length) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Distance, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3DistanceJoint_SetLength(jointId, glm::max(length, 0.f));
+    b3Joint_WakeBodies(jointId);
+}
+
+void Physics3D::setDistanceMotor(Entity entity, bool enabled, float speed, float maxForce) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Distance, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3DistanceJoint_EnableMotor(jointId, enabled);
+    b3DistanceJoint_SetMotorSpeed(jointId, speed);
+    b3DistanceJoint_SetMaxMotorForce(jointId, glm::max(maxForce, 0.f));
+    b3Joint_WakeBodies(jointId);
+}
+
+float Physics3D::getDistanceCurrentLength(Entity entity) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Distance, joint)) { return 0.f; }
+    return b3DistanceJoint_GetCurrentLength(jointIdOf(joint));
+}
+
+void Physics3D::setMotorJointVelocities(Entity entity, Vec3 linear, Vec3 angular) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Motor, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3MotorJoint_SetLinearVelocity(jointId, {linear.x, linear.y, linear.z});
+    b3MotorJoint_SetAngularVelocity(jointId, {angular.x, angular.y, angular.z});
+    b3Joint_WakeBodies(jointId);
+}
+
+void Physics3D::setMotorJointLimits(Entity entity, float maxForce, float maxTorque) {
+    RuntimeJointData joint;
+    if (!findJoint(entity, Joint3DKind::Motor, joint)) { return; }
+    const b3JointId jointId = jointIdOf(joint);
+    b3MotorJoint_SetMaxVelocityForce(jointId, glm::max(maxForce, 0.f));
+    b3MotorJoint_SetMaxVelocityTorque(jointId, glm::max(maxTorque, 0.f));
+    b3Joint_WakeBodies(jointId);
 }
 
 bool Physics3D::isInitialized() {
@@ -548,10 +863,39 @@ void Physics3D::registerEntity(Entity entity) {
     memcpy(&runtimeData.data, &bodyId, sizeof(b3BodyId));
     runtimeData.previousPosition = transform.getPosition();
     runtimeData.previousRotation = transform.getRotation();
-    const glm::vec3 scale = glm::abs(transform.getScale());
+    // The entity's own colliders, then those of the entities under it without a body of their own:
+    // a compound body. A tombstone and everything under it is out; an entity with its own body
+    // takes its subtree; an entity on its way out of the world (m_leaving) lends nothing any more.
+    addShapesOf(entity, entity, glm::vec3(0.f), glm::quat(1.f, 0.f, 0.f, 0.f), glm::abs(transform.getScale()), runtimeData);
+    std::vector<UUID> stack = entity.getChildEntities();
+    while (!stack.empty()) {
+        Entity part = m_world->getById(stack.back());
+        stack.pop_back();
+        if (!part.isValid() || part.hasComponent<Rigidbody3DComponent>() || m_leaving.contains(part.getId())) { continue; }
+        for (UUID below : part.getChildEntities()) { stack.push_back(below); }
+        if (!hasOwnCollider(part)) { continue; }
+        CompoundPart record;
+        record.entity = part;
+        record.body = entity.getId();
+        relativePose(entity, part, record.position, record.rotation, record.scale);
+        addShapesOf(entity, part, record.position, record.rotation, record.scale, runtimeData);
+        if (!m_compoundParts.contains(part.getId())) { m_world->trackEntity(part); }
+        m_compoundParts[part.getId()] = record;
+    }
+    m_bodyEntityMap[bodyId.index1] = entity;
+    m_bodies.add(entity, runtimeData);
+}
+
+void Physics3D::addShapesOf(
+    Entity body, Entity owner, const glm::vec3 &relativePosition, const glm::quat &relativeRotation,
+    const glm::vec3 &scale, RuntimeBodyData &runtimeData
+) {
+    const b3BodyId bodyId = bodyIdOf(runtimeData);
+    const bool staticBody = body.getComponent<Rigidbody3DComponent>().type == Rigidbody3DComponent::BodyType::STATIC;
+    const b3Quat frameRotation = toB3Quat(relativeRotation);
     // Common properties of a collider shape (density/friction/restitution/sensor + events for
-    // scripts).
-    auto makeShapeDef = [](bool isSensor, float density, float friction, float restitution) {
+    // scripts). The shape names the entity whose collider it is (a ray cast reports it).
+    auto makeShapeDef = [owner](bool isSensor, float density, float friction, float restitution) {
         b3ShapeDef shapeDef = b3DefaultShapeDef();
         shapeDef.density = density;
         shapeDef.baseMaterial.friction = friction;
@@ -561,54 +905,98 @@ void Physics3D::registerEntity(Entity entity) {
         // begin/end touch.
         shapeDef.enableSensorEvents = true;
         shapeDef.enableContactEvents = true;
+        shapeDef.userData = reinterpret_cast<void *>(static_cast<uintptr_t>(static_cast<uint32_t>(owner.getId())));
         return shapeDef;
     };
-    if (entity.hasComponent<BoxCollider3DComponent>()) {
-        auto &bc3d = entity.getComponent<BoxCollider3DComponent>();
+    // A point of the owner's local space in the body's: the offsets of the colliders are not scaled
+    // (the sizes are), as they never were.
+    auto placed = [&](const glm::vec3 &localPoint) { return toB3Vec3(relativePosition + relativeRotation * localPoint); };
+    if (owner.hasComponent<BoxCollider3DComponent>()) {
+        auto &bc3d = owner.getComponent<BoxCollider3DComponent>();
         const glm::vec3 half = glm::abs(bc3d.size) * scale;
-        b3BoxHull boxHull =
-            b3MakeOffsetBoxHull(half.x, half.y, half.z, {bc3d.offset.x, bc3d.offset.y, bc3d.offset.z});
+        const b3Transform boxFrame = {placed(bc3d.offset), frameRotation};
+        b3BoxHull boxHull = b3MakeTransformedBoxHull(half.x, half.y, half.z, boxFrame);
         b3ShapeDef shapeDef = makeShapeDef(bc3d.isSensor, bc3d.density, bc3d.friction, bc3d.restitution);
         b3ShapeId shapeId = b3CreateHullShape(bodyId, &shapeDef, &boxHull.base);
         memcpy(&bc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
     }
-    if (entity.hasComponent<SphereCollider3DComponent>()) {
-        auto &sc3d = entity.getComponent<SphereCollider3DComponent>();
+    if (owner.hasComponent<SphereCollider3DComponent>()) {
+        auto &sc3d = owner.getComponent<SphereCollider3DComponent>();
         b3Sphere sphere;
-        sphere.center = {sc3d.offset.x, sc3d.offset.y, sc3d.offset.z};
+        sphere.center = placed(sc3d.offset);
         sphere.radius = glm::abs(sc3d.radius) * glm::max(scale.x, glm::max(scale.y, scale.z));
         b3ShapeDef shapeDef = makeShapeDef(sc3d.isSensor, sc3d.density, sc3d.friction, sc3d.restitution);
         b3ShapeId shapeId = b3CreateSphereShape(bodyId, &shapeDef, &sphere);
         memcpy(&sc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
     }
-    if (entity.hasComponent<CapsuleCollider3DComponent>()) {
-        auto &cc3d = entity.getComponent<CapsuleCollider3DComponent>();
-        // The capsule axis is the local Y: the radius is scaled by XZ, the half-height — by Y (as
-        // in Unity).
+    if (owner.hasComponent<CapsuleCollider3DComponent>()) {
+        auto &cc3d = owner.getComponent<CapsuleCollider3DComponent>();
+        // The capsule axis is the local Y of its entity: the radius is scaled by XZ, the half-height
+        // — by Y (as in Unity).
         const float halfHeight = glm::abs(cc3d.halfHeight) * scale.y;
+        const glm::vec3 center = relativePosition + relativeRotation * cc3d.offset;
+        const glm::vec3 up = relativeRotation * glm::vec3(0.f, 1.f, 0.f);
         b3Capsule capsule;
-        capsule.center1 = {cc3d.offset.x, cc3d.offset.y - halfHeight, cc3d.offset.z};
-        capsule.center2 = {cc3d.offset.x, cc3d.offset.y + halfHeight, cc3d.offset.z};
+        capsule.center1 = toB3Vec3(center - up * halfHeight);
+        capsule.center2 = toB3Vec3(center + up * halfHeight);
         capsule.radius = glm::abs(cc3d.radius) * glm::max(scale.x, scale.z);
         b3ShapeDef shapeDef = makeShapeDef(cc3d.isSensor, cc3d.density, cc3d.friction, cc3d.restitution);
         b3ShapeId shapeId = b3CreateCapsuleShape(bodyId, &shapeDef, &capsule);
         memcpy(&cc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
     }
-    if (entity.hasComponent<MeshCollider3DComponent>()) {
-        auto &mc3d = entity.getComponent<MeshCollider3DComponent>();
+    if (owner.hasComponent<MeshCollider3DComponent>()) {
+        auto &mc3d = owner.getComponent<MeshCollider3DComponent>();
         b3ShapeId shapeId = b3_nullShapeId;
-        runtimeData.meshCook = cookMeshCollider(entity, mc3d);
-        if (runtimeData.meshCook) {
+        std::shared_ptr<MeshColliderCook> cook = cookMeshCollider(owner, mc3d);
+        if (cook) {
             const b3ShapeDef shapeDef = makeShapeDef(mc3d.isSensor, mc3d.density, mc3d.friction, mc3d.restitution);
             shapeId = createMeshColliderShape(
-                bodyId, shapeDef, *runtimeData.meshCook, mc3d.convex,
-                rb3d.type == Rigidbody3DComponent::BodyType::STATIC, scale, entity
+                bodyId, shapeDef, cook, mc3d.convex, staticBody, relativePosition, relativeRotation, scale, owner
             );
+            if (owner == body) {
+                runtimeData.ownMeshCook = cook;
+            } else {
+                runtimeData.partMeshCooks.push_back(cook);
+            }
         }
         memcpy(&mc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
     }
-    m_bodyEntityMap[bodyId.index1] = entity;
-    m_bodies.add(entity, runtimeData);
+}
+
+bool Physics3D::hasShapesInSubtree(Entity entity) {
+    if (hasOwnCollider(entity)) { return true; }
+    std::vector<UUID> stack = entity.getChildEntities();
+    while (!stack.empty()) {
+        Entity part = m_world->getById(stack.back());
+        stack.pop_back();
+        if (!part.isValid() || part.hasComponent<Rigidbody3DComponent>() || m_leaving.contains(part.getId())) { continue; }
+        if (hasOwnCollider(part)) { return true; }
+        for (UUID below : part.getChildEntities()) { stack.push_back(below); }
+    }
+    return false;
+}
+
+Entity Physics3D::bodyEntityAbove(Entity entity) {
+    if (entity.getWorld() == nullptr) { return {}; }
+    UUID aboveId = entity.getComponent<RelationshipComponent>().getParent();
+    while (aboveId != 0) {
+        Entity above = m_world->getById(aboveId);
+        if (above.getWorld() == nullptr) { break; }
+        if (m_bodies.contains(aboveId)) { return above; }
+        aboveId = above.getComponent<RelationshipComponent>().getParent();
+    }
+    return {};
+}
+
+void Physics3D::relativePose(
+    Entity body, Entity entity, glm::vec3 &outPosition, glm::quat &outRotation, glm::vec3 &outScale
+) {
+    const TransformComponent bodyWorld = body.calculateWorldSpaceTransform();
+    const TransformComponent partWorld = entity.calculateWorldSpaceTransform();
+    const glm::quat inverseBody = glm::inverse(bodyWorld.getRotation());
+    outPosition = inverseBody * (partWorld.getPosition() - bodyWorld.getPosition());
+    outRotation = glm::normalize(inverseBody * partWorld.getRotation());
+    outScale = glm::abs(partWorld.getScale());
 }
 
 std::shared_ptr<MeshColliderCook> Physics3D::cookMeshCollider(Entity entity, const MeshCollider3DComponent &collider) {
@@ -646,7 +1034,9 @@ void Physics3D::setMeshColliderMesh(Entity entity, AssetId mesh, bool convex) {
     }
     RuntimeBodyData *body = m_bodies.find(entity.getId());
     if (body == nullptr) {
-        if (canUse(entity)) { registerEntity(entity); }
+        // No body of its own: the collider is a part of the body above (or there is none yet).
+        rebuildBody(entity, true);
+        rebuildOwnersOf(entity, true);
         return;
     }
     b3ShapeId shapeId;
@@ -681,19 +1071,18 @@ void Physics3D::setMeshColliderMesh(Entity entity, AssetId mesh, bool convex) {
         }
         b3Shape_SetMesh(shapeId, meshData, b3Scale);
     }
-    body->meshCook = cook;
+    body->ownMeshCook = cook;
 }
 
-void Physics3D::componentsUpdated(Entity entity) {
-    if (!isInitialized()) { return; }
+void Physics3D::rebuildBody(Entity entity, bool keepMotion) {
     const RuntimeBodyData *registered = m_bodies.find(entity.getId());
     if (registered == nullptr) {
-        if (canUse(entity)) { registerEntity(entity); }
+        if (canUse(entity)) {
+            registerEntity(entity);
+            recreateJointsTouching(entity);
+        }
         return;
     }
-    // The body exists and the set of its components has changed. The shapes are created with the
-    // body, so it is rebuilt from what the entity has now — where it is and as it moves. Like a
-    // property edit, this costs the body its joints.
     const RuntimeBodyData old = *registered;
     const b3BodyId oldBodyId = bodyIdOf(old);
     const b3Pos position = b3Body_GetPosition(oldBodyId);
@@ -701,34 +1090,73 @@ void Physics3D::componentsUpdated(Entity entity) {
     const b3Vec3 linearVelocity = b3Body_GetLinearVelocity(oldBodyId);
     const b3Vec3 angularVelocity = b3Body_GetAngularVelocity(oldBodyId);
     removeEntity(entity);
-    if (!canUse(entity)) { return; }
+    if (!canUse(entity)) { return; } // the joints went with the body
     registerEntity(entity);
-    RuntimeBodyData &body = *m_bodies.find(entity.getId());
-    const b3BodyId bodyId = bodyIdOf(body);
-    b3Body_SetTransform(bodyId, position, rotation);
-    b3Body_SetLinearVelocity(bodyId, linearVelocity);
-    b3Body_SetAngularVelocity(bodyId, angularVelocity);
-    body.previousPosition = old.previousPosition;
-    body.previousRotation = old.previousRotation;
+    if (keepMotion) {
+        RuntimeBodyData &body = *m_bodies.find(entity.getId());
+        const b3BodyId bodyId = bodyIdOf(body);
+        b3Body_SetTransform(bodyId, position, rotation);
+        b3Body_SetLinearVelocity(bodyId, linearVelocity);
+        b3Body_SetAngularVelocity(bodyId, angularVelocity);
+        body.previousPosition = old.previousPosition;
+        body.previousRotation = old.previousRotation;
+    }
+    recreateJointsTouching(entity);
+}
+
+void Physics3D::rebuildOwnersOf(Entity entity, bool keepMotion) {
+    // The body that holds the entity's colliders now, and the nearest body above the entity: the
+    // same one, unless the entity moved to another branch or got a body of its own.
+    const auto part = m_compoundParts.find(entity.getId());
+    const UUID current = part != m_compoundParts.end() ? part->second.body : UUID(0);
+    Entity above = bodyEntityAbove(entity);
+    if (current != 0) {
+        Entity owner = m_world->getById(current);
+        if (owner.getWorld() != nullptr && isRegistered(owner)) { rebuildBody(owner, keepMotion); }
+    }
+    if (above.getWorld() != nullptr && above.getId() != current) { rebuildBody(above, keepMotion); }
+}
+
+void Physics3D::componentsUpdated(Entity entity) {
+    if (!isInitialized()) { return; }
+    // The entity's own body: created, removed or made again from what it has now, with its motion.
+    // Its colliders may belong to a body above it, before the change or after it.
+    rebuildBody(entity, true);
+    rebuildOwnersOf(entity, true);
 }
 
 void Physics3D::entityRemoved(Entity entity) {
     if (!isInitialized()) { return; }
     if (isRegistered(entity)) { removeEntity(entity); }
+    // A collider lent to the body above leaves it, and so do the colliders of everything under
+    // the entity: the body is made again without them (the entity may still be in the registry
+    // for this call — it is marked as leaving).
+    const auto part = m_compoundParts.find(entity.getId());
+    if (part != m_compoundParts.end()) {
+        m_world->untrackEntity(part->second.entity);
+        m_compoundParts.erase(part);
+    }
+    m_leaving.insert(entity.getId());
+    Entity above = bodyEntityAbove(entity);
+    if (above.getWorld() != nullptr) { rebuildBody(above, true); }
+    m_leaving.erase(entity.getId());
 }
 
 void Physics3D::entityRestored(Entity entity) {
     if (!isInitialized()) { return; }
-    if (canUse(entity) && !isRegistered(entity)) { registerEntity(entity); }
+    componentsUpdated(entity); // its body comes back with its joints, its colliders return to the body above
 }
 
 void Physics3D::propertiesUpdated(Panda::Entity entity) {
     if (!isInitialized()) { return; }
-    if (!isRegistered(entity)) { return; }
     // The body is recreated instead of a point-by-point mutation: property edits are rare
-    // (editor/script), and a box3d hull shape requires a rebuild on a size change anyway.
-    removeEntity(entity);
-    registerEntity(entity);
+    // (editor/script), and a box3d hull shape requires a rebuild on a size change anyway. The body
+    // stands at the entity's transform, at rest. A part of a compound body rebuilds its body.
+    if (isRegistered(entity)) {
+        rebuildBody(entity, false);
+    } else {
+        rebuildOwnersOf(entity, false);
+    }
 }
 
 void Physics3D::syncTransform(Panda::Entity entity) {
@@ -738,7 +1166,26 @@ void Physics3D::syncTransform(Panda::Entity entity) {
     // for the body to recompute its contacts.
     if (!isInitialized()) { return; }
     RuntimeBodyData *registered = m_bodies.find(entity.getId());
-    if (registered == nullptr) { return; }
+    if (registered == nullptr) {
+        // A part of a compound body: the body moved as a whole (the part kept its place relative to
+        // it — nothing to do) or the part moved within it (the body is rebuilt around it).
+        const auto part = m_compoundParts.find(entity.getId());
+        if (part == m_compoundParts.end()) { return; }
+        Entity owner = m_world->getById(part->second.body);
+        if (owner.getWorld() == nullptr || !isRegistered(owner)) { return; }
+        glm::vec3 position;
+        glm::quat rotation;
+        glm::vec3 scale;
+        relativePose(owner, entity, position, rotation, scale);
+        const CompoundPart &record = part->second;
+        const bool samePlace = glm::all(glm::epsilonEqual(position, record.position, 1e-5f)) &&
+                               glm::abs(glm::dot(rotation, record.rotation)) > 1.f - 1e-6f &&
+                               glm::all(glm::epsilonEqual(scale, record.scale, 1e-5f));
+        Entity above = bodyEntityAbove(entity);
+        if (samePlace && above.getWorld() != nullptr && above.getId() == record.body) { return; }
+        rebuildOwnersOf(entity, true);
+        return;
+    }
     RuntimeBodyData &runtimeData = *registered;
     const b3BodyId bodyId = bodyIdOf(runtimeData);
     auto transform = entity.calculateWorldSpaceTransform();
@@ -760,9 +1207,20 @@ void Physics3D::removeEntity(Entity entity) {
     const RuntimeBodyData *registered = m_bodies.find(entity.getId());
     if (registered == nullptr) { return; }
     const b3BodyId bodyId = bodyIdOf(*registered);
-    b3DestroyBody(bodyId);
+    b3DestroyBody(bodyId); // its shapes and joints go with it
     m_bodyEntityMap.erase(bodyId.index1);
-    m_wheelJointMap.erase(entity.getId()); // box3d has destroyed the joint together with the body
+    for (uint8_t kind = 0; kind < static_cast<uint8_t>(Joint3DKind::Count); kind++) {
+        m_joints.erase(jointKey(entity.getId(), static_cast<Joint3DKind>(kind)));
+    }
+    // The parts that lent their colliders to the body are released.
+    for (auto it = m_compoundParts.begin(); it != m_compoundParts.end();) {
+        if (it->second.body == entity.getId()) {
+            m_world->untrackEntity(it->second.entity);
+            it = m_compoundParts.erase(it);
+        } else {
+            ++it;
+        }
+    }
     m_bodies.remove(entity);
 }
 
@@ -771,19 +1229,6 @@ bool Physics3D::findBody(Entity entity, RuntimeBodyData &outBody) {
     const RuntimeBodyData *registered = m_bodies.find(entity.getId());
     if (registered == nullptr) { return false; }
     outBody = *registered;
-    return true;
-}
-
-bool Physics3D::findWheelJoint(Entity entity, RuntimeJointData &outJoint) {
-    if (!isInitialized()) { return false; }
-    auto it = m_wheelJointMap.find(entity.getId());
-    if (it == m_wheelJointMap.end()) { return false; }
-    // The joint dies with either of its bodies (the chassis was deleted or recreated).
-    if (!b3Joint_IsValid(jointIdOf(it->second))) {
-        m_wheelJointMap.erase(it);
-        return false;
-    }
-    outJoint = it->second;
     return true;
 }
 
@@ -895,10 +1340,16 @@ bool Physics3D::raycast(Vec3 origin, Vec3 direction, float maxDistance, Entity i
         b3DefaultQueryFilter(), raycastClosestResult, &context
     );
     if (!context.hit) { return false; }
-    // Bodies of the world systems are registered with their entities too; a body without an
-    // entity still counts as a hit.
-    auto it = m_bodyEntityMap.find(b3Shape_GetBody(context.shape).index1);
-    outHit.entity = it != m_bodyEntityMap.end() ? it->second : Entity();
+    // The shape names the entity whose collider it is (a part of a compound body — the part);
+    // the bodies of the world systems are registered with their entities instead; a body without
+    // an entity still counts as a hit.
+    const uintptr_t owner = reinterpret_cast<uintptr_t>(b3Shape_GetUserData(context.shape));
+    if (owner != 0) {
+        outHit.entity = m_world->getById(UUID(static_cast<uint32_t>(owner)));
+    } else {
+        auto it = m_bodyEntityMap.find(b3Shape_GetBody(context.shape).index1);
+        outHit.entity = it != m_bodyEntityMap.end() ? it->second : Entity();
+    }
     outHit.point = Vec3((float)context.point.x, (float)context.point.y, (float)context.point.z);
     outHit.normal = Vec3(context.normal.x, context.normal.y, context.normal.z);
     outHit.distance = context.fraction * maxDistance;
@@ -908,7 +1359,7 @@ bool Physics3D::raycast(Vec3 origin, Vec3 direction, float maxDistance, Entity i
 
 void Physics3D::setWheelMotor(Entity wheel, bool enabled, float speed, float maxTorque) {
     RuntimeJointData joint;
-    if (!findWheelJoint(wheel, joint)) { return; }
+    if (!findJoint(wheel, Joint3DKind::Wheel, joint)) { return; }
     const b3JointId jointId = jointIdOf(joint);
     maxTorque = glm::max(maxTorque, 0.f);
     const bool changed = b3WheelJoint_IsSpinMotorEnabled(jointId) != enabled ||
@@ -928,13 +1379,13 @@ void Physics3D::setWheelMotor(Entity wheel, bool enabled, float speed, float max
 
 float Physics3D::getWheelSpinSpeed(Entity wheel) {
     RuntimeJointData joint;
-    if (!findWheelJoint(wheel, joint)) { return 0.f; }
+    if (!findJoint(wheel, Joint3DKind::Wheel, joint)) { return 0.f; }
     return b3WheelJoint_GetSpinSpeed(jointIdOf(joint));
 }
 
 void Physics3D::setWheelSteeringAngle(Entity wheel, float angle) {
     RuntimeJointData joint;
-    if (!findWheelJoint(wheel, joint)) { return; }
+    if (!findJoint(wheel, Joint3DKind::Wheel, joint)) { return; }
     const b3JointId jointId = jointIdOf(joint);
     if (b3WheelJoint_GetTargetSteeringAngle(jointId) == angle) { return; }
     b3WheelJoint_SetTargetSteeringAngle(jointId, angle);
@@ -943,13 +1394,13 @@ void Physics3D::setWheelSteeringAngle(Entity wheel, float angle) {
 
 float Physics3D::getWheelSteeringAngle(Entity wheel) {
     RuntimeJointData joint;
-    if (!findWheelJoint(wheel, joint)) { return 0.f; }
+    if (!findJoint(wheel, Joint3DKind::Wheel, joint)) { return 0.f; }
     return b3WheelJoint_GetSteeringAngle(jointIdOf(joint));
 }
 
 void Physics3D::setWheelSuspension(Entity wheel, float hertz, float dampingRatio) {
     RuntimeJointData joint;
-    if (!findWheelJoint(wheel, joint)) { return; }
+    if (!findJoint(wheel, Joint3DKind::Wheel, joint)) { return; }
     const b3JointId jointId = jointIdOf(joint);
     hertz = glm::max(hertz, 0.f);
     dampingRatio = glm::max(dampingRatio, 0.f);
@@ -1054,8 +1505,13 @@ void Physics3D::shutdown() {
     }
     m_bodyEntityMap.clear();
     m_bodies.clear();
+    for (auto &[partId, part] : m_compoundParts) { // the parts are tracked like the bodies
+        m_world->untrackEntity(part.entity);
+    }
+    m_compoundParts.clear();
+    m_leaving.clear();
+    m_joints.clear();
     m_meshCooks.clear(); // after the world: the mesh shapes referenced the cooked data
-    m_wheelJointMap.clear();
     m_writePass = 0;
     m_stepping = false;
     m_world = nullptr;
@@ -1065,11 +1521,10 @@ bool Physics3D::isRegistered(Entity entity) {
     return m_bodies.contains(entity.getId());
 }
 
-// A body is for an entity the world sees: a deleted one (the tombstone) has none.
+// A body is for an entity the world sees: a deleted one (the tombstone) has none. It needs a
+// shape: a collider of its own, or one on an entity under it without a body of its own.
 bool Physics3D::canUse(Entity entity) {
-    return entity.isValid() && entity.hasComponent<Rigidbody3DComponent>() &&
-           (entity.hasComponent<BoxCollider3DComponent>() || entity.hasComponent<SphereCollider3DComponent>() ||
-            entity.hasComponent<CapsuleCollider3DComponent>() || entity.hasComponent<MeshCollider3DComponent>());
+    return entity.isValid() && entity.hasComponent<Rigidbody3DComponent>() && hasShapesInSubtree(entity);
 }
 
 } // namespace Panda

@@ -23,6 +23,14 @@ namespace PhysicsEditor {
         World &world, std::vector<HelperLine> &lines, const glm::mat4 &viewProj, PandaUI::Rect viewportFrame
     );
 
+    // The 3D joints of the world entities, as authored: a cross at the anchor (the anchors of a
+    // distance joint), the axis through it (the spin and suspension axes of a wheel, the slide axis
+    // of a prismatic joint) and a line to the connected entity. Orange, in the same budget and
+    // order as the colliders.
+    void appendJointLines(
+        World &world, std::vector<HelperLine> &lines, const glm::mat4 &viewProj, PandaUI::Rect viewportFrame
+    );
+
 } // namespace PhysicsEditor
 
 } // namespace Panda
