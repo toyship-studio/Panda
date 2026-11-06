@@ -61,6 +61,9 @@ Invariants:
 - **`rotation` is a quaternion** (x, y, z, w), not Euler angles. Identity = (0,0,0,1).
 - `relationshipComponent`: `parent: 0` is a root; `children` lists the ids of the children, and
   the children's `parent` points to the parent — **both sides are kept consistent by hand**.
+  The engine writes only the entities of the file into `children`. On load the `parent` field
+  is the truth: an id without an entity leaves the lists, an entity its parent does not list is
+  added, an unknown or cyclic parent makes the entity a root, each with a warning in the log.
 - The positions of children are in the parent's local space.
 
 ## Optional components (keys)

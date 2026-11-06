@@ -445,6 +445,10 @@ void EditorController::pushSelectionToPanels() {
         std::vector<Panda::UUID> ids;
         for (Panda::Entity &e : entities) { ids.push_back(e.getId()); }
         m_hierarchyView->setSelectedEntities(ids);
+        // A single selection is found in the hierarchy: the ancestors open, the row scrolls into
+        // view (a click on a visible row changes nothing). A multi-selection has no primary
+        // entity to show — the set keeps no order — so it moves nothing.
+        if (ids.size() == 1) { m_hierarchyView->revealEntity(ids.front()); }
         m_assetManagerView->setSelectedAssetIds({});
         m_contentView->clearAssetSelection();
         m_hierarchyView->setStatusText(entities.size() == 1

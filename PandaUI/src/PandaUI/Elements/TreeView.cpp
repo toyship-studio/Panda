@@ -256,6 +256,11 @@ void TreeView::setSelectedItems(const std::vector<TreeItem> &items) {
     applySelectionToVisible();
 }
 
+void TreeView::revealItem(TreeItem item) {
+    m_pendingReveal = item;
+    setNeedsDisplay();
+}
+
 void TreeView::setOnSelectionChanged(SelectionChangedCallback callback) {
     m_onSelectionChanged = std::move(callback);
 }
@@ -312,6 +317,15 @@ void TreeView::update(double deltaTime) {
         m_needsRebuild = false;
         rebuildFlat();
         updateVisibleRows(true);
+    }
+
+    // A reveal waits for the rows to be rebuilt and for the tree to have a height (the first frame
+    // of a panel has none yet). An item that is not in the tree (its ancestors stayed collapsed, or
+    // it left the model) is forgotten.
+    if (m_pendingReveal && getFrame().size.height > 0.f) {
+        const int idx = flatIndexOf(m_pendingReveal);
+        m_pendingReveal = nullptr;
+        if (idx >= 0) { scrollItemIntoView(idx); }
     }
 
     // Auto-scroll near the edges during a drag: ticked every frame (the cursor may sit still at the border).

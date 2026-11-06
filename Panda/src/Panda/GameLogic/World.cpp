@@ -620,14 +620,93 @@ void World::sort() {
     for (auto entityId : view) {
         auto &children = view.get<RelationshipComponent>(entityId).children;
         std::sort(children.begin(), children.end(), [this](auto l, auto r) {
+            // A child id without an entity (a file the loader did not repair) sorts last, by id.
             Entity le = getById(l);
             Entity re = getById(r);
+            const bool lFound = le.m_handle != entt::null;
+            const bool rFound = re.m_handle != entt::null;
+            if (!lFound || !rFound) { return lFound == rFound ? l < r : lFound; }
             bool lch = le.hasAnyChild();
             bool rch = re.hasAnyChild();
             if (lch == rch) { return le.getName() < re.getName(); }
             return lch > rch;
         });
     }
+}
+
+size_t World::repairHierarchy() {
+    size_t repaired = 0;
+    auto view = m_registry.view<IdComponent, RelationshipComponent>();
+    // The parents first: a parent id without an entity, or a chain of parents that comes back to
+    // the entity (the walk never ends in isDeleted and the transforms), is cut at the entity.
+    for (auto handle : view) {
+        const UUID id = view.get<IdComponent>(handle).id;
+        RelationshipComponent &relationship = view.get<RelationshipComponent>(handle);
+        if (relationship.parent == 0) { continue; }
+        if (!m_entityIdMap.contains(relationship.parent)) {
+            LOG_WARN(
+                "World: entity %u names the parent %u, which does not exist; it is a root now", (uint32_t)id,
+                (uint32_t)relationship.parent
+            );
+            relationship.parent = 0;
+            repaired++;
+            continue;
+        }
+        UUID above = relationship.parent;
+        size_t steps = 0;
+        while (above != 0 && above != id && steps <= m_entityIdMap.size()) {
+            const auto it = m_entityIdMap.find(above);
+            if (it == m_entityIdMap.end()) { break; }
+            above = m_registry.get<RelationshipComponent>(it->second.m_handle).parent;
+            steps++;
+        }
+        if (above == id || steps > m_entityIdMap.size()) {
+            LOG_WARN("World: entity %u is its own ancestor through the parents; it is a root now", (uint32_t)id);
+            relationship.parent = 0;
+            repaired++;
+        }
+    }
+    // Then the children lists, against the parent fields: a listed id without an entity, or of an
+    // entity under another parent, leaves; an entity under this one that is not listed is added.
+    for (auto handle : view) {
+        const UUID id = view.get<IdComponent>(handle).id;
+        std::vector<UUID> &children = view.get<RelationshipComponent>(handle).children;
+        for (auto it = children.begin(); it != children.end();) {
+            const auto child = m_entityIdMap.find(*it);
+            if (child == m_entityIdMap.end()) {
+                LOG_WARN(
+                    "World: entity %u lists the child %u, which does not exist; the link is dropped", (uint32_t)id,
+                    (uint32_t)*it
+                );
+                it = children.erase(it);
+                repaired++;
+            } else if (m_registry.get<RelationshipComponent>(child->second.m_handle).parent != id) {
+                LOG_WARN(
+                    "World: entity %u lists the child %u, which is under another parent; the link is dropped",
+                    (uint32_t)id, (uint32_t)*it
+                );
+                it = children.erase(it);
+                repaired++;
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (auto handle : view) {
+        const UUID id = view.get<IdComponent>(handle).id;
+        const UUID parentId = view.get<RelationshipComponent>(handle).parent;
+        if (parentId == 0) { continue; }
+        const entt::entity parentHandle = m_entityIdMap.at(parentId).m_handle;
+        std::vector<UUID> &siblings = m_registry.get<RelationshipComponent>(parentHandle).children;
+        if (std::find(siblings.begin(), siblings.end(), id) == siblings.end()) {
+            LOG_WARN(
+                "World: entity %u is under %u, which did not list it; the link is added", (uint32_t)id, (uint32_t)parentId
+            );
+            siblings.push_back(id);
+            repaired++;
+        }
+    }
+    return repaired;
 }
 
 bool World::needToDestroy(Entity entity) {

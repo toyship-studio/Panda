@@ -47,6 +47,9 @@ public:
     void setStatusText(const std::string &text);
     void setSelectedEntities(const std::vector<Panda::UUID> &entityIds); // programmatic highlight of the selection
     void expandEntity(Panda::UUID entityId, bool expanded);
+    // The entity comes into view: its ancestors are expanded and the tree scrolls to its row when
+    // it is outside the window (an entity picked in the viewport is found in the hierarchy).
+    void revealEntity(Panda::UUID entityId);
 
 private:
     void addSubviews() override;

@@ -197,6 +197,11 @@ public:
     bool isDeleted(entt::entity handle); // itself or any ancestor
     // Entity order for the Hierarchy: those with children first, then by name; children — the same.
     void sort();
+    // The links of the hierarchy against the entities that exist, after a load: a child id without
+    // an entity or whose parent is another entity leaves the list, a child the parent does not
+    // list is added, a parent id without an entity and a cycle make the entity a root. The parent
+    // field is the truth. Returns the number of repaired links; each is logged.
+    size_t repairHierarchy();
     Entity duplicateEntity(Entity entity);
     bool isValidEntt(entt::entity handle);
     bool isValid(UUID entityId);

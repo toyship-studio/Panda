@@ -110,6 +110,11 @@ public:
     bool isSelected(TreeItem item) const;
     void setSelectedItem(TreeItem item);
     void setSelectedItems(const std::vector<TreeItem> &items); // programmatic multi-selection (no onSelectionChanged)
+    // Scrolls the row of the item into view when it is outside the window; a visible row stays
+    // put. The item has to be visible in the tree (its ancestors expanded — the application does
+    // that, it knows the structure); applied in the next update, after the flat list is rebuilt
+    // and the tree has a size, so it may follow setExpanded and reloadData in the same frame.
+    void revealItem(TreeItem item);
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnContextMenu(ContextMenuCallback callback);
 
@@ -186,6 +191,7 @@ private:
     std::vector<TreeItem> m_selection;       // selected items
     TreeItem m_anchorItem = nullptr;         // range anchor (Shift selection)
     TreeItem m_cursorItem = nullptr;         // keyboard navigation cursor
+    TreeItem m_pendingReveal = nullptr;      // revealItem: scrolled to in update, once the rows are rebuilt
 
     std::unordered_map<int, std::shared_ptr<TreeRow>> m_visibleRows; // flatIndex → realized row
     std::vector<std::shared_ptr<TreeRow>> m_recyclePool;

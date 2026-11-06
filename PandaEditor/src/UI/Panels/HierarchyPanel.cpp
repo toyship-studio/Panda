@@ -257,6 +257,16 @@ void HierarchyPanelView::expandEntity(Panda::UUID entityId, bool expanded) {
     m_tree->setExpanded(toItem(static_cast<std::uint32_t>(entityId)), expanded);
 }
 
+void HierarchyPanelView::revealEntity(Panda::UUID entityId) {
+    if (!m_world) { return; }
+    Panda::Entity entity = m_world->getById(entityId);
+    if (!entity.isValid()) { return; }
+    for (Panda::Entity above = entity.getParent(); above.isValid(); above = above.getParent()) {
+        m_tree->setExpanded(toItem(static_cast<std::uint32_t>(above.getId())), true);
+    }
+    m_tree->revealItem(toItem(static_cast<std::uint32_t>(entityId)));
+}
+
 void HierarchyPanelView::setupLayout() {
     layout().setFlexDirection(FlexDirection::Column);
 }

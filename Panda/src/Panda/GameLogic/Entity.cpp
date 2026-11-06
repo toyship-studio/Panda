@@ -43,6 +43,7 @@ bool Entity::hasAnyChild() {
     for (UUID childId : getChildEntities()) {
         const Entity child = m_world->getById(childId);
         PND_ASSERT(child.m_handle != entt::null, "ENTITY DELETED");
+        if (child.m_handle == entt::null) { continue; } // a broken link does not count in a release build
         if (!worldGetRegistry().any_of<DeletedComponent>(child.m_handle)) { return true; }
     }
     return false;

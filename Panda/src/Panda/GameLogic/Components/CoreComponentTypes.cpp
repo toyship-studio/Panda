@@ -1,5 +1,6 @@
 #include "Panda/GameLogic/Components/CoreComponentTypes.hpp"
 #include "Panda/GameLogic/Entity.hpp"
+#include "Panda/GameLogic/World.hpp" // the live children of an entity (encodeRelationship)
 #include "Panda/Serialization/ComponentDtos.hpp"
 
 namespace Panda {
@@ -17,9 +18,20 @@ namespace {
         if (decoder.decode("tagComponent", tag)) { entity.setName(tag.tag); }
     }
 
+    // The file gets the live children only. A child deleted by an undoable command is a
+    // tombstone: it stays in the registry and in this list for the undo, but it is not written,
+    // and a file that listed it crashed the next load (World::repairHierarchy mends such files).
     void encodeRelationship(Rain::Encoder &encoder, Entity entity) {
-        encoder.encode("relationshipComponent", entity.getComponent<RelationshipComponent>());
+        const RelationshipComponent &relationship = entity.getComponent<RelationshipComponent>();
+        World &world = *entity.getWorld();
+        RelationshipComponentDto dto;
+        dto.parent = relationship.getParent();
+        for (UUID child : relationship.getChildren()) {
+            if (world.isValid(child)) { dto.children.push_back(child); }
+        }
+        encoder.encode("relationshipComponent", dto);
     }
+    // The component carries the same keys as the DTO: it is read as it is.
     void decodeRelationship(Rain::Decoder &decoder, Entity entity) {
         RelationshipComponent relationship;
         if (decoder.decode("relationshipComponent", relationship)) {

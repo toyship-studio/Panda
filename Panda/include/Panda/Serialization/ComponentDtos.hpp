@@ -8,6 +8,19 @@
 
 namespace Panda {
 
+// The hierarchy links of an entity as the file carries them: the parent (0 — a root) and the
+// children. The keys are those of RelationshipComponent itself; the file lists live children
+// only (the encoder drops the tombstones of undoable deletions).
+struct RelationshipComponentDto : public Rain::Codable {
+    UUID parent = 0;
+    std::vector<UUID> children;
+
+    RAIN_FIELDS_BEGIN(RelationshipComponentDto)
+    RAIN_FIELD(parent)
+    RAIN_FIELD(children)
+    RAIN_FIELDS_END
+};
+
 struct TransformComponentDto : public Rain::Codable {
     Vec3 position;
     Quat rotation;

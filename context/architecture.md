@@ -168,7 +168,12 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 - **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
   panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
   the updates into the affected panels (retained mode: no subscriptions, no reactivity). Panels do
-  not know about each other.
+  not know about each other. A change of the entity selection, whoever made it (a pick in the
+  viewport, a row of the Hierarchy, Add Child), reaches the panels once a frame
+  (`pushSelectionToPanels`); a single selected entity is revealed in the Hierarchy — its
+  ancestors expand and the tree scrolls to its row when it is out of view
+  (`HierarchyPanelView::revealEntity` → `TreeView::revealItem`, applied after the rows are
+  rebuilt). A multi-selection has no primary entity and moves nothing.
 
 #### The document model
 
@@ -406,7 +411,11 @@ component types (`Extensions::components`), and contribution settings are top-le
   registry for the sake of undo and is invisible to the world (`isValidEntt`, `isValid`; the
   children of a deleted entity count as deleted). `AddRemoveEntitiesCommand` sets the tag through
   `Entity::setDeleted`; `needToDestroy` drives the real destruction when the command is evicted
-  from the history. The runtime never sets the tag. In a running world (a deletion in the editor
+  from the history. A tombstone stays in the `children` of its parent, so the save writes the
+  live children only (`encodeRelationship`): a file used to list a child it did not contain, and
+  the load crashed in `World::sort`. The load repairs what it reads (`World::repairHierarchy`,
+  the parent field is the truth: unknown ids leave the lists, a cycle makes the entity a root)
+  and warns. The runtime never sets the tag. In a running world (a deletion in the editor
   during Play) the tombstone also takes the bodies of the entity and of everything under it out
   of the simulation, and the undo brings them back (`World::deletionChanged`,
   `context/physics.md`).

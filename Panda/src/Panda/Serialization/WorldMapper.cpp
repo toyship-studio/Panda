@@ -97,6 +97,12 @@ namespace {
             for (const std::string &name : foreignDropped) {
                 LOG_WARN("Component \"%s\": no module provides it, dropped", name.c_str());
             }
+            // A file written before the encoder dropped the tombstones of undoable deletions lists
+            // children that do not exist; the sort and the hierarchy need every link to resolve.
+            if (const size_t repaired = world.repairHierarchy()) {
+                LOG_WARN("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
+                LOG_WARN_EDITOR("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
+            }
             world.setChanged(false);
             world.sort();
             return true;
