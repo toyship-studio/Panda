@@ -4,6 +4,7 @@
 #include "Panda/Base/TypeContext.hpp"
 #include "Panda/GameLogic/World.hpp"
 #include "Panda/ScriptEngine/ScriptEngine.hpp"
+#include "Project/Documents/FileDocument.hpp"
 #include "Project/Settings/EditorSettings.hpp"
 #include "Project/System/ProjectCreator.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
@@ -20,6 +21,8 @@ public:
     virtual void loaderDidLoadCloseProject() = 0;
     virtual void loaderDidLoadWorld() = 0;
     virtual void loaderDidCreateNewWorld() = 0;
+    // settings.json was reread: the editor applies the scope (it is not saved back).
+    virtual void loaderDidReloadEditorSettings() = 0;
     virtual EditorCameraSettings getEditorCameraSettings() = 0;
     virtual void setEditorCameraSettings(EditorCameraSettings settings) = 0;
 };
@@ -39,22 +42,33 @@ public:
     // The editor session (session.json): written at project open/close and at exit.
     void saveSession();
     void saveWindowState(LastOpenedProjectWindowState state);
+    // The files the loader holds in memory, as file documents (FileDocument.hpp): the open world,
+    // project.json and settings.json. Save, Reload and the unsaved-changes questions go through
+    // them (EditorLayer).
+    FileDocument &worldFile() {
+        return *m_worldFile;
+    }
+    FileDocument &projectSettingsFile() {
+        return *m_projectSettingsFile;
+    }
+    FileDocument &editorSettingsFile() {
+        return *m_editorSettingsFile;
+    }
+    // An edit went into the project scope (the Project Settings tab): project.json is behind.
+    void markProjectSettingsEdited() {
+        m_projectSettingsDirty = true;
+    }
     // The sections of the project scope and the project session (project.json, session.json);
     // false — project.json could not be written.
     // overwriteDiskEdits = false — a save nobody asked for (closing or switching the project):
     // a project.json changed on disk since the editor read it is left alone.
     bool saveProjectSettings(bool overwriteDiskEdits = true);
-    // The project scope rereads project.json (the Don't Save of the project settings document).
-    void reloadProjectSettings();
     void openProject(const path_t &path);
     void openCppProject();
     void showCppProject();
     void reloadScriptsDll();
-    // The world/scripts have "overtaken" the engine on disk (mtime is newer than the moment of
-    // load/save) — sources for the unified Reload synchronization (context/architecture.md).
-    // project.json is newer than what the editor last read or wrote (an edit by hand or an agent).
-    bool isProjectSettingsChangedOnDisk();
-    bool isWorldChangedOnDisk();
+    // The script build on disk is newer than the loaded one (a step of Reload; the build is not
+    // a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
     void newWorld();
     bool openWorld(const path_t &path);
@@ -76,7 +90,9 @@ public:
     TypeContext &editorSettings() {
         return m_editorSettings;
     }
-    void saveEditorSettings();
+    // overwriteDiskEdits = false — a save nobody asked for (exit): a settings.json changed on
+    // disk since the editor read it is left alone.
+    void saveEditorSettings(bool overwriteDiskEdits = true);
     // The files of the two scopes: settings.json of the user data directory (empty — no such
     // directory) and .Panda/project.json of the open project (empty — no project).
     path_t editorSettingsPath() const;
@@ -86,6 +102,12 @@ public:
     const DockLayoutState &getDockLayout();
 
 private:
+    class WorldFile;
+    class ProjectSettingsFile;
+    class EditorSettingsFile;
+    // The file → memory side of the two settings documents (FileDocument::reload).
+    bool reloadProjectSettings();
+    bool reloadEditorSettings();
     bool loadWorld(const path_t &path);
     ScriptEngineConfig makeScriptsConfig();
     bool saveWorldAs();
@@ -104,10 +126,14 @@ private:
 
     Rain::JsonEncoder m_jsonEncoder;
     Rain::JsonDecoder m_jsonDecoder;
-    // mtime at the moment of the editor's last synchronization with the disk (the Reload contract).
-    std::filesystem::file_time_type m_worldDiskTime{};
-    std::filesystem::file_time_type m_projectSettingsDiskTime{};
-    void noteProjectSettingsDiskSync();
+    // The files as the editor last read or wrote them (the Reload contract).
+    DiskStamp m_worldStamp;
+    DiskStamp m_projectSettingsStamp;
+    DiskStamp m_editorSettingsStamp;
+    std::unique_ptr<FileDocument> m_worldFile;
+    std::unique_ptr<FileDocument> m_projectSettingsFile;
+    std::unique_ptr<FileDocument> m_editorSettingsFile;
+    bool m_projectSettingsDirty = false; // the project scope has edits project.json does not
     std::filesystem::file_time_type m_scriptsDllTime{};
     TypeContext m_editorSettings;
     EditorSession m_session;

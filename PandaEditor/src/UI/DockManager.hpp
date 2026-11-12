@@ -87,6 +87,7 @@ public:
     std::string selectedPanelId(Dock dock) const;
 
     void setPanelDirty(const std::string &id, bool dirty); // "unsaved" indicator (dot) on the panel's tab
+    void setPanelTitle(const std::string &id, std::string title); // the tab title (the file of its document)
 
     // --- Temporary editor tabs of objects (transient): the mechanism for the tabbed inspector. ---
     // The policy (which object is in preview, replacement/deduplication) lives in the caller; docking
@@ -122,6 +123,10 @@ public:
         std::function<void(Dock)> open;
     };
     void setAddMenuItemsProvider(std::function<std::vector<AddMenuItem>()> provider);
+    // Extra items at the top of a tab's context menu (the file of the tab's document).
+    void setTabMenuExtender(std::function<void(const std::string &panelId, PandaUI::Menu &menu)> extender) {
+        m_tabMenuExtender = std::move(extender);
+    }
 
     // Saving/restoring the layout: panels+order, dock visibility, split weights, active tabs, the
     // focused dock.
@@ -192,6 +197,7 @@ private:
     std::function<void(const std::string &)> m_onPanelPinned;
     std::function<bool(const std::string &)> m_onTransientCloseRequest;
     std::function<std::vector<AddMenuItem>()> m_addMenuItems;
+    std::function<void(const std::string &, PandaUI::Menu &)> m_tabMenuExtender;
 
     // maximize (zoom overlay).
     std::shared_ptr<PandaUI::Panel> m_maximizeRoot;

@@ -67,7 +67,6 @@ namespace Ic {
     inline constexpr const char *PanelInspector = "panel-inspector";
     inline constexpr const char *PanelContentBrowser = "panel-content-browser";
     inline constexpr const char *PanelOutput = "panel-output";
-    inline constexpr const char *PanelAssetManager = "panel-asset-manager";
     inline constexpr const char *PanelStatistics = "panel-statistics";
     inline constexpr const char *PanelProfiler = "panel-profiler";
     inline constexpr const char *PanelWorldSettings = "panel-world-settings";
@@ -109,6 +108,8 @@ const IconLibrary &icons();
 std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size, PandaUI::ThemeColor color);
 std::shared_ptr<PandaUI::ImageView> makeIcon(const std::string &name, float size);
 // Icon button: a square Control with a tinted icon and a hover background (toolbar 28, headers 23).
+// An icon alone is for a tool everyone recognises; a button that opens something (a panel, a
+// popover) says what in a word next to the icon (setTitle).
 class IconButton final : public PandaUI::Control {
 public:
     using ClickCallback = std::function<void()>;
@@ -123,6 +124,8 @@ public:
     void setFixedColor(PandaUI::ThemeColor color); // constant color (play=teal/stop=pink): hover does not change it
     void setActive(bool active);                   // selected (gizmo tool/dock tab): accentSoft background + accentText
     void setCornerRadius(float radius);
+    // A word after the icon: the button keeps its height and grows as wide as the word.
+    void setTitle(const std::string &title);
 
 private:
     void controlStateChanged(PandaUI::ControlState, PandaUI::ControlState) override;
@@ -132,6 +135,7 @@ private:
     void applyStyle();
 
     std::shared_ptr<PandaUI::ImageView> m_icon;
+    std::shared_ptr<PandaUI::Label> m_title;
     ClickCallback m_onClick;
     std::function<void()> m_onContextMenu;
     PandaUI::ThemeColor m_restColor;

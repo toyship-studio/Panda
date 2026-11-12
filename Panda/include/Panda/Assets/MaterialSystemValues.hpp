@@ -18,8 +18,8 @@ class MaterialSystemValues final {
 public:
     // hint — an explanation for the editor ("Set by scene wind"), section — the title of the
     // world settings section that controls the value ("WIND"; the editor opens it from the hint);
-    // both are remembered on the first non-empty set, the value can be updated without them
-    // every frame.
+    // both are remembered from the last set that gives them, the value can be updated without
+    // them every frame.
     static void
     set(const char *name, MaterialFieldValue value, const char *hint = nullptr, const char *section = nullptr);
     // Field value taking the system override into account: the same-named system value

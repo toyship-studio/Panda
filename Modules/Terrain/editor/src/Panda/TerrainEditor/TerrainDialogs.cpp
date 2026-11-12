@@ -63,7 +63,7 @@ namespace {
             titleLabel->setFont(Typo::Body.withWeight(FontWeight::Medium));
             addSubview(titleLabel);
             auto descriptionLabel = std::make_shared<Label>(description);
-            descriptionLabel->setFont(Typo::Meta);
+            descriptionLabel->setFont(Typo::Caption);
             descriptionLabel->setTextRole(TextRole::Muted);
             descriptionLabel->setNumberOfLines(0);
             descriptionLabel->setTextAlignment(TextAlignment::Center);

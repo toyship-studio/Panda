@@ -6,7 +6,9 @@ namespace Bamboo {
 
 // Dynamics of a Rigidbody3D body. Forces act over the next physics step, impulses change the
 // velocity at once. Points are in world space; angular velocity is in radians per second around
-// the vector. Calls on an entity without a body do nothing and return zeros.
+// the vector. An entity whose collider is a part of a compound body stands for that body: its
+// forces, velocities and mass are the body's. Calls on an entity without a body do nothing and
+// return zeros.
 namespace Rigidbody3DComponentAPI {
     // How a body answers a push, in world space as it stands now: an impulse J at a point p changes
     // the linear velocity by J / mass and the angular one by inverseInertia * cross(p - center, J).

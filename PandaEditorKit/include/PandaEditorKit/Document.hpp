@@ -2,6 +2,7 @@
 
 #include <PandaUI/PandaUI.hpp>
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -36,6 +37,11 @@ public:
         return true;
     }
     virtual void revert() {} // Don't Save: back to the file
+    // The file the document edits (absolute); empty — it has none (the Game, the Plugins tab).
+    // The tab menu shows it, reveals it in the file manager and opens it in the external editor.
+    virtual std::filesystem::path filePath() {
+        return {};
+    }
     // The undo stack Cmd+Z goes to while the tab has the focus; nullptr — the document has none.
     virtual Panda::CommandHistory *undoStack() {
         return nullptr;

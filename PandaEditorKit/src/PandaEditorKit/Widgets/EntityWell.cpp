@@ -1,4 +1,5 @@
 #include "PandaEditorKit/Widgets/EntityWell.hpp"
+#include <PandaEditorKit/Widgets/Typography.hpp>
 
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/World.hpp>
@@ -23,7 +24,7 @@ EntityWell::EntityWell(Panda::World &world, Panda::UUID initial, std::function<v
     surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     m_label = std::make_shared<Label>("");
-    m_label->setFont(Font(15.f));
+    m_label->setFont(Typo::Item);
     addSubview(m_label);
     applyStyle();
     refresh();

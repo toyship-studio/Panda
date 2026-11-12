@@ -202,6 +202,15 @@ void DockManager::setPanelDirty(const std::string &id, bool dirty) {
     if (tabs && index >= 0) { tabs->setTabDirty(index, dirty); }
 }
 
+void DockManager::setPanelTitle(const std::string &id, std::string title) {
+    DockPanel *panel = findPanel(id);
+    if (!panel || panel->title == title) { return; }
+    panel->title = title; // a rebuild of the docks keeps it
+    std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
+    const int index = tabIndexOf(id);
+    if (tabs && index >= 0) { tabs->setTabTitle(index, std::move(title)); }
+}
+
 /* ------------------------------ transient panels (editor tabs) ------------------------------ */
 
 bool DockManager::activateTransientPanel(const std::string &id) {
@@ -346,6 +355,10 @@ void DockManager::showTabMenu(Dock dock, int tabIndex, Point position) {
     if (!context) { return; }
 
     auto menu = std::make_shared<Menu>();
+    if (m_tabMenuExtender) {
+        m_tabMenuExtender(id, *menu);
+        if (!menu->empty()) { menu->addSeparator(); }
+    }
     if (panel->closable) {
         menu->addItem("Close", [this, id] {
             if (!allowClose(id)) { return; } // a dirty transient may cancel the close

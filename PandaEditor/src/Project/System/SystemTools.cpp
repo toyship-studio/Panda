@@ -152,32 +152,46 @@ namespace {
         return findExistingExecutable(sdkRoot, sdkSlangRelativePaths());
     }
 
-    std::optional<path_t> pathCMakePath() {
-        const char *pathEnvironment = std::getenv("PATH");
-        if (pathEnvironment == nullptr) { return std::nullopt; }
-
+    // An executable by its name: the folders of PATH, then the usual install folders — a GUI
+    // application on macOS does not inherit the PATH of the user's shell.
+    std::optional<path_t> findExecutable(const std::string &name) {
 #ifdef PLATFORM_WINDOWS
         const char separator = ';';
-        const path_t executableName = "cmake.exe";
+        const std::vector<std::string> names = {name + ".exe", name + ".cmd", name + ".bat", name};
 #else
         const char separator = ':';
-        const path_t executableName = "cmake";
+        const std::vector<std::string> names = {name};
 #endif
-
-        std::string paths = pathEnvironment;
-        size_t start = 0;
-        while (start <= paths.size()) {
-            size_t end = paths.find(separator, start);
-            std::string directory = paths.substr(start, end == std::string::npos ? std::string::npos : end - start);
-            if (!directory.empty()) {
-                path_t candidate = path_t(directory) / executableName;
-                if (std::filesystem::exists(candidate)) { return candidate; }
+        std::vector<path_t> directories;
+        if (const char *pathEnvironment = std::getenv("PATH")) {
+            const std::string paths = pathEnvironment;
+            size_t start = 0;
+            while (start <= paths.size()) {
+                const size_t end = paths.find(separator, start);
+                const std::string directory =
+                    paths.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                if (!directory.empty()) { directories.emplace_back(directory); }
+                if (end == std::string::npos) { break; }
+                start = end + 1;
             }
-            if (end == std::string::npos) { break; }
-            start = end + 1;
         }
-
+#ifdef PLATFORM_POSIX
+        directories.emplace_back("/usr/local/bin");
+        directories.emplace_back("/opt/homebrew/bin");
+        if (const char *home = std::getenv("HOME")) { directories.push_back(path_t(home) / ".local" / "bin"); }
+#endif
+        for (const path_t &directory : directories) {
+            for (const std::string &candidateName : names) {
+                std::error_code errorCode;
+                const path_t candidate = directory / candidateName;
+                if (std::filesystem::is_regular_file(candidate, errorCode)) { return candidate; }
+            }
+        }
         return std::nullopt;
+    }
+
+    std::optional<path_t> pathCMakePath() {
+        return findExecutable("cmake");
     }
 
     void emitCommandOutput(const SystemTools::CommandOutputCallback &callback, std::string line) {
@@ -502,6 +516,42 @@ bool SystemTools::openWithDefaultApplication(const path_t &path) {
 #else
 #    error Unsupported platrofm
 #endif
+}
+
+void SystemTools::openInEditor(const std::string &command, const path_t &path) {
+    if (command.empty()) {
+        openWithDefaultApplication(path);
+        return;
+    }
+    std::error_code errorCode;
+    std::optional<path_t> executable;
+    if (std::filesystem::is_regular_file(command, errorCode)) {
+        executable = path_t(command);
+    } else {
+        executable = findExecutable(command);
+    }
+    if (executable) {
+#ifdef PLATFORM_WINDOWS
+        // A command of an editor is often a .cmd script: the shell starts both it and an .exe,
+        // without waiting for the editor to close.
+        if (runCommand("cmd.exe", {"/C", "start", "", executable->string(), path.string()})) { return; }
+#else
+        if (startDetached(*executable, {path.string()})) { return; }
+#endif
+    }
+#ifdef PLATFORM_MACOS
+    // No command line tool installed: the application itself, by its name or bundle path.
+    static const std::pair<const char *, const char *> APPLICATIONS[] = {
+        {"zed", "Zed"}, {"code", "Visual Studio Code"}, {"cursor", "Cursor"}, {"subl", "Sublime Text"},
+    };
+    std::string application = command;
+    for (const auto &[name, title] : APPLICATIONS) {
+        if (command == name) { application = title; }
+    }
+    if (runCommand("/usr/bin/open", {"-a", application, path.string()})) { return; }
+#endif
+    LOG_WARN_EDITOR("External editor \"%s\" was not found: the file is opened by the system", command.c_str());
+    openWithDefaultApplication(path);
 }
 
 void SystemTools::show(const Panda::path_t &path) {

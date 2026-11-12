@@ -177,15 +177,54 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 
 #### The document model
 
-Every tab of the editor holds a `Document` (`PandaEditorKit/Document.hpp`): a title and an icon,
-a view, `isDirty`, `save`, `revert`, an undo stack and `refresh` (the form rereads the data after
-undo/redo or a reload). The tab chrome (`EditorTabs` over `DockManager`) knows nothing else: the
-dirty dot, Cmd+Z and the close question (Save / Don't Save / Cancel) come from the interface.
-The documents:
+One file — one document; a tab is a view of a document. The model has two layers.
 
-- the **world** (`WorldDocument` in the coordinator): the Scene tab (the panel id stays
+**File documents** (`Project/Documents/FileDocument.hpp`, the application layer) are the files
+the editor holds in memory: the open world, `project.json`, `settings.json` and every loaded
+asset. A file document answers five questions — its title and path, whether the memory has
+unsaved edits (`isDirty`), whether the file is newer than what the editor last read or wrote
+(`isChangedOnDisk`, a `DiskStamp` per file), and it can `save` (memory → file) and `reload`
+(file → memory). The loader owns the first three (`ProjectLoader::worldFile`,
+`projectSettingsFile`, `editorSettingsFile`), the asset database builds the asset ones on demand
+(`AssetHandlerEditor::fileDocuments`: loaded assets that are dirty or changed on disk). A file
+document exists without a tab (a loaded texture, the settings with their tab closed).
+
+Three operations are written once over them, in `EditorLayer`, whatever the file is:
+
+- **Save** (Cmd+S) writes the document of the tab with the focus; **Save All** (Cmd+Alt+S, the
+  toolbar button) writes every dirty one (`saveAll`). A file changed on disk since the editor
+  read it is never overwritten in silence: the save asks which version stays
+  (`resolveFileConflict`: Save / Discard / Cancel).
+- **Reload** rereads what changed on disk and asks the same question when the memory has edits
+  too (`reloadFromDisk`, below).
+- **The unsaved-changes gate** (`runAfterUnsavedQuestion`) stands before everything that drops
+  the memory — another world or project, closing, quitting: it names the dirty documents; Save
+  writes them, Don't Save lets the action drop them (the project settings, which outlive the
+  action, go back to their file), Cancel stops the action. A save nobody asked for (the session written on exit or project
+  switch) leaves a settings file changed on disk alone.
+
+**Tab documents** (`Document`, `PandaEditorKit/Document.hpp`) are what the tab chrome
+(`EditorTabs` over `DockManager`) needs: a title and an icon, a view, `isDirty`, `save`,
+`revert`, an undo stack, `refresh` (the form rereads the data after undo/redo or a reload) and
+`filePath`. They delegate the file side to the file document behind them. The dirty dot, Cmd+Z
+and the close question (Save / Don't Save / Cancel) come from this interface. The context menu
+of a tab — and of an asset in the Content Browser — starts with the file: its path (a click
+copies it), Open in External Editor and Reveal in File Manager. The external editor is a
+setting of the editor scope (`externalTools.editor`: a command such as `zed`, a path, or empty
+for the system default; `SystemTools::openInEditor`); a binary asset opens its text sidecar
+(`.pmeta`), a shader opens both files of the pair.
+
+A tab that edits a file of the project is titled with the name of that file (`world.world`,
+`bark.mat`): the title answers "what will Save write". The tabs that are views or tools keep
+the name of what they show — an entity tab the entity, the settings tabs "Project Settings" and
+"Editor Settings", the Game and the Plugins tabs — and their file is one right-click away.
+
+The tab documents:
+
+- the **world** (`WorldDocument` in the coordinator): the Scene tab, titled with the name of
+  the world file (`world.world`; `Untitled World` before the first save; the panel id stays
   `viewport` in saved layouts), dirty is the world's change flag, the undo stack is the world's,
-  Save goes through the layer (the world and every dirty asset). Its settings are the sidebar of
+  Save writes the world file (a world without a file yet asks for one). Its settings are the sidebar of
   the viewport (the N-panel of Blender): the sections of the world scope over the world's
   context, opaque, shown and hidden by the overlay button and Window → World Settings, remembered
   in the layout. Edits are undo steps of the world (`SettingsUpdate<T>`, Kit
@@ -195,7 +234,8 @@ The documents:
 - the **Game** (`GameDocument`, a document type `game`): the frame of the game — the main camera
   of the world, the game UI and the game input, no editor layer; see "The Scene and the Game"
   below. Nothing to save or undo; opened by Play, Window → Game and the "+" of a dock.
-- an **entity tab** (`EditorTabs::EntityDocument`): a view of the world document — the form of
+- an **entity tab** (`EditorTabs::EntityDocument`): a view of the world document (Save and the
+  file are the world's, no dirty dot of its own) — the form of
   `EntityEditorView` over the live targets (the core component sections and the module sections
   from `componentInspectors`), the edits dirty the world and go into its stack through a per-tab
   proxy that substitutes the selection with the tab's targets;
@@ -205,11 +245,12 @@ The documents:
   material, postprocessing, mesh — register theirs in `CoreAssetEditors` the same way as the
   modules);
 - the **project settings** (`ProjectSettingsDocument`): `.Panda/project.json` — the sections of
-  the project scope, its own undo stack, dirty until Cmd+S or the close question, revert rereads
-  the file; a saved change of the shader features recompiles the shaders of the project
+  the project scope, its own undo stack, dirty (the flag lives with the file document) until
+  Save or the close question, revert rereads the file; a saved change of the shader features recompiles the shaders of the project
   (`context/shader-features.md`);
 - the **editor settings** (`EditorSettingsDocument`): the sections of the editor scope, applied
-  and saved by every edit — no dirty state, no undo. The VIEWPORT section is also the Display
+  and saved by every edit — no dirty state, no undo; `settings.json` edited by hand is reread
+  by Reload. The VIEWPORT section is also the Display
   popover of the viewport overlay;
 - the **Plugins tab** (`PluginsDocument`, `PluginsView`): the Extensions page of Zed over the
   plugin store (`Project/Plugins/PluginStore`, `context/infrastructure.md` section 3) — search,
@@ -220,9 +261,9 @@ Selection opens a preview tab in the right dock (replaced by the next selection,
 double click or an edit). The documents of `EditorExtensions::documentTypes` (the two settings
 documents and the Plugins tab; modules may add theirs) open from the "+" of any dock and from the
 menu bar, one instance per type, and are restored with the layout. The menu follows Zed: File → Settings holds
-Open Settings (Cmd+,) and Open Project Settings — the documents — and Show Settings File / Show
-Project Settings File, which reveal `settings.json` and `.Panda/project.json` in the file manager
-(the editor has no text editor; a file never written is written first). Window → World Settings
+Open Settings (Cmd+,) and Open Project Settings — the documents — and Open Settings File / Open
+Project Settings File, which open `settings.json` and `.Panda/project.json` in the external
+editor (the editor has no text editor of its own; a file never written is written first). Window → World Settings
 toggles the viewport sidebar, Window → Plugins opens the Plugins tab. Undo/redo go to the document of the tab
 with the focus; a side dock without a document (Hierarchy) means the world; a viewport editing
 session (the terrain brush) means the document of its asset.
@@ -692,20 +733,16 @@ All project state is readable Rain JSON (`.world`, `.mat`, `.pmeta` sidecars, `.
 plus C++ scripts, so an AI coding agent works with the project files directly; a human always runs
 and debugs the game.
 
-- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk in the order project
-  settings → assets → scripts → world, by modification time. Project settings:
-  `ProjectLoader::isProjectSettingsChangedOnDisk` rereads `project.json` (the shader features
-  are applied; unsaved edits of the Project Settings tab ask Save / Discard / Cancel like an
-  asset; a module switched on in the file opens the project again, because module contributions
-  come before the asset registry and the world; a module switched off needs a restart), and a
-  save nobody asked for (closing or
-  switching the project) does not overwrite a `project.json` changed on disk. Loaded assets:
-  `AssetEditorMeta` in `AssetHandlerEditor` (`collectAssetsChangedOnDisk()` scans loaded assets
-  only; a loaded shader is also compared by the text its sources expand to,
-  `ShaderCook::isStale`, so a changed fragment stage or include reloads it). Script bundle:
-  `ProjectLoader::isScriptsChangedOnDisk`. World: `isWorldChangedOnDisk`; broken JSON is logged
-  and the world is left untouched. A conflict (newer on disk plus unsaved edits) asks per item:
-  Save / Discard / Cancel. Orchestration: `EditorLayer::reloadFromDisk`.
+- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk by modification
+  time, as one walk over the file documents (see "The document model"): editor settings →
+  project settings → assets → the script build → the world. A file changed on disk is reread; a
+  file changed on disk AND in memory asks which version stays. After `project.json`: the shader
+  features are applied, a module switched on in the file opens the project again (module
+  contributions come before the asset registry and the world), a module switched off needs a
+  restart. A loaded shader is also compared by the text its sources expand to
+  (`ShaderCook::isStale`), so a changed fragment stage or include reloads it. A broken world or
+  settings file is logged and the memory is left untouched. Orchestration:
+  `EditorLayer::reloadFromDisk`.
 - What an agent gets: `PandaSDK/docs/*.md` are copied into the SDK; `.Panda/scripts-manifest.json`
   is written on every script bundle load (classes, script fields, field ids, types); the project
   template `Templates/GameProject` carries `AGENTS.md` (the rules and the file formats for any

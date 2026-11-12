@@ -61,6 +61,43 @@ namespace {
         return projectPath / AssetImporterBase::getIntermediateShaderExpandedPath(logical);
     }
 
+    // The `PANDA_` prefix belongs to the engine: its blocks are declared by the generated includes
+    // (`panda/blocks/`) only. A block of that prefix written by hand compiles and is never bound
+    // (a wrong name, the block of a feature that is off), so the shader would read garbage in
+    // silence — it is an error here instead. The expanded text is scanned: its #line directives
+    // say which file every line came from.
+    bool declaresEngineBlockByHand(const path_t &expandedFile) {
+        std::ifstream file(expandedFile);
+        std::string line;
+        std::string sourceFile;
+        bool found = false;
+        while (std::getline(file, line)) {
+            const size_t start = line.find_first_not_of(" \t");
+            if (start == std::string::npos) { continue; }
+            if (line.compare(start, 5, "#line") == 0) {
+                const size_t open = line.find('"');
+                const size_t close = line.rfind('"');
+                if (open != std::string::npos && close > open) { sourceFile = line.substr(open + 1, close - open - 1); }
+                continue;
+            }
+            if (line.compare(start, 7, "cbuffer") != 0 || sourceFile.rfind("panda/blocks/", 0) == 0) { continue; }
+            const size_t nameStart = line.find_first_not_of(" \t", start + 7);
+            if (nameStart == std::string::npos || line.compare(nameStart, 6, "PANDA_") != 0) { continue; }
+            size_t nameEnd = nameStart;
+            while (nameEnd < line.size() &&
+                   (std::isalnum(static_cast<unsigned char>(line[nameEnd])) || line[nameEnd] == '_')) {
+                ++nameEnd;
+            }
+            LOG_ERROR_EDITOR(
+                "%s: the block %s is declared by hand. The PANDA_ blocks belong to the engine: include the "
+                "panda/ header of the block instead (PandaSDK docs, shaders.md)",
+                sourceFile.c_str(), line.substr(nameStart, nameEnd - nameStart).c_str()
+            );
+            found = true;
+        }
+        return found;
+    }
+
     bool isStageStale(
         const path_t &source,
         const path_t &logical,
@@ -97,11 +134,13 @@ namespace {
         if (backend == Foundation::GraphicsAPI::D3D11) {
             // D3D11 compiles HLSL at runtime (D3DCompile without an include handler): the cooked
             // shader is the expanded source.
-            return MirenTools::expandHlslIncludesToFile(source, cooked, includeRoots, prelude);
+            return MirenTools::expandHlslIncludesToFile(source, cooked, includeRoots, prelude) &&
+                   !declaresEngineBlockByHand(cooked);
         }
         std::filesystem::create_directories(spv.parent_path());
         // The expanded file is written only on change — from there the chain goes by mtime.
         if (!MirenTools::expandHlslIncludesToFile(source, expanded, includeRoots, prelude)) { return false; }
+        if (declaresEngineBlockByHand(expanded)) { return false; }
         if (isInputNewer(expanded, spv) && !MirenTools::compileHlslShaderToSpv(expanded, spv, stage)) { return false; }
         if (!isInputNewer(spv, cooked)) { return true; }
         switch (backend) {

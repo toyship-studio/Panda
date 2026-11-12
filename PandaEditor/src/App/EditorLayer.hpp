@@ -57,6 +57,7 @@ public:
     void loaderDidLoadWorld() override;
     void loaderDidLoadCloseProject() override;
     void loaderDidCreateNewWorld() override;
+    void loaderDidReloadEditorSettings() override;
     EditorCameraSettings getEditorCameraSettings() override;
     void setEditorCameraSettings(EditorCameraSettings settings) override;
 #pragma endregion
@@ -76,9 +77,28 @@ private:
     void closeAppRequest();
     void closeApp();
     void saveOpenedProjectWindowState();
-    bool saveWorld();
-    void reloadOpenedWorld(); // re-read the current world from disk (menu and Reimport)
-    void runWithSaveCurrentWorldDialog(std::function<void()> action);
+    void reloadOpenedWorld(); // re-read the current world from disk (Reimport)
+    // The file documents (FileDocument.hpp): every file the editor holds in memory that needs
+    // attention, in the order of Reload — the settings, the assets, the world. The asset
+    // documents are built for the call and live in `assets`.
+    struct FileDocuments {
+        std::vector<std::unique_ptr<FileDocument>> assets;
+        std::vector<FileDocument *> all;
+    };
+    FileDocuments fileDocuments();
+    enum class FileResolution { Saved, Reloaded, Cancelled };
+    // The memory has edits and so does the disk (or the disk version is asked for): the user
+    // picks the version that stays.
+    FileResolution resolveFileConflict(FileDocument &file);
+    FileResolution takeDiskVersion(FileDocument &file); // file → memory, with the question when dirty
+    void reloadFile(FileDocument &file);                // file → memory, the tabs follow
+    bool saveFile(FileDocument &file); // memory → file; false — cancelled or failed
+    bool saveAll();                    // every dirty file document; false — cancelled or failed
+    // The gate of everything that drops what is in memory: Save / Don't Save / Cancel.
+    void runAfterUnsavedQuestion(std::function<void()> action);
+    // After project.json was reread: a module switched on in it opens the project again (true).
+    bool reopenProjectForModules();
+    void applyEditorSettings();
     bool cookRuntimeData();
     void openExportProject(ExportProjectTarget target);
     void updateWindowState();
@@ -117,6 +137,14 @@ private:
     void editorSettingsChanged() override;
     bool saveProjectSettings() override;
     void revertProjectSettings() override;
+    void projectSettingsEdited() override;
+    bool isProjectSettingsDirty() override;
+    bool saveWorld() override;
+    bool saveAsset(uint32_t assetId) override;
+    std::filesystem::path worldFilePath() override;
+    std::filesystem::path settingsFilePath(Panda::SettingsScope scope) override;
+    void openInExternalEditor(const std::filesystem::path &path) override;
+    void revealInFileManager(const std::filesystem::path &path) override;
     Panda::PluginStore &pluginStore() override;
     std::string currentThemeId() override;
     void selectTheme(const std::string &id) override; // the Plugins tab: store, apply, save
@@ -145,7 +173,8 @@ private:
     const path_t &menuBarGetOpenedProjectPath() override;
     void menuBarCloseApp() override;
     void menuBarShowCppProject() override;
-    void menuBarSaveWorld() override;
+    void menuBarSave() override;
+    void menuBarSaveAll() override;
     void menuBarReload() override;
     void menuBarCloseProject() override;
     void menuBarAbout() override;

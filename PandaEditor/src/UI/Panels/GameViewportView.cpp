@@ -44,7 +44,7 @@ GameViewportView::GameViewportView() {
     m_badge->surface().setBorderColor(ThemeColor::border);
     m_badge->setBackgroundColor(ThemeColor::surface);
     m_badgeLabel = std::make_shared<Label>("Not rendering: the Scene tab is active");
-    m_badgeLabel->setFont(Typo::Meta);
+    m_badgeLabel->setFont(Typo::Caption);
     m_badgeLabel->setTextRole(TextRole::Secondary);
     m_badgeLabel->setUserInteractionEnabled(false);
     m_badge->addSubview(m_badgeLabel);

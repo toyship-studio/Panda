@@ -109,16 +109,18 @@ namespace {
 
 } // namespace
 
-// The world document: the viewport tab. Dirty is the world's change flag, Save goes through the
-// host (the world and every dirty asset), the undo stack is the world's, a refresh after undo/redo
-// rereads the panels and the settings sidebar.
+// The world document: the Scene tab. Dirty is the world's change flag, Save writes the world
+// file, the undo stack is the world's, a refresh after undo/redo rereads the panels and the
+// settings sidebar.
 class WorldDocument final : public Document {
 public:
     explicit WorldDocument(EditorController *controller)
         : m_controller(controller) {}
 
+    // The name of the file the tab edits, as every document tab shows it.
     std::string title() override {
-        return "Viewport";
+        const std::filesystem::path file = filePath();
+        return file.empty() ? "Untitled World" : file.filename().string();
     }
     std::shared_ptr<PandaUI::View> view() override {
         return m_controller->m_viewportView;
@@ -127,8 +129,10 @@ public:
         return m_controller->m_panelsWorld && m_controller->m_panelsWorld->isChanged();
     }
     bool save() override {
-        if (m_controller->m_bridge) { m_controller->m_bridge->save(); }
-        return true;
+        return m_controller->m_bridge && m_controller->m_bridge->saveWorld();
+    }
+    std::filesystem::path filePath() override {
+        return m_controller->m_bridge ? m_controller->m_bridge->worldFilePath() : std::filesystem::path();
     }
     Panda::CommandHistory *undoStack() override {
         return m_controller->m_panelsWorld ? &m_controller->m_panelsWorld->getCommandHistory() : nullptr;
@@ -169,7 +173,6 @@ EditorController::EditorController()
     : m_hostBinding(this)
     , m_hierarchyView(std::make_shared<HierarchyPanelView>(this))
     , m_contentView(std::make_shared<ContentBrowserView>(this))
-    , m_assetManagerView(std::make_shared<AssetManagerPanelView>(this))
     , m_toolbarView(std::make_shared<ToolbarPanelView>(this))
     , m_outputView(std::make_shared<OutputPanelView>())
     , m_cmakeView(std::make_shared<CMakePanelView>(this))
@@ -206,7 +209,15 @@ void EditorController::registerDocumentTypes() {
     project.create = [] {
         ProjectSettingsDocument::Host host;
         host.store = []() -> Panda::TypeContext & { return s_controller->settings(Panda::SettingsScope::Project); };
+        host.isDirty = [] { return s_controller->m_bridge && s_controller->m_bridge->isProjectSettingsDirty(); };
+        host.markDirty = [] {
+            if (s_controller->m_bridge) { s_controller->m_bridge->projectSettingsEdited(); }
+        };
         host.save = [] { return s_controller->m_bridge ? s_controller->m_bridge->saveProjectSettings() : false; };
+        host.filePath = [] {
+            return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Project)
+                                          : std::filesystem::path();
+        };
         host.revert = [] {
             if (s_controller->m_bridge) { s_controller->m_bridge->revertProjectSettings(); }
         };
@@ -220,7 +231,10 @@ void EditorController::registerDocumentTypes() {
     editor.icon = Ic::Configure;
     editor.create = [] {
         return std::unique_ptr<Document>(
-            std::make_unique<EditorSettingsDocument>(s_controller->settings(Panda::SettingsScope::Editor))
+            std::make_unique<EditorSettingsDocument>(s_controller->settings(Panda::SettingsScope::Editor), [] {
+                return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Editor)
+                                              : std::filesystem::path();
+            })
         );
     };
     editorExtensions().documentTypes.add(std::move(editor));
@@ -383,8 +397,40 @@ void EditorController::restartEditor() {
     if (m_bridge) { m_bridge->restartEditor(); }
 }
 
-Document *EditorController::projectSettingsDocument() {
-    return m_editorTabs ? m_editorTabs->documentOfType(PROJECT_SETTINGS_DOCUMENT) : nullptr;
+void EditorController::saveActiveDocument() {
+    // Cmd+S: the document of the tab with the focus (an entity tab and a side dock mean the world).
+    if (Document *document = activeDocument()) { document->save(); }
+}
+
+void EditorController::addFileItems(Menu &menu, const std::filesystem::path &file) {
+    if (file.empty() || !m_bridge) { return; }
+    // The path as the project sees it: relative to the project folder when the file is inside.
+    std::string shown = file.generic_string();
+    if (Panda::AssetHandlerEditor *handler = assetHandler()) {
+        const std::filesystem::path project = handler->getProjectPath();
+        std::error_code errorCode;
+        const std::filesystem::path relative = std::filesystem::relative(file, project, errorCode);
+        if (!project.empty() && !errorCode && !relative.empty() && *relative.begin() != "..") {
+            shown = relative.generic_string();
+        }
+    }
+    menu.addItem("Copy Path: " + shown, [file] { setClipboardText(file.string()); });
+    menu.addItem("Open in External Editor", [this, file] {
+        if (m_bridge) { m_bridge->openInExternalEditor(file); }
+    });
+    menu.addItem("Reveal in File Manager", [this, file] {
+        if (m_bridge) { m_bridge->revealInFileManager(file); }
+    });
+}
+
+void EditorController::settingsFileReloaded(Panda::SettingsScope scope) {
+    if (!m_editorTabs) { return; }
+    if (scope == Panda::SettingsScope::Project) {
+        auto *project = dynamic_cast<ProjectSettingsDocument *>(m_editorTabs->documentOfType(PROJECT_SETTINGS_DOCUMENT));
+        if (project) { project->fileReloaded(); }
+    } else if (Document *editor = m_editorTabs->documentOfType(EDITOR_SETTINGS_DOCUMENT)) {
+        editor->refresh();
+    }
 }
 
 void EditorController::refreshSettingsDocuments() {
@@ -411,7 +457,6 @@ void EditorController::thumbnailDidBecomeReady(Panda::AssetId assetId) {
 
 void EditorController::refreshAssetPanels() {
     m_contentView->refresh();
-    m_assetManagerView->refresh();
 }
 
 /* ----------------------------- Selection flow ---------------------------- */
@@ -453,18 +498,12 @@ void EditorController::pushSelectionToPanels() {
         // view (a click on a visible row changes nothing). A multi-selection has no primary
         // entity to show — the set keeps no order — so it moves nothing.
         if (ids.size() == 1) { m_hierarchyView->revealEntity(ids.front()); }
-        m_assetManagerView->setSelectedAssetIds({});
         m_contentView->clearAssetSelection();
         m_hierarchyView->setStatusText(entities.size() == 1
                                            ? "Selected: " + entities.front().getName()
                                            : "Selected: " + std::to_string(entities.size()) + " items");
-    } else if (!m_selectedAssets.empty()) {
-        m_assetManagerView->setSelectedAssetIds(m_selectedAssets);
-        m_hierarchyView->setSelectedEntities({});
-        m_hierarchyView->setStatusText("Selected: -");
     } else {
         m_hierarchyView->setSelectedEntities({});
-        m_assetManagerView->setSelectedAssetIds({});
         m_hierarchyView->setStatusText("Selected: -");
     }
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
@@ -524,6 +563,11 @@ void EditorController::updateChromeFromState(bool isEditMode) {
         if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
     }
 
+    // The Scene tab is the document of the world file and carries its name. Synced here, with
+    // the chrome, and not on a world event: the name changes by several paths (open, new, Save
+    // As) and the tab may be built before the world is known. A no-op while the name stands.
+    if (m_dockManager && m_worldDocument) { m_dockManager->setPanelTitle(SCENE_TAB_ID, m_worldDocument->title()); }
+
     // The "unsaved" indicator on the scene tab (viewport) — by World::isChanged() (reset on save/load).
     const bool dirty = m_panelsWorld && m_panelsWorld->isChanged();
     if (dirty != m_lastWorldDirty) {
@@ -553,7 +597,6 @@ void EditorController::buildLayout() {
     panels.push_back({"contentBrowser", "Content Browser", Ic::PanelContentBrowser, m_contentView, Dock::Bottom});
     panels.push_back({"output", "Output", Ic::PanelOutput, m_outputView, Dock::Bottom});
     panels.push_back({"cmake", "CMake", Ic::PanelCMake, m_cmakeView, Dock::Bottom});
-    panels.push_back({"assetManager", "Asset Manager", Ic::PanelAssetManager, m_assetManagerView, Dock::Bottom});
     // Diagnostic panels do not occupy the visibility strip — they are added through the dock's "+".
     panels.push_back({"statistics", "Statistics", Ic::PanelStatistics, m_statisticsView, Dock::Bottom,
                       /*open*/ true, /*inStrip*/ false});
@@ -562,6 +605,11 @@ void EditorController::buildLayout() {
 
     m_dockManager = std::make_unique<DockManager>(m_toolbarView, centerTabs, std::move(panels));
     m_editorTabs = std::make_unique<EditorTabs>(m_dockManager.get(), this);
+    // The file of a tab's document in its context menu: the Scene tab is the world document.
+    m_dockManager->setTabMenuExtender([this](const std::string &panelId, Menu &menu) {
+        Document *document = panelId == SCENE_TAB_ID ? m_worldDocument.get() : m_editorTabs->documentForTab(panelId);
+        if (document) { addFileItems(menu, document->filePath()); }
+    });
     // The world settings live in the viewport sidebar (the world document), not in a panel.
     m_worldSettingsView = std::make_shared<SettingsSectionsView>(Panda::SettingsScope::World);
     m_viewportView->setSidebarContent(m_worldSettingsView);
@@ -1033,9 +1081,8 @@ void EditorController::instantiateMeshAssets(const std::vector<Panda::AssetId> &
     );
 }
 
-/* ------------------- Content browser + Asset manager (the shared asset domain) ------------------- */
+/* ------------------------------ Content browser: the asset domain ------------------------------ */
 
-// Dedup: an asset selection comes from two panels (Content / AssetManager) with the same semantics.
 void EditorController::selectAssets(const std::vector<Panda::AssetId> &ids, bool clearContentSelection) {
     // An empty selection while it is already empty is not a change (a click on a FOLDER is filtered to empty):
     // do not re-trigger the panels, otherwise with an entity selected pushSelectionToPanels would remove
@@ -1043,7 +1090,7 @@ void EditorController::selectAssets(const std::vector<Panda::AssetId> &ids, bool
     if (ids.empty() && m_selectedAssets.empty()) { return; }
     m_selectedAssets = ids;
     if (!ids.empty()) { Panda::SelectionContext::unselectAll(); } // an asset selection clears the entity selection
-    if (clearContentSelection) { m_contentView->clearAssetSelection(); } // the source is AssetManager
+    if (clearContentSelection) { m_contentView->clearAssetSelection(); }
     pushSelectionToPanels();
 }
 
@@ -1077,6 +1124,18 @@ void EditorController::contentDidSelectAssets(const std::vector<Panda::AssetId> 
 
 void EditorController::contentDidRequestDelete(const std::vector<Panda::AssetId> &assets) {
     deleteAssets(assets);
+}
+
+void EditorController::contentAddFileItems(Menu &menu, Panda::AssetId asset) {
+    auto *handler = assetHandler();
+    if (!handler) { return; }
+    const Panda::path_t relative = handler->assetPath(asset);
+    if (relative.empty()) { return; }
+    addFileItems(menu, handler->getProjectPath() / relative);
+    // The id a world or a material references the asset by (hand edits of the text files).
+    const std::string id = std::to_string(static_cast<uint32_t>(asset));
+    menu.addItem("Copy ID: " + id, [id] { setClipboardText(id); });
+    menu.addSeparator();
 }
 
 void EditorController::contentDidRequestImport(const std::vector<Panda::AssetId> &assets) {
@@ -1174,20 +1233,6 @@ void EditorController::contentDidRequestCreatePostprocessShader(const Panda::pat
     m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created postprocess shader");
 }
 
-/* -------------------------- Asset manager output ------------------------- */
-
-void EditorController::assetManagerDidSelectAssets(const std::vector<Panda::AssetId> &ids) {
-    selectAssets(ids, true);
-}
-
-void EditorController::assetManagerDidRequestDelete(const std::vector<Panda::AssetId> &ids) {
-    deleteAssets(ids);
-}
-
-void EditorController::assetManagerDidRequestOpenWorld(Panda::AssetId id) {
-    if (m_bridge) { m_bridge->openWorldAsset(id); }
-}
-
 /* ----------------------------- Toolbar output ---------------------------- */
 
 void EditorController::toolbarDidPickSceneState(SceneState state) {
@@ -1202,7 +1247,7 @@ void EditorController::toolbarDidTapReload() {
 }
 
 void EditorController::toolbarDidSave() {
-    if (m_bridge) { m_bridge->save(); } // actual save through EditorLayer::saveWorld (it logs "World saved." on success)
+    if (m_bridge) { m_bridge->save(); } // every unsaved file document (EditorLayer::saveAll)
 }
 
 /* ------------------------------ CMake panel ------------------------------ */
@@ -1326,24 +1371,6 @@ void EditorController::openSettings(Panda::SettingsScope scope, const std::strin
             return;
         }
     }
-}
-
-std::vector<std::string> EditorController::dirtyProjectDocumentTitles() {
-    std::vector<std::string> titles;
-    if (!m_editorTabs) { return titles; }
-    for (Document *document : m_editorTabs->dirtyDocuments()) {
-        if (dynamic_cast<ProjectSettingsDocument *>(document)) { titles.push_back(document->title()); }
-    }
-    return titles;
-}
-
-bool EditorController::saveProjectDocuments() {
-    if (!m_editorTabs) { return true; }
-    bool ok = true;
-    for (Document *document : m_editorTabs->dirtyDocuments()) {
-        if (dynamic_cast<ProjectSettingsDocument *>(document) && !document->save()) { ok = false; }
-    }
-    return ok;
 }
 
 void EditorController::appendCMakeOutput(Panda::BuildTargetKind kind, const std::vector<std::string> &lines) {
@@ -1560,6 +1587,18 @@ void EditorController::tabsAssetTabClosed(Panda::AssetId id) {
     if (auto *handler = assetHandler()) { handler->setAssetOpenedInTab(id, false); }
     // A viewport session without the tab of its document is an invisible LMB capture: the tool lets go.
     if (m_viewportEditingDocument == id) { viewportDidRequestStopEditing(); }
+}
+
+bool EditorController::tabsSaveWorld() {
+    return m_worldDocument && m_worldDocument->save();
+}
+
+bool EditorController::tabsSaveAsset(Panda::AssetId id) {
+    return m_bridge && m_bridge->saveAsset(id);
+}
+
+std::filesystem::path EditorController::tabsWorldFilePath() {
+    return m_worldDocument ? m_worldDocument->filePath() : std::filesystem::path();
 }
 
 void EditorController::tabsDocumentClosed(Document *document) {

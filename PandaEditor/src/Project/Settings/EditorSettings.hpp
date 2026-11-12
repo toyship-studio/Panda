@@ -128,6 +128,17 @@ struct EditorUpdateSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+/// "externalTools": the programs the editor hands files to.
+struct EditorExternalToolsSettings final : public Rain::Codable {
+    // The text editor "Open in External Editor" starts with the file: a command (`zed`, `code`)
+    // or the path of an executable; empty — the application the system opens the file with.
+    std::string editor;
+
+    RAIN_FIELDS_BEGIN(EditorExternalToolsSettings)
+    RAIN_FIELD(editor)
+    RAIN_FIELDS_END
+};
+
 /// "appearance": the look of the editor.
 struct EditorAppearanceSettings final : public Rain::Codable {
     std::string theme;      // plugin theme id ("<plugin>/<file>"); empty or not found — the built-in dark one

@@ -200,6 +200,37 @@ namespace {
     ThemeProvider s_themes;
     UpdateProvider s_updates;
 
+    // The external text editor: the documents of the project are text files, and "Open in External
+    // Editor" (a tab, an asset, the settings files) hands the file to this program. The list is
+    // the common editors by their command; any other command is written into settings.json.
+    void buildExternalTools(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::EditorExternalToolsSettings>(store.get<Panda::EditorExternalToolsSettings>());
+        auto emit = [data] { commitSettings<Panda::EditorExternalToolsSettings>(SettingsScope::Editor, *data); };
+        static const std::pair<const char *, const char *> EDITORS[] = {
+            {"System Default", ""}, {"Zed", "zed"}, {"Visual Studio Code", "code"},
+            {"Cursor", "cursor"},   {"Sublime Text", "subl"},
+        };
+        std::vector<std::string> items;
+        int selected = -1;
+        for (const auto &[title, command] : EDITORS) {
+            if (data->editor == command) { selected = static_cast<int>(items.size()); }
+            items.push_back(title);
+        }
+        if (selected < 0) { // a command of the user's own, from settings.json
+            selected = static_cast<int>(items.size());
+            items.push_back(data->editor);
+        }
+        const std::string custom = data->editor;
+        addComboRow(section, "Text Editor", items, selected, [data, emit, custom](int index) {
+            const int known = static_cast<int>(std::size(EDITORS));
+            data->editor = index >= 0 && index < known ? EDITORS[index].second : custom;
+            emit();
+        });
+        section.addContent(makeFormHint(
+            "Another program: \"externalTools\": {\"editor\": \"<command or path>\"} in the settings file."
+        ));
+    }
+
     // The editor updater (context/infrastructure.md, section 5): the one switch of Zed's
     // `auto_update`; the channel belongs to the build.
     void buildUpdates(CollapsibleSection &section, Panda::TypeContext &store) {
@@ -210,9 +241,8 @@ namespace {
             emit();
         });
         section.addContent(makeFormHint(
-            "Checks for a new build at startup and once an hour, downloads and installs it in the background, "
-            "and asks for a restart. Help → Check for Updates looks right away. Installed plugins are updated "
-            "the same way, without a restart."
+            "Checks at startup and once an hour, installs in the background and asks for a restart. "
+            "Plugins update the same way."
         ));
         if (s_updates.statusLine) { section.addContent(makeFormHint(s_updates.statusLine())); }
         if (!s_updates.enabled) {
@@ -337,8 +367,7 @@ namespace {
         }
         if (Panda::builtinModules().empty()) { section.addContent(makeFormHint("The distribution has no modules.")); }
         section.addContent(makeFormHint(
-            "Modules are static libraries of this build, linked into the editor, the SDK and every exported game. "
-            "Switching one on or off takes effect after the editor restarts."
+            "Modules are linked into the editor and every exported game. A change takes effect after the editor restarts."
         ));
         section.addContent(restartHint);
         section.addContent(restartRow);
@@ -368,9 +397,7 @@ namespace {
             section.addContent(makeFormHint(info.cost));
         }
         section.addContent(makeFormHint(
-            "Shadows and occlusion need lights: switching lights off switches them off too. Applied when the project "
-            "settings are saved: the shaders of the project recompile for the set. A shader that includes a feature "
-            "the project has off fails to compile and says so."
+            "Shadows and occlusion need lights. Applied on save: the shaders of the project recompile for the set."
         ));
     }
 
@@ -391,6 +418,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::World, "WIND", buildWind});
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});
     extensions.settingsSections.push_back({SettingsScope::Editor, "APPEARANCE", buildAppearance});
+    extensions.settingsSections.push_back({SettingsScope::Editor, "EXTERNAL TOOLS", buildExternalTools});
     extensions.settingsSections.push_back({SettingsScope::Editor, "UPDATES", buildUpdates});
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});

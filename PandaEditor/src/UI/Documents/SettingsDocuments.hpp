@@ -23,8 +23,12 @@ class ProjectSettingsDocument final : public Document {
 public:
     struct Host {
         std::function<Panda::TypeContext &()> store;
-        std::function<bool()> save;   // writes project.json; false — the write failed
-        std::function<void()> revert; // rereads project.json
+        // The file document of project.json (the application keeps it): the tab is its view.
+        std::function<bool()> isDirty;
+        std::function<void()> markDirty; // an edit went into the store
+        std::function<bool()> save;      // writes project.json; false — failed or cancelled
+        std::function<void()> revert;    // rereads project.json
+        std::function<std::filesystem::path()> filePath;
     };
     explicit ProjectSettingsDocument(Host host);
 
@@ -34,22 +38,24 @@ public:
     bool isDirty() override;
     bool save() override;
     void revert() override;
+    std::filesystem::path filePath() override;
     Panda::CommandHistory *undoStack() override;
     void refresh() override;
 
     void markDirty(); // an edit went into the store (EditorHost::commitSettings)
+    // project.json was reread: the history described the data that is gone, the form rereads.
+    void fileReloaded();
     void revealSection(const std::string &title);
 
 private:
     Host m_host;
-    bool m_dirty = false;
     Panda::CommandHistory m_history;
     std::shared_ptr<SettingsSectionsView> m_view;
 };
 
 class EditorSettingsDocument final : public Document {
 public:
-    explicit EditorSettingsDocument(Panda::TypeContext &store);
+    EditorSettingsDocument(Panda::TypeContext &store, std::function<std::filesystem::path()> filePath);
 
     std::string title() override;
     std::string icon() override;
@@ -57,9 +63,11 @@ public:
     void refresh() override;
 
     void revealSection(const std::string &title);
+    std::filesystem::path filePath() override;
 
 private:
     std::shared_ptr<SettingsSectionsView> m_view;
+    std::function<std::filesystem::path()> m_filePath;
 };
 
 } // namespace Editor

@@ -1,4 +1,5 @@
 #include "PandaEditorKit/Widgets/AssetWell.hpp"
+#include <PandaEditorKit/Widgets/Typography.hpp>
 
 #include "PandaEditorKit/EditorHost.hpp"
 #include "PandaEditorKit/Widgets/Icons.hpp"
@@ -75,7 +76,7 @@ AssetWell::AssetWell(
     m_preview->layout().setFlexShrink(0.f);
     m_main->addSubview(m_preview);
     m_label = std::make_shared<Label>("");
-    m_label->setFont(Font(15.f));
+    m_label->setFont(Typo::Item);
     m_label->layout().setFlexShrink(1.f);
     m_main->addSubview(m_label);
     addSubview(m_main);

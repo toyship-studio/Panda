@@ -1,4 +1,5 @@
 #include "PandaEditorKit/Widgets/Vector3Field.hpp"
+#include <PandaEditorKit/Widgets/Typography.hpp>
 
 #include <PandaUI/Core/Theme.hpp>
 #include <PandaUI/Elements/Control.hpp>
@@ -60,7 +61,7 @@ namespace {
             layout().setAlignItems(Align::Center);
 
             // Monospaced colored axis letter: looks like a prefix action inside an input.
-            m_label->setFont(Font(12.f));
+            m_label->setFont(Typo::Caption);
             m_label->setFont(m_label->getFont().withFamily(FontFamily::Mono));
             m_label->setFont(m_label->getFont().withWeight(FontWeight::Bold));
             m_label->setTextAlignment(TextAlignment::Center);

@@ -6,6 +6,7 @@
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 #include "Project/Documents/AssetDocuments.hpp"
+#include "Project/Documents/FileDocument.hpp"
 #include "Project/Import/AssetImportPipeline.hpp"
 
 #include <Panda/Assets/Base/AssetHandler.hpp>
@@ -39,24 +40,26 @@ public:
     // ones are stable (they live in the sidecars) — loaded assets and tabs are not broken.
     void rescanProject();
     // Editor state of an asset outside the registry (context/architecture.md):
-    // the file mtime at the moment of the last synchronization with the disk (load/save) and
-    // whether it is open in a tab. The in-memory dirty state lives in the document model
+    // the file as the editor last read or wrote it (load/save) and whether it is open in a tab. The in-memory dirty state lives in the document model
     // (documents()) and is aggregated into the editorMeta() snapshot — a single answer point
     // per asset.
     struct AssetEditorMeta {
-        std::filesystem::file_time_type diskTime{};
+        DiskStamp disk;
         bool openedInTab = false;
         bool changedInMemory = false;
     };
     AssetEditorMeta editorMeta(AssetId id);
     void noteAssetDiskSync(AssetId id); // the asset file has just been read/written by the editor
-    // The modification time of the asset's source on disk; false — there is no file.
-    bool assetDiskTime(AssetId id, std::filesystem::file_time_type &time);
-    // A loaded project shader whose sources or includes changed since it was cooked.
-    bool isShaderStale(AssetId id);
+    // The file of a loaded asset is newer than the asset in memory. A shader is more than its
+    // asset file (the fragment stage and the includes are files of their own), so it is also
+    // compared by the text its sources expand to.
+    bool isAssetChangedOnDisk(AssetId id);
+    // The assets that need attention as file documents (FileDocument.hpp): the loaded ones with
+    // unsaved edits or with a file changed on disk. An asset nobody loaded is read fresh on its
+    // next use and is not listed.
+    std::vector<std::unique_ptr<FileDocument>> fileDocuments();
+    std::unique_ptr<FileDocument> fileDocument(AssetId id); // one loaded asset; null — not loaded
     void setAssetOpenedInTab(AssetId id, bool opened);
-    // Loaded assets whose file on disk is newer than the last synchronization (Reload).
-    std::vector<AssetId> collectAssetsChangedOnDisk();
     const path_t &getProjectPath();
     const std::map<AssetId, AssetInfo> &getRegistry();
     // The asset source is a property of the REGISTRATION (filled in by the scan from the sidecar

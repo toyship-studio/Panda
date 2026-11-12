@@ -63,11 +63,4 @@ const char *assetTypeString(Panda::AssetType type) {
     return "text"; // NONE — a generic file
 }
 
-const char *assetTypeFolder(Panda::AssetType type) {
-    if (const Panda::AssetKind *kind = Panda::GameContext::getExtensions().assetKinds.find(type)) {
-        return kind->folder.c_str();
-    }
-    return "Other";
-}
-
 } // namespace Editor

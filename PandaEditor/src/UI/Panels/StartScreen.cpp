@@ -111,7 +111,7 @@ void StartScreenView::addSubviews() {
     }
 
     identity->addSubview(makeLabel("Panda v 0.1", 17.f, FontWeight::Bold));
-    identity->addSubview(makeLabel("Create, open, continue", 13.f, FontWeight::Medium, TextRole::Secondary));
+    identity->addSubview(makeLabel("Create, open, continue", 14.f, FontWeight::Medium, TextRole::Secondary));
     m_sidebar->addSubview(identity);
 
     auto newProject = makeSidebarButton("New Project", ButtonStyle::Accent);
@@ -136,7 +136,7 @@ void StartScreenView::addSubviews() {
     m_update->setModel(m_model.update);
     m_sidebar->addSubview(m_update);
 
-    m_statusLabel = makeLabel(m_model.statusText, 13.f, FontWeight::Medium, TextRole::Muted);
+    m_statusLabel = makeLabel(m_model.statusText, 14.f, FontWeight::Medium, TextRole::Muted);
     m_statusLabel->setNumberOfLines(0);
     m_statusLabel->layout().setWidth(Length::percent(100.f));
     m_sidebar->addSubview(m_statusLabel);
@@ -321,7 +321,7 @@ std::shared_ptr<View> StartScreenView::makeProjectRow(size_t index) {
 
     auto title = makeLabel(project.name, 17.f, FontWeight::Bold);
     auto path = makeLabel(project.path, 13.f, FontWeight::Regular, TextRole::Muted);
-    path->setFont(Font::monospaced(13.f)); // the path is monospaced (design)
+    path->setFont(Typo::ValueSmall); // the path is monospaced (design)
     path->setNumberOfLines(1);
     path->setTextOverflowMode(TextOverflowMode::TailEllipsis);
     textColumn->addSubview(title);

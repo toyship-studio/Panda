@@ -84,7 +84,7 @@ sensible value.
 An edit in the inspector during Play is written into the running script at once, so a value read
 in `update` can be tuned while the game runs; a value used only in `start` has to be applied
 again by the script. Play runs on a copy of the world: Stop brings the values back, and Save
-(Cmd+S) during Play saves the world being edited, not the copy. A value found in Play is typed in
+(Cmd+S in the Scene) during Play saves the world being edited, not the copy. A value found in Play is typed in
 again after Stop.
 
 ## Fonts in the UI

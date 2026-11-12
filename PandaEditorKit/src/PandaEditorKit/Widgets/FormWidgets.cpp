@@ -55,7 +55,7 @@ std::shared_ptr<Panel> makeFormButtonRow(std::initializer_list<std::shared_ptr<B
 
 std::shared_ptr<Label> makeFormHint(const std::string &text) {
     auto hint = std::make_shared<Label>(text);
-    hint->setFont(Typo::Meta);
+    hint->setFont(Typo::Caption);
     hint->setTextRole(TextRole::Dim);
     hint->setNumberOfLines(0);
     hint->layout().setWidth(Length::percent(100.f));

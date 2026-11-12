@@ -1,7 +1,6 @@
 #pragma once
 
 #include "UI/Panels/ContentBrowserView.hpp"
-#include "UI/Panels/AssetManagerPanel.hpp"
 #include "UI/Panels/CMakePanel.hpp"
 #include "UI/Panels/OutputPanel.hpp"
 #include "UI/Panels/HierarchyPanel.hpp"
@@ -59,14 +58,18 @@ class EditorController final : public Editor::EditorHost,
                                public EntityEditorOutput,
                                public ViewportPanelOutput,
                                public ContentBrowserOutput,
-                               public AssetManagerOutput,
                                public ToolbarOutput,
                                public CMakePanelOutput,
                                public EditorTabsHost {
 public:
     // Status indicators of the visibility strip (RAM/VRAM/CPU/GPU from EditorLayer).
     void setStripStatusText(const std::string &text);
-    Document *projectSettingsDocument(); // the open Project Settings tab; null — it is closed
+    void saveActiveDocument(); // Cmd+S
+    // The file items of a context menu (a tab, an asset): the path, the external editor, the
+    // file manager. Nothing is added for an empty path.
+    void addFileItems(PandaUI::Menu &menu, const std::filesystem::path &file);
+    // A settings file was reread from disk: its open tab follows.
+    void settingsFileReloaded(Panda::SettingsScope scope);
     EditorController();
     ~EditorController() override; // unbinds the process host (Editor::setEditorHost(nullptr))
 
@@ -157,8 +160,6 @@ public:
     }
     // The dirty documents of the project besides the world and the assets (the project settings):
     // the save flows of Layer (Cmd+S saves everything; the close questions name them).
-    std::vector<std::string> dirtyProjectDocumentTitles();
-    bool saveProjectDocuments();
 
     // HierarchyPanelOutput.
     void hierarchyDidSelectEntities(const std::vector<Panda::UUID> &ids) override;
@@ -230,6 +231,7 @@ public:
     void contentDidSelectAssets(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestDelete(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestImport(const std::vector<Panda::AssetId> &assets) override;
+    void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) override;
     void contentDidRequestRefresh() override;
     void contentDidRequestAddToScene(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestOpenWorld(Panda::AssetId assetId) override;
@@ -239,10 +241,6 @@ public:
     void contentDidRequestCreateAsset(const Panda::path_t &directory, const AssetCreator &creator) override;
     void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) override;
 
-    // AssetManagerOutput.
-    void assetManagerDidSelectAssets(const std::vector<Panda::AssetId> &ids) override;
-    void assetManagerDidRequestDelete(const std::vector<Panda::AssetId> &ids) override;
-    void assetManagerDidRequestOpenWorld(Panda::AssetId id) override;
 
     // ToolbarOutput.
     void toolbarDidPickSceneState(SceneState state) override;
@@ -275,6 +273,9 @@ public:
     void tabsAssetTabClosed(Panda::AssetId id) override;
     void tabsAssetTabOpened(Panda::AssetId id) override;
     void tabsDocumentClosed(Document *document) override;
+    bool tabsSaveWorld() override;
+    bool tabsSaveAsset(Panda::AssetId id) override;
+    std::filesystem::path tabsWorldFilePath() override;
     void tabsApplySelection(
         const std::vector<Panda::UUID> &entities, const std::vector<Panda::AssetId> &assets
     ) override;
@@ -305,7 +306,7 @@ private:
     void commitTransformEdit(const std::function<void(Panda::Entity)> &apply, bool scaleEdit = false);
     void setComponentPresence(ComponentType type, bool add); // add/remove of an engine component + command
     void selectAssets(const std::vector<Panda::AssetId> &ids, bool clearContentSelection); // asset selection dedup
-    void deleteAssets(const std::vector<Panda::AssetId> &ids);  // asset deletion dedup (Content/AssetManager)
+    void deleteAssets(const std::vector<Panda::AssetId> &ids);  // asset deletion: confirm → remove → refresh
     void instantiateMeshAssets(const std::vector<Panda::AssetId> &ids); // gltf → entity subtree (D&D/menu)
     void refreshStatistics();                   // entity count → the statistics panel
 
@@ -332,7 +333,6 @@ private:
     bool m_lastWorldDirty = false; // the last "unsaved" state pushed to the scene tab (World::isChanged)
     std::shared_ptr<HierarchyPanelView> m_hierarchyView;
     std::shared_ptr<ContentBrowserView> m_contentView;
-    std::shared_ptr<AssetManagerPanelView> m_assetManagerView;
     std::shared_ptr<ToolbarPanelView> m_toolbarView;
     std::shared_ptr<OutputPanelView> m_outputView;
     std::shared_ptr<CMakePanelView> m_cmakeView;

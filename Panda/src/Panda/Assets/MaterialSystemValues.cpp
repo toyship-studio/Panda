@@ -38,8 +38,8 @@ namespace {
 
 void MaterialSystemValues::set(const char *name, MaterialFieldValue value, const char *hint, const char *section) {
     if (SystemValue *entry = findEntry(name)) {
-        if (hint && entry->hint.empty()) { entry->hint = hint; }
-        if (section && entry->section.empty()) { entry->section = section; }
+        if (hint) { entry->hint = hint; }
+        if (section) { entry->section = section; }
         if (equals(entry->value, value)) { return; } // dedup: may be called every frame
         entry->value = std::move(value);
         s_version++;

@@ -1,4 +1,5 @@
 #include <Panda/Extensions/Extensions.hpp>
+#include <PandaEditorKit/Widgets/Typography.hpp>
 #include "UI/EditorDialogs.hpp"
 
 #include "Project/Loader/AssetHandlerEditor.hpp"
@@ -53,7 +54,7 @@ void showNameDialog(
     auto card = makeCard();
 
     auto titleLabel = std::make_shared<Label>(title);
-    titleLabel->setFont(Font(17.f));
+    titleLabel->setFont(Typo::DialogTitle);
     titleLabel->setFont(titleLabel->getFont().withWeight(FontWeight::Bold));
     card->addSubview(titleLabel);
 
@@ -134,7 +135,7 @@ void showScriptPicker(
     auto card = makeCard();
 
     auto title = std::make_shared<Label>("Select Script");
-    title->setFont(Font(17.f));
+    title->setFont(Typo::DialogTitle);
     title->setFont(title->getFont().withWeight(FontWeight::Bold));
     card->addSubview(title);
 
@@ -272,7 +273,7 @@ void showAboutDialog(Context *context, const AboutInfo &info) {
     body->layout().setGap(6.f);
     auto addLine = [body](const std::string &text, TextRole role) {
         auto label = std::make_shared<Label>(text);
-        label->setFont(Font(14.f));
+        label->setFont(Typo::Caption);
         label->setTextRole(role);
         label->setNumberOfLines(0);
         body->addSubview(label);
@@ -329,7 +330,7 @@ void showUpdateReadyDialog(
         body->setBackgroundColor(Color(0x00000000));
         body->layout().setFlexDirection(FlexDirection::Column);
         auto label = std::make_shared<Label>(notes);
-        label->setFont(Font(14.f));
+        label->setFont(Typo::Caption);
         label->setTextRole(TextRole::Secondary);
         label->setNumberOfLines(0);
         body->addSubview(label);

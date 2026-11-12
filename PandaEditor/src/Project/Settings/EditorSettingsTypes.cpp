@@ -13,6 +13,7 @@ void registerEditorSettingsTypes(SettingsRegistry &registry) {
     registry.add(settingsType<EditorViewportSettings>(SettingsScope::Editor, "viewport"));
     registry.add(settingsType<EditorAppearanceSettings>(SettingsScope::Editor, "appearance"));
     registry.add(settingsType<EditorUpdateSettings>(SettingsScope::Editor, "updates"));
+    registry.add(settingsType<EditorExternalToolsSettings>(SettingsScope::Editor, "externalTools"));
 }
 
 } // namespace Panda

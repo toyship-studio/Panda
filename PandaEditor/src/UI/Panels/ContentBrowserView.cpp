@@ -111,7 +111,7 @@ namespace {
             addSubview(m_preview);
 
             m_label = std::make_shared<Label>("");
-            m_label->setFont(Typo::Meta);
+            m_label->setFont(Typo::Item);
             m_label->setTextRole(TextRole::Secondary);
             m_label->setTextAlignment(TextAlignment::Center);
             m_label->setClipsToBounds(true);
@@ -120,8 +120,10 @@ namespace {
         }
         // thumbnail (a thumbnail from an FBO, flipped) replaces the type icon when the handle is valid;
         // an unregistered file gets a gray generic icon and a muted caption.
+        // broken — the asset's files are incomplete or unreadable (the Output panel says what is
+        // wrong): the frame of the preview turns red.
         void bind(const std::string &name, const std::string &type, bool folder, bool registered,
-                  TextureHandle thumbnail) {
+                  TextureHandle thumbnail, bool broken = false) {
             const bool typed = folder || registered;
             if (thumbnail.isValid()) {
                 m_icon->setTexture(thumbnail);
@@ -136,7 +138,9 @@ namespace {
                 m_icon->layout().setSize(folder ? Size(52.f, 52.f) : Size(46.f, 46.f));
             }
             m_preview->setBackgroundColor(folder ? ThemeColor(Color(0x00000000)) : ThemeColor::input);
-            m_preview->surface().setBorderColor(folder ? ThemeColor(Color(0x00000000)) : ThemeColor::borderMed);
+            m_preview->surface().setBorderColor(
+                folder ? ThemeColor(Color(0x00000000)) : broken ? ThemeColor::danger : ThemeColor::borderMed
+            );
             m_label->setText(name);
             m_label->setTextRole(typed ? TextRole::Secondary : TextRole::Muted);
         }
@@ -238,9 +242,11 @@ void ContentBrowserView::addSubviews() {
         if (Folder *folder = m_dataSource.folderAt(index)) {
             static_cast<AssetCell &>(cell).bind(folder->name, "folder", true, true, TextureHandle());
         } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
+            Panda::AssetHandlerEditor *handler = assetHandler();
+            const bool broken = file->assetId != 0 && handler && !handler->assetFilesExist(file->assetId);
             static_cast<AssetCell &>(cell).bind(
                 file->name, assetTypeOf(file->assetId), false, file->assetId != 0,
-                m_dataSource.thumbnailFor(index)
+                m_dataSource.thumbnailFor(index), broken
             );
         }
     };
@@ -405,6 +411,7 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
                     if (m_output) { m_output->contentDidRequestAddToScene(meshes); }
                 });
             }
+            if (m_output && targets.size() == 1) { m_output->contentAddFileItems(*menu, targets.front()); }
             menu->addItem(targets.size() > 1 ? "Reimport Selected" : "Reimport", [this, targets] {
                 if (m_output) { m_output->contentDidRequestImport(targets); }
             });

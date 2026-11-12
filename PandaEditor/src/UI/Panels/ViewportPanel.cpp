@@ -180,16 +180,21 @@ void ViewportPanelView::addSubviews() {
 
     m_overlay->addSubview(makeOverlayDivider());
 
-    // The display options of the viewport (the editor scope) — a popover next to the button.
+    // The two buttons that open settings say which in a word: an icon alone reads as "settings"
+    // for both. The display options of the viewport (the editor scope: what the viewport draws,
+    // nothing of it is saved into the world) — a popover next to the button.
     auto display = std::make_shared<IconButton>(Ic::Configure, Ic::GizmoSize, 28.f);
-    display->setTooltip("Display Options");
+    display->setTitle("Display");
+    display->setTooltip("Display Options: what the viewport draws (an editor setting)");
     IconButton *displayPtr = display.get();
     display->setOnClick([this, displayPtr] { m_output->viewportDidRequestDisplayOptions(displayPtr); });
     m_overlay->addSubview(display);
 
-    // The world settings sidebar (the world scope) — shown and hidden by the button.
-    m_worldSettingsButton = std::make_shared<IconButton>(Ic::PanelWorldSettings, Ic::GizmoSize, 28.f);
-    m_worldSettingsButton->setTooltip("World Settings");
+    // The world settings sidebar (the world scope: saved in the world file) — shown and hidden
+    // by the button, which stays highlighted while the sidebar is open.
+    m_worldSettingsButton = std::make_shared<IconButton>(Ic::Globe, Ic::GizmoSize, 28.f);
+    m_worldSettingsButton->setTitle("World");
+    m_worldSettingsButton->setTooltip("World Settings: lighting, shadows, wind (saved in the world file)");
     m_worldSettingsButton->setOnClick([this] { m_output->viewportDidToggleWorldSettings(); });
     m_overlay->addSubview(m_worldSettingsButton);
 

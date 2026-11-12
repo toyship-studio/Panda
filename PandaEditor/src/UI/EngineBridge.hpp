@@ -7,6 +7,7 @@
 #include <PandaUIGallery/Gallery.hpp>       // PandaUI::Gallery::Host
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 
 namespace Panda {
@@ -27,7 +28,16 @@ class EngineBridge {
 public:
     virtual ~EngineBridge() = default;
 
-    virtual void save() = 0;                          // serializes the current world
+    // The file documents of the application (Project/Documents/FileDocument.hpp) for their tabs.
+    virtual void save() = 0;                      // every unsaved file document (Save All)
+    virtual bool saveWorld() = 0;                 // the world alone; false — cancelled or failed
+    virtual bool saveAsset(uint32_t assetId) = 0; // one asset; false — cancelled or failed
+    virtual std::filesystem::path worldFilePath() = 0; // empty — the world has no file yet
+    virtual std::filesystem::path settingsFilePath(Panda::SettingsScope scope) = 0;
+    // A file of the project outside the editor: in the external editor of the editor settings
+    // (the text form of the file: a binary asset opens its sidecar), and in the file manager.
+    virtual void openInExternalEditor(const std::filesystem::path &path) = 0;
+    virtual void revealInFileManager(const std::filesystem::path &path) = 0;
     virtual void openWorldAsset(uint32_t worldAssetId) = 0; // opens a registry world (with the save dialog)
     // Reimport of a world: rereads it from disk if exactly that world is currently open (otherwise a no-op —
     // Reimport does not open worlds). The same path as File → Reload World From Disk.
@@ -56,8 +66,11 @@ public:
     // with the project loader (the world's is the context of the world the panels show).
     virtual Panda::TypeContext &settingsStore(Panda::SettingsScope scope) = 0;
     virtual void editorSettingsChanged() = 0; // the editor scope was edited: apply (viewport options) and save
-    virtual bool saveProjectSettings() = 0;   // project.json; false — the write failed
+    // The project settings file document (project.json) for its tab.
+    virtual bool saveProjectSettings() = 0;   // false — the write failed or was cancelled
     virtual void revertProjectSettings() = 0; // the store rereads project.json
+    virtual void projectSettingsEdited() = 0; // an edit went into the store: the file is behind
+    virtual bool isProjectSettingsDirty() = 0;
     // The Plugins tab (UI/Documents/PluginsDocument): the store of the application layer, the theme
     // in use (a setting of the editor scope) and the native folder dialog of Install Dev Plugin.
     virtual Panda::PluginStore &pluginStore() = 0;

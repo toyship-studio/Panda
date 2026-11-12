@@ -138,7 +138,7 @@ void AssetEditorView::rebuildProperties() {
     if (ui == nullptr || ui->createEditor == nullptr) {
         // A kind without an editor (a world, a shader, a file): the header says what it is.
         auto label = std::make_shared<Label>(kind == "scene" ? "World / Scene" : kind);
-        label->setFont(Font(15.f));
+        label->setFont(Typo::Item);
         label->setTextRole(TextRole::Secondary);
         auto section = std::make_shared<CollapsibleSection>(kind == "scene" ? "Scene (read-only)" : "Asset");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));

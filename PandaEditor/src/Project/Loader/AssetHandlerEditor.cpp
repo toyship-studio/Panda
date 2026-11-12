@@ -315,48 +315,84 @@ AssetHandlerEditor::AssetEditorMeta AssetHandlerEditor::editorMeta(AssetId id) {
     return meta;
 }
 
-bool AssetHandlerEditor::assetDiskTime(AssetId id, std::filesystem::file_time_type &time) {
+bool AssetHandlerEditor::isAssetChangedOnDisk(AssetId id) {
+    if (!isLoaded(id)) { return false; }
     const path_t relativePath = assetPath(id);
     if (relativePath.empty()) { return false; }
-    std::error_code errorCode;
-    time = std::filesystem::last_write_time(m_projectPath / relativePath, errorCode);
-    return !errorCode;
-}
-
-bool AssetHandlerEditor::isShaderStale(AssetId id) {
+    auto meta = m_editorMeta.find(id);
+    if (meta != m_editorMeta.end() && meta->second.disk.isStale(m_projectPath / relativePath)) { return true; }
     auto info = m_registry.find(id);
     if (info == m_registry.end() || info->second.type != AssetType::SHADER) { return false; }
-    const path_t vertexPath = assetPath(id);
-    if (vertexPath.empty()) { return false; }
     return ShaderCook::isStale(
         ShaderCookRequest::forProjectShader(
-            m_projectPath / vertexPath, m_projectPath / replaceLastChars(vertexPath, "frag.hlsl"), m_projectPath
+            m_projectPath / relativePath, m_projectPath / replaceLastChars(relativePath, "frag.hlsl"), m_projectPath
         ),
         Foundation::ACTIVE_GRAPHICS_API
     );
 }
 
 void AssetHandlerEditor::noteAssetDiskSync(AssetId id) {
-    std::filesystem::file_time_type diskTime;
-    if (assetDiskTime(id, diskTime)) { m_editorMeta[id].diskTime = diskTime; }
+    const path_t relativePath = assetPath(id);
+    if (!relativePath.empty()) { m_editorMeta[id].disk.sync(m_projectPath / relativePath); }
+}
+
+namespace {
+
+    // A loaded asset as a file document: the asset documents do the saving, the database the
+    // reloading. The disk state is taken once, when the list is built.
+    class AssetFile final : public FileDocument {
+    public:
+        AssetFile(AssetHandlerEditor &handler, AssetId id, bool changedOnDisk)
+            : m_handler(handler)
+            , m_id(id)
+            , m_changedOnDisk(changedOnDisk) {}
+        std::string title() const override {
+            return "\"" + m_handler.getAssetName(m_id) + "\"";
+        }
+        path_t path() const override {
+            return m_handler.getProjectPath() / m_handler.assetPath(m_id);
+        }
+        bool isDirty() const override {
+            return m_handler.documents().isAssetChanged(m_id);
+        }
+        bool isChangedOnDisk() const override {
+            return m_changedOnDisk;
+        }
+        bool save() override {
+            return m_handler.documents().saveAsset(m_id);
+        }
+        bool reload() override {
+            m_handler.reload(m_id); // the same path as "Don't Save" in a tab
+            return true;
+        }
+
+    private:
+        AssetHandlerEditor &m_handler;
+        AssetId m_id;
+        bool m_changedOnDisk;
+    };
+
+} // namespace
+
+std::unique_ptr<FileDocument> AssetHandlerEditor::fileDocument(AssetId id) {
+    if (!isLoaded(id) || !m_registry.contains(id)) { return nullptr; }
+    return std::make_unique<AssetFile>(*this, id, isAssetChangedOnDisk(id));
+}
+
+std::vector<std::unique_ptr<FileDocument>> AssetHandlerEditor::fileDocuments() {
+    std::vector<std::unique_ptr<FileDocument>> files;
+    for (const auto &[id, entry] : m_loadedAssets) {
+        if (!m_registry.contains(id)) { continue; } // static resources have no file of the project
+        const bool changedOnDisk = isAssetChangedOnDisk(id);
+        if (changedOnDisk || m_documents.isAssetChanged(id)) {
+            files.push_back(std::make_unique<AssetFile>(*this, id, changedOnDisk));
+        }
+    }
+    return files;
 }
 
 void AssetHandlerEditor::setAssetOpenedInTab(AssetId id, bool opened) {
     m_editorMeta[id].openedInTab = opened;
-}
-
-std::vector<AssetId> AssetHandlerEditor::collectAssetsChangedOnDisk() {
-    std::vector<AssetId> changed;
-    for (const auto &[id, meta] : m_editorMeta) {
-        // An unloaded asset is read fresh on the next access — no Reload is needed.
-        if (!isLoaded(id)) { continue; }
-        // A shader is more than its asset file: the fragment stage and the includes are files
-        // of their own, so it is compared by the text its sources expand to.
-        std::filesystem::file_time_type diskTime;
-        const bool fileChanged = assetDiskTime(id, diskTime) && diskTime > meta.diskTime;
-        if (fileChanged || isShaderStale(id)) { changed.push_back(id); }
-    }
-    return changed;
 }
 
 bool AssetHandlerEditor::ensureShaderSourceFilesExist(AssetId id, const path_t &vertexRelPath, bool logErrors) {

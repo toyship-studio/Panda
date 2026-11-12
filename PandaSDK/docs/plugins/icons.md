@@ -29,7 +29,7 @@ one per PNG of the editor. For the current preview:
 | Objects and assets | `entity-cube`, `light-sun`, `light-point`, `camera`, `mesh`, `material`, `sprite`, `script`, `audio`, `globe` |
 | Status | `info`, `warning`, `error` |
 | Settings and tools | `tune`, `configure`, `hammer`, `plugins` |
-| Panels (the visibility strip) | `panel-hierarchy`, `panel-inspector`, `panel-content-browser`, `panel-asset-manager`, `panel-output`, `panel-statistics`, `panel-profiler`, `panel-world-settings`, `panel-viewport`, `panel-cmake`, `panel-bottom-dock` |
+| Panels (the visibility strip) | `panel-hierarchy`, `panel-inspector`, `panel-content-browser`, `panel-output`, `panel-statistics`, `panel-profiler`, `panel-world-settings`, `panel-viewport`, `panel-cmake`, `panel-bottom-dock` |
 | File previews (168×168) | `file`, `file-png`, `file-cpp`, `asset-world`, `prefab` |
 | Terrain module | `terrain`, `flora-tree`, `flora-bush`, `flora-grass-mesh`, `flora-tuft`, `flora-rock` |
 

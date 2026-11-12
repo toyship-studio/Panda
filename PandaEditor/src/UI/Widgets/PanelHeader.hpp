@@ -17,7 +17,6 @@ public:
     explicit PanelHeader(std::string title);
 
     void setAccessory(std::shared_ptr<PandaUI::View> accessory); // right accessory (a button etc.)
-    void setCount(int count); // counter to the right of the title (number of entities); count < 0 — hide
     void setOnMaximize(std::function<void()> callback); // show the maximize button (zone zoom) on the right
 
 private:
@@ -27,7 +26,6 @@ private:
 
     std::string m_title;
     std::shared_ptr<PandaUI::Label> m_label;
-    std::shared_ptr<PandaUI::Label> m_countLabel;
     std::shared_ptr<PandaUI::Panel> m_accessorySlot;
     std::shared_ptr<IconButton> m_maximizeBtn; // rightmost; hidden until a handler is set
     std::shared_ptr<PandaUI::Panel> m_divider;

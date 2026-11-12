@@ -93,7 +93,8 @@ yourself. An `#include` under `#if` works as in C.
    it. An unguarded include is a compile error in a project that has the feature off; use that
    on purpose only when the shader is meaningless without the feature.
 3. Never declare a `PANDA_…` block or a system texture by hand: the includes are the only
-   declaration, a hand-written copy compiles and reads nothing.
+   declaration. A hand-written `cbuffer PANDA_…` is a compile error; a hand-written system
+   texture compiles and reads nothing.
 4. `panda/draw.hlsli`, `panda/frame.hlsli`, `panda/view.hlsli` and `panda/post.hlsli` are not
    features and are always available.
 5. When a material needs a feature the project does not have, add the feature to the set; do

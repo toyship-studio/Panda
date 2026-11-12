@@ -17,7 +17,7 @@ class Panel;
 // The look of the hover tooltips (the context shows them; there is no instance to style).
 struct TooltipAppearance {
     SurfaceStyle bubble{ThemeColor::surface, ThemeColor::border}; // the radius and the shadow are the popover elevation
-    Font font = Font(13.f);
+    Font font = Font(14.f);
     ThemeColor text = ThemeColor::textPrimary;
     float paddingX = Spacing::md;
     float paddingY = Spacing::sm;

@@ -90,6 +90,11 @@ Two places read the enabled set; binding does not.
   feature-less compile draws, and a program that declares none of it ignores the bind: no Miren
   backend treats an undeclared input as an error.
 
+The `PANDA_` prefix is reserved: a `cbuffer PANDA_…` outside the generated `panda/blocks/`
+includes fails the cook of the shader with a message in the Output panel
+(`ShaderCook`, by the `#line` provenance of the expanded text) — a hand-written copy would
+compile and never be bound.
+
 ## Scene shaders
 
 The engine shaders that read feature blocks (the lit templates and their variants, the sky, the
@@ -114,10 +119,9 @@ backend, each step by mtime; a changed set changes the expanded text and recompi
 - GPU time is measured per frame only (`Miren::getGpuStats`, the status strip of the editor);
   the cost of a feature is read as the difference with the feature off. Per-view GPU timers are
   not built.
-- Found by the review of November 2026 and not fixed: a block declared by hand under a name the
-  engine does not bind, or under `PANDA_<X>` of a feature that is off, compiles and stays
-  unbound; the material inspector does not say that a system field belongs to a feature that is
-  off.
+- A block declared by hand under a name outside the `PANDA_` prefix that the engine does not
+  bind (a retired name, a typo in a module's block) still compiles and stays unbound: only the
+  reserved prefix is checked.
 - Reload does not recook the engine's scene shaders: an engine include edited while the editor
   runs reaches them when the project opens.
 - A feature added to the engine later is off for a project whose settings list the features

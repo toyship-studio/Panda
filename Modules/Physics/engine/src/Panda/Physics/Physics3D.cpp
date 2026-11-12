@@ -1273,14 +1273,15 @@ MassData3D Physics3D::getMassData(Entity entity) {
     const b3Pos center = b3Body_GetWorldCenterOfMass(bodyId);
     result.mass = data.mass;
     result.center = Vec3((float)center.x, (float)center.y, (float)center.z);
-    // box3d keeps the tensor in the body axes. A body with a fixed rotation does not turn at all;
-    // the bodies of the world systems have no Rigidbody3D and do not move.
+    // box3d keeps the tensor in the body axes. A body with a fixed rotation does not turn at all.
+    // The body itself is asked, not the entity: the entity may be a part of a compound body, and
+    // the static bodies of the world systems have no mass.
     const b3Matrix3 &local = data.inertia;
     const glm::mat3 inertia(
         local.cx.x, local.cx.y, local.cx.z, local.cy.x, local.cy.y, local.cy.z, local.cz.x, local.cz.y, local.cz.z
     );
-    const bool turns =
-        entity.hasComponent<Rigidbody3DComponent>() && !entity.getComponent<Rigidbody3DComponent>().fixedRotation;
+    const b3MotionLocks locks = b3Body_GetMotionLocks(bodyId);
+    const bool turns = !(locks.angularX && locks.angularY && locks.angularZ);
     if (turns && data.mass > 0.f && glm::determinant(inertia) > 0.f) {
         const b3Quat rotation = b3Body_GetRotation(bodyId);
         const glm::mat3 axes = glm::mat3_cast(glm::quat(rotation.s, rotation.v.x, rotation.v.y, rotation.v.z));

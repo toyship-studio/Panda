@@ -30,6 +30,11 @@ public:
     virtual void tabsAssetTabOpened(Panda::AssetId id) = 0; // counterpart: tracks openness in AssetEditorMeta
     // A document is about to go (its tab closed): the coordinator drops the pointers it keeps.
     virtual void tabsDocumentClosed(Document *document) = 0;
+    // The file documents behind the tabs: an entity tab is a view of the world document, an
+    // asset tab saves through the application (the conflict with the disk is asked there).
+    virtual bool tabsSaveWorld() = 0;
+    virtual bool tabsSaveAsset(Panda::AssetId id) = 0;
+    virtual std::filesystem::path tabsWorldFilePath() = 0;
     // History navigation: apply the selection through the regular path (Hierarchy/highlight follow along).
     virtual void tabsApplySelection(
         const std::vector<Panda::UUID> &entities, const std::vector<Panda::AssetId> &assets

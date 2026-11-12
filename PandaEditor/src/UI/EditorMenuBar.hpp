@@ -38,7 +38,8 @@ public:
     virtual const path_t &menuBarGetOpenedProjectPath() = 0;
     virtual void menuBarCloseApp() = 0;
     virtual void menuBarShowCppProject() = 0;
-    virtual void menuBarSaveWorld() = 0;
+    virtual void menuBarSave() = 0;    // the document of the tab with the focus
+    virtual void menuBarSaveAll() = 0; // every unsaved file document
     virtual void menuBarReload() = 0;
     virtual void menuBarCloseProject() = 0;
     virtual void menuBarAbout() = 0;

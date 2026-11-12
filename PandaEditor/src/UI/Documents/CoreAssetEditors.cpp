@@ -193,12 +193,12 @@ namespace {
                         widget->setEnabled(false);
                         widget->surface().setOpacity(0.55f); // visually "non-editable"
                         auto hint = std::make_shared<Label>(std::string(Panda::MaterialSystemValues::hint(fieldName)));
-                        hint->setFont(Typo::Meta);
+                        hint->setFont(Typo::Caption);
                         hint->setTextRole(TextRole::Muted);
                         const std::string target = Panda::MaterialSystemValues::section(fieldName);
                         auto link = std::make_shared<Button>("Settings");
                         link->setStyle(ButtonStyle::Link);
-                        link->setFont(Typo::Meta);
+                        link->setFont(Typo::Caption);
                         link->layout().setPadding(Edge::Horizontal, 4.f);
                         link->layout().setPadding(Edge::Vertical, 2.f);
                         link->setOnClick([target](Button &) {
@@ -488,7 +488,7 @@ namespace {
             }
             if (meshMeta->materials.empty()) {
                 auto label = std::make_shared<Label>("No material slots");
-                label->setFont(Font(15.f));
+                label->setFont(Typo::Item);
                 label->setTextRole(TextRole::Secondary);
                 section->addContent(std::make_shared<PropertyRow>("", label, false));
             }

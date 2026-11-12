@@ -9,7 +9,7 @@ namespace {
 
 namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId NewWorld = 1;
-    constexpr Fern::MenuCommandId SaveWorld = 2;
+    constexpr Fern::MenuCommandId Save = 2;
     constexpr Fern::MenuCommandId OpenProject = 3;
     constexpr Fern::MenuCommandId ShowCppProject = 4;
     constexpr Fern::MenuCommandId CloseProject = 5;
@@ -34,11 +34,16 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId Plugins = 24;
     constexpr Fern::MenuCommandId UiGallery = 25;
     constexpr Fern::MenuCommandId GameView = 26;
+    constexpr Fern::MenuCommandId SaveAll = 27;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
 } // namespace EditorMenuCommand
 
 Fern::MenuShortcut primaryShortcut(Fern::Key key) {
     return {key, Fern::MenuShortcut::Primary};
+}
+
+Fern::MenuShortcut primaryAltShortcut(Fern::Key key) {
+    return {key, static_cast<Fern::MenuModifiers>(Fern::MenuShortcut::Primary | Fern::MenuShortcut::Alt)};
 }
 
 Fern::MenuShortcut primaryShiftShortcut(Fern::Key key) {
@@ -60,7 +65,10 @@ void EditorMenuBar::rebuild() {
     auto &fileMenu = menuBar.addMenu("File");
     if (hasProject) {
         fileMenu.addItem("New World", EditorMenuCommand::NewWorld, primaryShortcut(Fern::Key::KEY_N));
-        fileMenu.addItem("Save World", EditorMenuCommand::SaveWorld, primaryShortcut(Fern::Key::KEY_S));
+        // The document model: Save writes the file of the tab with the focus, Save All every
+        // unsaved file (the shortcuts of Zed).
+        fileMenu.addItem("Save", EditorMenuCommand::Save, primaryShortcut(Fern::Key::KEY_S));
+        fileMenu.addItem("Save All", EditorMenuCommand::SaveAll, primaryAltShortcut(Fern::Key::KEY_S));
         // Synchronization of the engine with the disk (changed assets/scripts/world) — closes
         // the loop of external edits (agent, code editor, git) without a restart.
         fileMenu.addItem("Reload", EditorMenuCommand::Reload, primaryShortcut(Fern::Key::KEY_R));
@@ -119,10 +127,10 @@ void EditorMenuBar::rebuild() {
     auto &settingsMenu = fileMenu.addSubmenu("Settings");
     settingsMenu.addItem("Open Settings", EditorMenuCommand::EditorSettings, primaryShortcut(Fern::Key::KEY_COMMA))
         .setEnabled(hasProject);
-    settingsMenu.addItem("Show Settings File", EditorMenuCommand::ShowEditorSettingsFile);
+    settingsMenu.addItem("Open Settings File", EditorMenuCommand::ShowEditorSettingsFile);
     settingsMenu.addSeparator();
     settingsMenu.addItem("Open Project Settings", EditorMenuCommand::ProjectSettings).setEnabled(hasProject);
-    settingsMenu.addItem("Show Project Settings File", EditorMenuCommand::ShowProjectSettingsFile).setEnabled(hasProject);
+    settingsMenu.addItem("Open Project Settings File", EditorMenuCommand::ShowProjectSettingsFile).setEnabled(hasProject);
 
     fileMenu.addSeparator();
     fileMenu.addItem("Exit", EditorMenuCommand::Exit, primaryShortcut(Fern::Key::KEY_Q));
@@ -180,8 +188,11 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
         case EditorMenuCommand::NewWorld:
             m_output->menuBarNewWorld();
             break;
-        case EditorMenuCommand::SaveWorld:
-            m_output->menuBarSaveWorld();
+        case EditorMenuCommand::Save:
+            m_output->menuBarSave();
+            break;
+        case EditorMenuCommand::SaveAll:
+            m_output->menuBarSaveAll();
             break;
         case EditorMenuCommand::Reload:
             m_output->menuBarReload();

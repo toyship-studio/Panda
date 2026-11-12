@@ -27,7 +27,7 @@ PanelHeader::PanelHeader(std::string title)
 }
 
 void PanelHeader::addSubviews() {
-    // Row: title + counter (left), spacer, accessory slot (right).
+    // Row: title (left), spacer, accessory slot (right).
     auto row = std::make_shared<Panel>();
     row->setBackgroundColor(Color(0x00000000));
     row->layout().setFlexDirection(FlexDirection::Row);
@@ -43,14 +43,6 @@ void PanelHeader::addSubviews() {
     m_label->setLetterSpacing(Typo::PanelTitleTracking);
     m_label->setTextRole(TextRole::Muted);
     row->addSubview(m_label);
-
-    // Counter (e.g. the number of entities) — small, very muted; hidden until set.
-    m_countLabel = std::make_shared<Label>("");
-    m_countLabel->setFont(Typo::Meta);
-    m_countLabel->setTextRole(TextRole::Disabled);
-    m_countLabel->setHidden(true);
-    m_countLabel->layout().setDisplay(Display::None);
-    row->addSubview(m_countLabel);
 
     auto spacer = std::make_shared<Panel>();
     spacer->setBackgroundColor(Color(0x00000000));
@@ -77,13 +69,6 @@ void PanelHeader::addSubviews() {
     m_divider->setUserInteractionEnabled(false);
     m_divider->layout().setHeight(Length::points(1.f));
     addSubview(m_divider);
-}
-
-void PanelHeader::setCount(int count) {
-    const bool show = count >= 0;
-    m_countLabel->setText(show ? std::to_string(count) : std::string());
-    m_countLabel->setHidden(!show);
-    m_countLabel->layout().setDisplay(show ? Display::Flex : Display::None);
 }
 
 void PanelHeader::setAccessory(std::shared_ptr<View> accessory) {

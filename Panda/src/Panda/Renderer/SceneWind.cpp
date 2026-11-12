@@ -38,11 +38,14 @@ void SceneWind::apply(const SceneWindSettings &settings) {
     s_settings = settings;
     // Without the wind feature (ShaderFeatures) the scene is calm for every consumer: the system
     // fields below, the wind block, the modules that read the settings.
-    if (!ShaderFeatures::isEnabled(ShaderFeature::Wind)) { s_settings.strength = 0.f; }
+    const bool enabled = ShaderFeatures::isEnabled(ShaderFeature::Wind);
+    if (!enabled) { s_settings.strength = 0.f; }
     // set dedups by value — apply may be called every frame; the hint is shown in the
     // editor at a disabled material field (next to it — a link button to the settings).
-    MaterialSystemValues::set("windStrength", s_settings.strength, "Set by scene wind", "WIND");
-    MaterialSystemValues::set("windGustiness", s_settings.gustiness, "Set by scene wind", "WIND");
+    const char *hint = enabled ? "Set by scene wind"
+                               : "The wind feature is off in this project (Project Settings > Rendering)";
+    MaterialSystemValues::set("windStrength", s_settings.strength, hint, "WIND");
+    MaterialSystemValues::set("windGustiness", s_settings.gustiness, hint, "WIND");
 }
 
 const SceneWindSettings &SceneWind::settings() {

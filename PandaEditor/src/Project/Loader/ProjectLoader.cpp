@@ -61,6 +61,93 @@ namespace {
 
 } // namespace
 
+// The open world: `.world` of the project. Reload is opening the same file again.
+class ProjectLoader::WorldFile final : public FileDocument {
+public:
+    explicit WorldFile(ProjectLoader &loader)
+        : m_loader(loader) {}
+    std::string title() const override {
+        const path_t &path = m_loader.m_worldPath;
+        return path.empty() ? "the new world" : "world \"" + path.stem().string() + "\"";
+    }
+    path_t path() const override {
+        return m_loader.m_worldPath;
+    }
+    bool isDirty() const override {
+        return m_loader.m_world->isChanged();
+    }
+    bool isChangedOnDisk() const override {
+        return m_loader.m_worldStamp.isStale(m_loader.m_worldPath);
+    }
+    bool save() override {
+        return m_loader.saveWorld();
+    }
+    bool reload() override {
+        return !m_loader.m_worldPath.empty() && m_loader.openWorld(path_t(m_loader.m_worldPath));
+    }
+
+private:
+    ProjectLoader &m_loader;
+};
+
+// `.Panda/project.json`: the project scope of the settings.
+class ProjectLoader::ProjectSettingsFile final : public FileDocument {
+public:
+    explicit ProjectSettingsFile(ProjectLoader &loader)
+        : m_loader(loader) {}
+    std::string title() const override {
+        return "the project settings";
+    }
+    path_t path() const override {
+        return m_loader.projectSettingsPath();
+    }
+    bool isDirty() const override {
+        return m_loader.m_projectSettingsDirty;
+    }
+    bool isChangedOnDisk() const override {
+        return m_loader.m_projectSettingsStamp.isStale(path());
+    }
+    bool save() override {
+        return m_loader.saveProjectSettings();
+    }
+    bool reload() override {
+        return m_loader.reloadProjectSettings();
+    }
+
+private:
+    ProjectLoader &m_loader;
+};
+
+// `settings.json` of the user: the editor scope. Every edit is written at once, so the memory is
+// never ahead of the file.
+class ProjectLoader::EditorSettingsFile final : public FileDocument {
+public:
+    explicit EditorSettingsFile(ProjectLoader &loader)
+        : m_loader(loader) {}
+    std::string title() const override {
+        return "the editor settings";
+    }
+    path_t path() const override {
+        return m_loader.editorSettingsPath();
+    }
+    bool isDirty() const override {
+        return false;
+    }
+    bool isChangedOnDisk() const override {
+        return m_loader.m_editorSettingsStamp.isStale(path());
+    }
+    bool save() override {
+        m_loader.saveEditorSettings();
+        return true;
+    }
+    bool reload() override {
+        return m_loader.reloadEditorSettings();
+    }
+
+private:
+    ProjectLoader &m_loader;
+};
+
 ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
     : m_output(output)
     , m_world(world)
@@ -72,7 +159,10 @@ ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
     , m_projectSession()
     , m_projectPath()
     , m_worldPath()
-    , m_assetHandler(nullptr) {
+    , m_assetHandler(nullptr)
+    , m_worldFile(std::make_unique<WorldFile>(*this))
+    , m_projectSettingsFile(std::make_unique<ProjectSettingsFile>(*this))
+    , m_editorSettingsFile(std::make_unique<EditorSettingsFile>(*this)) {
     registerEditorSettingsTypes(GameContext::getExtensions().settings);
     SettingsMapper::reset(SettingsScope::Editor, m_editorSettings);
     SettingsMapper::reset(SettingsScope::Project, m_projectSettings);
@@ -83,7 +173,7 @@ ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
 
 ProjectLoader::~ProjectLoader() {
     saveSession();
-    saveEditorSettings();
+    saveEditorSettings(false);
     saveProjectSettings(false);
     m_assetHandler->closeProject();
     Panda::StaticResources::deinitStaticResources();
@@ -103,6 +193,7 @@ void ProjectLoader::loadInitialData() {
         } else {
             LOG_INFO("EDITOR SETTINGS NOT FOUND");
         }
+        m_editorSettingsStamp.sync(directory / "settings.json");
         if (!readJson(directory / "session.json", m_jsonDecoder, m_session)) { m_session = EditorSession(); }
     }
     if (m_session.hasOpenedProject) { loadRecentProject(); }
@@ -117,15 +208,40 @@ void ProjectLoader::saveSession() {
     }
 }
 
-void ProjectLoader::saveEditorSettings() {
-    const path_t directory = editorDataDirectory();
-    if (directory.empty()) { return; }
-    std::ofstream file(directory / "settings.json");
+void ProjectLoader::saveEditorSettings(bool overwriteDiskEdits) {
+    const path_t path = editorSettingsPath();
+    if (path.empty()) { return; }
+    if (!overwriteDiskEdits && m_editorSettingsStamp.isStale(path)) {
+        // The file is the contract: an edit made outside the editor and not taken by Reload yet is
+        // not overwritten by a save nobody asked for.
+        LOG_WARN_EDITOR("EDITOR SETTINGS: settings.json was changed on disk, the editor's copy is not written");
+        return;
+    }
+    std::ofstream file(path);
     if (!file.is_open()) {
-        LOG_ERROR("CANNOT WRITE THE EDITOR SETTINGS AT %s", (directory / "settings.json").string().c_str());
+        LOG_ERROR("CANNOT WRITE THE EDITOR SETTINGS AT %s", path.string().c_str());
         return;
     }
     SettingsMapper::save(SettingsScope::Editor, m_editorSettings, m_jsonEncoder, file);
+    file.close();
+    m_editorSettingsStamp.sync(path);
+}
+
+bool ProjectLoader::reloadEditorSettings() {
+    const path_t path = editorSettingsPath();
+    std::ifstream file(path);
+    if (!file.is_open()) { return false; }
+    // A broken file leaves the scope as it is: decoded into a scratch store first.
+    TypeContext scratch;
+    SettingsMapper::reset(SettingsScope::Editor, scratch);
+    if (!SettingsMapper::load(SettingsScope::Editor, scratch, m_jsonDecoder, file)) {
+        LOG_ERROR_EDITOR("EDITOR SETTINGS FILE IS BROKEN: %s", path.string().c_str());
+        return false;
+    }
+    SettingsMapper::copy(SettingsScope::Editor, scratch, m_editorSettings);
+    m_editorSettingsStamp.sync(path);
+    m_output->loaderDidReloadEditorSettings();
+    return true;
 }
 
 path_t ProjectLoader::editorSettingsPath() const {
@@ -187,7 +303,8 @@ void ProjectLoader::openProject(const path_t &path) {
             m_projectSession = ProjectSession();
         }
     }
-    noteProjectSettingsDiskSync();
+    m_projectSettingsStamp.sync(projectSettingsPath());
+    m_projectSettingsDirty = false;
     // The module set of the project (ProjectModules): the contributions are needed before the asset
     // registry and the world. Engine parts are not unloaded — the modules of the previous project
     // stay, new ones are added; the live world gets pools for the new component types.
@@ -304,26 +421,6 @@ ScriptEngineConfig ProjectLoader::makeScriptsConfig() {
         projectName,
         m_projectPath / ".Panda" / "ScriptCache"
     };
-}
-
-void ProjectLoader::noteProjectSettingsDiskSync() {
-    std::error_code errorCode;
-    const auto diskTime = std::filesystem::last_write_time(projectSettingsPath(), errorCode);
-    m_projectSettingsDiskTime = errorCode ? std::filesystem::file_time_type{} : diskTime;
-}
-
-bool ProjectLoader::isProjectSettingsChangedOnDisk() {
-    if (m_projectPath.empty()) { return false; }
-    std::error_code errorCode;
-    const auto diskTime = std::filesystem::last_write_time(projectSettingsPath(), errorCode);
-    return !errorCode && diskTime > m_projectSettingsDiskTime;
-}
-
-bool ProjectLoader::isWorldChangedOnDisk() {
-    if (m_worldPath.empty()) { return false; }
-    std::error_code errorCode;
-    const auto diskTime = std::filesystem::last_write_time(m_worldPath, errorCode);
-    return !errorCode && diskTime > m_worldDiskTime;
 }
 
 bool ProjectLoader::isScriptsChangedOnDisk() {
@@ -446,9 +543,7 @@ bool ProjectLoader::writeWorld(const path_t &path) {
         WorldMapper::save(*m_world, m_jsonEncoder, file);
         file.close();
         m_world->setChanged(false);
-        std::error_code errorCode;
-        const auto diskTime = std::filesystem::last_write_time(path, errorCode);
-        if (!errorCode) { m_worldDiskTime = diskTime; }
+        m_worldStamp.sync(path);
         return true;
     } else {
         LOG_ERROR("ERROR SAVING WORLD AT PATH %s", path.string().c_str());
@@ -479,11 +574,7 @@ bool ProjectLoader::loadWorld(const path_t &path) {
         return false;
     }
     m_worldPath = path;
-    {
-        std::error_code errorCode;
-        const auto diskTime = std::filesystem::last_write_time(path, errorCode);
-        if (!errorCode) { m_worldDiskTime = diskTime; }
-    }
+    m_worldStamp.sync(path);
     syncWorldPaths();
     if (m_scriptEngine.isLoaded()) { m_world->updateScriptsAndFields(); }
     LOG_INFO("LOADED WORLD AT PATH %s", m_worldPath.string().c_str());
@@ -586,7 +677,7 @@ bool ProjectLoader::saveProjectSettings(bool overwriteDiskEdits) {
     const path_t dataDirectory = projectDataDirectory(m_projectPath);
     syncWorldPaths();
     bool saved = true;
-    if (!overwriteDiskEdits && isProjectSettingsChangedOnDisk()) {
+    if (!overwriteDiskEdits && m_projectSettingsStamp.isStale(projectSettingsPath())) {
         // The file is the contract: an edit made outside the editor and not taken by Reload yet
         // is not overwritten by a save nobody asked for (closing or switching the project).
         LOG_WARN_EDITOR("PROJECT SETTINGS: project.json was changed on disk, the editor's copy is not written");
@@ -599,7 +690,8 @@ bool ProjectLoader::saveProjectSettings(bool overwriteDiskEdits) {
             saved = false;
         }
         file.close();
-        noteProjectSettingsDiskSync();
+        m_projectSettingsStamp.sync(projectSettingsPath());
+        if (saved) { m_projectSettingsDirty = false; }
     }
     m_projectSession.camera = m_output->getEditorCameraSettings();
     if (!writeJson(dataDirectory / "session.json", m_jsonEncoder, m_projectSession)) {
@@ -613,19 +705,27 @@ bool ProjectLoader::saveProjectSettings(bool overwriteDiskEdits) {
     return saved;
 }
 
-void ProjectLoader::reloadProjectSettings() {
-    if (m_projectPath.empty()) { return; }
-    SettingsMapper::reset(SettingsScope::Project, m_projectSettings);
-    std::ifstream file(projectDataDirectory(m_projectPath) / "project.json");
-    if (file.is_open() && !SettingsMapper::load(SettingsScope::Project, m_projectSettings, m_jsonDecoder, file)) {
-        LOG_ERROR_EDITOR("PROJECT SETTINGS FILE IS BROKEN: %s", (m_projectPath / ".Panda" / "project.json").string().c_str());
+bool ProjectLoader::reloadProjectSettings() {
+    if (m_projectPath.empty()) { return false; }
+    const path_t path = projectSettingsPath();
+    // A broken file leaves the scope as it is: decoded into a scratch store first. A file that
+    // is gone is the default settings.
+    TypeContext scratch;
+    SettingsMapper::reset(SettingsScope::Project, scratch);
+    std::ifstream file(path);
+    if (file.is_open() && !SettingsMapper::load(SettingsScope::Project, scratch, m_jsonDecoder, file)) {
+        LOG_ERROR_EDITOR("PROJECT SETTINGS FILE IS BROKEN: %s", path.string().c_str());
+        return false;
     }
-    noteProjectSettingsDiskSync();
+    SettingsMapper::copy(SettingsScope::Project, scratch, m_projectSettings);
+    m_projectSettingsStamp.sync(path);
+    m_projectSettingsDirty = false;
     syncWorldPaths(); // the open world stays the start world when the file has none
     if (applyShaderFeatures()) {
         ShaderCook::cookAndReloadSceneShaders(m_projectPath);
         m_assetHandler->reloadLoadedShaders();
     }
+    return true;
 }
 
 bool ProjectLoader::applyShaderFeatures() {

@@ -1,4 +1,5 @@
 #include "PandaEditorKit/Widgets/Icons.hpp"
+#include "PandaEditorKit/Widgets/Typography.hpp"
 
 #include <utility>
 
@@ -108,6 +109,22 @@ void IconButton::setCornerRadius(float radius) {
     surface().setCornerRadius(radius);
 }
 
+void IconButton::setTitle(const std::string &title) {
+    if (!m_title) {
+        m_title = std::make_shared<Label>(title);
+        m_title->setFont(Typo::Caption);
+        m_title->setUserInteractionEnabled(false);
+        layout().setFlexDirection(FlexDirection::Row);
+        layout().setGap(5.f);
+        layout().setWidth(Length::autoValue()); // the height stays, the width follows the word
+        layout().setPadding(Edge::Horizontal, 7.f);
+        addSubview(m_title);
+    } else {
+        m_title->setText(title);
+    }
+    applyStyle();
+}
+
 void IconButton::controlStateChanged(ControlState, ControlState) {
     applyStyle();
 }
@@ -124,17 +141,20 @@ void IconButton::applyStyle() {
     if (hasControlState(ControlState::Disabled)) {
         setBackgroundColor(Color(0x00000000));
         if (m_icon) { m_icon->setTintColor(ThemeColor::textDisabled); }
+        if (m_title) { m_title->setTextColor(ThemeColor::textDisabled); }
         return;
     }
     if (m_active) { // selected tool/tab: accent backing + accent icon
         setBackgroundColor(ThemeColor::accentSoft);
         if (m_icon) { m_icon->setTintColor(ThemeColor::accentText); }
+        if (m_title) { m_title->setTextColor(ThemeColor::accentText); }
         return;
     }
     const bool hovered = hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted);
     setBackgroundColor(hovered ? ThemeColor::control : ThemeColor(Color(0x00000000)));
     const ThemeColor iconColor = m_hasFixedColor ? m_fixedColor : (hovered ? ThemeColor::textPrimary : m_restColor);
     if (m_icon) { m_icon->setTintColor(iconColor); }
+    if (m_title) { m_title->setTextColor(iconColor); }
 }
 
 } // namespace Editor

@@ -59,7 +59,7 @@ namespace {
             titleLabel->setTextRole(enabled ? TextRole::Primary : TextRole::Disabled);
             texts->addSubview(titleLabel);
             auto captionLabel = std::make_shared<Label>(caption);
-            captionLabel->setFont(Typo::Meta);
+            captionLabel->setFont(Typo::Caption);
             captionLabel->setTextRole(TextRole::Dim);
             texts->addSubview(captionLabel);
             addSubview(texts);

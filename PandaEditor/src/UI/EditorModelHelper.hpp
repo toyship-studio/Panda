@@ -34,9 +34,7 @@ std::vector<std::pair<Panda::AssetId, std::string>> builtinShaderOptions();
 
 // A built-in postprocessing PASS shader: no thumbnails/preview sphere are drawn for materials that use it
 
-// Engine asset type → kind string (icon/color of panel cells, kind in the D&D payload) and the name
-// of the category folder (AssetManager).
+// Engine asset type → kind string (icon/color of panel cells, kind in the D&D payload).
 const char *assetTypeString(Panda::AssetType type); // "texture"/"material"/"mesh"/"scene"/"shader"/"text"
-const char *assetTypeFolder(Panda::AssetType type); // "Textures"/"Materials"/"Meshes"/"Worlds"/"Shaders"/"Other"
 
 } // namespace Editor

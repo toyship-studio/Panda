@@ -184,6 +184,14 @@ public:
     std::shared_ptr<PandaUI::View> view() override {
         return m_view;
     }
+    // A view of the world document: Save and the file are the world's. It carries no dirty dot
+    // of its own (the Scene tab shows the world's) and closes without a question.
+    bool save() override {
+        return m_tabs->m_host->tabsSaveWorld();
+    }
+    std::filesystem::path filePath() override {
+        return m_tabs->m_host->tabsWorldFilePath();
+    }
     Panda::CommandHistory *undoStack() override {
         Panda::World *world = Panda::GameContext::getCurrentWorld();
         return world ? &world->getCommandHistory() : nullptr;
@@ -231,9 +239,16 @@ public:
         Panda::AssetHandlerEditor *handler = assetHandler();
         if (!handler) { return false; }
         for (Panda::AssetId id : assets()) {
-            if (handler->documents().isAssetChanged(id) && !handler->documents().saveAsset(id)) { return false; }
+            if (handler->documents().isAssetChanged(id) && !m_tabs->m_host->tabsSaveAsset(id)) { return false; }
         }
         return true;
+    }
+    std::filesystem::path filePath() override {
+        Panda::AssetHandlerEditor *handler = assetHandler();
+        const std::vector<Panda::AssetId> ids = assets();
+        if (!handler || ids.size() != 1) { return {}; }
+        const Panda::path_t relative = handler->assetPath(ids.front());
+        return relative.empty() ? std::filesystem::path() : handler->getProjectPath() / relative;
     }
     void revert() override {
         // Back to the file: otherwise the dirty state would remain in memory INVISIBLE (no tab) — a

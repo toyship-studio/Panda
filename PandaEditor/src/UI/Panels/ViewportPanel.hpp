@@ -27,7 +27,7 @@ public:
     virtual void viewportDidPickGizmo(int mode) = 0;        // 0 — Move, 1 — Rotate, 2 — Scale
     virtual void viewportDidResetCamera() = 0;              // scene camera reset
     virtual void viewportDidPickSpace(bool worldSpace) = 0; // gizmo: world (true) / local space
-    // Assets (mesh/prefab/scene) dropped into the scene from Content Browser/Asset Manager → instantiate.
+    // Assets (mesh/prefab/scene) dropped into the scene from the Content Browser → instantiate.
     virtual void viewportDidDropAssets(const std::vector<std::uint32_t> &assetIds, const std::string &kind) = 0;
     // The overlay gear: the display options popover (the viewport section of the editor scope)
     // next to the anchor, and the world settings sidebar of the panel (shown / hidden).

@@ -28,15 +28,33 @@ sidecars.
    The shell scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`; the CMake panel
    finds the SDK itself.
 3. Press **Reload** in PandaEditor (File → Reload, Cmd/Ctrl+R, the same button is on the
-   toolbar). The editor synchronizes with the disk in the order project settings → assets → scripts →
-   world, by modification time: whatever has not changed is left alone. An edited
-   `.Panda/project.json` is reread as a whole; a module switched on in it opens the project
-   again, a module switched off needs a restart of the editor. A shader is reloaded when either
-   of its files or any `.hlsli` it includes has changed. Broken world JSON is reported and
-   the current world stays. A conflict — newer on disk plus unsaved edits in the editor — asks
-   per item: Save, Discard or Cancel.
+   toolbar). The editor synchronizes with the disk by modification time, in the order editor
+   settings → project settings → assets → scripts → world: whatever has not changed is left
+   alone. A file changed on disk that also has unsaved edits in the editor asks which version
+   stays: Save, Discard or Cancel. A broken world or settings file is reported and the editor
+   keeps what it has. An edited `.Panda/project.json` is reread as a whole; a module switched on
+   in it opens the project again, a module switched off needs a restart of the editor. A shader
+   is reloaded when either of its files or any `.hlsli` it includes has changed.
 4. Press Play. Running and debugging the game is a human's job; the editor is not driven by
    tools.
+
+## One file, one tab
+
+Every tab of the editor edits one file, and the file is always in reach:
+
+- Right-click a tab or an asset in the Content Browser: the menu starts with the path of the
+  file (a click copies it), **Open in External Editor** and **Reveal in File Manager**. An
+  entity tab and the Scene tab show the `.world` file; a texture or a model opens its text
+  sidecar (`.pmeta`); a shader opens both files of its pair.
+- The external editor is chosen in Editor Settings → External Tools, or as
+  `"externalTools": {"editor": "zed"}` in `settings.json`: a command, the path of an executable,
+  or empty for the application the system opens the file with. File → Settings → Open Settings
+  File and Open Project Settings File open the two settings files in it.
+- **Save** (Cmd/Ctrl+S) writes the file of the tab with the focus; **Save All**
+  (Cmd/Ctrl+Alt+S, the toolbar button) writes every unsaved file. A file that changed on disk
+  since the editor read it is not overwritten in silence: the editor asks which version stays.
+- The editor never writes over a hand-edited settings file on its own: a `project.json` or
+  `settings.json` changed on disk is left alone on exit until Reload takes it.
 
 ## Zed
 

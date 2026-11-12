@@ -99,7 +99,7 @@ public:
         layout().setPadding(Edge::Horizontal, 9.f);
         layout().setPadding(Edge::Vertical, 3.f);
         surface().setCornerRadius(Radius::sm);
-        m_label->setFont(Typo::Meta);
+        m_label->setFont(Typo::Caption);
         addSubview(m_label);
         applyStyle();
     }
