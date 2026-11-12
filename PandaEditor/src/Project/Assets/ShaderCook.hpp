@@ -25,6 +25,10 @@ struct ShaderCookRequest {
     path_t vertexLogical;
     path_t fragmentLogical;
     path_t projectPath;
+
+    // The request of a project shader: its cache files are named by the source paths.
+    static ShaderCookRequest
+    forProjectShader(const path_t &vertexSource, const path_t &fragmentSource, const path_t &projectPath);
 };
 
 struct ShaderCookResult {
@@ -44,6 +48,10 @@ namespace ShaderCook {
         ShaderCookResult &result,
         ShaderSpirvReflectionData *reflection = nullptr
     );
+    // true — the cooked pair no longer matches what the sources expand to: a source, an include
+    // or the feature set changed since the last cook (or the sources do not expand at all — the
+    // cook will say why). Text only, nothing is compiled or written.
+    bool isStale(const ShaderCookRequest &request, Foundation::GraphicsAPI backend);
     // A scene shader of the engine (its sources are in the bundle resources) for a backend.
     bool cookSceneShader(
         const SceneShader &shader, const path_t &projectPath, Foundation::GraphicsAPI backend, ShaderCookResult &result

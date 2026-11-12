@@ -692,9 +692,17 @@ All project state is readable Rain JSON (`.world`, `.mat`, `.pmeta` sidecars, `.
 plus C++ scripts, so an AI coding agent works with the project files directly; a human always runs
 and debugs the game.
 
-- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk in the order assets →
-  scripts → world, by modification time. Loaded assets: `AssetEditorMeta` in `AssetHandlerEditor`
-  (`collectAssetsChangedOnDisk()` scans loaded assets only). Script bundle:
+- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk in the order project
+  settings → assets → scripts → world, by modification time. Project settings:
+  `ProjectLoader::isProjectSettingsChangedOnDisk` rereads `project.json` (the shader features
+  are applied; unsaved edits of the Project Settings tab ask Save / Discard / Cancel like an
+  asset; a module switched on in the file opens the project again, because module contributions
+  come before the asset registry and the world; a module switched off needs a restart), and a
+  save nobody asked for (closing or
+  switching the project) does not overwrite a `project.json` changed on disk. Loaded assets:
+  `AssetEditorMeta` in `AssetHandlerEditor` (`collectAssetsChangedOnDisk()` scans loaded assets
+  only; a loaded shader is also compared by the text its sources expand to,
+  `ShaderCook::isStale`, so a changed fragment stage or include reloads it). Script bundle:
   `ProjectLoader::isScriptsChangedOnDisk`. World: `isWorldChangedOnDisk`; broken JSON is logged
   and the world is left untouched. A conflict (newer on disk plus unsaved edits) asks per item:
   Save / Discard / Cancel. Orchestration: `EditorLayer::reloadFromDisk`.

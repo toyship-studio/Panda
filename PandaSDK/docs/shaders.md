@@ -4,7 +4,8 @@ A project shader is a pair of HLSL files next to each other, `<name>.vert.hlsl` 
 `<name>.frag.hlsl`; the pair is one shader asset (the sidecar sits at the `.vert.hlsl`). The
 editor compiles it for the active graphics API when it is first used and again whenever the
 source, an include or the project's shader features change; the export cooks it for every API of
-the game. Compiler errors land in the Output panel with the file and the line.
+the game. Compiler errors land in the Output panel as the compiler prints them, with the source
+file and the line. After editing either file of the pair or an include outside the editor, press Reload.
 
 ## Blocks the engine gives a shader
 
@@ -62,9 +63,9 @@ Rules of the set:
 - `shadows` and `occlusion` need `lights`: listing either one turns `lights` on. To have no
   `lights`, list neither.
 - A name outside the table is ignored with a warning in the log.
-- The editor applies the set when the project opens and when the project settings are saved;
-  after editing `project.json` by hand, reopen the project. Every shader of the project is
-  recompiled for the new set. The export carries the set and the shaders cooked for it.
+- The editor applies the set when the project opens, when the project settings are saved and
+  on Reload after `project.json` was edited by hand. Every shader of the project is recompiled
+  for the new set. The export carries the set and the shaders cooked for it.
 
 ### What off means
 

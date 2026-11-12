@@ -28,8 +28,11 @@ sidecars.
    The shell scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`; the CMake panel
    finds the SDK itself.
 3. Press **Reload** in PandaEditor (File → Reload, Cmd/Ctrl+R, the same button is on the
-   toolbar). The editor synchronizes with the disk in the order assets → scripts → world, by
-   modification time: whatever has not changed is left alone. Broken world JSON is reported and
+   toolbar). The editor synchronizes with the disk in the order project settings → assets → scripts →
+   world, by modification time: whatever has not changed is left alone. An edited
+   `.Panda/project.json` is reread as a whole; a module switched on in it opens the project
+   again, a module switched off needs a restart of the editor. A shader is reloaded when either
+   of its files or any `.hlsli` it includes has changed. Broken world JSON is reported and
    the current world stays. A conflict — newer on disk plus unsaved edits in the editor — asks
    per item: Save, Discard or Cancel.
 4. Press Play. Running and debugging the game is a human's job; the editor is not driven by

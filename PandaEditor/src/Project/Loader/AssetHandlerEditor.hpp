@@ -50,6 +50,10 @@ public:
     };
     AssetEditorMeta editorMeta(AssetId id);
     void noteAssetDiskSync(AssetId id); // the asset file has just been read/written by the editor
+    // The modification time of the asset's source on disk; false — there is no file.
+    bool assetDiskTime(AssetId id, std::filesystem::file_time_type &time);
+    // A loaded project shader whose sources or includes changed since it was cooked.
+    bool isShaderStale(AssetId id);
     void setAssetOpenedInTab(AssetId id, bool opened);
     // Loaded assets whose file on disk is newer than the last synchronization (Reload).
     std::vector<AssetId> collectAssetsChangedOnDisk();

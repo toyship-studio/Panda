@@ -476,13 +476,54 @@ void EditorLayer::setSceneState(Editor::SceneState state) {
 }
 
 void EditorLayer::reloadFromDisk() {
-    // A single synchronization of the engine with the disk (Reload button / Cmd+R): assets →
-    // scripts → world, everything by mtime — whatever has not changed on disk is not touched.
+    // A single synchronization of the engine with the disk (Reload button / Cmd+R): project
+    // settings → assets → scripts → world, everything by mtime — whatever has not changed on disk is not touched.
     // Conflict (the file is newer AND there are unsaved edits in memory) — a question for each
     // asset, Cancel aborts the rest of the operation. context/architecture.md.
     if (m_sceneState != SceneState::EDIT) { stop(); }
     auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
     if (!assetHandler) { return; }
+    // The settings go first: a changed set of shader features recompiles the shaders, and the
+    // assets changed on disk are then read for the new set.
+    bool settingsReloaded = false;
+    if (m_loader.isProjectSettingsChangedOnDisk()) {
+        Editor::Document *document = m_editorController ? m_editorController->projectSettingsDocument() : nullptr;
+        SystemTools::SaveChangesChoice choice = SystemTools::SaveChangesChoice::DontSave;
+        if (document && document->isDirty()) {
+            choice = SystemTools::showSaveChangesDialog(
+                "The project settings were changed on disk and have unsaved changes",
+                "Save yours to keep them, or discard to take the disk version?"
+            );
+        }
+        if (choice == SystemTools::SaveChangesChoice::Cancel) { return; }
+        if (choice == SystemTools::SaveChangesChoice::Save) {
+            document->save(); // the editor's edits go to disk
+        } else {
+            // The open tab rereads the file itself (and drops its undo history with the old data).
+            if (document) {
+                document->revert();
+            } else {
+                m_loader.reloadProjectSettings();
+            }
+            settingsReloaded = true;
+            const ProjectModuleSettings &modules = m_loader.projectSettings().get<ProjectModuleSettings>();
+            if (ProjectModules::loadNeeded(modules)) {
+                // A module switched on in the file: its contributions are needed before the asset
+                // registry and the world, so the project opens again — that reads everything
+                // fresh, the rest of the Reload has nothing left to do.
+                LOG_INFO_EDITOR("Reload: the module set has grown, the project is opened again");
+                const path_t projectPath = m_loader.getOpenedProjectPath();
+                runWithSaveCurrentWorldDialog([this, projectPath]() {
+                    saveOpenedProjectWindowState();
+                    m_loader.openProject(projectPath);
+                });
+                return;
+            }
+            if (ProjectModules::restartNeeded(modules)) {
+                LOG_WARN_EDITOR("Reload: a module was switched off in project.json. Restart the editor to drop it.");
+            }
+        }
+    }
     unsigned reloadedAssets = 0;
     for (AssetId id : assetHandler->collectAssetsChangedOnDisk()) {
         if (assetHandler->documents().isAssetChanged(id)) {
@@ -505,12 +546,12 @@ void EditorLayer::reloadFromDisk() {
     if (scriptsReloaded) { m_loader.reloadScriptsDll(); }
     const bool worldReloaded = m_loader.isWorldChangedOnDisk();
     if (worldReloaded) { reloadOpenedWorld(); }
-    if (reloadedAssets == 0 && !scriptsReloaded && !worldReloaded) {
+    if (reloadedAssets == 0 && !scriptsReloaded && !worldReloaded && !settingsReloaded) {
         LOG_INFO_EDITOR("Reload: everything is up to date");
     } else {
         LOG_INFO_EDITOR(
-            "Reload: %u assets%s%s", reloadedAssets, scriptsReloaded ? ", scripts" : "",
-            worldReloaded ? ", world" : ""
+            "Reload: %u assets%s%s%s", reloadedAssets, settingsReloaded ? ", project settings" : "",
+            scriptsReloaded ? ", scripts" : "", worldReloaded ? ", world" : ""
         );
     }
 }

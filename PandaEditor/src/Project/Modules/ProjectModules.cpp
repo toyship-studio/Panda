@@ -73,6 +73,14 @@ bool ProjectModules::restartNeeded(const ProjectModuleSettings &settings) {
     return false;
 }
 
+bool ProjectModules::loadNeeded(const ProjectModuleSettings &settings) {
+    PackageLoader &loader = GameContext::getPackageLoader();
+    for (const BuiltinModule *module : resolve(settings)) {
+        if (loader.find(module->id) == nullptr) { return true; }
+    }
+    return false;
+}
+
 int ProjectModules::load(const ProjectModuleSettings &settings) {
     PackageLoader &loader = GameContext::getPackageLoader();
     const std::vector<const BuiltinModule *> enabled = resolve(settings);

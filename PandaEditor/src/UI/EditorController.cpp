@@ -383,6 +383,10 @@ void EditorController::restartEditor() {
     if (m_bridge) { m_bridge->restartEditor(); }
 }
 
+Document *EditorController::projectSettingsDocument() {
+    return m_editorTabs ? m_editorTabs->documentOfType(PROJECT_SETTINGS_DOCUMENT) : nullptr;
+}
+
 void EditorController::refreshSettingsDocuments() {
     if (!m_editorTabs) { return; }
     for (const char *typeId : {PROJECT_SETTINGS_DOCUMENT, EDITOR_SETTINGS_DOCUMENT}) {

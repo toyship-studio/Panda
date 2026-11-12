@@ -12,12 +12,8 @@ namespace Panda {
 EditorShaderAsset::EditorShaderAsset(
     const path_t &vertexSourcePath, const path_t &fragmentSourcePath, const path_t &projectPath
 ) {
-    ShaderCookRequest request;
-    request.vertexSource = vertexSourcePath;
-    request.fragmentSource = fragmentSourcePath;
-    request.vertexLogical = std::filesystem::relative(vertexSourcePath, projectPath);
-    request.fragmentLogical = std::filesystem::relative(fragmentSourcePath, projectPath);
-    request.projectPath = projectPath;
+    const ShaderCookRequest request =
+        ShaderCookRequest::forProjectShader(vertexSourcePath, fragmentSourcePath, projectPath);
     ShaderCookResult result;
     if (!ShaderCook::cook(request, Foundation::ACTIVE_GRAPHICS_API, result, &m_reflection)) { return; }
     reload(result.cookedVertex, result.cookedFragment);

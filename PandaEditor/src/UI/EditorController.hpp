@@ -66,6 +66,7 @@ class EditorController final : public Editor::EditorHost,
 public:
     // Status indicators of the visibility strip (RAM/VRAM/CPU/GPU from EditorLayer).
     void setStripStatusText(const std::string &text);
+    Document *projectSettingsDocument(); // the open Project Settings tab; null — it is closed
     EditorController();
     ~EditorController() override; // unbinds the process host (Editor::setEditorHost(nullptr))
 

@@ -1,6 +1,7 @@
 #include "AssetHandlerEditor.hpp"
 #include "AssetPmeta.hpp"
 #include "Project/Assets/EditorShaderAsset.hpp"
+#include "Project/Assets/ShaderCook.hpp"
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <Panda/Assets/Fallback/FallbackAssets.hpp>
@@ -314,12 +315,30 @@ AssetHandlerEditor::AssetEditorMeta AssetHandlerEditor::editorMeta(AssetId id) {
     return meta;
 }
 
-void AssetHandlerEditor::noteAssetDiskSync(AssetId id) {
+bool AssetHandlerEditor::assetDiskTime(AssetId id, std::filesystem::file_time_type &time) {
     const path_t relativePath = assetPath(id);
-    if (relativePath.empty()) { return; }
+    if (relativePath.empty()) { return false; }
     std::error_code errorCode;
-    const auto diskTime = std::filesystem::last_write_time(m_projectPath / relativePath, errorCode);
-    if (!errorCode) { m_editorMeta[id].diskTime = diskTime; }
+    time = std::filesystem::last_write_time(m_projectPath / relativePath, errorCode);
+    return !errorCode;
+}
+
+bool AssetHandlerEditor::isShaderStale(AssetId id) {
+    auto info = m_registry.find(id);
+    if (info == m_registry.end() || info->second.type != AssetType::SHADER) { return false; }
+    const path_t vertexPath = assetPath(id);
+    if (vertexPath.empty()) { return false; }
+    return ShaderCook::isStale(
+        ShaderCookRequest::forProjectShader(
+            m_projectPath / vertexPath, m_projectPath / replaceLastChars(vertexPath, "frag.hlsl"), m_projectPath
+        ),
+        Foundation::ACTIVE_GRAPHICS_API
+    );
+}
+
+void AssetHandlerEditor::noteAssetDiskSync(AssetId id) {
+    std::filesystem::file_time_type diskTime;
+    if (assetDiskTime(id, diskTime)) { m_editorMeta[id].diskTime = diskTime; }
 }
 
 void AssetHandlerEditor::setAssetOpenedInTab(AssetId id, bool opened) {
@@ -331,12 +350,11 @@ std::vector<AssetId> AssetHandlerEditor::collectAssetsChangedOnDisk() {
     for (const auto &[id, meta] : m_editorMeta) {
         // An unloaded asset is read fresh on the next access — no Reload is needed.
         if (!isLoaded(id)) { continue; }
-        const path_t relativePath = assetPath(id);
-        if (relativePath.empty()) { continue; }
-        std::error_code errorCode;
-        const auto diskTime = std::filesystem::last_write_time(m_projectPath / relativePath, errorCode);
-        if (errorCode || diskTime <= meta.diskTime) { continue; }
-        changed.push_back(id);
+        // A shader is more than its asset file: the fragment stage and the includes are files
+        // of their own, so it is compared by the text its sources expand to.
+        std::filesystem::file_time_type diskTime;
+        const bool fileChanged = assetDiskTime(id, diskTime) && diskTime > meta.diskTime;
+        if (fileChanged || isShaderStale(id)) { changed.push_back(id); }
     }
     return changed;
 }

@@ -84,7 +84,7 @@ ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
 ProjectLoader::~ProjectLoader() {
     saveSession();
     saveEditorSettings();
-    saveProjectSettings();
+    saveProjectSettings(false);
     m_assetHandler->closeProject();
     Panda::StaticResources::deinitStaticResources();
     GameContext::setScriptEngine(nullptr);
@@ -166,7 +166,7 @@ void ProjectLoader::openProject(const path_t &path) {
         // destroyed by the code of an already unloaded library. The registry of the old project is
         // saved and closed by the handler's closeProject; the UI is not notified (no flicker of the
         // start screen) — the panels are updated by loaderDidLoadProject of the new project.
-        saveProjectSettings();
+        saveProjectSettings(false);
         m_world->clear();
         m_assetHandler->closeProject();
     }
@@ -187,6 +187,7 @@ void ProjectLoader::openProject(const path_t &path) {
             m_projectSession = ProjectSession();
         }
     }
+    noteProjectSettingsDiskSync();
     // The module set of the project (ProjectModules): the contributions are needed before the asset
     // registry and the world. Engine parts are not unloaded — the modules of the previous project
     // stay, new ones are added; the live world gets pools for the new component types.
@@ -303,6 +304,19 @@ ScriptEngineConfig ProjectLoader::makeScriptsConfig() {
         projectName,
         m_projectPath / ".Panda" / "ScriptCache"
     };
+}
+
+void ProjectLoader::noteProjectSettingsDiskSync() {
+    std::error_code errorCode;
+    const auto diskTime = std::filesystem::last_write_time(projectSettingsPath(), errorCode);
+    m_projectSettingsDiskTime = errorCode ? std::filesystem::file_time_type{} : diskTime;
+}
+
+bool ProjectLoader::isProjectSettingsChangedOnDisk() {
+    if (m_projectPath.empty()) { return false; }
+    std::error_code errorCode;
+    const auto diskTime = std::filesystem::last_write_time(projectSettingsPath(), errorCode);
+    return !errorCode && diskTime > m_projectSettingsDiskTime;
 }
 
 bool ProjectLoader::isWorldChangedOnDisk() {
@@ -548,7 +562,7 @@ void ProjectLoader::syncWorldPaths() {
 }
 
 void ProjectLoader::closeProject() {
-    saveProjectSettings();
+    saveProjectSettings(false);
     m_assetHandler->closeProject();
     SettingsMapper::reset(SettingsScope::Project, m_projectSettings);
     m_projectSession = ProjectSession();
@@ -567,12 +581,16 @@ LastOpenedProjectWindowState ProjectLoader::getLastWindowState() {
     return m_session.windowState;
 }
 
-bool ProjectLoader::saveProjectSettings() {
+bool ProjectLoader::saveProjectSettings(bool overwriteDiskEdits) {
     if (m_projectPath.empty()) { return false; }
     const path_t dataDirectory = projectDataDirectory(m_projectPath);
     syncWorldPaths();
     bool saved = true;
-    {
+    if (!overwriteDiskEdits && isProjectSettingsChangedOnDisk()) {
+        // The file is the contract: an edit made outside the editor and not taken by Reload yet
+        // is not overwritten by a save nobody asked for (closing or switching the project).
+        LOG_WARN_EDITOR("PROJECT SETTINGS: project.json was changed on disk, the editor's copy is not written");
+    } else {
         std::ofstream file(dataDirectory / "project.json");
         if (file.is_open()) {
             SettingsMapper::save(SettingsScope::Project, m_projectSettings, m_jsonEncoder, file);
@@ -580,6 +598,8 @@ bool ProjectLoader::saveProjectSettings() {
             LOG_ERROR("CANNOT WRITE THE PROJECT SETTINGS AT %s", (dataDirectory / "project.json").string().c_str());
             saved = false;
         }
+        file.close();
+        noteProjectSettingsDiskSync();
     }
     m_projectSession.camera = m_output->getEditorCameraSettings();
     if (!writeJson(dataDirectory / "session.json", m_jsonEncoder, m_projectSession)) {
@@ -600,6 +620,7 @@ void ProjectLoader::reloadProjectSettings() {
     if (file.is_open() && !SettingsMapper::load(SettingsScope::Project, m_projectSettings, m_jsonDecoder, file)) {
         LOG_ERROR_EDITOR("PROJECT SETTINGS FILE IS BROKEN: %s", (m_projectPath / ".Panda" / "project.json").string().c_str());
     }
+    noteProjectSettingsDiskSync();
     syncWorldPaths(); // the open world stays the start world when the file has none
     if (applyShaderFeatures()) {
         ShaderCook::cookAndReloadSceneShaders(m_projectPath);

@@ -13,6 +13,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <sstream>
 
 namespace Panda {
 
@@ -50,6 +51,31 @@ namespace {
             if (begin < end) { colorFields.emplace_back(decl.substr(begin, end - begin)); }
         }
         return colorFields;
+    }
+
+    // The file the expanded text of a stage is kept in (D3D11 cooks the expanded source itself).
+    path_t expandedPath(const path_t &logical, const path_t &projectPath, Foundation::GraphicsAPI backend) {
+        if (backend == Foundation::GraphicsAPI::D3D11) {
+            return projectPath / AssetImporterBase::getCookedShaderAssetPath(logical, backend);
+        }
+        return projectPath / AssetImporterBase::getIntermediateShaderExpandedPath(logical);
+    }
+
+    bool isStageStale(
+        const path_t &source,
+        const path_t &logical,
+        const path_t &projectPath,
+        Foundation::GraphicsAPI backend,
+        const std::string &prelude
+    ) {
+        const std::optional<std::string> text =
+            MirenTools::expandHlslIncludes(source, {AssetImporterBase::getShaderIncludeRoot()}, prelude);
+        if (!text) { return true; }
+        std::ifstream file(expandedPath(logical, projectPath, backend), std::ios::binary);
+        if (!file.is_open()) { return true; }
+        std::ostringstream cooked;
+        cooked << file.rdbuf();
+        return cooked.str() != *text;
     }
 
     bool cookStage(
@@ -98,7 +124,25 @@ namespace {
 
 } // namespace
 
+ShaderCookRequest ShaderCookRequest::forProjectShader(
+    const path_t &vertexSource, const path_t &fragmentSource, const path_t &projectPath
+) {
+    ShaderCookRequest request;
+    request.vertexSource = vertexSource;
+    request.fragmentSource = fragmentSource;
+    request.vertexLogical = std::filesystem::relative(vertexSource, projectPath);
+    request.fragmentLogical = std::filesystem::relative(fragmentSource, projectPath);
+    request.projectPath = projectPath;
+    return request;
+}
+
 namespace ShaderCook {
+
+    bool isStale(const ShaderCookRequest &request, Foundation::GraphicsAPI backend) {
+        const std::string prelude = featuresPrelude();
+        return isStageStale(request.vertexSource, request.vertexLogical, request.projectPath, backend, prelude) ||
+               isStageStale(request.fragmentSource, request.fragmentLogical, request.projectPath, backend, prelude);
+    }
 
     std::string featuresPrelude() {
         return ShaderInterface::featuresInclude(ShaderFeatures::enabled());

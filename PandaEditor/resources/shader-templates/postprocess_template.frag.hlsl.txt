@@ -3,14 +3,12 @@
 //   originalTexture — frame before the whole chain,
 //   emissiveTexture — scene emissive buffer (what glows and in which color),
 //   depthTexture    — scene depth (non-linear; linearize with cameraNearFar),
-//   POST_DATA       — resolutionTime.xy = pass target size px, .z = time sec; cameraNearFar.xy = near/far.
+//   PANDA_POST      — resolutionTime.xy = pass target size px, .z = time sec; cameraNearFar.xy =
+//                     near/far; sunScreen.xy = the sun in UV, .z = 1 when it is in the frame.
 // The chain runs in LINEAR HDR (values may exceed 1.0); the engine applies the final
 // tonemap + sRGB itself after the chain — do not gamma-correct here.
 // Any extra uniforms/textures you declare become editable material fields.
-cbuffer POST_DATA {
-    float4 resolutionTime;
-    float4 cameraNearFar;
-};
+#include "panda/post.hlsli"
 
 Texture2D inputTexture;
 SamplerState inputTextureSampler;

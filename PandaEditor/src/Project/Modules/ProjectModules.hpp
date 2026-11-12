@@ -49,6 +49,9 @@ public:
     // switched on that is not registered, or switched off but registered. Modules are linked
     // statically and contributions are never unloaded, so the change needs a restart of the editor.
     static bool restartNeeded(const ProjectModuleSettings &settings);
+    // True when the settings enable a module this session has not registered yet: it loads when
+    // the project opens, without a restart.
+    static bool loadNeeded(const ProjectModuleSettings &settings);
 };
 
 } // namespace Panda

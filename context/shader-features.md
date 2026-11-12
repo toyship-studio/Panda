@@ -57,7 +57,8 @@ once, in the catalog.
   has every feature; the project template of the editor writes the lean set (`lights`, `shadows`,
   `environment`). The dependencies are closed on reading: `shadows` or `occlusion` bring `lights`,
   switching `lights` off switches them off.
-- The editor applies the set on project open and on save of the project settings
+- The editor applies the set on project open, on save of the project settings and on Reload
+  when `project.json` is newer than the editor's last read or write
   (`ProjectLoader::applyShaderFeatures`): it becomes `ShaderFeatures::enabled()`, the set of the
   process; a changed set recooks the scene shaders and reloads the loaded project shaders.
 - The export writes the set into the manifest (`RuntimeManifest::shaderFeatures`); the runtime
@@ -113,11 +114,11 @@ backend, each step by mtime; a changed set changes the expanded text and recompi
 - GPU time is measured per frame only (`Miren::getGpuStats`, the status strip of the editor);
   the cost of a feature is read as the difference with the feature off. Per-view GPU timers are
   not built.
-- Found by the review of November 2026 and not fixed: the compiler's diagnostics (the `#error` of
-  a feature that is off included) go to the stderr of the editor, not to the Output panel; a
-  block declared by hand under a retired name (`SCENE_LIGHTS`, `POST_DATA`, …) or under
-  `PANDA_<X>` of a feature that is off compiles and stays unbound, and the editor's postprocess
-  shader template still declares `POST_DATA`; the material inspector does not say that a system
-  field belongs to a feature that is off.
+- Found by the review of November 2026 and not fixed: a block declared by hand under a name the
+  engine does not bind, or under `PANDA_<X>` of a feature that is off, compiles and stays
+  unbound; the material inspector does not say that a system field belongs to a feature that is
+  off.
+- Reload does not recook the engine's scene shaders: an engine include edited while the editor
+  runs reaches them when the project opens.
 - A feature added to the engine later is off for a project whose settings list the features
   explicitly, and on for a project without the section.

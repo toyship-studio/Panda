@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -18,6 +19,45 @@ namespace MirenTools {
 namespace {
 
     std::string s_slangcExecutable = "slangc";
+
+    // Runs a command and returns its exit code; `output` gets what it printed (stdout and stderr):
+    // a compiler's diagnostics belong in the log of the caller, not in the terminal of the process.
+    int runCommand(const std::string &command, std::string &output) {
+#ifdef _WIN32
+        // cmd.exe strips the outer pair of quotes of a command that starts with one.
+        FILE *pipe = _popen(("\"" + command + " 2>&1\"").c_str(), "r");
+#else
+        FILE *pipe = popen((command + " 2>&1").c_str(), "r");
+#endif
+        if (!pipe) { return -1; }
+        char buffer[1024];
+        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            output += buffer;
+        }
+#ifdef _WIN32
+        return _pclose(pipe);
+#else
+        return pclose(pipe);
+#endif
+    }
+
+    // The lines a compiler printed, each as a message of the editor log (the Output panel).
+    void logCompilerOutput(const std::string &output, bool failed) {
+        std::istringstream lines(output);
+        std::string line;
+        while (std::getline(lines, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+                line.pop_back();
+            }
+            // Lines of pure decoration (the frame a compiler draws around a snippet) are dropped.
+            if (std::none_of(line.begin(), line.end(), [](unsigned char c) { return std::isalnum(c); })) { continue; }
+            if (failed) {
+                LOG_ERROR_EDITOR("%s", line.c_str());
+            } else {
+                LOG_WARN_EDITOR("%s", line.c_str());
+            }
+        }
+    }
 
     std::string getSlangStage(ShaderType shaderType) {
         if (shaderType == ShaderType::VERTEX) { return "vertex"; }
@@ -226,10 +266,13 @@ bool compileHlslShaderToSpv(const path_t &input, const path_t &output, ShaderTyp
                              "\" \"" + input.string() + "\"";
 
     LOG_INFO("EXECUTING: %s", compileCmd.c_str());
-    int result = system(compileCmd.c_str());
+    // The diagnostics point into the sources (the #line directives of the include expander).
+    std::string compilerOutput;
+    const int result = runCommand(compileCmd, compilerOutput);
+    logCompilerOutput(compilerOutput, result != 0);
 
     if (result != 0) {
-        LOG_ERROR_EDITOR("Error compiling HLSL to SPIR-V (code: %d)", result);
+        LOG_ERROR_EDITOR("Shader compilation failed: %s", input.filename().string().c_str());
         if (std::filesystem::exists(output)) { std::filesystem::remove(output); }
         return false;
     }

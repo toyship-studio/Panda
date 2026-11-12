@@ -41,7 +41,9 @@ public:
     void saveWindowState(LastOpenedProjectWindowState state);
     // The sections of the project scope and the project session (project.json, session.json);
     // false — project.json could not be written.
-    bool saveProjectSettings();
+    // overwriteDiskEdits = false — a save nobody asked for (closing or switching the project):
+    // a project.json changed on disk since the editor read it is left alone.
+    bool saveProjectSettings(bool overwriteDiskEdits = true);
     // The project scope rereads project.json (the Don't Save of the project settings document).
     void reloadProjectSettings();
     void openProject(const path_t &path);
@@ -50,6 +52,8 @@ public:
     void reloadScriptsDll();
     // The world/scripts have "overtaken" the engine on disk (mtime is newer than the moment of
     // load/save) — sources for the unified Reload synchronization (context/architecture.md).
+    // project.json is newer than what the editor last read or wrote (an edit by hand or an agent).
+    bool isProjectSettingsChangedOnDisk();
     bool isWorldChangedOnDisk();
     bool isScriptsChangedOnDisk();
     void newWorld();
@@ -102,6 +106,8 @@ private:
     Rain::JsonDecoder m_jsonDecoder;
     // mtime at the moment of the editor's last synchronization with the disk (the Reload contract).
     std::filesystem::file_time_type m_worldDiskTime{};
+    std::filesystem::file_time_type m_projectSettingsDiskTime{};
+    void noteProjectSettingsDiskSync();
     std::filesystem::file_time_type m_scriptsDllTime{};
     TypeContext m_editorSettings;
     EditorSession m_session;
