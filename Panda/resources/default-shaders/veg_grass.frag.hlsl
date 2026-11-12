@@ -25,7 +25,7 @@ cbuffer MATERIAL_FIELDS {
     float viewFade;
     // Wind (vertex shader): strength and gustiness are SYSTEM fields (the engine sets the fields
     // of the same name in all materials — the scene wind, SceneWind); direction and phases come
-    // from PANDA_FIELDS. The three-layer model is shared with the foliage and the terrain grass.
+    // from PANDA_WIND. The three-layer model is shared with the foliage and the terrain grass.
     float windStrength;
     float windGustiness;
     // Tuft gradient root→tip (dark root = volume): by the height fraction COLOR_0.a.
@@ -36,8 +36,8 @@ cbuffer MATERIAL_FIELDS {
     float4 grassFade;
 };
 
-#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see shadow.hlsli)
-#include "panda/sun.hlsli"
+#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see panda/shadows.hlsli)
+#include "panda/lighting.hlsli"
 
 Texture2D baseColorTexture;
 SamplerState baseColorTextureSampler;
@@ -105,21 +105,21 @@ PSOutput main(PSInput input) {
 
     float3 lighting = float3(0.0, 0.0, 0.0);
     // Occlusion volume: a tuft under the canopy darkens (sampled at the root).
-    const float2 volume = volumeOcclusion(input.rootPos);
-    if (directionalDirectionIntensity.w > 0.0) {
+    const float2 volume = sceneOcclusion(input.rootPos);
+    if (sunDirectionIntensity.w > 0.0) {
         // Soft half-filled diffuse: grass without harsh light and shade, the shadowed side does
         // not go black. The CSM shadow is taken at the tuft ROOT (a card swaying in the wind would
         // pass through shadow edges and flicker); the normal offset points up, as for the terrain
         // grass (the card normal faces sideways, the acne comes from the ground under the tuft).
         const float shade =
-            0.25 + 0.75 * saturate(dot(fieldNormal, normalize(directionalDirectionIntensity.xyz)));
+            0.25 + 0.75 * saturate(dot(fieldNormal, normalize(sunDirectionIntensity.xyz)));
         // The sample is taken 0.2 m ABOVE the root: the root lies on the terrain caster, the
         // depths coincide at the edge of an atlas texel — requantization on camera movement would
         // blink the whole tuft (acne). The lift takes the point out of the depth fight.
-        lighting += directionalColor.rgb * directionalDirectionIntensity.w * albedo * shade *
+        lighting += sunColor.rgb * sunDirectionIntensity.w * albedo * shade *
                     sunVisibility(input.rootPos + float3(0.0, 0.2, 0.0), fieldNormal, volume.y);
     }
-    const int pointLightCount = (int)sceneLightCounts.x;
+    const int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         const float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
@@ -137,7 +137,7 @@ PSOutput main(PSInput input) {
     }
 
     const float3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo *
-                           lerp(1.0, volume.x, occlusionParams.x);
+                           ambientOcclusion(volume);
     const float3 color = (ambient + lighting) * input.fragLight;
 
     PSOutput output;

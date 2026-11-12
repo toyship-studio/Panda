@@ -14,6 +14,7 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/WorldSettings.hpp>
 #include <Panda/Renderer/SceneWind.hpp>
+#include <Panda/Renderer/ShaderFeatures.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -344,6 +345,35 @@ namespace {
         updateRestart();
     }
 
+    // The shader features of the project (context/shader-features.md): the standard scene data the
+    // materials get. A feature that is off is not computed, not bound and not compiled into the
+    // shaders. The set applies when the project settings are saved: the scene shaders of the engine
+    // and the project shaders recompile for it.
+    void buildProjectRendering(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::ProjectRenderingSettings>(store.get<Panda::ProjectRenderingSettings>());
+        auto emit = [data] { commitSettings<Panda::ProjectRenderingSettings>(SettingsScope::Project, *data); };
+        const Panda::ShaderFeatureSet current = Panda::ShaderFeatureSet::fromNames(data->features);
+        for (const Panda::ShaderFeatureInfo &info : Panda::ShaderFeatures::catalog()) {
+            const Panda::ShaderFeature feature = info.feature;
+            std::string title = info.name;
+            title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
+            addToggleRow(section, title.c_str(), current.has(feature), [data, emit, feature](bool on) {
+                // The dependencies come along: shadows and occlusion read the sun of the lights
+                // (the rows of the dependent features catch up when the section is rebuilt).
+                Panda::ShaderFeatureSet set = Panda::ShaderFeatureSet::fromNames(data->features);
+                set.set(feature, on);
+                data->features = set.names();
+                emit();
+            });
+            section.addContent(makeFormHint(info.cost));
+        }
+        section.addContent(makeFormHint(
+            "Shadows and occlusion need lights: switching lights off switches them off too. Applied when the project "
+            "settings are saved: the shaders of the project recompile for the set. A shader that includes a feature "
+            "the project has off fails to compile and says so."
+        ));
+    }
+
 } // namespace
 
 void setThemeProvider(ThemeProvider provider) {
@@ -363,6 +393,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::Editor, "APPEARANCE", buildAppearance});
     extensions.settingsSections.push_back({SettingsScope::Editor, "UPDATES", buildUpdates});
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
+    extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});
     extensions.settingsSections.push_back({SettingsScope::Project, "MODULES", buildProjectModules});
 }
 

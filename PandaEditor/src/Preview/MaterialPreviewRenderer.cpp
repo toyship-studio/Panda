@@ -4,6 +4,7 @@
 #include <Panda/Assets/StaticResources.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
+#include <Panda/Renderer/SceneBlocks.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderBlocks.hpp>
 #include <Panda/Renderer/Vertex.hpp>
 
@@ -161,13 +162,13 @@ bool MaterialPreviewRenderer::renderToView(AssetRef<MaterialAsset> material, Mir
         if (rules[i].bindInputs != nullptr) { rules[i].bindInputs(); }
         break;
     }
-    const SceneLightsUbo lightingUbo = SceneLightsUbo::from(m_lighting);
-    Miren::addInputUniformBuffer("SCENE_LIGHTS", &lightingUbo, sizeof(lightingUbo));
-    // The system light textures are placeholders (preview without shadows; the shader never gets
-    // to the sample, but the slots must be filled).
-    Renderer3D::bindSystemLightTextures(material->getShaderAsset(), nullptr, nullptr);
-    const VertexUbo vertUbo{m_viewProj, glm::mat4(1.f)};
-    Miren::addInputUniformBuffer("UBO_VERT", &vertUbo, sizeof(vertUbo));
+    // The scene blocks of the preview lighting; the system texture slots get placeholders (a
+    // preview without shadows: the shader never gets to the sample, but a declared slot must be
+    // filled).
+    SceneBlocks scene;
+    scene.assemble(m_lighting);
+    scene.bind(viewId);
+    bindBlock(DrawUbo{m_viewProj, glm::mat4(1.f)});
     Miren::setVertexBuffer(sphere);
     Miren::setIndexBuffer(m_indexBuffer, 0, m_indicesCount);
     Miren::submit(viewId, shader);

@@ -100,6 +100,11 @@ void setDepthBias(float constant, float slope);
 // the slots are resolved at render time by the layout of the program passed to submit.
 void addInputUniformBuffer(std::string_view name, const void *value, size_t size);
 void addInputTexture(std::string_view name, TextureHandle handle);
+// View inputs: what every draw of the view reads (camera, lights) is given once per frame instead
+// of once per draw. They live for the current frame; each draw of the view gets them before its
+// own inputs, so a draw input of the same name wins for that draw.
+void addViewInputUniformBuffer(ViewId id, std::string_view name, const void *value, size_t size);
+void addViewInputTexture(ViewId id, std::string_view name, TextureHandle handle);
 void setVertexBuffer(VertexBufferHandle handle, intptr_t offset = 0);
 void setIndexBuffer(IndexBufferHandle handle, intptr_t offset, size_t count);
 void setVertexLayout(VertexLayoutHandle handle);

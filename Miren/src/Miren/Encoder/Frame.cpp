@@ -74,6 +74,13 @@ void Frame::addInput(std::string_view name, RenderPassInputType type, const void
     draw->addInput(name, type, value, size);
 }
 
+void Frame::addViewInput(
+    ViewId id, std::string_view name, RenderPassInputType type, const void *value, size_t size
+) {
+    PassInput input(name, type, const_cast<void *>(value), size);
+    m_viewInputs[id].writeInput(input);
+}
+
 void Frame::setScissorRect(Rect rect) {
     RenderPass *draw = getCurrentDrawCall();
     if (!draw) { return; }
@@ -174,6 +181,9 @@ void Frame::reset() {
     m_indexBuffersFreeHandle.reset();
     m_preCommandQueue.reset();
     m_postCommandQueue.reset();
+    for (RenderPassInputs &inputs : m_viewInputs) {
+        inputs.reset();
+    }
     RenderPass &draw = m_drawCalls[m_drawCallsCount];
     draw.reset();
 }

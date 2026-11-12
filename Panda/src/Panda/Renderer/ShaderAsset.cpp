@@ -9,21 +9,15 @@ ShaderAsset::ShaderAsset()
 
 ShaderAsset::ShaderAsset(const path_t &vertexBinPath, const path_t &fragmentBinPath)
     : Asset(AssetType::SHADER)
-    , m_handle(MIREN_INVALID_HANDLE) {
-    create(vertexBinPath, fragmentBinPath);
-}
+    , m_vertexBinPath(vertexBinPath)
+    , m_fragmentBinPath(fragmentBinPath)
+    , m_handle(MIREN_INVALID_HANDLE) {}
 
-ShaderAsset::ShaderAsset(ShaderAsset &&other)
-    : Asset(AssetType::SHADER)
-    , m_usesSceneLights(other.m_usesSceneLights)
-    , m_usesShadowMap(other.m_usesShadowMap)
-    , m_usesOcclusionVolume(other.m_usesOcclusionVolume) {
-    m_handle = other.m_handle;
-    other.m_handle = MIREN_INVALID_HANDLE;
-}
-
-void ShaderAsset::create(const path_t &vertexBinPath, const path_t &fragmentBinPath) {
-    m_handle = Miren::createProgram(Panda::AssetImporterBase::loadShaderProgram(vertexBinPath, fragmentBinPath));
+void ShaderAsset::reload(const path_t &vertexBinPath, const path_t &fragmentBinPath) {
+    if (m_handle.isValid()) { Miren::deleteProgram(m_handle); }
+    m_handle = MIREN_INVALID_HANDLE;
+    m_vertexBinPath = vertexBinPath;
+    m_fragmentBinPath = fragmentBinPath;
 }
 
 ShaderAsset::~ShaderAsset() {
@@ -31,6 +25,9 @@ ShaderAsset::~ShaderAsset() {
 }
 
 Miren::ProgramHandle ShaderAsset::getMirenHandle() {
+    if (!m_handle.isValid() && !m_vertexBinPath.empty()) {
+        m_handle = Miren::createProgram(AssetImporterBase::loadShaderProgram(m_vertexBinPath, m_fragmentBinPath));
+    }
     return m_handle;
 }
 

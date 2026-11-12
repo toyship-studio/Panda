@@ -1,5 +1,4 @@
 #include "Panda/Renderer/Renderer2D.hpp"
-#include "Panda/Renderer/Renderer3D.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
@@ -140,8 +139,7 @@ void Renderer2D::flush() {
     }
     if (!material) { return; }
     Miren::ProgramHandle shaderHandle = material->getShaderAsset()->getMirenHandle();
-    const VertexUbo uboVert{m_viewProj, glm::mat4(1.f)};
-    Miren::addInputUniformBuffer("UBO_VERT", &uboVert, sizeof(uboVert));
+    bindBlock(DrawUbo{m_viewProj, glm::mat4(1.f)});
 
     Miren::TransientVertexBuffer tvb;
     Miren::allocTransientVertexBuffer(&tvb, m_drawData.vbSize);
@@ -152,16 +150,7 @@ void Renderer2D::flush() {
     memcpy(tib.data, m_drawData.indices, m_drawData.ibSize);
 
     material->bindFields();
-    // Sprites on lit/pbr materials require the scene lighting (an unbound UBO in GL is undefined:
-    // a garbage pointLightCount hung the GPU).
-    if (m_mode == RenderingMode::DEFAULT && Renderer3D::shaderUsesSceneLights(material->getShaderAsset())) {
-        const SceneLightsUbo lightingUbo = SceneLightsUbo::from(m_sceneLighting);
-        Miren::addInputUniformBuffer("SCENE_LIGHTS", &lightingUbo, sizeof(lightingUbo));
-        Renderer3D::bindSystemLightTextures(
-            material->getShaderAsset(), m_sceneLighting.shadows.atlas.get(), m_sceneLighting.occlusion.volume.get(),
-            m_sceneLighting.environment.map.get()
-        );
-    }
+    // Sprites on lit materials read the scene blocks of the view (Renderer3D::setLighting).
     if (m_mode == RenderingMode::DEFAULT && m_drawData.textureOverride) {
         TextureAsset *texture = m_drawData.textureOverride.get();
         if (texture) { Miren::addInputTexture("baseColorTexture", texture->getMirenHandle()); }
@@ -180,10 +169,6 @@ void Renderer2D::flush() {
 
 void Renderer2D::setViewProj(glm::mat4 viewProj) {
     m_viewProj = viewProj;
-}
-
-void Renderer2D::setLighting(const WorldLightingData &lighting) {
-    m_sceneLighting = lighting;
 }
 
 } // namespace Panda

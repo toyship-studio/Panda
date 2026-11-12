@@ -65,9 +65,7 @@ public:
     const StageSlots *findSamplerForTexture(const char *textureName);
 
 private:
-    const StageSlots *findSlots(
-        const std::unordered_map<std::string, StageSlots> &map, const char *name, const char *kind, bool logMissing
-    );
+    const StageSlots *findSlots(const std::unordered_map<std::string, StageSlots> &map, const char *name);
     void captureReflection(void *reflection);
 
     void *m_vertexFunction;   // id<MTLFunction>
@@ -77,7 +75,6 @@ private:
     std::unordered_map<std::string, StageSlots> m_buffers;
     std::unordered_map<std::string, StageSlots> m_textures;
     std::unordered_map<std::string, StageSlots> m_samplers;
-    std::vector<std::string> m_missingInputLog; // names already reported, log once
 };
 
 } // namespace Miren

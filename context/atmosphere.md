@@ -88,14 +88,15 @@ and auto exposure, and the authoring in VegetationLab.
 - **The sky light texture** `skyLight`: a 32 × 16 equirectangular irradiance map (the sky map
   convolved with the cosine lobe; sampled by the surface normal with the same mapping) plus one
   row of data texels: the sun transmittance, the irradiance of an upward normal, the average sky
-  radiance. A system light input like `shadowMap` and `occlusionVolume`
-  (`ShaderAsset::setSystemInputs`, `Renderer3D::bindSystemLightTextures`, reflection by name for
-  project shaders, `AssetInfo::ShaderSettings` for export). The alternative is 9 spherical
+  radiance. A system texture of a new shader feature (`atmosphere`), like `shadowMap` of
+  `shadows` and `occlusionVolume` of `occlusion` (`context/shader-features.md`: the catalog
+  entry names the texture, `SceneBlocks` binds it). The alternative is 9 spherical
   harmonics coefficients (Photon); they win only when a bent normal arrives with GTAO, and the
   choice is made at the start of stage A.
 - **Settings** are sections of the world scope through the settings registry (`plugins.md`):
   `atmosphere` (stage A) and `fog` (stage B), with their own keys in `.world` and panels in
-  Settings. `SCENE_LIGHTS` grows at the end only, by one `atmosphereParams` float4.
+  Settings. The data is a new block `PANDA_ATMOSPHERE` of the feature, not a field of
+  `PANDA_LIGHTS`: a new capability is a new feature.
 - **Energy.** The model yields the sky irradiance and the sun irradiance in the same units; the
   sky share of the sun that the Occlusion Volume expects (1/5 to 1/10, `lighting.md`) is what a
   clear sky gives at noon, so no extra constant is needed. The ambient of the world
@@ -212,7 +213,7 @@ over the terrain with a 32 m column (canopy base and top, density from the tree 
 the sky visibility and the sun transmittance at the ground and at the canopy top (a 2D sweep
 towards the sun through the columns, Beer–Lambert over density × chord). Bound next to
 `occlusionVolume`; `volumeOcclusion()` returns the far values outside the window and blends them
-in over the fade radius, so the consumers (`sun.hlsli`, the eight shaders) do not change.
+in over the fade radius, so the consumers (`lighting.hlsli`, the lit shaders) do not change.
 
 What C gives: no black leaves and no dark noise in a crown; a crown that is a volume with a
 glowing rim against the sun; grass that is not a flat field; forests of varying hue over valleys

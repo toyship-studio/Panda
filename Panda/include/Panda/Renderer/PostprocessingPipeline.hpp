@@ -44,7 +44,7 @@ struct PostprocessingFrameInputs {
 //   originalTexture — the frame before the chain,
 //   emissiveTexture — the scene emissive buffer,
 //   depthTexture    — the scene depth,
-//   POST_DATA       — the PostDataUbo block (`#include "panda/post_data.hlsli"` or a prefix).
+//   PANDA_POST      — the PostUbo block (`#include "panda/post.hlsli"`).
 // The pass vertex shader gets the quad as position/uv as is (see the postprocess.vert template).
 class PostprocessingPipeline final {
 public:

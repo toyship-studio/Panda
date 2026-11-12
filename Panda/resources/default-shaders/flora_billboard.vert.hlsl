@@ -4,7 +4,7 @@
 // of the mesh that an observer would see. At the border of the view sectors the content is
 // CROSSFADED between two adjacent tiles (the weight goes to the frag): rotating around the tree
 // does not make the image pop.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 // Billboard parameters are runtime fields of the material (floraBillboardMaterial), fed by the
 // owner per species before submit. The MATERIAL_FIELDS composition is the same as in the frag

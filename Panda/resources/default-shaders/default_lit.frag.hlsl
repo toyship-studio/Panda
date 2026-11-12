@@ -11,7 +11,7 @@ cbuffer MATERIAL_FIELDS {
     float emissiveIntensity; // HDR: glow multiplier (may be > 1)
 };
 
-#include "panda/sun.hlsli"
+#include "panda/lighting.hlsli"
 
 Texture2D baseColorTexture;
 SamplerState baseColorTextureSampler;
@@ -94,12 +94,12 @@ PSOutput main(PSInput input) {
     // the sample is half a cell outward along the normal — a start from the surface: the
     // object's own bark/body does not dim its own upper surfaces.
     const float2 volume =
-        volumeOcclusion(input.worldPos + normalize(input.worldNormal) * (0.5 * occlusionTexel.w));
-    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * lerp(1.0, volume.x, occlusionParams.x);
+        sceneOcclusion(input.worldPos + normalize(input.worldNormal) * (0.5 * occlusionSurfaceOffset()));
+    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * ambientOcclusion(volume);
 
-    if (directionalDirectionIntensity.w > 0.0) {
-        float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
-        float3 radiance = directionalColor.rgb * directionalDirectionIntensity.w *
+    if (sunDirectionIntensity.w > 0.0) {
+        float3 lightDirection = normalize(sunDirectionIntensity.xyz);
+        float3 radiance = sunColor.rgb * sunDirectionIntensity.w *
                           sunVisibility(input.worldPos, input.worldNormal, volume.y);
         float diffuse = saturate(dot(surfaceNormal, lightDirection));
         float specular = computeSpecular(surfaceNormal, lightDirection, roughness, metallic);
@@ -107,7 +107,7 @@ PSOutput main(PSInput input) {
         lighting += radiance * specular;
     }
 
-    int pointLightCount = (int)sceneLightCounts.x;
+    int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;

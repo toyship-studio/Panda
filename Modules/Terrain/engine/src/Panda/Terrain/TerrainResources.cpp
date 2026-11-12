@@ -173,16 +173,14 @@ namespace Terrain {
                     MaterialField("noiseTexture", MaterialFieldType::TEXTURE, noiseTexture.asBaseAsset())
                 };
                 grassMaterial = handler.createAsset<MaterialAsset>(GRASS_MATERIAL_ID, grassMaterialData, grassShader);
-                // System lighting inputs (the built-in ones have no reflection): lighting, shadow
-                // cascades and the occlusion volume — like the lit templates of the core; the depth
-                // pass goes without them.
-                shader2D->setSystemInputs(true, true, true);
-                shader3D->setSystemInputs(true, true, true);
-                grassShader->setSystemInputs(true, true, true); // grass receives CSM at the tuft root
-                shadowDepthShader->setSystemInputs(false, false);
                 vertexLayout = Miren::createVertexLayout(TerrainVertex::createBufferLayoutData());
 
                 Extensions &extensions = GameContext::getExtensions();
+                // The lit shaders read the scene feature blocks: compiled per project with its
+                // features, like the lit templates of the core (Extensions::sceneShaders).
+                extensions.sceneShaders.add(shader2D, "terrain-shaders/terrain.vert.hlsl", "terrain-shaders/terrain.frag.hlsl");
+                extensions.sceneShaders.add(shader3D, "terrain-shaders/terrain3d.vert.hlsl", "terrain-shaders/terrain3d.frag.hlsl");
+                extensions.sceneShaders.add(grassShader, "terrain-shaders/grass.vert.hlsl", "terrain-shaders/grass.frag.hlsl");
                 extensions.shaderTemplates.add({shader2D.getId(), "Terrain", material2D});
                 extensions.shaderTemplates.add({shader3D.getId(), "Terrain 3D", material3D});
                 extensions.meshLayouts.add({vertexLayout, shadowDepthShader, idsMaterial});

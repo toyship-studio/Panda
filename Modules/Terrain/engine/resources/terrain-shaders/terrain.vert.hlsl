@@ -1,7 +1,7 @@
 // Heightmap terrain (the thin TerrainVertex vertex): layer weights — the splatmap texture
 // (sampled by splatUV in the fragment stage), the tiling UV of the layer textures — from the
 // local position.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

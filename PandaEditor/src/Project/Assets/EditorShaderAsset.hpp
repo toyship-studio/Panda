@@ -9,15 +9,14 @@
 
 namespace Panda {
 
-/// Takes shaders source code as inputs
+/// A project shader from its sources: cooked for the active backend with the project's shader
+/// features (ShaderCook), the fragment reflection gives the material fields.
 class EditorShaderAsset final : public ShaderAsset {
 public:
     EditorShaderAsset(const path_t &vertexSourcePath, const path_t &fragmentSourcePath, const path_t &projectPath);
     ShaderSpirvReflectionData getReflectionData() override;
 
 private:
-    bool isInputNewer(const path_t &inputPath, const path_t &outputPath);
-
     ShaderSpirvReflectionData m_reflection;
 };
 

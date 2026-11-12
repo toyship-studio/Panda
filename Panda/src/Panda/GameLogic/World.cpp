@@ -203,8 +203,7 @@ void World::renderWorld(glm::mat4 &viewProjMtx, glm::mat4 &skyViewProjMtx, glm::
     // collect it for nothing in the picking pass.
     if (m_renderer3d.getMode() == RenderingMode::DEFAULT) {
         const WorldLightingData &lighting = m_lighting.update(*this, viewProjMtx, cameraPosition);
-        m_renderer3d.setLighting(lighting);
-        m_renderer2d.setLighting(lighting);
+        m_renderer3d.setLighting(lighting); // the scene blocks of the view, the sprites read them too
     }
     const bool shadowPass = m_renderer3d.getMode() == RenderingMode::SHADOW_DEPTH;
     const RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProjMtx);

@@ -1,4 +1,4 @@
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

@@ -118,7 +118,7 @@ private:
     void destroyJoint(Entity entity, Joint2DKind kind);
     void destroyJointsOf(Entity entity);
     void recreateJointsTouching(Entity entity);
-    // Body of a registered entity; false — there is none.
+    // Body of a registered entity, or of the compound body a part belongs to; false — there is none.
     bool findBody(Entity entity, RuntimeBodyData &outBody);
 
     EntityBodies<RuntimeBodyData> m_bodies; // registerEntity and removeEntity are the only ones that fill it

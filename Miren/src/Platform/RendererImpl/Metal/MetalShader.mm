@@ -152,7 +152,6 @@ void MetalShader::terminate() {
     m_buffers.clear();
     m_textures.clear();
     m_samplers.clear();
-    m_missingInputLog.clear();
     m_reflected = false;
     if (m_fragmentFunction) {
         [(id)m_fragmentFunction release];
@@ -315,41 +314,31 @@ void *MetalShader::getPipeline(
     return (void *)pipeline;
 }
 
-const MetalShader::StageSlots *MetalShader::findSlots(
-    const std::unordered_map<std::string, StageSlots> &map, const char *name, const char *kind, bool logMissing
-) {
+// null — the program does not declare the input. That is not an error: the engine binds the
+// scene blocks and system textures to every material draw, and a program takes what it declares.
+const MetalShader::StageSlots *
+MetalShader::findSlots(const std::unordered_map<std::string, StageSlots> &map, const char *name) {
     auto it = map.find(name);
     if (it != map.end()) { return &it->second; }
     // dxc names the cbuffer type "type.NAME": if the variable name did not survive to MSL,
     // spirv-cross uses the sanitized type name (as in the GLSL path).
     const std::string typeName = std::string("type_") + name;
     it = map.find(typeName);
-    if (it != map.end()) { return &it->second; }
-    if (!logMissing) { return nullptr; }
-    if (std::find(m_missingInputLog.begin(), m_missingInputLog.end(), name) == m_missingInputLog.end()) {
-        m_missingInputLog.push_back(name);
-        std::string available;
-        for (const auto &pair : map) {
-            if (!available.empty()) { available += ", "; }
-            available += pair.first;
-        }
-        LOG_ERROR("SHADER %s %s NOT FOUND (available: %s)", kind, name, available.c_str());
-    }
-    return nullptr;
+    return it != map.end() ? &it->second : nullptr;
 }
 
 const MetalShader::StageSlots *MetalShader::findBuffer(const char *name) {
-    return findSlots(m_buffers, name, "UBO", true);
+    return findSlots(m_buffers, name);
 }
 
 const MetalShader::StageSlots *MetalShader::findTexture(const char *name) {
-    return findSlots(m_textures, name, "TEXTURE", true);
+    return findSlots(m_textures, name);
 }
 
 const MetalShader::StageSlots *MetalShader::findSamplerForTexture(const char *textureName) {
     // The engine's HLSL convention pairs "name" textures with "nameSampler" states.
     const std::string samplerName = std::string(textureName) + "Sampler";
-    const StageSlots *slots = findSlots(m_samplers, samplerName.c_str(), "SAMPLER", false);
+    const StageSlots *slots = findSlots(m_samplers, samplerName.c_str());
     if (slots) { return slots; }
     // A SamplerState shared by several textures: the shader's only sampler.
     if (m_samplers.size() == 1) { return &m_samplers.begin()->second; }

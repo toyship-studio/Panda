@@ -7,10 +7,11 @@
 //      boosts the amplitude (in a lull the field is almost still).
 // Strength drives the ENERGY, not the lean: the mean bend saturates — the grass does not lie down.
 // Strength/gustiness are system material fields (set by the engine, SceneWind); direction
-// and phases come from PANDA_FIELDS. windStrength=0 disables the branch — parity with default_lit.
+// and phases come from PANDA_WIND (the wind feature; without it the grass stands still).
+// windStrength=0 disables the branch — parity with default_lit.
 // MATERIAL_FIELDS is a full copy of the fragment shader layout (one std140 contract per program).
 
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 cbuffer MATERIAL_FIELDS {
     float4 baseColorFactor;
@@ -33,7 +34,9 @@ cbuffer MATERIAL_FIELDS {
     float4 grassFade;
 };
 
-#include "panda/panda_fields.hlsli"
+#if PANDA_FEATURE_WIND
+#include "panda/wind.hlsli"
+#endif
 
 struct VSInput {
     float3 position : POSITION;
@@ -55,6 +58,7 @@ struct VSOutput {
     float3 rootPos : TEXCOORD6; // tuft root in world space — the CSM shadow is sampled here
 };
 
+#if PANDA_FEATURE_WIND
 // 1D value noise with a PERIOD of period (in cells): random nodes, smoothstep between them.
 // The phases are accumulated on the CPU with an fmod 3003 wrap (SceneWind) — periodizing the hash
 // to the wave period makes the wrap seamless and keeps the sin argument small.
@@ -95,14 +99,17 @@ float3 grassWindOffset(float3 worldPos, float windWeight) {
     const float swing = lean * (0.55 + 0.9 * gust) + flutter * lean * (0.12 + 0.88 * gust) * 0.45;
     return float3(sceneWind.x, 0.0, sceneWind.y) * (swing * windWeight);
 }
+#endif
 
 VSOutput main(VSInput input) {
     VSOutput output;
     float4 worldPos = mul(modelMtx, float4(input.position, 1.0));
+#if PANDA_FEATURE_WIND
     [branch]
     if (windStrength > 0.001) {
         worldPos.xyz += grassWindOffset(worldPos.xyz, input.color.a);
     }
+#endif
     output.position = mul(projViewMtx, worldPos);
     output.worldPos = worldPos.xyz;
     output.worldNormal = normalize(mul((float3x3) modelMtx, input.normal));

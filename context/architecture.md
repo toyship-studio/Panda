@@ -206,7 +206,8 @@ The documents:
   modules);
 - the **project settings** (`ProjectSettingsDocument`): `.Panda/project.json` — the sections of
   the project scope, its own undo stack, dirty until Cmd+S or the close question, revert rereads
-  the file;
+  the file; a saved change of the shader features recompiles the shaders of the project
+  (`context/shader-features.md`);
 - the **editor settings** (`EditorSettingsDocument`): the sections of the editor scope, applied
   and saved by every edit — no dirty state, no undo. The VIEWPORT section is also the Display
   popover of the viewport overlay;

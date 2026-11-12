@@ -11,10 +11,10 @@
 namespace Panda {
 
 // The assembled frame lighting of the world (the counterpart of WorldLightingSettings:
-// settings → data) — the contract for all lit shaders, engine and user ones. In HLSL the block
-// is historically called SCENE_LIGHTS — that is already a contract of user shaders, the name
-// does not change. SceneLightsUbo::from (ShaderInterface/ShaderBlocks.hpp) packs the struct into
-// the block; new fields — only AT THE END (user shaders declare the blob as a prefix).
+// settings → data), the CPU side of the scene. The shaders see it as the scene blocks of the
+// shader features — PANDA_LIGHTS, PANDA_SHADOWS, PANDA_OCCLUSION, PANDA_ENVIRONMENT
+// (ShaderInterface/ShaderBlocks.hpp, SceneBlocks): one block per feature, assembled from this
+// struct once per frame; a feature the project has off is neither assembled nor bound.
 
 static constexpr uint32_t RENDERER_MAX_POINT_LIGHTS = 8;
 

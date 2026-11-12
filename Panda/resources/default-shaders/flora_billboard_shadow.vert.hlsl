@@ -2,7 +2,7 @@
 // turned TOWARDS THE LIGHT (not the camera) — the shadow gets a true tree silhouette from the
 // sun's side, stable when the camera flies around. The atlas view is also from the sun's side.
 // No crossfade: the PCF softness of the shadow hides the view change.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 // The MATERIAL_FIELDS layout is the floraBillboardMaterial contract (bindFields binds the blob
 // as a whole); cameraLocal is the SCENE camera: the mesh zone threshold mirrors the main billboard.
@@ -13,8 +13,14 @@ cbuffer MATERIAL_FIELDS {
     uint doubleSided;   // the quad faces the light (culling off) — read by the render state
 };
 
-// Light direction — SCENE_LIGHTS (bound by bindShadowDepthProgram for the shadow variant).
-#include "panda/scene_lights.hlsli"
+// The light direction — the lights block (bindShadowDepthProgram binds the scene blocks for the
+// shadow variant). Without the lights feature there are no shadows at all; the shader still
+// compiles for the project (a scene shader is cooked for every feature set).
+#if PANDA_FEATURE_LIGHTS
+#include "panda/lights.hlsli"
+#else
+static const float4 sunDirectionIntensity = float4(0.0, 1.0, 0.0, 0.0);
+#endif
 
 struct VSInput {
     float2 corner : POSITION;    // x ∈ [-0.5..0.5], y ∈ [0..1]
@@ -52,7 +58,7 @@ VSOutput main(VSInput input) {
     // The "observer" is the sun: the quad is perpendicular to the light in the horizontal plane,
     // the atlas view is from the light's side. A vertical light degenerates the azimuth — a fixed
     // one is used.
-    float2 toLight = directionalDirectionIntensity.xz;
+    float2 toLight = sunDirectionIntensity.xz;
     if (dot(toLight, toLight) < 1.0e-6) { toLight = float2(1.0, 0.0); }
     float2 forward = normalize(toLight);
     float viewAngle = atan2(forward.y, forward.x);

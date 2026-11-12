@@ -1227,7 +1227,14 @@ void Physics3D::removeEntity(Entity entity) {
 bool Physics3D::findBody(Entity entity, RuntimeBodyData &outBody) {
     if (!isInitialized()) { return false; }
     const RuntimeBodyData *registered = m_bodies.find(entity.getId());
-    if (registered == nullptr) { return false; }
+    if (registered == nullptr) {
+        // A part of a compound body stands for its body: a ray cast reports the part, and the
+        // forces, impulses, velocities and mass a script asks of it are those of the whole body.
+        const auto part = m_compoundParts.find(entity.getId());
+        if (part == m_compoundParts.end()) { return false; }
+        registered = m_bodies.find(part->second.body);
+        if (registered == nullptr) { return false; }
+    }
     outBody = *registered;
     return true;
 }

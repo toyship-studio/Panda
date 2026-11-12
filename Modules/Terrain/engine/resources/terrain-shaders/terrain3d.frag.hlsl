@@ -17,7 +17,7 @@ SamplerState layer3TextureSampler;
 Texture2D layer4Texture;
 SamplerState layer4TextureSampler;
 
-#include "panda/sun.hlsli"
+#include "panda/lighting.hlsli"
 
 // The PS input mirrors the VS output including SV_POSITION: DXBC links the stages by registers.
 struct PSInput {
@@ -51,17 +51,17 @@ PSOutput main(PSInput input) {
     // point lights shine under a tree as well.
     // Occlusion volume: the ground under the canopy gets darker (sky visibility), the sun —
     // transmittance.
-    const float2 volume = volumeOcclusion(input.worldPos);
-    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * lerp(1.0, volume.x, occlusionParams.x);
+    const float2 volume = sceneOcclusion(input.worldPos);
+    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * ambientOcclusion(volume);
 
-    if (directionalDirectionIntensity.w > 0.0) {
-        float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
+    if (sunDirectionIntensity.w > 0.0) {
+        float3 lightDirection = normalize(sunDirectionIntensity.xyz);
         float diffuse = saturate(dot(surfaceNormal, lightDirection));
-        lighting += directionalColor.rgb * directionalDirectionIntensity.w * diffuse *
+        lighting += sunColor.rgb * sunDirectionIntensity.w * diffuse *
                     sunVisibility(input.worldPos, input.worldNormal, volume.y);
     }
 
-    int pointLightCount = (int)sceneLightCounts.x;
+    int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;

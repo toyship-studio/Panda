@@ -94,6 +94,9 @@ private:
     void loadRecentProject();
     void appendRecentProject();
     void finalizeOpenedProject();
+    // The shader features of the "rendering" section → the engine (ShaderFeatures). true — the set
+    // changed: the scene shaders of the engine and the loaded project shaders must recompile.
+    bool applyShaderFeatures();
 
     Rain::JsonEncoder m_jsonEncoder;
     Rain::JsonDecoder m_jsonDecoder;

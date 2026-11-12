@@ -1,7 +1,7 @@
 // Particle: a [-0.5..0.5]² quad from a mat4 instance (the columns are the camera-facing basis ×
 // size and the world position; built by the system on the CPU) and the instance color. The
 // instance stream contract is the same as in lit_instanced: the locations continue the vertex ones.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

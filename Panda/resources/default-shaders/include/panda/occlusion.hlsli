@@ -1,13 +1,11 @@
-// Occlusion volume (OV, context/lighting.md): a chunk grid anchored to the world, a
-// resident window in a single RGBA8 3D texture (R — sky visibility, attenuates ambient;
-// G and B — two sun transmittance buffers: a sun rebake is published into the free channel and
-// blended in with the weight occlusionFocus.w; inside the CSM distance the transmittance has a
-// small weight, beyond it — a full one). The parameters are the tail of SCENE_LIGHTS (occlusion*).
-#include "panda/scene_lights.hlsli"
-
-// Volume of the resident window chunks (a system light input, like shadowMap).
-Texture3D occlusionVolume;
-SamplerState occlusionVolumeSampler;
+// PANDA_OCCLUSION — the Occlusion Volume (shader feature `occlusion`, context/lighting.md): a
+// chunk grid anchored to the world, a resident window in the single RGBA8 3D texture
+// occlusionVolume (R — sky visibility, attenuates ambient; G and B — two sun transmittance
+// buffers: a sun rebake is published into the free channel and blended in with the weight
+// occlusionFocus.w; inside the CSM distance the transmittance has a small weight, beyond it — a
+// full one). With the feature off the include is a compile error; a lit shader takes
+// panda/lighting.hlsli, which degrades without it.
+#include "panda/blocks/occlusion.hlsli"
 
 // Sky visibility (x) and sun transmittance (y) at a point: the chunk by position (the grid is
 // anchored to the world), the slot is the chunk index modulo the window size, the slot tile with a

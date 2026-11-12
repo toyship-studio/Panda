@@ -3,7 +3,6 @@
 #include "Panda/Base/Base.hpp"
 #include "Panda/Assets/MaterialAsset.hpp"
 #include "Panda/Renderer/Vertex.hpp"
-#include "Panda/Renderer/Renderer3D.hpp" // WorldLightingData (lighting for lit/pbr sprites)
 #include "Panda/Renderer/RenderingMode.hpp"
 
 #include <Miren/Miren.hpp>
@@ -74,8 +73,6 @@ public:
     void end();
     Statistics getStats();
     void setViewProj(glm::mat4 viewProj);
-    // Scene lighting for lit/pbr sprite materials (SCENE_LIGHTS must be bound — otherwise UB in GL).
-    void setLighting(const WorldLightingData &lighting);
     Renderer2D &operator=(Renderer2D &other) = delete;
 
 private:
@@ -84,7 +81,6 @@ private:
     static constexpr uint32_t MAX_INDICES_COUNT = 160000;
 
     glm::mat4 m_viewProj;
-    WorldLightingData m_sceneLighting;
     RenderingMode m_mode;
     Miren::ViewId m_viewId;
     DrawCallData m_drawData;

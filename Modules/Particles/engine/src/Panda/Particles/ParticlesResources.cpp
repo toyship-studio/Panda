@@ -21,7 +21,6 @@ namespace {
         shader = handler.createAsset<ShaderAsset>(
             SHADER_ID, "particles-shaders/particles.vert", "particles-shaders/particles.frag"
         );
-        shader->setSystemInputs(false, false); // unlit: no light, shadows or occlusion volume
         MaterialData data;
         data.inputs = {
             MaterialField("baseColorTexture", MaterialFieldType::TEXTURE, StaticResources::whiteTexture.asBaseAsset(), true),

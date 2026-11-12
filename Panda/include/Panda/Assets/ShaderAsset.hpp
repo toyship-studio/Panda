@@ -11,40 +11,18 @@
 
 namespace Panda {
 
-/// Takes only compiled binaries as inputs
+/// A shader program from a cooked pair of stage files. The program is created on its first use:
+/// a shader nothing draws is never compiled, and a pair replaced before the first draw (an engine
+/// scene shader recooked for a project) costs nothing.
 class ShaderAsset : public Asset {
 public:
     ShaderAsset();
     ShaderAsset(const path_t &vertexBinPath, const path_t &fragmentBinPath);
-    ShaderAsset(ShaderAsset &&other);
     ~ShaderAsset();
     Miren::ProgramHandle getMirenHandle();
-    // Whether the shader declares the SCENE_LIGHTS UBO (the renderer binds lights only to such
-    // shaders). Without reflection (binary runtime shaders) — true: the backend ignores a
-    // redundant bind.
-    bool usesSceneLights() const {
-        return m_usesSceneLights;
-    }
-    // Whether it declares shadowMap (cascade shadow atlas, comparison sampler) — same contract.
-    bool usesShadowMap() const {
-        return m_usesShadowMap;
-    }
-    // Whether it declares occlusionVolume (occlusion volume atlas) — same contract.
-    bool usesOcclusionVolume() const {
-        return m_usesOcclusionVolume;
-    }
-    // Whether it declares environmentMap (world environment map: sky, reflections) — same contract.
-    bool usesEnvironmentMap() const {
-        return m_usesEnvironmentMap;
-    }
-    void setSystemInputs(
-        bool sceneLights, bool shadowMap, bool occlusionVolume = false, bool environmentMap = false
-    ) {
-        m_usesSceneLights = sceneLights;
-        m_usesShadowMap = shadowMap;
-        m_usesOcclusionVolume = occlusionVolume;
-        m_usesEnvironmentMap = environmentMap;
-    }
+    // Another cooked pair under the same asset: the id and every material that refers to the
+    // shader stay, the next use creates the program of the new pair.
+    void reload(const path_t &vertexBinPath, const path_t &fragmentBinPath);
     // Instanced variant of the template (shared fragment shader, vertex shader with instance
     // attributes) — a property of the shader ITSELF, like variants in Unity/UE: the renderer
     // knows no specific templates. The ref is the base Asset: AssetRef<ShaderAsset> inside its
@@ -73,15 +51,9 @@ public:
     virtual ShaderSpirvReflectionData getReflectionData();
 #endif
 
-protected:
-    void create(const path_t &vertexBinPath, const path_t &fragmentBinPath);
-
-    bool m_usesSceneLights = true; // a derived class with reflection refines it once on load
-    bool m_usesShadowMap = false;
-    bool m_usesOcclusionVolume = false;
-    bool m_usesEnvironmentMap = false;
-
 private:
+    path_t m_vertexBinPath; // empty — the shader has no pair (it failed to cook): nothing is drawn
+    path_t m_fragmentBinPath;
     Miren::ProgramHandle m_handle;
     AssetRef<Asset> m_instancedVariant;
     AssetRef<Asset> m_shadowVariant;

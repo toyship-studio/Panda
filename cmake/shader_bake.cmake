@@ -54,6 +54,10 @@ set(PANDA_SLANGC_ARGS -lang hlsl -matrix-layout-column-major -entry main -target
 # with this root from Resources, and the generated blocks (ShaderInterface) are checked against
 # the C++ structures by the editor and the smoke test.
 set(PANDA_SHADER_INCLUDE_ROOT "${PANDA_DIRECTORY}/resources/default-shaders/include")
+# The feature macros of the bake (every shader feature on, context/shader-features.md): the
+# expander puts the file in front of every shader. A project compile in the editor puts the macros
+# of the project there instead.
+set(PANDA_SHADER_FEATURES_FILE "${PANDA_SHADER_INCLUDE_ROOT}/panda/features.hlsli")
 file(GLOB_RECURSE PANDA_SHADER_INCLUDE_SOURCES CONFIGURE_DEPENDS "${PANDA_SHADER_INCLUDE_ROOT}/*.hlsli")
 list(SORT PANDA_SHADER_INCLUDE_SOURCES)
 
@@ -244,7 +248,7 @@ function(_panda_prepare_shader_outputs BACKEND)
                 OUTPUT "${OUTPUT_FILE}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${EXPANDED_DIR}"
-                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${EXPANDED_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}"
+                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${EXPANDED_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}" "${PANDA_SHADER_FEATURES_FILE}"
                 COMMAND ${PANDA_SLANGC_EXECUTABLE} ${PANDA_SLANGC_ARGS} -stage ${SHADER_STAGE}
                         -o "${OUTPUT_FILE}" "${EXPANDED_FILE}"
                 DEPENDS ${SHADER_DEPENDS} "${PANDA_SLANGC_EXECUTABLE}"
@@ -256,7 +260,7 @@ function(_panda_prepare_shader_outputs BACKEND)
             add_custom_command(
                 OUTPUT "${OUTPUT_FILE}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
-                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${OUTPUT_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}"
+                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${OUTPUT_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}" "${PANDA_SHADER_FEATURES_FILE}"
                 DEPENDS ${SHADER_DEPENDS}
                 VERBATIM
             )
@@ -266,7 +270,7 @@ function(_panda_prepare_shader_outputs BACKEND)
                 OUTPUT "${OUTPUT_FILE}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${EXPANDED_DIR}"
-                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${EXPANDED_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}"
+                COMMAND ${PANDA_SHADER_TOOL_COMMAND} expand "${SOURCE_FILE}" "${EXPANDED_FILE}" "${PANDA_SHADER_INCLUDE_ROOT}" "${PANDA_SHADER_FEATURES_FILE}"
                 COMMAND ${PANDA_SLANGC_EXECUTABLE} ${PANDA_SLANGC_ARGS} -stage ${SHADER_STAGE}
                         -o "${SPV_FILE}" "${EXPANDED_FILE}"
                 COMMAND ${PANDA_SHADER_TOOL_COMMAND} ${SHADER_TOOL_MODE} ${SHADER_STAGE}
@@ -278,6 +282,21 @@ function(_panda_prepare_shader_outputs BACKEND)
 
         list(APPEND ALL_OUTPUTS "${OUTPUT_FILE}")
         list(APPEND ${SHADER_GROUP}_OUTPUTS "${OUTPUT_FILE}")
+        if (SHADER_GROUP STREQUAL ENGINE)
+            # The source travels next to the baked program (default-shaders/x.vert.hlsl): the editor
+            # and the export compile the scene shaders (Extensions::sceneShaders) for a project's
+            # shader features from it; the bake above is the set with every feature.
+            set(SOURCE_COPY "${OUTPUT_FILE}.hlsl")
+            add_custom_command(
+                OUTPUT "${SOURCE_COPY}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy "${SOURCE_FILE}" "${SOURCE_COPY}"
+                DEPENDS "${SOURCE_FILE}"
+                VERBATIM
+            )
+            list(APPEND ALL_OUTPUTS "${SOURCE_COPY}")
+            list(APPEND ENGINE_OUTPUTS "${SOURCE_COPY}")
+        endif ()
         if (SHADER_GROUP STREQUAL APP)
             string(REGEX REPLACE "/.*$" "" APP_FOLDER "${RELATIVE_SOURCE_PATH}")
             list(APPEND APP_FOLDERS "${GENERATED_ROOT}/${APP_FOLDER}")

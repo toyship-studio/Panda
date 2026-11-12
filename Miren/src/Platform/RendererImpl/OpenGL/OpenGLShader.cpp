@@ -121,7 +121,8 @@ uint32_t OpenGLShader::getUboIndex(const char *name) {
         std::string openGlName = getOpenGlUboName(name);
         blockIndex = glGetUniformBlockIndex(m_id, openGlName.c_str());
     }
-    if (blockIndex == GL_INVALID_INDEX) { LOG_ERROR("SHADER UBO %s NOT FOUND", name); }
+    // GL_INVALID_INDEX — the program does not declare the block: not an error, a program takes
+    // what it declares of the scene blocks the engine binds to every material draw.
     m_uboIndices[name] = blockIndex;
     return blockIndex;
 }
@@ -147,8 +148,7 @@ int OpenGLShader::getTextureLocation(const char *name) {
         std::string openGlName = getOpenGlTextureName(name);
         location = glGetUniformLocation(m_id, openGlName.c_str());
     }
-    if (location == -1) { LOG_ERROR("SHADER TEXTURE %s NOT FOUND", name); }
-    m_uniformLocationCache[name] = location;
+    m_uniformLocationCache[name] = location; // -1 — the program does not declare the texture
     return location;
 }
 

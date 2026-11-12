@@ -19,13 +19,26 @@ be expressed. Public API: `Miren/include/Miren/Miren.hpp`.
   its clear runs.
 - Name → slot resolution happens on the render thread during replay:
   `RendererI::addInput(program, input)` (`Miren/src/Miren/RendererI.hpp`); the backends take the
-  program from `draw->m_shader`. The input stream of a draw call ends with a sentinel input of
-  `type == RenderPassInputType::Count`. Uniform blocks are std140 blobs.
+  program from `draw->m_shader`. Uniform blocks are std140 blobs.
+- View inputs: `addViewInputUniformBuffer(view, name, value, size)` and
+  `addViewInputTexture(view, name, handle)` give an input to every draw of a view for the current
+  frame (`Frame::m_viewInputs`, reset with the frame). A backend applies them to each draw of the
+  view before the draw's own inputs (`RendererI::addInputs`), so a draw input of the same name
+  wins for that draw. This is for what a whole pass reads — the camera, the lights.
 - In the engine:
   - `MaterialAsset::bindFields()` is the only entry point that binds material fields (a material
     does not know programs); `MaterialAsset::bindTextureField(name)` binds one of its textures.
-  - Frame light: `Renderer3D::bindSceneLightingIfNeeded(material)` and the static
-    `Renderer3D::bindSystemLightTextures(shader, shadowAtlas, occlusionVolume, environmentMap)`.
+  - The scene blocks of the frame (`SceneBlocks`, `context/shader-features.md`): assembled once
+    per frame from `WorldLightingData` (`Renderer3D::setLighting`, the material preview, the
+    impostor bake) and bound by `bind(view)` as view inputs of the view the scene is drawn into
+    — the camera, the block of EVERY shader feature and every system texture; every draw of the
+    view reads them (Renderer2D and the modules bind nothing); a
+    feature that is off arrives as the data of an empty scene. There are no per-shader flags and
+    no per-feature checks: a backend takes an input the program declares and drops the rest
+    without a message (Metal `findBuffer`, GL `GL_INVALID_INDEX`, D3D11 `findSlots`). The shadow
+    depth passes get the blocks alone (`bindBlocks(view)` in `Renderer3D::begin`): the atlas is
+    their render target.
+  - A block is bound by the name its struct carries: `bindBlock(ubo)` (`ShaderBlocks.hpp`).
   - A program is resolved only where a variant is chosen: `ShaderAsset::getInstancedMirenHandle()`
     and `Renderer3D::bindShadowDepthProgram()`, which returns the program for `submit`.
   - `FullscreenQuad::submit(viewId, program)`.
@@ -138,14 +151,17 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
 
 - The include mechanism is the engine's OWN, one for all backends and platforms (like fcpp in the
   bgfx shaderc): the compilers never see includes and receive self-contained text.
-  `MirenTools::expandHlslIncludes(input, roots)` substitutes `#include "..."` recursively. A file
-  is looked up next to the including file, then in the roots. Every file enters a translation
-  once, which also protects against cycles. `#line N "name"` directives surround the insertions,
-  so the errors of slangc and D3DCompile point into the sources; the names are relative, and
-  cooked shaders contain no machine paths. Macros are not evaluated: an `#include` under `#if` is
-  expanded unconditionally, while an `#ifdef` INSIDE an include is the business of the compiler
-  (this is how the shadow tap is selected). `expandHlslIncludesToFile` writes only when the text
-  changed: the chains of the editor and of the export live by mtime
+  `MirenTools::expandHlslIncludes(input, roots, prelude)` substitutes `#include "..."`
+  recursively. A file is looked up next to the including file, then in the roots. Macros are not
+  evaluated, so a file goes in at EVERY `#include`, under a generated include guard
+  (`PANDA_INCLUDED_<n>`): the compiler's preprocessor, which knows the branches, takes the first
+  occurrence that is live, and an `#include` under `#if` behaves as in C. A file that is being
+  expanded right now (a cycle) is skipped. `#line N "name"` directives surround the insertions
+  and are repeated after every `#else` / `#elif` / `#endif` (the compiler skips the `#line` of an
+  include together with a false branch around it), so the errors of slangc and D3DCompile point
+  into the sources; the names are relative, and cooked shaders contain no machine paths.
+  `expandHlslIncludesToFile` writes only when the text changed: the chains of the editor and of
+  the export live by mtime
   (`.Panda/Shaders/intermediate/<source>` is the expanded file; the `.spv` and the cooked shader
   derive from it).
 - Root: `Panda/resources/default-shaders/include` (`#include "panda/…"`). The bake copies it into
@@ -153,35 +169,50 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
   the SDK (`default-shaders/include`). The editor and the export take the root from
   `AssetImporterBase::getShaderIncludeRoot()`. Editing any `.hlsli` rebakes all shaders (the glob
   is in DEPENDS; about 70 files, seconds).
-- Files in `panda/`:
-  - the generated blocks `scene_lights.hlsli`, `panda_fields.hlsli`, `vertex_ubo.hlsli` and
-    `post_data.hlsli` (see the next subsection);
-  - `shadow.hlsli`: the atlas, `sampleCascade` (a tent, or a single tap under
-    `PANDA_SHADOW_SINGLE_TAP`) and `sampleShadow`;
-  - `occlusion.hlsli`: `volumeOcclusion` and `volumeSunStrength`;
-  - `sun.hlsli`: `sunVisibility` = shadows × transmittance;
+- The `prelude` is text put in front of the shader: the feature macros
+  (`ShaderInterface::featuresInclude`, `#define PANDA_FEATURE_<X> 1|0` per feature). Every
+  compile has it: the editor and the export pass the macros of the project, the bake passes the
+  committed `panda/features.hlsli` (every feature on; `MirenShaderTool expand <in> <out> <root>
+  <prelude>`). A feature macro is therefore always defined, in any shader, from its first line.
+- Files in `panda/` (the names are a contract, `context/shader-features.md`):
+  - `features.hlsli`: generated, the macros of the bake; never included by hand;
+  - `blocks/`: the generated blocks — `frame`, `view`, one per feature (`lights`, `shadows`,
+    `occlusion`, `environment`, `wind`), `draw` and `post` (see the next subsection); a feature
+    block carries the guard (`#error` when the project has the feature off) and the declarations
+    of the feature's system textures;
+  - the public includes of the features: `frame.hlsli`, `view.hlsli`, `lights.hlsli`,
+    `environment.hlsli`, `wind.hlsli` (the block and its documentation), `shadows.hlsli` (the
+    block, `sampleCascade` — a tent, or a single tap under `PANDA_SHADOW_SINGLE_TAP` — and
+    `sampleShadow`), `occlusion.hlsli` (the block, `volumeOcclusion` and `volumeSunStrength`);
+  - `lighting.hlsli`: the umbrella of a lit shader — `view` + `lights`, and `shadows` /
+    `occlusion` when the project has them; `sceneOcclusion`, `occlusionSurfaceOffset`,
+    `ambientOcclusion`, `sunShadow`, `shadowStrength`, `sunTransmittance` and `sunVisibility`
+    degrade to "open" without their feature, so one source compiles in every
+    project;
+  - `draw.hlsli` (`PANDA_DRAW`, the matrices of a draw), `post.hlsli` (`PANDA_POST`);
   - `brdf.hlsli`: GGX and `shadeLight(…, diffuseAlbedo, …)`. PBR passes `albedo / PI`; foliage
     and billboards pass the raw albedo, which is the energy convention of the world (the lit,
     terrain and grass shaders use a raw N·L).
 
   Shaders hold no copies of these functions. The impostor billboard keeps its own
   `billboardSunVisibility` (the chord of self-shadowing) on top of the shared ones.
-- Project shaders can use the includes (`#include "panda/scene_lights.hlsli"`). Declaring a block
-  by a prefix is ordinary HLSL and keeps working.
+- Project shaders use the same includes (`#include "panda/lighting.hlsli"`); the SDK page is
+  `PandaSDK/docs/shaders.md`.
 
-### Global UBOs: the source of the layout
+### The engine blocks: the source of the layout
 
-- The blocks declared by several shaders (`SCENE_LIGHTS`, `PANDA_FIELDS`, `UBO_VERT`,
-  `POST_DATA`) are described ONCE, by the C++ structs of
-  `Panda/include/Panda/Renderer/ShaderInterface/ShaderBlocks.hpp` (`SceneLightsUbo`,
-  `PandaFieldsUbo`, `VertexUbo`, `PostDataUbo`). They are PODs that follow the cbuffer / std140
-  rules and are bound as bytes (`addInputUniformBuffer(name, &ubo, sizeof(ubo))`). The meaning of
-  the fields is in the comments of the structs.
-- `SceneLightsUbo::from(WorldLightingData)` is the only place that assembles the light block
-  (Renderer3D once per frame, Renderer2D, the material preview, the impostor bake; a standalone
-  preview goes through Renderer3D). `PANDA_FIELDS` is bound by `MaterialAsset::bindFields()` on
-  every draw call: moving it into the renderers would touch every `bindFields` call site
-  (post-processing, standalone previews) for no gain.
+- The blocks declared by several shaders — `PANDA_FRAME`, `PANDA_VIEW`, the feature blocks
+  (`PANDA_LIGHTS`, `PANDA_SHADOWS`, `PANDA_OCCLUSION`, `PANDA_ENVIRONMENT`, `PANDA_WIND`),
+  `PANDA_DRAW` and `PANDA_POST` — are described ONCE, by the C++ structs of
+  `Panda/include/Panda/Renderer/ShaderInterface/ShaderBlocks.hpp` (`FrameUbo`, `ViewUbo`,
+  `LightsUbo`, `ShadowsUbo`, `OcclusionUbo`, `EnvironmentUbo`, `WindUbo`, `DrawUbo`, `PostUbo`).
+  They are PODs that follow the cbuffer / std140 rules and are bound as bytes. A struct carries
+  the name of its block (`NAME`): `bindBlock` binds by it, the generator writes the `cbuffer`
+  and derives the file from it. The meaning of the fields is in the comments of the structs. The
+  feature catalog (`ShaderFeatures.hpp`) names the macro and the system textures of a feature.
+- `SceneBlocks::assemble(WorldLightingData)` is the only place that assembles the scene blocks
+  (`XUbo::from`): Renderer3D once per frame, the material preview, the impostor bake. `PANDA_FRAME` is bound by `MaterialAsset::bindFields()` with the fields of every material
+  draw, so the time reaches postprocessing passes and previews too.
 - The blocks local to one pass (`MATERIAL_FIELDS`, `SHADOW_MASK`, `BLOOM_*`, `HELPER_*`,
   `BAKE_*`) are not generated; `Std140Buffer` packs the dynamic layouts.
 - The generator `Panda::ShaderInterface` (`generate` / `writeIncludes` / `checkIncludes`) reads
@@ -191,8 +222,7 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
   `int4` / `float4x4` and arrays start at a multiple of 16; the size is a multiple of 16. Only
   the types that cbuffer and std140 lay out identically are supported (`float2`, `float3` and
   arrays of scalars are rejected). The offset of every field is checked against C++: a forgotten
-  `alignas(16)` (`PandaFieldsUbo`: `float iTime; alignas(16) glm::vec4 sceneWind`) is a
-  generation error.
+  `alignas(16)` after a scalar is a generation error.
 - Rain stays a serialization and reflection library and nothing else: the HLSL generator lives
   in Panda, Rain only provides the metadata. glm types in Rain:
   `Panda/include/Panda/Serialization/GlmCoders.hpp` (a vector or a matrix is an array of
@@ -207,8 +237,9 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
 
   Freshness: the editor at startup (`LOG_ERROR_EDITOR`) and PandaSmoke (its first test) compare
   the files in Resources with the generator output byte for byte (CRLF is normalized).
-- Changing a block = edit the struct + regenerate + rebake. New fields go to the END only:
-  project shaders declare the blocks by a prefix.
+- Changing a block = edit the struct + regenerate + rebake. New fields go to the END only, a
+  field is never removed or renamed: the names are the contract of every project shader
+  (`context/shader-features.md`).
 
 ### Why this design
 
@@ -267,9 +298,11 @@ per application.
   call of a frame advances them by dt (clamped to 0.05 s), later calls see the same time. So a
   change of Speed does not teleport the picture. They wrap with `fmod` 3003 (= 3 × 7 × 11 × 13),
   the period of the value noise of the shaders.
-- `phaseVector()` goes to `PANDA_FIELDS.sceneWind`: xy is the direction (XZ), z the travel of the
-  gust wave (m), w the flutter time. `iTime` is the first field of `PANDA_FIELDS` (the block is
-  `PandaFieldsUbo` → `panda/panda_fields.hlsli`; a prefix declaration is allowed).
+- `phaseVector()` goes to `PANDA_WIND.sceneWind` (the `wind` shader feature, `WindUbo` →
+  `panda/wind.hlsli`): xy is the direction (XZ), z the travel of the gust wave (m), w the flutter
+  time. With the feature off the wind is calm at its source: `apply()` keeps a strength of zero
+  (the `windStrength` system field included) and `phaseVector()` does not advance, so the wind
+  block, the vegetation templates and the terrain grass all stand still.
 - `TerrainFlora` accumulates no phases of its own, it takes `SceneWind`: `windParams` is the
   direction, the strength × the `windInfluence` of the layer and the flutter time; `timeFade` is
   the travel, the fade distances and the gustiness in w.
@@ -294,6 +327,9 @@ flat. The signal is value noise: a sine reads as machine-made waves, white noise
 
 ## Open items
 
+- View inputs are written once per view, but a backend still resolves and sets them for every
+  draw of the view; skipping the repeat for consecutive draws of one program is open
+  (`context/shader-features.md`).
 - Shader toolchain: the Windows path (the soft lookup of slangc, `-Slangc`, the D3D11 bake
   through `MirenShaderTool expand`) has not been verified on Windows.
 - 3D textures: the smoke test has verified them on Metal only (the default build). The next

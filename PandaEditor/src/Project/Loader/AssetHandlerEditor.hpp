@@ -28,6 +28,9 @@ public:
     void registerAsset(const path_t &path);
     bool canImport(const path_t &path);
     void reload(AssetId id);
+    // The project shaders compile for the shader features of the project: a changed set recompiles
+    // the loaded ones in place (the same reload as after an edit of the source).
+    void reloadLoadedShaders();
     AssetInfo getInfo(AssetId id);
     void updateInfo(AssetId assetId, const AssetInfo &assetInfo);
     void openProject(const path_t &path);

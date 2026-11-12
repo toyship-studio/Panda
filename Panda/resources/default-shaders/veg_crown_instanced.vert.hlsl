@@ -3,7 +3,7 @@
 // there (the energy is shared with the frag, the weight is in COLOR_0.a, the card is displaced
 // as a whole, windStrength = 0 disables the branch).
 
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 cbuffer MATERIAL_FIELDS {
     float4 baseColorFactor;
@@ -23,7 +23,9 @@ cbuffer MATERIAL_FIELDS {
     float translucency;  // leaf translucency: share of sun through the blade when the sun is behind the leaf
 };
 
-#include "panda/panda_fields.hlsli"
+#if PANDA_FEATURE_WIND
+#include "panda/wind.hlsli"
+#endif
 
 struct VSInput {
     float3 position : POSITION;
@@ -54,6 +56,7 @@ struct VSOutput {
     float fragGust : TEXCOORD7;
 };
 
+#if PANDA_FEATURE_WIND
 // A copy of veg_crown.vert (see the comments there).
 float windNoise(float t, float period) {
     const float f = frac(t);
@@ -73,6 +76,7 @@ float windGustEnergy(float2 worldXZ) {
     const float local = (smoothstep(0.2, 0.9, wave) - 0.5) * (0.4 + 0.6 * windGustiness);
     return saturate(envelope + local);
 }
+#endif
 
 // Per-instance tone jitter (brightness ±14% + a warm-cold shift of the green): a forest of a
 // single species does not read as clones. The hash is the world XZ position of the plant base,
@@ -86,12 +90,14 @@ float3 instanceTint(float2 worldXZ) {
     return (0.86 + 0.28 * h) * lerp(float3(1.08, 1.0, 0.86), float3(0.90, 1.0, 1.10), h2);
 }
 
+#if PANDA_FEATURE_WIND
 float3 crownWindOffset(float gust, float windWeight, uint id) {
     const float cardSway =
         windNoise(sceneWind.w * 2.0 + (float)(id % 512u) * 7.31, 6006.0) * 2.0 - 1.0;
     const float swing = (gust - 0.3) + cardSway * 0.3 * (0.3 + 0.7 * gust);
     return float3(sceneWind.x, 0.0, sceneWind.y) * (swing * 0.1 * windStrength * windWeight);
 }
+#endif
 
 VSOutput main(VSInput input) {
     VSOutput output;
@@ -102,11 +108,13 @@ VSOutput main(VSInput input) {
     float3 localNormal = mul(input.normal, (float3x3) instMtx);
     float4 worldPos = mul(modelMtx, localPos);
     float gust = 0.0;
+#if PANDA_FEATURE_WIND
     [branch]
     if (windStrength > 0.001) {
         gust = windGustEnergy(worldPos.xz);
         worldPos.xyz += crownWindOffset(gust, input.color.a, input.id);
     }
+#endif
     output.position = mul(projViewMtx, worldPos);
     output.worldPos = worldPos.xyz;
     output.worldNormal = normalize(mul((float3x3) modelMtx, localNormal));

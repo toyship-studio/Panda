@@ -29,7 +29,7 @@ void setUpdateProvider(UpdateProvider provider);
 // The settings sections of the core, registered in EditorExtensions::settingsSections like the
 // sections of the modules (context/plugins.md, decision 2): the world scope — WORLD (lighting),
 // SHADOWS, OCCLUSION VOLUME, WIND; the editor scope — VIEWPORT, UPDATES; the project scope — WORLD
-// (the start world), MODULES. Registered before the editor parts of the modules load, so the core
+// (the start world), RENDERING (the shader features), MODULES. Registered before the editor parts of the modules load, so the core
 // sections come first in every scope. The editor scope also gets APPEARANCE (the theme) from the
 // ThemeProvider.
 void registerCoreSettingsSections(EditorExtensions &extensions);

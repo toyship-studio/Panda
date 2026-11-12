@@ -9,39 +9,48 @@
 
 namespace Miren {
 
+// A stream of inputs (name + value): written by the app thread during the frame, read by the
+// render thread — rewind(), then readInput() until nullptr. The stream can be read many times
+// (the inputs of a view are applied to each of its draws).
 class RenderPassInputs {
 public:
-    RenderPassInputs(uint32_t size)
+    // size — the initial capacity; 0 allocates nothing until the first write.
+    explicit RenderPassInputs(uint32_t size = 0)
         : m_size(size)
-        , m_pos(0) {
-        m_data = (uint8_t *)F_ALLOC(Foundation::getAllocator(), size);
-    }
+        , m_pos(0)
+        , m_end(0)
+        , m_data(size > 0 ? (uint8_t *)F_ALLOC(Foundation::getAllocator(), size) : nullptr) {}
 
-    RenderPassInputs(const RenderPassInputs &other)
-        : m_size(other.m_size)
-        , m_pos(other.m_pos)
-        , m_data(other.m_data) {}
+    RenderPassInputs(const RenderPassInputs &) = delete;
+    RenderPassInputs &operator=(const RenderPassInputs &) = delete;
 
     RenderPassInputs(RenderPassInputs &&other) noexcept
         : m_size(other.m_size)
         , m_pos(other.m_pos)
+        , m_end(other.m_end)
         , m_data(other.m_data) {
         other.m_data = nullptr;
         other.m_pos = 0;
+        other.m_end = 0;
         other.m_size = 0;
     }
 
     RenderPassInputs &operator=(RenderPassInputs &&other) noexcept {
         if (this == &other) { return *this; }
+        if (m_data) { F_FREE(Foundation::getAllocator(), m_data); }
         m_size = other.m_size;
         m_pos = other.m_pos;
+        m_end = other.m_end;
         m_data = other.m_data;
         other.m_data = nullptr;
+        other.m_pos = 0;
+        other.m_end = 0;
+        other.m_size = 0;
         return *this;
     }
 
     ~RenderPassInputs() {
-        F_FREE(Foundation::getAllocator(), m_data);
+        if (m_data) { F_FREE(Foundation::getAllocator(), m_data); }
     }
 
     void writeInput(PassInput &input) {
@@ -58,13 +67,13 @@ public:
             savedInput->alignment = alignof(std::max_align_t);
             savedInput->data = &m_data[payloadPos];
         }
+        m_end = m_pos;
     }
 
     PassInput *readInput() {
+        if (m_pos >= m_end) { return nullptr; }
         align(__alignof(PassInput));
         PassInput &input = *(PassInput *)read(sizeof(PassInput));
-        // End-of-stream sentinel — type=Count (finishWriting).
-        if (input.type == RenderPassInputType::Count) { return nullptr; }
         if (input.data) {
             align(input.alignment);
             // The data address is restored from the position: buffer growth within the same
@@ -75,15 +84,15 @@ public:
         return &input;
     }
 
-    // Finish writing. Start reading
-    void finishWriting() {
-        PassInput input({}, RenderPassInputType::Count, nullptr, 0);
-        writeInput(input);
+    // Start reading from the first input.
+    void rewind() {
         m_pos = 0;
     }
 
+    // Drop the inputs: the stream is ready for the writes of the next frame.
     void reset() {
         m_pos = 0;
+        m_end = 0;
     }
 
 private:
@@ -94,8 +103,8 @@ private:
             newSize *= 2;
         }
         uint8_t *newData = (uint8_t *)F_ALLOC(Foundation::getAllocator(), newSize);
-        if (m_data && m_pos > 0) { memcpy(newData, m_data, m_pos); }
-        F_FREE(Foundation::getAllocator(), m_data);
+        if (m_data && m_pos > 0) { memcpy(newData, m_data, m_pos < m_size ? m_pos : m_size); }
+        if (m_data) { F_FREE(Foundation::getAllocator(), m_data); }
         m_data = newData;
         m_size = newSize;
     }
@@ -125,6 +134,7 @@ private:
 
     uint32_t m_size;
     uint32_t m_pos;
+    uint32_t m_end; // the end of the written inputs
     uint8_t *m_data;
 };
 

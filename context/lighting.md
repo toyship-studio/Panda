@@ -16,20 +16,21 @@ forest comes from the Occlusion Volume.
 
 ### Contract
 
-- Light data: `Panda/Renderer/WorldLighting.hpp` (`WorldLightingData` and nested types). The HLSL
-  block `SCENE_LIGHTS` (the name is a contract with user shaders) is extended AT THE END ONLY,
-  because user shaders declare it by a prefix. Order: ambient, directional, point lights,
-  cameraPosition → the shadow block (`shadowMatrices[4]`, `shadowSplits`, `shadowParams`,
-  `shadowTexelWorld`, `shadowDepthScale`, `shadowBias`) → the Occlusion Volume block → the
-  environment tail.
-- System light textures: `shadowMap` (comparison, depth), `occlusionVolume` (Texture3D) and
-  `environmentMap`. Flags are set with `ShaderAsset::setSystemInputs(...)`: built-in shaders set
-  them explicitly in `StaticResources`, user shaders get them by reflection of the name
-  (`EditorShaderAsset`, `declaresImage`), and export carries them in `AssetInfo::ShaderSettings`.
-  Binding: `Renderer3D::bindSystemLightTextures(shader, shadowAtlas, occlusionVolume,
-  environmentMap)` (Renderer3D and Renderer2D, previews, impostor baking). Without an atlas the
-  fallbacks `shadowFallbackTexture` (depth: the MSL slot is `depth2d`) and
-  `occlusionFallbackTexture` are bound.
+- Light data: `Panda/Renderer/WorldLighting.hpp` (`WorldLightingData` and nested types) is the
+  CPU side. The shaders see the scene blocks of the shader features (`context/shader-features.md`,
+  `ShaderBlocks.hpp`): `PANDA_LIGHTS` (ambient, the sun `sunDirectionIntensity` / `sunColor`,
+  `lightCounts`, the point lights), `PANDA_SHADOWS` (`shadowMatrices[4]`, `shadowSplits`,
+  `shadowParams`, `shadowTexelWorld`, `shadowDepthScale`, `shadowBias`), `PANDA_OCCLUSION`,
+  `PANDA_ENVIRONMENT`; the camera is `PANDA_VIEW`. A block grows at its end only; the names are
+  the contract of every project shader.
+- System textures of the features: `shadowMap` (comparison, depth), `occlusionVolume` (Texture3D)
+  and `environmentMap`, declared by the generated block includes. `SceneBlocks::bind(view)` gives the
+  blocks and textures of every feature to the view of the pass, for every draw into it (the scene
+  view, previews, impostor baking) — there are no per-shader flags, a backend ignores a name the program
+  does not declare. Without an atlas the fallbacks `shadowFallbackTexture` (depth: the MSL slot is
+  `depth2d`) and `occlusionFallbackTexture` are bound. A project with the `shadows` feature off
+  draws no cascades and compiles no shadow code into its shaders; `LightingSystem` forces the
+  setting off, and the block that still arrives says "no shadows".
 
 ### Implementation (`Panda/Renderer/CascadedShadowMap`, owned by `LightingSystem`)
 
@@ -55,9 +56,9 @@ forest comes from the Occlusion Volume.
   billboards cast with their own depth variant (a quad facing the light, the mask is the alpha of
   the color atlas).
 - Receivers use the includes in `default-shaders/include/panda/` (see `context/rendering.md`):
-  `shadow.hlsli` gives `sampleShadow(pos, normal, out csmWeight)` and `sun.hlsli` gives
-  `sunVisibility(pos, normal, T)` (shadows plus the volume transmittance). There is ONE
-  implementation for all eight lit shaders. The cascade is chosen by distance from the camera
+  `shadows.hlsli` gives `sampleShadow(pos, normal, out csmWeight)` and `lighting.hlsli` gives
+  `sunVisibility(pos, normal, T)` (shadows plus the volume transmittance; open without the
+  features). There is ONE implementation for all the lit shaders. The cascade is chosen by distance from the camera
   (concentric, so it does not swim when the camera turns), the next cascade is blended in over the
   last 20% of the range, the normal offset × sinθ and the depth bias are measured IN TEXELS of the
   cascade, and the footprint is clamped to the tile. Filter (the atlas is LINEAR with compare, so
@@ -188,19 +189,20 @@ of 2 × 2). The window
 
 ### Shaders
 
-- `SCENE_LIGHTS`, appended at the end of the block (`SceneLightsUbo::from`, `ShaderBlocks.hpp`):
+- `PANDA_OCCLUSION` (the `occlusion` shader feature, `OcclusionUbo::from`, `ShaderBlocks.hpp`):
   `occlusionGrid` (cell, 64, 66, 48), `occlusionWindow` (min chunk xy, N, enabled),
   `occlusionParams` (ao, near, far, contrast), `occlusionTexel` (1 / volume size, offset),
-  `float4 occlusionChunks[64]` (chunk index, originY, reveal weight); then `environmentParams`
-  and `occlusionFocus` (xy is the focus, z is fadeRadius, w is the weight of transmittance
-  channel B). The texture `Texture3D occlusionVolume` with `occlusionVolumeSampler` is a system
-  light input; without a volume `StaticResources::occlusionFallbackTexture` (1×1×1 RGBA8, 255) is
-  bound. The flag is `ShaderAsset::usesOcclusionVolume` (built-in: `StaticResources`; user
-  shaders: editor reflection `declaresImage("occlusionVolume")`; export:
-  `AssetInfo::ShaderSettings.occlusionVolume`). The reflection mapper ignores the system name.
+  `float4 occlusionChunks[64]` (chunk index, originY, reveal weight), `occlusionFocus` (xy is
+  the focus, z is fadeRadius, w is the weight of transmittance channel B). The texture
+  `Texture3D occlusionVolume` with `occlusionVolumeSampler` is the system texture of the feature;
+  without a volume `StaticResources::occlusionFallbackTexture` (1×1×1 RGBA8, 255) is bound. The
+  reflection mapper keeps the system textures of the features out of the material fields
+  (`ShaderFeatures::isFeatureTexture`).
 - `volumeOcclusion(worldPos) → float2 (V, T)` lives in the include `panda/occlusion.hlsli` (one
   implementation; receivers are default_lit / pbr, terrain / terrain3d, grass, veg_grass,
-  veg_crown and flora_billboard through `panda/sun.hlsli`): chunk by position → window → slot →
+  veg_crown and flora_billboard through `panda/lighting.hlsli` — `sceneOcclusion`,
+  `ambientOcclusion`, `occlusionSurfaceOffset`, which are open without the feature): chunk by
+  position → window → slot →
   the `occlusionChunks` record (an index mismatch or weight 0 means open) → texel (cell + border +
   slot · 66), slice from originY, one `SampleLevel`; T = `lerp(G, B, occlusionFocus.w)`; the
   result is multiplied by the reveal weight and by a falloff to open by distance from the FOCUS
@@ -289,17 +291,13 @@ one per world, distributed as a system texture like the shadow atlas and the occ
   `u = atan2(d.z, d.x) / 2π + 0.5`, `v = asin(−d.y) / π + 0.5`, where `d` is the world direction.
   Wrap is REPEAT (the seam is along u).
 - Frame data: `WorldLightingData::environment` (`EnvironmentData { map, intensity }`).
-- The `SCENE_LIGHTS` block (`SceneLightsUbo`), the tail after `occlusionChunks[64]`:
-  `float4 environmentParams`: x is exposure, y is the top mip of the map
-  (`floor(log2(max(w, h)))`), z = 1 when a map is set. A shader that needs the tail declares the
-  whole block.
-- System texture: `Texture2D environmentMap; SamplerState environmentMapSampler;`.
-  `Renderer3D::bindSystemLightTextures` binds it to shaders with the flag
-  `ShaderAsset::usesEnvironmentMap()`. The flag: built-in shaders set it through
-  `setSystemInputs` (default_pbr, instanced_pbr, sky_hdr); project shaders get it by reflection
-  (`declaresImage("environmentMap")`), export carries `ShaderSettings::environmentMap`. The
-  field does not belong to the material (`ShaderReflectionDataMapper` skips the name, as it does
-  for shadowMap and occlusionVolume).
+- The `PANDA_ENVIRONMENT` block (the `environment` shader feature, `EnvironmentUbo`,
+  `panda/environment.hlsli`): `float4 environmentParams`: x is exposure, y is the top mip of the
+  map (`floor(log2(max(w, h)))`), z = 1 when a map is set.
+- System texture: `Texture2D environmentMap; SamplerState environmentMapSampler;`, declared by
+  the block include and bound by `SceneBlocks::bind()` when the feature is on. The field does not
+  belong to the material (`ShaderReflectionDataMapper` skips the system textures of the
+  features). `default_pbr` reads the map under `#if PANDA_FEATURE_ENVIRONMENT`.
 - Without a map the slot holds `StaticResources::defaultSkyTexture`: a 64×32 equirectangular
   gradient (zenith → horizon → ground) baked by code; `environmentParams.z = 0`.
 
@@ -370,5 +368,5 @@ children) and has no consumers yet. The design:
   taller than 96 m is cut by the slices; beyond 512 m from the camera it is outside the window.
 
 Rejected for lighting: a sun coverage mask (clouds and their shadows); a "no sun here" map for
-interiors (if authored darkness is ever needed, use a list of boxes in `SCENE_LIGHTS`, not a
+interiors (if authored darkness is ever needed, use a list of boxes in `PANDA_LIGHTS`, not a
 texture); tent PCF on vegetation (the frame budget for flora is exhausted).

@@ -1,5 +1,5 @@
 // Depth-only shadow map (CSM) pass for the thin terrain vertex (TerrainVertex).
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

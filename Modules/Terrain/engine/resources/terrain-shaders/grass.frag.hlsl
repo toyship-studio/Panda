@@ -8,8 +8,8 @@ cbuffer MATERIAL_FIELDS {
     uint doubleSided;
 };
 
-#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see shadow.hlsli)
-#include "panda/sun.hlsli"
+#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see panda/shadows.hlsli)
+#include "panda/lighting.hlsli"
 
 // Tiling fbm: G — large-scale color patches of the field (moisture/soil).
 Texture2D noiseTexture;
@@ -46,22 +46,22 @@ PSOutput main(PSInput input) {
     float3 surfaceNormal = normalize(input.worldNormal);
     // point lights shine under a tree as well.
     // Occlusion volume: grass under the canopy gets darker (sampled at the tuft root).
-    const float2 volume = volumeOcclusion(input.rootPos);
-    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * lerp(1.0, volume.x, occlusionParams.x);
+    const float2 volume = sceneOcclusion(input.rootPos);
+    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * ambientOcclusion(volume);
 
-    if (directionalDirectionIntensity.w > 0.0) {
-        float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
+    if (sunDirectionIntensity.w > 0.0) {
+        float3 lightDirection = normalize(sunDirectionIntensity.xyz);
         // Half-Lambert: grass is thin double-sided petals, hard Lambert yields
         // black turned-away blades.
         float diffuse = saturate(dot(surfaceNormal, lightDirection) * 0.5 + 0.5);
         // CSM shadow — at the tuft ROOT (a blade swaying in the wind would pass through shadow
         // edges and flicker); normal offset — upward (the blade is thin, its normal faces
         // sideways; the acne comes from the ground under the grass).
-        lighting += directionalColor.rgb * directionalDirectionIntensity.w * diffuse *
+        lighting += sunColor.rgb * sunDirectionIntensity.w * diffuse *
                     sunVisibility(input.rootPos, float3(0.0, 1.0, 0.0), volume.y);
     }
 
-    int pointLightCount = (int)sceneLightCounts.x;
+    int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;

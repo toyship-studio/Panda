@@ -499,7 +499,7 @@ void RendererMetal::submit(Frame *frame) {
                     viewChanged(frame->m_views[viewId]);
                     addUniqueContext(swapContexts, m_ctx);
                 }
-                submit(&draw);
+                submit(&draw, frame->m_viewInputs[draw.m_viewId]);
             }
             endEncoder();
         }
@@ -528,7 +528,7 @@ void RendererMetal::submit(Frame *frame) {
     }
 }
 
-void RendererMetal::submit(RenderPass *draw) {
+void RendererMetal::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)m_encoder;
     if (encoder == nil) { return; }
     // An empty draw (a dynamic mesh/batch without geometry) is a no-op in GL/D3D11;
@@ -567,11 +567,7 @@ void RendererMetal::submit(RenderPass *draw) {
     if (pipeline == nil) { return; }
     [encoder setRenderPipelineState:pipeline];
 
-    draw->m_inputs.finishWriting();
-    PassInput *input;
-    while ((input = draw->m_inputs.readInput()) != nullptr) {
-        addInput(draw->m_shader, *input);
-    }
+    addInputs(viewInputs, *draw);
 
     const bool cull = (draw->m_state & MIREN_STATE_CULL_FACE) != 0;
     const bool cullFront = (draw->m_state & MIREN_STATE_CULL_FRONT) != 0;

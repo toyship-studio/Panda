@@ -1,6 +1,7 @@
 #include "Panda/Renderer/SceneWind.hpp"
 #include "Panda/Application/Application.hpp"
 #include "Panda/Assets/MaterialSystemValues.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -35,10 +36,13 @@ namespace {
 
 void SceneWind::apply(const SceneWindSettings &settings) {
     s_settings = settings;
+    // Without the wind feature (ShaderFeatures) the scene is calm for every consumer: the system
+    // fields below, the wind block, the modules that read the settings.
+    if (!ShaderFeatures::isEnabled(ShaderFeature::Wind)) { s_settings.strength = 0.f; }
     // set dedups by value — apply may be called every frame; the hint is shown in the
     // editor at a disabled material field (next to it — a link button to the settings).
-    MaterialSystemValues::set("windStrength", settings.strength, "Set by scene wind", "WIND");
-    MaterialSystemValues::set("windGustiness", settings.gustiness, "Set by scene wind", "WIND");
+    MaterialSystemValues::set("windStrength", s_settings.strength, "Set by scene wind", "WIND");
+    MaterialSystemValues::set("windGustiness", s_settings.gustiness, "Set by scene wind", "WIND");
 }
 
 const SceneWindSettings &SceneWind::settings() {
@@ -46,7 +50,7 @@ const SceneWindSettings &SceneWind::settings() {
 }
 
 Vec4 SceneWind::phaseVector() {
-    advancePhases();
+    if (ShaderFeatures::isEnabled(ShaderFeature::Wind)) { advancePhases(); }
     const float rad = s_settings.directionDegrees * 0.01745329252f;
     return Vec4(
         std::cos(rad), std::sin(rad), static_cast<float>(s_gustTravel),

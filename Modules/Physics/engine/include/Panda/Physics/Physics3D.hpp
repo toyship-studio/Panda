@@ -247,7 +247,8 @@ private:
     void destroyJoint(Entity entity, Joint3DKind kind);
     void destroyJointsOf(Entity entity);
     void recreateJointsTouching(Entity entity);
-    // Body of a registered entity / live joint of a kind on an entity; false — there is none.
+    // Body of a registered entity, or of the compound body a part belongs to / live joint of a
+    // kind on an entity; false — there is none.
     bool findBody(Entity entity, RuntimeBodyData &outBody);
     bool findJoint(Entity entity, Joint3DKind kind, RuntimeJointData &outJoint);
     // The box3d geometry of the entity's mesh collider, built from the triangles of its source

@@ -6,7 +6,7 @@
 #include "Panda/GameLogic/GameContext.hpp"
 #include <Foundation/GraphicsAPI.hpp>
 #include "Panda/Renderer/MirenViewDistribution.hpp"
-#include "Panda/Renderer/Renderer3D.hpp"
+#include "Panda/Renderer/SceneBlocks.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -259,8 +259,13 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
     bakeLighting.ambientIntensity = 1.f;
     bakeLighting.directionalLight = {};
     bakeLighting.pointLightCount = 0;
-    const SceneLightsUbo lightingUbo = SceneLightsUbo::from(bakeLighting);
-    const VertexUbo vertUbo{frame.viewProj, glm::mat4(1.f)};
+    // The system texture slots of the color pass get placeholders (a bake without shadows); the
+    // normal pass reads the blocks alone (the crown vertex shader — the wind).
+    SceneBlocks bakeScene;
+    bakeScene.assemble(bakeLighting);
+    bakeScene.bind(Views::FLORA_IMPOSTER_COLOR_VIEW);
+    bakeScene.bindBlocks(Views::FLORA_IMPOSTER_NORMAL_VIEW);
+    const DrawUbo vertUbo{frame.viewProj, glm::mat4(1.f)};
 
     const ImportedMeshAsset *meshAsset = entry.mesh.get();
     size_t primitiveFlat = 0;
@@ -297,10 +302,7 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
             Miren::ProgramHandle colorShader = material->getShaderAsset()->getMirenHandle();
             Miren::setState(MIREN_STATE_DEPTH_TEST); // no culling — the foliage is double-sided
             material->bindFields();
-            Miren::addInputUniformBuffer("SCENE_LIGHTS", &lightingUbo, sizeof(lightingUbo));
-            // The slots of the system light textures get placeholders (a bake without shadows).
-            Renderer3D::bindSystemLightTextures(material->getShaderAsset(), nullptr, nullptr);
-            Miren::addInputUniformBuffer("UBO_VERT", &vertUbo, sizeof(vertUbo));
+            bindBlock(vertUbo);
             Miren::setVertexBuffer(primitive.vertexBufferHandle);
             Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
             Miren::submit(Views::FLORA_IMPOSTER_COLOR_VIEW, colorShader);
@@ -347,7 +349,7 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
                 };
                 Miren::addInputUniformBuffer("IMPOSTER_BAKE", toViewer, sizeof(toViewer));
             }
-            Miren::addInputUniformBuffer("UBO_VERT", &vertUbo, sizeof(vertUbo));
+            bindBlock(vertUbo);
             Miren::setVertexBuffer(primitive.vertexBufferHandle);
             Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
             Miren::submit(Views::FLORA_IMPOSTER_NORMAL_VIEW, normalShader);

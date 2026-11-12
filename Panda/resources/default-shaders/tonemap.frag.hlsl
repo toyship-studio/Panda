@@ -1,7 +1,7 @@
 // Implicit final pass: linear HDR scene -> display. Reinhard + sRGB gamma
 // (the same curve the PBR shader used to apply inline before the HDR pipeline).
 // Executed by the engine after the user postprocessing chain — never add it to a chain manually.
-#include "panda/post_data.hlsli"
+#include "panda/post.hlsli"
 
 Texture2D inputTexture;
 SamplerState inputTextureSampler;

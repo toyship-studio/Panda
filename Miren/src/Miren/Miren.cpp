@@ -264,6 +264,16 @@ void addInputTexture(std::string_view name, TextureHandle handle) {
     s_context->addInput(name, RenderPassInputType::ImageSampler2D, &handle, sizeof(TextureHandle));
 }
 
+void addViewInputUniformBuffer(ViewId id, std::string_view name, const void *value, size_t size) {
+    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
+    s_context->addViewInput(id, name, RenderPassInputType::UniformBuffer, value, size);
+}
+
+void addViewInputTexture(ViewId id, std::string_view name, TextureHandle handle) {
+    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
+    s_context->addViewInput(id, name, RenderPassInputType::ImageSampler2D, &handle, sizeof(TextureHandle));
+}
+
 void setVertexLayout(VertexLayoutHandle handle) {
     PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
     s_context->setVertexLayout(handle);

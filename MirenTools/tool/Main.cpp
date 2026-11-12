@@ -5,6 +5,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -12,7 +14,7 @@ namespace {
 int usage() {
     std::fprintf(
         stderr,
-        "usage: MirenShaderTool expand <in.hlsl> <out.hlsl> <include-root>\n"
+        "usage: MirenShaderTool expand <in.hlsl> <out.hlsl> <include-root> [prelude.hlsli]\n"
         "       MirenShaderTool <glsl|gles|msl|msl-ios|reflect> <vertex|fragment> <in.spv> <out>\n"
     );
     return 2;
@@ -24,10 +26,20 @@ int main(int argc, const char **argv) {
     if (argc < 2) { return usage(); }
     const std::string mode = argv[1];
     if (mode == "expand") {
-        if (argc != 5) { return usage(); }
+        if (argc != 5 && argc != 6) { return usage(); }
+        // The prelude: text put in front of the shader (the feature macros of the bake).
+        std::string prelude;
+        if (argc == 6) {
+            std::ifstream preludeFile(argv[5], std::ios::binary);
+            if (!preludeFile.is_open()) {
+                std::fprintf(stderr, "cannot read %s\n", argv[5]);
+                return 1;
+            }
+            prelude.assign(std::istreambuf_iterator<char>(preludeFile), std::istreambuf_iterator<char>());
+        }
         // The bake always writes the output: the CMake rule judges freshness by the output's mtime.
         const std::vector<path_t> roots = {path_t(argv[4])};
-        const std::optional<std::string> text = MirenTools::expandHlslIncludes(argv[2], roots);
+        const std::optional<std::string> text = MirenTools::expandHlslIncludes(argv[2], roots, prelude);
         if (!text) { return 1; }
         std::FILE *file = std::fopen(argv[3], "wb");
         if (!file) {

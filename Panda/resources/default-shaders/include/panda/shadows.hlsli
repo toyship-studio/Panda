@@ -1,16 +1,16 @@
-// Cascaded sun shadows (CSM, context/lighting.md): the cascades lie as tiles along U of a single
-// depth atlas (comparison sampler); a cascade is a slice by distance from the camera + the
-// "world → (u, v, depth)" matrix of its tile (SCENE_LIGHTS). sampleShadow is the sun illumination
-// 0..1 over the cascades, with a crossfade of adjacent cascades and a fade at Shadow Distance.
-// Cascade tap: a 3×3 PCF tent on four bilinear compare taps (Castaño). Vegetation declares
-// PANDA_SHADOW_SINGLE_TAP before the include — a single compare tap (hardware bilinear, 2×2
-// texels): a soft shadow edge on foliage and grass is not discernible, while nine taps per pixel
-// under overdraw are a noticeable share of the frag.
-#include "panda/scene_lights.hlsli"
-
-// Cascade shadow atlas (a system light input: the renderer binds it to shaders that declare it).
-Texture2D shadowMap;
-SamplerComparisonState shadowMapSampler;
+// PANDA_SHADOWS — cascaded sun shadows (shader feature `shadows`, context/lighting.md): the
+// cascades lie as tiles along U of the single depth atlas shadowMap (comparison sampler); a
+// cascade is a slice by distance from the camera + the "world → (u, v, depth)" matrix of its tile.
+// sampleShadow is the sun illumination 0..1 over the cascades, with a crossfade of adjacent
+// cascades and a fade at Shadow Distance. The feature needs `lights` (the sun) and `view` (the
+// camera). Cascade tap: a 3×3 PCF tent on four bilinear compare taps (Castaño). Vegetation
+// declares PANDA_SHADOW_SINGLE_TAP before the include — a single compare tap (hardware bilinear,
+// 2×2 texels): a soft shadow edge on foliage and grass is not discernible, while nine taps per
+// pixel under overdraw are a noticeable share of the frag. With the feature off the include is a
+// compile error; a lit shader takes panda/lighting.hlsli, which degrades without it.
+#include "panda/blocks/shadows.hlsli"
+#include "panda/view.hlsli"
+#include "panda/lights.hlsli"
 
 // Atlas UV from the cascade tile UV: the tiles lie along U.
 float2 cascadeAtlasUv(int cascade, float2 tileUv) {
@@ -81,7 +81,7 @@ float sampleShadow(float3 worldPos, float3 worldNormal, out float csmWeight) {
     float fade = saturate((shadowParams.z - toCamera) / max(shadowParams.z * 0.1, 0.001));
     if (fade <= 0.0) { return 1.0; }
     float3 normal = normalize(worldNormal);
-    float cosTheta = saturate(dot(normal, normalize(directionalDirectionIntensity.xyz)));
+    float cosTheta = saturate(dot(normal, normalize(sunDirectionIntensity.xyz)));
     float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
     int cascadeCount = (int)shadowBias.z;
     float previousSplit = 0.0;

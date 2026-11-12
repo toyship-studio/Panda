@@ -2,7 +2,6 @@
 #include "Panda/Assets/MaterialAsset.hpp"
 #include "Panda/Assets/MaterialSystemValues.hpp"
 #include "Panda/Base/ColorSpace.hpp"
-#include "Panda/Renderer/SceneWind.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 #include "Panda/Renderer/Std140Buffer.hpp"
 #include "Panda/Serialization/ShaderReflectionDataMapper.hpp"
@@ -61,11 +60,9 @@ void MaterialAsset::bindFields() {
             "MATERIAL_FIELDS", m_cachedFieldsUbo.data(), static_cast<uint32_t>(m_cachedFieldsUbo.size())
         );
     }
-    // Standard frame values (PandaFieldsUbo): time and scene wind.
-    PandaFieldsUbo fields{};
-    fields.iTime = Panda::Application::get()->getTime();
-    fields.sceneWind = SceneWind::phaseVector();
-    Miren::addInputUniformBuffer("PANDA_FIELDS", &fields, sizeof(fields));
+    // The frame block (the time) reaches every material draw: the scene, postprocessing, previews.
+    Application *application = Application::get();
+    bindBlock(FrameUbo::from(application ? application->getTime() : 0.f));
 }
 
 void MaterialAsset::bindTextureField(const char *name) {

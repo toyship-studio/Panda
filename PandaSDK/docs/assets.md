@@ -44,7 +44,7 @@ JSON: `{"inputs": [{"name", "type", "value"}]}`. `type`: 0 float, 1 uint, 2 vec4
 The material's shader is stored in the registry (`meta.shader` in the sidecar of the `.mat` — the
 id of a built-in or project shader). The set and the ORDER of the fields are the shader's
 contract: create a new material in the editor (choosing a shader fills in the correct field
-template) and edit the values as text.
+template) and edit the values as text. Writing a shader of your own: [Shaders](shaders.md).
 
 ## Reload
 

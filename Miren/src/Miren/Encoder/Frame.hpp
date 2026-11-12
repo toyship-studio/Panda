@@ -30,6 +30,7 @@ public:
     void setScissorRect(Rect rect);
     void setDepthBias(float constant, float slope);
     void addInput(std::string_view name, RenderPassInputType type, const void *value, size_t size);
+    void addViewInput(ViewId id, std::string_view name, RenderPassInputType type, const void *value, size_t size);
     void resetCurrentDrawCall();
     void submitCurrentDrawCall(ViewId id, ProgramHandle program);
     void queueFree(FrameBufferHandle handle);
@@ -56,6 +57,8 @@ public:
     int m_drawCallsCount;
     RenderPass m_drawCalls[MAX_DRAW_CALLS];
     View m_views[MAX_VIEWS];
+    // The inputs of a view for this frame: applied to each of its draws before the draw's own.
+    RenderPassInputs m_viewInputs[MAX_VIEWS];
 
 private:
     RenderPass *getCurrentDrawCall();

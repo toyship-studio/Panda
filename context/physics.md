@@ -37,7 +37,8 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
   outlines and the joint drawings as a viewport overlay (`EditorExtensions::viewportOverlays`,
   the Scene tab in EDIT and PLAY) and the PHYSICS section of the editor settings (`physics` of
   `settings.json`: Show Colliders, Show Joints). A joint is drawn as authored: a cross at the
-  anchor, the axis through it, a line to the connected entity. A mesh collider
+  anchor, the axis through it, a line to the nearest point of the connected body's colliders (not
+  to its origin: the origin of a wall segment or a cabinet lies far from where it is seen). A mesh collider
   is outlined by the box of its triangles; a selected entity shows the edges themselves (of the
   hull for a convex one), thinned to a cap when the mesh is large.
 - Other modules put their bodies into the 3D world through `World::findContext<Physics3D>()`
@@ -96,7 +97,9 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
   teleported) costs nothing. A collider added to or removed from a part, a part that comes or
   goes, a part reparented or given a body of its own: the body is rebuilt from what stands under
   it now, with its motion. The pose of a part is never written by the physics: it follows its body
-  through the hierarchy as any child does. A ray cast reports the entity of the hit collider (the
+  through the hierarchy as any child does. For the script API a part stands for its body
+  (`findBody`): the mass, the impulses and the velocities asked of a shelf are those of the whole
+  cabinet, so a ray hit on a part is acted upon like a hit on the body. A ray cast reports the entity of the hit collider (the
   part), the contact events go to the body entity as before. A triangle mesh collider on a part
   gets a cook of its own with the pose baked into the triangles (box3d mesh shapes have no frame);
   a convex one is placed by `b3CreateTransformedHullShape`. Same rules in 2D (`BoxCollider2D`).

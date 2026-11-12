@@ -11,7 +11,7 @@
 // the precedent for vertex material fields is grass/flora_billboard). windStrength = 0
 // (calm, impostor bake) disables the branch: parity with default_lit.vert.
 
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 cbuffer MATERIAL_FIELDS {
     float4 baseColorFactor;
@@ -31,7 +31,9 @@ cbuffer MATERIAL_FIELDS {
     float translucency;  // leaf translucency: share of sun through the blade when the sun is behind the leaf
 };
 
-#include "panda/panda_fields.hlsli"
+#if PANDA_FEATURE_WIND
+#include "panda/wind.hlsli"
+#endif
 
 struct VSInput {
     float3 position : POSITION;
@@ -55,6 +57,7 @@ struct VSOutput {
     float fragGust : TEXCOORD7;
 };
 
+#if PANDA_FEATURE_WIND
 // 1D value noise with a period — the same as in the frag (see veg_crown.frag).
 float windNoise(float t, float period) {
     const float f = frac(t);
@@ -90,16 +93,19 @@ float3 crownWindOffset(float gust, float windWeight, uint id) {
     const float swing = (gust - 0.3) + cardSway * 0.3 * (0.3 + 0.7 * gust);
     return float3(sceneWind.x, 0.0, sceneWind.y) * (swing * 0.1 * windStrength * windWeight);
 }
+#endif
 
 VSOutput main(VSInput input) {
     VSOutput output;
     float4 worldPos = mul(modelMtx, float4(input.position, 1.0));
     float gust = 0.0;
+#if PANDA_FEATURE_WIND
     [branch]
     if (windStrength > 0.001) {
         gust = windGustEnergy(worldPos.xz);
         worldPos.xyz += crownWindOffset(gust, input.color.a, input.id);
     }
+#endif
     output.position = mul(projViewMtx, worldPos);
     output.worldPos = worldPos.xyz;
     output.worldNormal = normalize(mul((float3x3) modelMtx, input.normal));

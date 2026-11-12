@@ -11,6 +11,7 @@
 #include "Panda/Assets/ImportedMeshAsset.hpp"
 #include "Panda/GameLogic/Camera.hpp"
 #include "Panda/Renderer/RenderingMode.hpp"
+#include "Panda/Renderer/SceneBlocks.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 #include "Panda/Renderer/WorldLighting.hpp"
 
@@ -94,25 +95,15 @@ public:
     Statistics getStats();
     void resetStats();
     void setViewProj(glm::mat4 viewProj);
+    // The frame lighting of the pass begun with begin(): the scene blocks are assembled here once
+    // per frame (SceneBlocks) and given to the view of the pass — every draw into that view reads
+    // them, a Renderer2D or a module drawing into the same view included.
     void setLighting(const WorldLightingData &lighting);
-    // Whether the shader uses SCENE_LIGHTS (an asset flag computed on load). Reused in Renderer2D.
-    static bool shaderUsesSceneLights(AssetRef<ShaderAsset> shader);
-    // System lighting textures for the shaders that declare them: the shadow atlas (nullptr —
-    // a depth placeholder), the crown occlusion atlas (nullptr — a white placeholder) and the
-    // environment map (nullptr — the built-in sky gradient). Reused in Renderer2D and the
-    // previews — the slots must always be filled.
-    static void bindSystemLightTextures(
-        AssetRef<ShaderAsset> shader,
-        TextureAsset *shadowAtlas,
-        TextureAsset *occlusionVolume,
-        TextureAsset *environmentMap = nullptr
-    );
 
     Renderer3D &operator=(Renderer3D &&other);
 
 private:
     void flush();
-    void bindSceneLightingIfNeeded(AssetRef<MaterialAsset> material);
     void countDrawCall();
     // layoutPrograms — the programs of the mesh's own vertex layout (null — the common layout).
     Miren::ProgramHandle bindShadowDepthProgram(
@@ -138,7 +129,7 @@ private:
     Miren::ViewId m_viewId;
     glm::mat4 m_viewProj;
     WorldLightingData m_sceneLighting;
-    SceneLightsUbo m_lightingUbo{}; // SCENE_LIGHTS, built in setLighting once per frame
+    SceneBlocks m_scene; // the scene blocks of the frame, assembled in setLighting
 };
 
 } // namespace Panda

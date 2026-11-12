@@ -188,7 +188,6 @@ void D3D11Shader::terminate() {
     m_constantBuffers.clear();
     m_textures.clear();
     m_samplers.clear();
-    m_missingInputLog.clear();
     if (m_vertexBytecode) {
         m_vertexBytecode->Release();
         m_vertexBytecode = nullptr;
@@ -212,22 +211,18 @@ void D3D11Shader::bind(ID3D11DeviceContext *deviceContext) {
     deviceContext->PSSetShader(m_pixelShader, nullptr, 0);
 }
 
-const D3D11Shader::StageSlots *D3D11Shader::findSlots(
-    const std::unordered_map<std::string, StageSlots> &map, const char *name, const char *kind
-) {
+// null — the program does not declare the input. That is not an error: the engine binds the
+// scene blocks and system textures to every material draw, and a program takes what it declares.
+const D3D11Shader::StageSlots *
+D3D11Shader::findSlots(const std::unordered_map<std::string, StageSlots> &map, const char *name) {
     auto it = map.find(name);
-    if (it != map.end()) { return &it->second; }
-    if (std::find(m_missingInputLog.begin(), m_missingInputLog.end(), name) == m_missingInputLog.end()) {
-        m_missingInputLog.push_back(name);
-        LOG_ERROR("SHADER %s %s NOT FOUND", kind, name);
-    }
-    return nullptr;
+    return it != map.end() ? &it->second : nullptr;
 }
 
 void D3D11Shader::setUbo(
     ID3D11Device *device, ID3D11DeviceContext *deviceContext, const char *name, const void *data, size_t size
 ) {
-    const StageSlots *slots = findSlots(m_constantBuffers, name, "UBO");
+    const StageSlots *slots = findSlots(m_constantBuffers, name);
     if (!slots) { return; }
 
     ID3D11Buffer *&buffer = m_uboBuffers[name];
@@ -264,7 +259,7 @@ void D3D11Shader::setUbo(
 void D3D11Shader::setTexture(
     ID3D11DeviceContext *deviceContext, const char *name, ID3D11ShaderResourceView *view, ID3D11SamplerState *sampler
 ) {
-    const StageSlots *textureSlots = findSlots(m_textures, name, "TEXTURE");
+    const StageSlots *textureSlots = findSlots(m_textures, name);
     if (!textureSlots) { return; }
     if (textureSlots->vertex >= 0) {
         deviceContext->VSSetShaderResources(static_cast<UINT>(textureSlots->vertex), 1, &view);

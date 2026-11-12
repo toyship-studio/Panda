@@ -100,6 +100,12 @@ void AssetHandlerEditor::reload(AssetId id) {
     loadInternal(id, true);
 }
 
+void AssetHandlerEditor::reloadLoadedShaders() {
+    for (const auto &[id, info] : m_registry) {
+        if (info.type == AssetType::SHADER && isLoaded(id)) { reload(id); }
+    }
+}
+
 Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
     if (!forcedReload) {
         if (m_loadedAssets.contains(id)) { return m_loadedAssets.at(id).asset; }

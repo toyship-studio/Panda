@@ -63,11 +63,10 @@ namespace StaticResources {
         AssetRef<ShaderAsset> defaultSkyShader = handler->createAsset<ShaderAsset>(
             ASSET_ID++, "default-shaders/sky/sky_hdr.vert", "default-shaders/sky/sky_hdr.frag"
         );
-        // The default sky draws the world's ENVIRONMENT MAP (the system texture environmentMap,
-        // the exposure is the tail of SCENE_LIGHTS); the material has no fields. There is no sun on
-        // purpose: the disc lives in the project's custom sky material (sky_gradient).
+        // The default sky draws the world's ENVIRONMENT MAP (the environment feature: the system
+        // texture environmentMap and the exposure of PANDA_ENVIRONMENT); the material has no
+        // fields. There is no sun on purpose: the disc lives in the project's custom sky material.
         defaultSkyMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, MaterialData{}, defaultSkyShader);
-        defaultSkyShader->setSystemInputs(true, false, false, true);
         SkyVertex vertices[24] = {
             // Front
             SkyVertex(-1.0f, -1.0f, 1.0f), // 0
@@ -520,28 +519,6 @@ namespace StaticResources {
         instancedVegGrassShader = handler->createAsset<ShaderAsset>(
             ASSET_ID++, "default-shaders/veg_grass_instanced.vert", "default-shaders/veg_grass.frag"
         );
-        // System light inputs of the builtin shaders (there is no reflection — they are declared
-        // explicitly). The instanced variants share the fragment shader. The veg_grass grass
-        // receives CSM at the tuft root (like the tuft grass), the veg_crown foliage — at the
-        // fragment point (naive self-shadowing by the crown — deliberate), the impostor
-        // billboards — per fragment as well (inside Shadow Distance they catch the shadows of the
-        // mesh zone; they are not casters themselves — there is no acne).
-        for (AssetRef<ShaderAsset> shader :
-             {defaultLitShader,
-              defaultPbrShader,
-              instancedLitShader,
-              instancedPbrShader,
-              vegGrassShader,
-              instancedVegGrassShader,
-              vegCrownShader,
-              instancedVegCrownShader,
-              floraBillboardShader}) {
-            shader->setSystemInputs(true, true, true);
-        }
-        // Environment map reflections — for PBR (the instanced variant shares the fragment shader).
-        for (AssetRef<ShaderAsset> shader : {defaultPbrShader, instancedPbrShader}) {
-            shader->setSystemInputs(true, true, true, true);
-        }
         // Instanced variants are a property of the template shaders: the instanced draw of
         // Renderer3D asks the shader itself for the variant and knows no specific templates.
         defaultLitShader->setInstancedVariant(instancedLitShader.asBaseAsset());
@@ -563,17 +540,6 @@ namespace StaticResources {
             "default-shaders/flora_billboard_shadow.frag"
         );
         floraBillboardShader->setShadowVariant(floraBillboardShadowShader.asBaseAsset());
-        for (AssetRef<ShaderAsset> shader :
-             {shadowDepthShader,
-              shadowDepthMaskedShader,
-              shadowDepthInstancedShader,
-              shadowDepthInstancedMaskedShader,
-              // SCENE_LIGHTS (the light direction) is bound for the depth variant of the billboard
-              // by bindShadowDepthProgram by hand: the system mechanism is silent in the cascades,
-              // and the shadow atlas at this moment is a render target, not an input.
-              floraBillboardShadowShader}) {
-            shader->setSystemInputs(false, false);
-        }
         // The normal pass of the impostor bake for the veg_crown crown: the crown vertex shader
         // (the wind is muted by the bake) + the normal of every leaf from the normal tile — the
         // billboard repeats the foliage of the mesh (FloraImposter::bakeTile). At the end — the id
@@ -605,6 +571,40 @@ namespace StaticResources {
         /// placeholder textures.
         /// ----------------------------------------
         Extensions &extensions = GameContext::getExtensions();
+        // Scene shaders: the engine shaders that read the scene feature blocks (ShaderFeatures.hpp).
+        // A project compiles them with its feature set — the editor into the project cache, the
+        // export into the game — and reloads them in place; the bundle holds the build-time bake
+        // with every feature. The instanced variants share the fragment shader; the depth variant
+        // of the billboard reads the sun, the crown normal bake the wind.
+        SceneShaderRegistry &sceneShaders = extensions.sceneShaders;
+        sceneShaders.add(defaultSkyShader, "default-shaders/sky/sky_hdr.vert.hlsl", "default-shaders/sky/sky_hdr.frag.hlsl");
+        sceneShaders.add(defaultLitShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_lit.frag.hlsl");
+        sceneShaders.add(defaultPbrShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_pbr.frag.hlsl");
+        sceneShaders.add(
+            instancedLitShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_lit.frag.hlsl"
+        );
+        sceneShaders.add(
+            instancedPbrShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_pbr.frag.hlsl"
+        );
+        sceneShaders.add(vegCrownShader, "default-shaders/veg_crown.vert.hlsl", "default-shaders/veg_crown.frag.hlsl");
+        sceneShaders.add(
+            instancedVegCrownShader, "default-shaders/veg_crown_instanced.vert.hlsl", "default-shaders/veg_crown.frag.hlsl"
+        );
+        sceneShaders.add(vegGrassShader, "default-shaders/veg_grass.vert.hlsl", "default-shaders/veg_grass.frag.hlsl");
+        sceneShaders.add(
+            instancedVegGrassShader, "default-shaders/veg_grass_instanced.vert.hlsl", "default-shaders/veg_grass.frag.hlsl"
+        );
+        sceneShaders.add(
+            floraBillboardShader, "default-shaders/flora_billboard.vert.hlsl", "default-shaders/flora_billboard.frag.hlsl"
+        );
+        sceneShaders.add(
+            floraBillboardShadowShader, "default-shaders/flora_billboard_shadow.vert.hlsl",
+            "default-shaders/flora_billboard_shadow.frag.hlsl"
+        );
+        sceneShaders.add(
+            floraImposterNormalCrownShader, "default-shaders/veg_crown.vert.hlsl",
+            "default-shaders/flora_imposter_normal_crown.frag.hlsl"
+        );
         extensions.shaderTemplates.add({defaultUnlitShader.getId(), "Unlit", defaultUnlitMaterial});
         extensions.shaderTemplates.add({defaultLitShader.getId(), "Lit", defaultLitMaterial});
         extensions.shaderTemplates.add({defaultPbrShader.getId(), "PBR", defaultLitMaterial}); // the same field set
@@ -634,6 +634,7 @@ namespace StaticResources {
             provider.release();
         }
         extensions.shaderTemplates.clear(); // template carriers and layout programs are the assets above
+        extensions.sceneShaders.clear();
         extensions.meshLayouts.clear();
         shadowFallbackTexture = {};
         occlusionFallbackTexture = {};

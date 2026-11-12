@@ -4,10 +4,13 @@
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Assets/StaticResources.hpp"
+#include "Project/Assets/ShaderCook.hpp"
 #include "Project/Modules/ProjectModules.hpp"
 #include "Project/Settings/EditorSettingsTypes.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "AssetHandlerEditor.hpp"
+
+#include <Panda/Renderer/ShaderFeatures.hpp>
 
 #include <fstream>
 #include <sstream>
@@ -194,9 +197,13 @@ void ProjectLoader::openProject(const path_t &path) {
         SettingsMapper::adoptForeign(SettingsScope::Editor, m_editorSettings);
     }
     m_output->setEditorCameraSettings(m_projectSession.camera);
+    applyShaderFeatures();
     // First switch the asset registry and the scripts to the new project, then notify the UI:
     // loaderDidLoadProject rescans the asset panels — they must already see the NEW registry.
     finalizeOpenedProject();
+    // The scene shaders of the engine for the project's shader features (the project shaders
+    // compile for them as they load).
+    ShaderCook::cookAndReloadSceneShaders(m_projectPath);
     m_output->loaderDidLoadProject(projectName.string(), m_projectPath);
     LOG_INFO("LOADED PROJECT AT PATH %s", m_projectPath.string().c_str());
     // The world of the last session, else the start world of the project, else a new one.
@@ -578,6 +585,11 @@ bool ProjectLoader::saveProjectSettings() {
     if (!writeJson(dataDirectory / "session.json", m_jsonEncoder, m_projectSession)) {
         LOG_ERROR("CANNOT WRITE THE PROJECT SESSION AT %s", (dataDirectory / "session.json").string().c_str());
     }
+    // A saved change of the shader features recompiles the shaders of the project for the set.
+    if (applyShaderFeatures()) {
+        ShaderCook::cookAndReloadSceneShaders(m_projectPath);
+        m_assetHandler->reloadLoadedShaders();
+    }
     return saved;
 }
 
@@ -589,6 +601,22 @@ void ProjectLoader::reloadProjectSettings() {
         LOG_ERROR_EDITOR("PROJECT SETTINGS FILE IS BROKEN: %s", (m_projectPath / ".Panda" / "project.json").string().c_str());
     }
     syncWorldPaths(); // the open world stays the start world when the file has none
+    if (applyShaderFeatures()) {
+        ShaderCook::cookAndReloadSceneShaders(m_projectPath);
+        m_assetHandler->reloadLoadedShaders();
+    }
+}
+
+bool ProjectLoader::applyShaderFeatures() {
+    const ProjectRenderingSettings &rendering = m_projectSettings.get<ProjectRenderingSettings>();
+    std::string unknown;
+    const ShaderFeatureSet features = ShaderFeatureSet::fromNames(rendering.features, &unknown);
+    if (!unknown.empty()) {
+        LOG_WARN_EDITOR("PROJECT SETTINGS: unknown shader features are ignored: %s", unknown.c_str());
+    }
+    const bool changed = features != ShaderFeatures::enabled();
+    ShaderFeatures::setEnabled(features);
+    return changed;
 }
 
 } // namespace Panda

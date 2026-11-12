@@ -65,7 +65,7 @@ public:
 
 private:
     void viewChanged(View &view);
-    void submit(RenderPass *draw);
+    void submit(RenderPass *draw, RenderPassInputs &viewInputs);
     void endEncoder();
     // Waits for ALL frames in flight to complete (in-place resource mutations, shutdown).
     void drainInFlightFrames();

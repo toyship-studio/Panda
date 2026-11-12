@@ -2,7 +2,7 @@
 // linear HDR (before the user postprocessing chain and the implicit tonemap).
 // There are deliberately NO flares here: lens flare is a user pass of the chain (display
 // space, after the user tonemap); the passes take the sun's screen position from
-// POST_DATA.sunScreen, the occlusion — by sampling emissiveTexture at the sun's point.
+// PANDA_POST.sunScreen, the occlusion — by sampling emissiveTexture at the sun's point.
 cbuffer BLOOM_DATA {
     float4 sourceResolution; // xy — size of the bloom texture, px (unused)
     float4 params;           // y — intensity, z — 1/levels (normalization of the octave sum)

@@ -3,7 +3,7 @@
 // comments there (three strength layers, the weight in COLOR_0.a, windStrength=0 disables the
 // branch).
 
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 cbuffer MATERIAL_FIELDS {
     float4 baseColorFactor;
@@ -26,9 +26,10 @@ cbuffer MATERIAL_FIELDS {
     float4 grassFade;
 };
 
-#include "panda/panda_fields.hlsli"
-
-#include "panda/scene_lights.hlsli"
+#if PANDA_FEATURE_WIND
+#include "panda/wind.hlsli"
+#endif
+#include "panda/view.hlsli" // the camera: the per-tuft dissolve by distance
 
 struct VSInput {
     float3 position : POSITION;
@@ -56,6 +57,7 @@ struct VSOutput {
     float3 rootPos : TEXCOORD6; // tuft root in world space — the CSM shadow is sampled here
 };
 
+#if PANDA_FEATURE_WIND
 // Copy of veg_grass.vert (see the comments there).
 float windNoise(float t, float period) {
     const float f = frac(t);
@@ -75,6 +77,7 @@ float windGustEnergy(float2 worldXZ) {
     const float local = (smoothstep(0.2, 0.9, wave) - 0.5) * (0.4 + 0.6 * windGustiness);
     return saturate(envelope + local);
 }
+#endif
 
 // Per-instance tone jitter (brightness ±14% + a warm-cool shift of the green): a field made of
 // a single tuft does not read as clones. The formula is shared with the crown/billboard.
@@ -87,6 +90,7 @@ float3 instanceTint(float2 worldXZ) {
     return (0.86 + 0.28 * h) * lerp(float3(1.08, 1.0, 0.86), float3(0.90, 1.0, 1.10), h2);
 }
 
+#if PANDA_FEATURE_WIND
 float3 grassWindOffset(float3 worldPos, float windWeight) {
     const float gust = windGustEnergy(worldPos.xz);
     const float flutterPhase = dot(worldPos.xz, float2(1.7, 2.3));
@@ -97,6 +101,7 @@ float3 grassWindOffset(float3 worldPos, float windWeight) {
     const float swing = lean * (0.55 + 0.9 * gust) + flutter * lean * (0.12 + 0.88 * gust) * 0.45;
     return float3(sceneWind.x, 0.0, sceneWind.y) * (swing * windWeight);
 }
+#endif
 
 VSOutput main(VSInput input) {
     VSOutput output;
@@ -131,10 +136,12 @@ VSOutput main(VSInput input) {
         heightColor = lerp(1.0 - shrink, 1.0, input.color.a);
     }
     float4 worldPos = mul(modelMtx, localPos);
+#if PANDA_FEATURE_WIND
     [branch]
     if (windStrength > 0.001) {
         worldPos.xyz += grassWindOffset(worldPos.xyz, input.color.a);
     }
+#endif
     output.position = mul(projViewMtx, worldPos);
     output.worldPos = worldPos.xyz;
     output.worldNormal = normalize(mul((float3x3) modelMtx, localNormal));

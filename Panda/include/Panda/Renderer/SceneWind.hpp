@@ -31,12 +31,14 @@ struct SceneWindSettings final : public Rain::Codable {
 // fields windStrength / windGustiness — the engine sets the fields of that name in all
 // materials. Applying is owned by the application layer: EditorLayer/RuntimeLayer apply the
 // wind of the active world at startup and every frame; an application without a world applies
-// its own settings before it renders.
+// its own settings before it renders. Without the wind shader feature (ShaderFeatures) the wind
+// is calm for everyone who asks: the applied strength is zero and the phases stand still.
 class SceneWind final {
 public:
     static void apply(const SceneWindSettings &settings);
+    // The wind as applied: the strength is zero without the wind feature.
     static const SceneWindSettings &settings();
-    // Phase pack for PANDA_FIELDS: xy — unit direction (XZ), z — travel of the gust
+    // Phase pack of the wind block (WindUbo): xy — unit direction (XZ), z — travel of the gust
     // wave (m), w — flutter phase. The first call of a frame advances the phases by the frame dt.
     static Vec4 phaseVector();
 };

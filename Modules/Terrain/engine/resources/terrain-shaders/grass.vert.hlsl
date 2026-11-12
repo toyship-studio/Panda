@@ -1,4 +1,4 @@
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 cbuffer MATERIAL_FIELDS {
     float4 colorRoot;

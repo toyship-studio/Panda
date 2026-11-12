@@ -171,7 +171,7 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
         Miren::addInputTexture("originalTexture", input);
         if (emissive.isValid()) { Miren::addInputTexture("emissiveTexture", emissive); }
         if (depth.isValid()) { Miren::addInputTexture("depthTexture", depth); }
-        PostDataUbo postData{};
+        PostUbo postData{};
         // resolutionTime.xy is the target size of THIS pass: texelSize in the shader becomes the
         // target one, so the downsample itself widens the blur step.
         postData.resolutionTime = glm::vec4((float)passWidth, (float)passHeight, time, 0.f);
@@ -179,7 +179,7 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
         // The screen position of the sun (xy — UV, z — "in frame"): for the user passes —
         // flares/glare; the occlusion — by a sample of emissiveTexture at this point.
         postData.sunScreen = inputs.sunScreen;
-        Miren::addInputUniformBuffer("POST_DATA", &postData, sizeof(postData));
+        bindBlock(postData);
         m_quad.submit(viewId, shaders[i]);
         if (target) { current = target->color; }
     }

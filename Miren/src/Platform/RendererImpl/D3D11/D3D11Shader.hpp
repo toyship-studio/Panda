@@ -62,7 +62,7 @@ private:
         int pixel = -1;
     };
 
-    const StageSlots *findSlots(const std::unordered_map<std::string, StageSlots> &map, const char *name, const char *kind);
+    const StageSlots *findSlots(const std::unordered_map<std::string, StageSlots> &map, const char *name);
 
     ID3D11VertexShader *m_vertexShader;
     ID3D11PixelShader *m_pixelShader;
@@ -72,7 +72,6 @@ private:
     std::unordered_map<std::string, StageSlots> m_samplers;
     std::unordered_map<std::string, ID3D11Buffer *> m_uboBuffers;
     std::unordered_map<uint32_t, ID3D11InputLayout *> m_inputLayouts; // (layoutId << 16) | instanceLayoutId
-    std::vector<std::string> m_missingInputLog; // names already reported, log once
 };
 
 } // namespace Miren

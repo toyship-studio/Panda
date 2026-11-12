@@ -249,7 +249,7 @@ void RendererOpenGL::submit(Frame *frame) {
             viewChanged(frame->m_views[viewId]);
             addUniqueContext(swapContexts, m_ctx);
         }
-        submit(&draw);
+        submit(&draw, frame->m_viewInputs[draw.m_viewId]);
     }
     for (Fern::GraphicsContext *ctx : swapContexts) {
         ctx->setCurrent();
@@ -312,17 +312,13 @@ void RendererOpenGL::viewChanged(View &view) {
     }
 }
 
-void RendererOpenGL::submit(RenderPass *draw) {
+void RendererOpenGL::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
     // TODO: Capture time
     if (!draw->m_shader.isValid()) { return; }
     if (!m_shaders[draw->m_shader.id].isValid()) { return; }
     GL_CALL(glBindVertexArray(m_uselessVao));
     m_shaders[draw->m_shader.id].bind();
-    draw->m_inputs.finishWriting();
-    PassInput *input;
-    while ((input = draw->m_inputs.readInput()) != nullptr) {
-        addInput(draw->m_shader, *input);
-    }
+    addInputs(viewInputs, *draw);
     if (draw->m_state & MIREN_STATE_CULL_FACE) {
         GL_CALL(glEnable(GL_CULL_FACE));
         GL_CALL(glCullFace((draw->m_state & MIREN_STATE_CULL_FRONT) ? GL_FRONT : GL_BACK));

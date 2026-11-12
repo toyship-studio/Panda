@@ -1,7 +1,7 @@
 // A variant of the implicit final: the Narkowicz ACES approximation + sRGB gamma (the curve is
 // 1:1 with user ACES chains — the Lab preview is finalized like the production world).
 // Executed by the engine as tonemapOverride; do not add it to chains manually.
-#include "panda/post_data.hlsli"
+#include "panda/post.hlsli"
 
 Texture2D inputTexture;
 SamplerState inputTextureSampler;

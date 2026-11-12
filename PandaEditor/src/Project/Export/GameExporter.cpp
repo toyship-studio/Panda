@@ -1,23 +1,19 @@
 #include "GameExporter.hpp"
+#include "Project/Assets/ShaderCook.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
 #include "Panda/Serialization/AssetsMapper.hpp"
 #include "Panda/Serialization/WorldMapper.hpp"
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 
-#include <MirenTools.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <algorithm>
 #include <array>
 #include <fstream>
 
 namespace {
-
-bool isInputNewer(const Panda::path_t &inputPath, const Panda::path_t &outputPath) {
-    if (!std::filesystem::exists(outputPath)) { return true; }
-    return std::filesystem::last_write_time(inputPath) > std::filesystem::last_write_time(outputPath);
-}
 
 Panda::path_t stripPandaPrefix(const Panda::path_t &path) {
     Panda::path_t result;
@@ -56,78 +52,17 @@ Panda::path_t getRuntimeCookedShadersPath() {
     return Panda::path_t("Shaders") / "cooked";
 }
 
-MirenTools::GlslTarget getGlslTarget(Foundation::GraphicsAPI backend) {
-    return backend == Foundation::GraphicsAPI::OpenGLES ? MirenTools::GlslTarget::OpenGLES
-                                                        : MirenTools::GlslTarget::OpenGL;
-}
-
-// The expanded source (includes substituted) is the input of any compiler; it is written only on
-// change, from there on the chain lives by mtime. Empty — an expansion error.
-Panda::path_t expandShaderSource(const Panda::path_t &projectPath, const Panda::path_t &sourceRelativePath) {
-    const Panda::path_t expandedPath =
-        projectPath / Panda::AssetImporterBase::getIntermediateShaderExpandedPath(sourceRelativePath);
-    const std::vector<Panda::path_t> includeRoots = {Panda::AssetImporterBase::getShaderIncludeRoot()};
-    if (!MirenTools::expandHlslIncludesToFile(projectPath / sourceRelativePath, expandedPath, includeRoots)) {
-        return {};
-    }
-    return expandedPath;
-}
-
-bool cookGlslShader(
-    const Panda::path_t &projectPath,
-    const Panda::path_t &sourceRelativePath,
-    MirenTools::ShaderType shaderType,
-    Foundation::GraphicsAPI backend
-) {
-    const Panda::path_t sourcePath = expandShaderSource(projectPath, sourceRelativePath);
-    if (sourcePath.empty()) { return false; }
-    const Panda::path_t spvPath =
-        projectPath / Panda::AssetImporterBase::getIntermediateShaderSpvPath(sourceRelativePath);
-    const Panda::path_t cookedPath =
-        projectPath / Panda::AssetImporterBase::getCookedShaderAssetPath(sourceRelativePath, backend);
-
-    std::filesystem::create_directories(spvPath.parent_path());
-    std::filesystem::create_directories(cookedPath.parent_path());
-
-    if (isInputNewer(sourcePath, spvPath)) {
-        if (!MirenTools::compileHlslShaderToSpv(sourcePath, spvPath, shaderType)) { return false; }
-    }
-
-    if (isInputNewer(spvPath, cookedPath)) {
-        if (!MirenTools::compileSpvShaderToGlsl(spvPath, cookedPath, shaderType, getGlslTarget(backend))) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-// The MSL source is platform-neutral for our set of shaders and is compiled on the
-// device (newLibraryWithSource): a single "metal" cook serves both macOS and iOS.
-bool cookMslShader(
-    const Panda::path_t &projectPath, const Panda::path_t &sourceRelativePath, MirenTools::ShaderType shaderType
-) {
-    const Panda::path_t sourcePath = expandShaderSource(projectPath, sourceRelativePath);
-    if (sourcePath.empty()) { return false; }
-    const Panda::path_t spvPath =
-        projectPath / Panda::AssetImporterBase::getIntermediateShaderSpvPath(sourceRelativePath);
-    const Panda::path_t cookedPath =
-        projectPath /
-        Panda::AssetImporterBase::getCookedShaderAssetPath(sourceRelativePath, Foundation::GraphicsAPI::Metal);
-
-    std::filesystem::create_directories(spvPath.parent_path());
-    std::filesystem::create_directories(cookedPath.parent_path());
-
-    if (isInputNewer(sourcePath, spvPath)) {
-        if (!MirenTools::compileHlslShaderToSpv(sourcePath, spvPath, shaderType)) { return false; }
-    }
-    if (isInputNewer(spvPath, cookedPath)) {
-        if (!MirenTools::compileSpvShaderToMsl(spvPath, cookedPath, shaderType)) { return false; }
-    }
-    return true;
-}
-
-bool cookProjectShadersForExport(const Panda::path_t &projectPath, Panda::AssetHandlerEditor &assetHandler) {
+// The shaders of the game for every backend of the export: the project shaders and the engine's
+// scene shaders (Extensions::sceneShaders), cooked with the project's shader features (ShaderCook —
+// the same chain as the editor). The cooked pairs land in <project>/.Panda/Shaders/cooked and are
+// copied into the runtime data as a whole.
+bool cookShadersForExport(const Panda::path_t &projectPath, Panda::AssetHandlerEditor &assetHandler) {
+    constexpr std::array<Foundation::GraphicsAPI, 4> backends = {
+        Foundation::GraphicsAPI::OpenGL,
+        Foundation::GraphicsAPI::OpenGLES,
+        Foundation::GraphicsAPI::Metal,
+        Foundation::GraphicsAPI::D3D11,
+    };
     for (const auto &[id, info] : assetHandler.getRegistry()) {
         if (info.type != Panda::AssetType::SHADER) { continue; }
         const Panda::path_t vertexPath = assetHandler.assetPath(id);
@@ -141,24 +76,27 @@ bool cookProjectShadersForExport(const Panda::path_t &projectPath, Panda::AssetH
             LOG_WARN_EDITOR("Shader %u source files not found", (uint32_t)id);
             return false;
         }
-
-        constexpr std::array<Foundation::GraphicsAPI, 2> glslBackends = {
-            Foundation::GraphicsAPI::OpenGL, Foundation::GraphicsAPI::OpenGLES
-        };
-        for (Foundation::GraphicsAPI backend : glslBackends) {
-            if (!cookGlslShader(projectPath, vertexPath, MirenTools::VERTEX, backend)) { return false; }
-            if (!cookGlslShader(projectPath, fragmentPath, MirenTools::FRAGMENT, backend)) { return false; }
+        Panda::ShaderCookRequest request;
+        request.vertexSource = projectPath / vertexPath;
+        request.fragmentSource = projectPath / fragmentPath;
+        request.vertexLogical = vertexPath;
+        request.fragmentLogical = fragmentPath;
+        request.projectPath = projectPath;
+        for (Foundation::GraphicsAPI backend : backends) {
+            Panda::ShaderCookResult result;
+            if (!Panda::ShaderCook::cook(request, backend, result)) {
+                LOG_ERROR_EDITOR("Shader %s failed to cook for %s", vertexPath.string().c_str(),
+                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
+                return false;
+            }
         }
-        if (!cookMslShader(projectPath, vertexPath, MirenTools::VERTEX)) { return false; }
-        if (!cookMslShader(projectPath, fragmentPath, MirenTools::FRAGMENT)) { return false; }
-        // D3D11 compiles HLSL at runtime (without an include handler): the cooked shader is
-        // the expanded source.
-        const std::vector<Panda::path_t> includeRoots = {Panda::AssetImporterBase::getShaderIncludeRoot()};
-        for (const Panda::path_t &sourceRelativePath : {vertexPath, fragmentPath}) {
-            const Panda::path_t cookedPath =
-                projectPath /
-                Panda::AssetImporterBase::getCookedShaderAssetPath(sourceRelativePath, Foundation::GraphicsAPI::D3D11);
-            if (!MirenTools::expandHlslIncludesToFile(projectPath / sourceRelativePath, cookedPath, includeRoots)) {
+    }
+    for (const Panda::SceneShader &shader : Panda::GameContext::getExtensions().sceneShaders.shaders()) {
+        for (Foundation::GraphicsAPI backend : backends) {
+            Panda::ShaderCookResult result;
+            if (!Panda::ShaderCook::cookSceneShader(shader, projectPath, backend, result)) {
+                LOG_ERROR_EDITOR("Scene shader %s failed to cook for %s", shader.vertex.c_str(),
+                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
                 return false;
             }
         }
@@ -330,6 +268,9 @@ bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const std
     RuntimeManifest runtimeManifest;
     runtimeManifest.worldPath = "Worlds/main.pworld";
     runtimeManifest.gameName = appName; // save directory in the OS persistent path
+    // The shader features of the project: the shaders of the game are cooked for this set
+    // (ShaderCook), the runtime enables exactly it (ShaderFeatures).
+    runtimeManifest.shaderFeatures = ShaderFeatures::enabled().names();
     path_t binPath = runtimeDataDir / "project.bin";
     std::ofstream file(binPath, std::ios::binary);
     if (!file.is_open()) {
@@ -369,17 +310,6 @@ bool GameExporter::exportAssetRegistry(const path_t &runtimeDataDir, AssetHandle
         entry.info = info;
         entry.source = assetHandler.assetSource(id); // subPath (future containers) travels as is
         const path_t editorPath = entry.source.path;
-        if (info.type == AssetType::SHADER) {
-            // System light inputs (editor reflection) go into the registry: the runtime has no reflection.
-            if (AssetRef<ShaderAsset> shader = AssetRef<Asset>(id).as<ShaderAsset>()) {
-                AssetInfo::ShaderSettings settings;
-                settings.sceneLights = shader->usesSceneLights();
-                settings.shadowMap = shader->usesShadowMap();
-                settings.occlusionVolume = shader->usesOcclusionVolume();
-                settings.environmentMap = shader->usesEnvironmentMap();
-                entry.info.settings = settings;
-            }
-        }
         if (info.type == AssetType::TEXTURE) {
             entry.source.path = getRuntimeTexturePath(editorPath);
         } else if (info.type == AssetType::MATERIAL) {
@@ -636,7 +566,7 @@ bool GameExporter::copyRuntimeAssets(
         }
     }
 
-    if (!cookProjectShadersForExport(projectPath, assetHandler)) { return false; }
+    if (!cookShadersForExport(projectPath, assetHandler)) { return false; }
 
     path_t shadersDir = projectPath / ".Panda" / "Shaders" / "cooked";
     path_t destShadersDir = runtimeDataDir / getRuntimeCookedShadersPath();

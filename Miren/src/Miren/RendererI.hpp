@@ -63,6 +63,21 @@ public:
     // The input's slots are resolved by the layout of the draw call's program (draw->m_shader).
     virtual void addInput(ProgramHandle program, const PassInput &input) = 0;
     virtual void submit(Frame *frame) = 0;
+
+protected:
+    // The inputs of a draw: the ones of its view first, its own on top.
+    void addInputs(RenderPassInputs &viewInputs, RenderPass &draw) {
+        addInputs(viewInputs, draw.m_shader);
+        addInputs(draw.m_inputs, draw.m_shader);
+    }
+
+private:
+    void addInputs(RenderPassInputs &inputs, ProgramHandle program) {
+        inputs.rewind();
+        while (PassInput *input = inputs.readInput()) {
+            addInput(program, *input);
+        }
+    }
 };
 
 } // namespace Miren

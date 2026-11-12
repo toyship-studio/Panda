@@ -598,6 +598,10 @@ struct Context {
         m_submit->addInput(name, type, value, size);
     }
 
+    void addViewInput(ViewId id, std::string_view name, RenderPassInputType type, const void *value, size_t size) {
+        m_submit->addViewInput(id, name, type, value, size);
+    }
+
     void setVertexLayout(VertexLayoutHandle handle) {
         m_submit->setVertexLayout(handle);
     }

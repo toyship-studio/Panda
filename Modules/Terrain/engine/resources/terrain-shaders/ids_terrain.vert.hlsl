@@ -1,6 +1,6 @@
 // IDS pass for the thin terrain vertex (TerrainVertex): the id comes as a material
 // uniform (ids.frag), there is no vertex id.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

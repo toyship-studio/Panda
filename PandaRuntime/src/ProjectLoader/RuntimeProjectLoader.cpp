@@ -1,6 +1,10 @@
 #include "ProjectLoader/RuntimeProjectLoader.hpp"
-#include "Panda/Serialization/WorldMapper.hpp"
+#include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
+#include "Panda/Serialization/WorldMapper.hpp"
+
+#include <Foundation/GraphicsAPI.hpp>
 
 #include <fstream>
 
@@ -26,7 +30,18 @@ bool RuntimeProjectLoader::load(const path_t &runtimeDataPath, AssetHandlerRunti
         return false;
     }
 
-    // 3. Load world
+    // 3. The shader features of the game (ShaderFeatures): the scene shaders of the engine come
+    // from the export's cook for this set — the bundle holds the bake with every feature.
+    std::string unknownFeatures;
+    ShaderFeatures::setEnabled(ShaderFeatureSet::fromNames(m_manifest.shaderFeatures, &unknownFeatures));
+    if (!unknownFeatures.empty()) {
+        LOG_WARN("RUNTIME: unknown shader features in the manifest: %s", unknownFeatures.c_str());
+    }
+    GameContext::getExtensions().sceneShaders.reloadCooked(
+        runtimeDataPath / "Shaders" / "cooked", Foundation::ACTIVE_GRAPHICS_API
+    );
+
+    // 4. Load world
     if (!loadWorld(runtimeDataPath, world)) {
         LOG_ERROR("RUNTIME: Failed to load world");
         return false;

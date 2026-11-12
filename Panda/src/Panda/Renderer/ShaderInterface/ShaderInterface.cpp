@@ -3,8 +3,11 @@
 
 #include <Foundation/Foundation.hpp>
 
+#include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <unordered_map>
 
@@ -40,35 +43,55 @@ namespace {
     }
 
     struct Block {
+        std::optional<ShaderFeature> feature; // the block of a feature; nullopt — a plain block
         const char *cbufferName;
         const char *structName;
-        const char *fileName;
+        std::string fileName;
         Rain::TypeInfo info;
     };
 
-    // The block meta comes straight from the struct (RAIN_FIELDS + sizeof): UBOs are not
-    // registered in the Rain registry, they are not serialized.
+    // The block meta comes straight from the struct (its NAME, RAIN_FIELDS and sizeof): the blocks
+    // are not registered in the Rain registry, they are not serialized. The file follows the
+    // name: PANDA_SHADOWS — panda/blocks/shadows.hlsli.
     template<typename T>
-    Block block(const char *cbufferName, const char *structName, const char *fileName) {
+    Block block(const char *structName, std::optional<ShaderFeature> feature = std::nullopt) {
         Rain::TypeInfo info(0, structName);
         info.size = sizeof(T);
         info.fields = T::getFields();
-        return {cbufferName, structName, fileName, info};
+        std::string fileName = std::string(T::NAME).substr(std::strlen("PANDA_"));
+        for (char &c : fileName) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        return {feature, T::NAME, structName, "panda/blocks/" + fileName + ".hlsli", info};
     }
 
     std::vector<Block> blocks() {
         return {
-            block<SceneLightsUbo>("SCENE_LIGHTS", "SceneLightsUbo", "panda/scene_lights.hlsli"),
-            block<PandaFieldsUbo>("PANDA_FIELDS", "PandaFieldsUbo", "panda/panda_fields.hlsli"),
-            block<VertexUbo>("UBO_VERT", "VertexUbo", "panda/vertex_ubo.hlsli"),
-            block<PostDataUbo>("POST_DATA", "PostDataUbo", "panda/post_data.hlsli"),
+            block<FrameUbo>("FrameUbo"),
+            block<ViewUbo>("ViewUbo"),
+            block<LightsUbo>("LightsUbo", ShaderFeature::Lights),
+            block<ShadowsUbo>("ShadowsUbo", ShaderFeature::Shadows),
+            block<OcclusionUbo>("OcclusionUbo", ShaderFeature::Occlusion),
+            block<EnvironmentUbo>("EnvironmentUbo", ShaderFeature::Environment),
+            block<WindUbo>("WindUbo", ShaderFeature::Wind),
+            block<DrawUbo>("DrawUbo"),
+            block<PostUbo>("PostUbo"),
         };
     }
+
+    constexpr const char *FEATURES_FILE = "panda/features.hlsli";
 
     std::string format(const char *fmt, const char *a, const char *b, uint32_t x, uint32_t y) {
         char buffer[512];
         std::snprintf(buffer, sizeof(buffer), fmt, a, b, x, y);
         return buffer;
+    }
+
+    std::string header(const char *structName) {
+        std::string text = "// Generated from the C++ struct Panda::";
+        text += structName;
+        text += " (Panda/Renderer/ShaderInterface/ShaderBlocks.hpp):\n";
+        text += "// PandaSmoke --write-shader-includes <default-shaders/include>. Do not edit by hand: the meaning\n";
+        text += "// and layout of the fields are described in the struct; new fields go at the end only.\n";
+        return text;
     }
 
     // The cbuffer text from the meta: the offset of every field is computed by the cbuffer rules
@@ -119,16 +142,35 @@ namespace {
             );
             return false;
         }
-        text = "// Generated from the C++ struct Panda::";
-        text += block.structName;
-        text += " (Panda/Renderer/ShaderInterface/ShaderBlocks.hpp):\n";
-        text += "// PandaSmoke --write-shader-includes <default-shaders/include>. Do not edit by hand: the meaning\n";
-        text += "// and layout of the fields are described in the struct; new fields go at the end only.\n";
+        text = header(block.structName);
+        if (block.feature) {
+            // The include of a disabled feature is a compile error that names the setting.
+            const ShaderFeatureInfo &feature = ShaderFeatures::info(*block.feature);
+            text += "#if !";
+            text += feature.macro;
+            text += "\n#error \"The '";
+            text += feature.name;
+            text += "' feature is off in this project: turn it on in Project Settings > Rendering, or do not include panda/";
+            text += feature.name;
+            text += ".hlsli\"\n#endif\n";
+        }
         text += "cbuffer ";
         text += block.cbufferName;
         text += " {\n";
         text += body;
         text += "};\n";
+        if (block.feature) {
+            for (const ShaderFeatureTexture &texture : ShaderFeatures::info(*block.feature).textures) {
+                text += texture.textureType;
+                text += ' ';
+                text += texture.name;
+                text += ";\n";
+                text += texture.samplerType;
+                text += ' ';
+                text += texture.name;
+                text += "Sampler;\n";
+            }
+        }
         return true;
     }
 
@@ -145,6 +187,7 @@ namespace {
 
 std::vector<Include> generate(std::string &error) {
     std::vector<Include> includes;
+    includes.push_back({FEATURES_FILE, featuresInclude(ShaderFeatureSet::all())});
     for (const Block &block : blocks()) {
         Include include;
         include.fileName = block.fileName;
@@ -181,11 +224,24 @@ std::string checkIncludes(const path_t &includeRoot) {
         if (file.is_open()) { buffer << file.rdbuf(); }
         if (!file.is_open() || normalizeNewlines(buffer.str()) != include.text) {
             return "Shader include " + include.fileName +
-                   " does not match the C++ struct (ShaderBlocks.hpp): regenerate it — "
+                   " does not match the C++ side (ShaderBlocks.hpp, ShaderFeatures.hpp): regenerate it — "
                    "PandaSmoke --write-shader-includes Panda/resources/default-shaders/include";
         }
     }
     return {};
+}
+
+std::string featuresInclude(const ShaderFeatureSet &features) {
+    std::string text = "// Generated: the shader features this shader is compiled for, 1 - on, 0 - off. The engine puts\n";
+    text += "// these macros in front of every shader: the features of the project (Project Settings >\n";
+    text += "// Rendering) in the editor and the export, every feature in the engine's own bake. Never\n";
+    text += "// include or edit it by hand.\n";
+    for (const ShaderFeatureInfo &feature : ShaderFeatures::catalog()) {
+        text += "#define ";
+        text += feature.macro;
+        text += features.has(feature.feature) ? " 1\n" : " 0\n";
+    }
+    return text;
 }
 
 } // namespace Panda::ShaderInterface

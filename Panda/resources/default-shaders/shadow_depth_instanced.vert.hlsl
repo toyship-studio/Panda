@@ -1,5 +1,5 @@
 // Depth-only shadow map pass (CSM) for instances (mat4 stream, like default_lit_instanced).
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

@@ -4,6 +4,7 @@
 #include "Panda/Renderer/PostprocessingPipeline.hpp" // projectSunToScreen
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <Foundation/Profile.hpp>
 
@@ -11,15 +12,13 @@ namespace Panda {
 
 namespace {
 
-    // The light sources of the frame from the components: the first enabled sun, point lights —
-    // up to RENDERER_MAX_POINT_LIGHTS (the position comes from the world transform).
-    WorldLightingData collectLights(World &world) {
-        WorldLightingData lighting;
+    // The lights of the frame: the ambient of the world settings; from the components — the first
+    // enabled sun and the point lights, up to RENDERER_MAX_POINT_LIGHTS (the position comes from
+    // the world transform).
+    void collectLights(World &world, WorldLightingData &lighting) {
         const WorldLightingSettings &settings = world.getLightingSettings();
         lighting.ambientColor = settings.ambientColor;
         lighting.ambientIntensity = settings.ambientIntensity;
-        lighting.environment.map = settings.environmentMap.as<TextureAsset>();
-        lighting.environment.intensity = settings.environmentIntensity;
 
         auto suns = world.getAllEntitiesWith<DirectionalLightComponent, TransformComponent>();
         for (auto entityHandle : suns) {
@@ -52,7 +51,6 @@ namespace {
             pointLight.intensity = lightComponent.intensity;
         }
         lighting.pointLightCount = pointLightCount;
-        return lighting;
     }
 
     // Occluders of the occlusion volume — contributions of the world systems
@@ -78,7 +76,23 @@ namespace {
 const WorldLightingData &
 LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 &cameraPosition) {
     PANDA_PROFILE_SCOPE_N("World: lighting");
-    m_data = collectLights(world);
+    // The shader features of the project (ShaderFeatures): each one fills its own data, and one
+    // that is off is not collected, fitted or baked — its part stays the data of an empty scene.
+    const ShaderFeatureSet &features = ShaderFeatures::enabled();
+    m_data = WorldLightingData{};
+    if (features.has(ShaderFeature::Lights)) {
+        collectLights(world, m_data);
+    } else {
+        // No lights in the project: the scene is unlit — a full white ambient shows the albedo,
+        // as the lit shaders of the project do without the lights block (panda/lighting.hlsli).
+        m_data.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
+        m_data.ambientIntensity = 1.f;
+    }
+    if (features.has(ShaderFeature::Environment)) {
+        const WorldLightingSettings &settings = world.getLightingSettings();
+        m_data.environment.map = settings.environmentMap.as<TextureAsset>();
+        m_data.environment.intensity = settings.environmentIntensity;
+    }
     m_data.cameraPosition = cameraPosition;
     const DirectionalLightData &sun = m_data.directionalLight;
     // A point at infinity: behind the camera or far outside the frame z = 0, the flares are
@@ -87,14 +101,18 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
     // The shadow cascades are fitted to the camera and the sun of the frame; the depth passes go
     // after the scene traversal (the GPU executes them earlier — the views are above SCENE_VIEW).
+    CascadedShadowMap::Settings shadowSettings = graphics.shadows;
+    if (!features.has(ShaderFeature::Shadows)) { shadowSettings.enabled = false; }
     const glm::vec3 shadowLight = sun.castShadows && sun.intensity > 0.f ? sun.direction : glm::vec3(0.f);
-    if (m_shadowMap.update(graphics.shadows, viewProj, cameraPosition, shadowLight)) {
+    if (m_shadowMap.update(shadowSettings, viewProj, cameraPosition, shadowLight)) {
         m_data.shadows = m_shadowMap.data();
     }
     // Occlusion volume: a window around the camera built from the flora scattering (rebaked in the
     // background on a window shift / a flora edit / a sun rotation), read by all lit shaders.
+    OcclusionVolume::Settings occlusionSettings = graphics.occlusion;
+    if (!features.has(ShaderFeature::Occlusion)) { occlusionSettings.enabled = false; }
     m_occlusion.update(
-        graphics.occlusion, cameraPosition, sun.intensity > 0.f ? sun.direction : glm::vec3(0.f, 1.f, 0.f),
+        occlusionSettings, cameraPosition, sun.intensity > 0.f ? sun.direction : glm::vec3(0.f, 1.f, 0.f),
         occluderVersion(world),
         [&world](const glm::vec3 &minWorld, const glm::vec3 &maxWorld, std::vector<Occluder> &out) {
             collectOccluders(world, minWorld, maxWorld, out);

@@ -2,6 +2,8 @@
 
 #include <Foundation/Foundation.hpp>
 
+#include <filesystem>
+
 namespace Panda {
 
 void ResourceProviderRegistry::add(ResourceProvider provider) {
@@ -21,6 +23,32 @@ const ShaderTemplate *ShaderTemplateRegistry::find(AssetId shader) const {
         if (shaderTemplate.shader == shader) { return &shaderTemplate; }
     }
     return nullptr;
+}
+
+void SceneShaderRegistry::add(AssetRef<ShaderAsset> shader, std::string vertex, std::string fragment) {
+    PND_ASSERT(shader, "SCENE SHADER: AN EMPTY ASSET");
+    m_shaders.push_back({shader, std::move(vertex), std::move(fragment)});
+}
+
+path_t SceneShaderRegistry::projectSourcePath(const std::string &resourcePath) {
+    return path_t("engine") / resourcePath;
+}
+
+void SceneShaderRegistry::reloadCooked(const path_t &cookedRoot, Foundation::GraphicsAPI backend) const {
+    const path_t backendRoot = cookedRoot / Foundation::getGraphicsAPITraits(backend).shaderBackendName;
+    for (const SceneShader &entry : m_shaders) {
+        // The cooked file is the source path without the .hlsl extension (the cook convention).
+        path_t vertex = backendRoot / projectSourcePath(entry.vertex);
+        path_t fragment = backendRoot / projectSourcePath(entry.fragment);
+        vertex.replace_extension();
+        fragment.replace_extension();
+        if (!std::filesystem::exists(vertex) || !std::filesystem::exists(fragment)) {
+            LOG_ERROR("SCENE SHADER %s: cooked pair not found at %s", entry.vertex.c_str(), backendRoot.string().c_str());
+            continue;
+        }
+        ShaderAsset *shader = entry.shader.get();
+        if (shader != nullptr) { shader->reload(vertex, fragment); }
+    }
 }
 
 void MeshLayoutRegistry::add(MeshLayoutPrograms programs) {

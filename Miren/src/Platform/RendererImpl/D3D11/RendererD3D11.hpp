@@ -71,7 +71,7 @@ public:
 
 private:
     void viewChanged(View &view);
-    void submit(RenderPass *draw);
+    void submit(RenderPass *draw, RenderPassInputs &viewInputs);
     void applyRenderStates(const RenderPass *draw, bool scissorEnabled);
     uint32_t currentRenderTargetHeight();
 

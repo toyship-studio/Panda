@@ -365,10 +365,78 @@ void appendJointLines(World &world, std::vector<HelperLine> &lines, const glm::m
     auto worldAnchor = [](const TransformComponent &transform, const glm::vec3 &anchor) {
         return transform.getPosition() + transform.getRotation() * (anchor * glm::abs(transform.getScale()));
     };
-    auto connectedPosition = [&](UUID connectedId, glm::vec3 &out) {
+    // The far end of the link to the connected body: the point of its colliders nearest to the
+    // joint, not its origin — the origin of a wall segment or of a cabinet lies far from where the
+    // thing is seen, and a line to it reads as a link to whatever stands there. The colliders of
+    // the entity and of the entities under it without a body of their own (a compound body) count;
+    // an entity without colliders gives its origin.
+    auto nearestColliderPoint = [&](Entity entity, const glm::vec3 &from, glm::vec3 &best, float &bestDistance) {
+        auto consider = [&](const glm::vec3 &point) {
+            const float distance = glm::distance(point, from);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = point;
+            }
+        };
+        const TransformComponent transform = entity.calculateWorldSpaceTransform();
+        const glm::vec3 position = transform.getPosition();
+        const glm::quat rotation = transform.getRotation();
+        const glm::vec3 scale = glm::abs(transform.getScale());
+        const glm::quat inverse = glm::inverse(rotation);
+        if (entity.hasComponent<BoxCollider3DComponent>()) {
+            const BoxCollider3DComponent &collider = entity.getComponent<BoxCollider3DComponent>();
+            const glm::vec3 center = position + rotation * collider.offset;
+            const glm::vec3 half = glm::abs(collider.size) * scale;
+            const glm::vec3 local = glm::clamp(inverse * (from - center), -half, half);
+            consider(center + rotation * local);
+        }
+        if (entity.hasComponent<SphereCollider3DComponent>()) {
+            const SphereCollider3DComponent &collider = entity.getComponent<SphereCollider3DComponent>();
+            const glm::vec3 center = position + rotation * collider.offset;
+            const float radius = glm::abs(collider.radius) * glm::max(scale.x, glm::max(scale.y, scale.z));
+            const glm::vec3 toFrom = from - center;
+            const float length = glm::length(toFrom);
+            consider(length > radius && length > 1e-6f ? center + toFrom * (radius / length) : from);
+        }
+        if (entity.hasComponent<CapsuleCollider3DComponent>()) {
+            const CapsuleCollider3DComponent &collider = entity.getComponent<CapsuleCollider3DComponent>();
+            const glm::vec3 center = position + rotation * collider.offset;
+            const glm::vec3 up = rotation * glm::vec3(0.f, 1.f, 0.f);
+            const float halfHeight = glm::abs(collider.halfHeight) * scale.y;
+            const float radius = glm::abs(collider.radius) * glm::max(scale.x, scale.z);
+            const float along = glm::clamp(glm::dot(from - center, up), -halfHeight, halfHeight);
+            const glm::vec3 onAxis = center + up * along;
+            const glm::vec3 toFrom = from - onAxis;
+            const float length = glm::length(toFrom);
+            consider(length > radius && length > 1e-6f ? onAxis + toFrom * (radius / length) : from);
+        }
+        if (entity.hasComponent<MeshCollider3DComponent>()) {
+            Physics::MeshColliderSource source;
+            if (Physics::meshColliderSource(entity, entity.getComponent<MeshCollider3DComponent>(), source)) {
+                if (const MeshOutline *outline = meshOutlineOf(source, false)) {
+                    // The nearest point of the box of the triangles, through the full world transform.
+                    const glm::mat4 matrix = world.getWorldSpaceTransformMatrix(entity);
+                    const glm::vec3 local = glm::vec3(glm::inverse(matrix) * glm::vec4(from, 1.f));
+                    const glm::vec3 clamped = glm::clamp(local, outline->boundsMin, outline->boundsMax);
+                    consider(glm::vec3(matrix * glm::vec4(clamped, 1.f)));
+                }
+            }
+        }
+    };
+    auto connectedPoint = [&](UUID connectedId, const glm::vec3 &from, glm::vec3 &out) {
         Entity connected = world.getById(connectedId);
         if (!connected.isValid()) { return false; }
+        float bestDistance = FLT_MAX;
         out = connected.calculateWorldSpaceTransform().getPosition();
+        nearestColliderPoint(connected, from, out, bestDistance);
+        std::vector<UUID> stack = connected.getChildEntities();
+        while (!stack.empty()) {
+            Entity part = world.getById(stack.back());
+            stack.pop_back();
+            if (!part.isValid() || part.hasComponent<Rigidbody3DComponent>()) { continue; }
+            nearestColliderPoint(part, from, out, bestDistance);
+            for (UUID below : part.getChildEntities()) { stack.push_back(below); }
+        }
         return true;
     };
     constexpr float CROSS_PIXELS = 6.f;
@@ -383,7 +451,7 @@ void appendJointLines(World &world, std::vector<HelperLine> &lines, const glm::m
         cross(point, CROSS_PIXELS * worldPerPixel);
         if (withAxis) { axisLine(point, transform.getRotation() * axis, AXIS_PIXELS * worldPerPixel); }
         glm::vec3 connected;
-        if (connectedPosition(connectedId, connected)) { addEdge(point, connected, linkColor); }
+        if (connectedPoint(connectedId, point, connected)) { addEdge(point, connected, linkColor); }
         endJoint();
     };
     world.getAllEntitiesWith<IdComponent, RevoluteJoint3DComponent>().each([&](IdComponent &idc,
@@ -418,7 +486,7 @@ void appendJointLines(World &world, std::vector<HelperLine> &lines, const glm::m
         axisLine(point, transform.getRotation() * joint.axis, AXIS_PIXELS * worldPerPixel);              // spin
         axisLine(point, transform.getRotation() * joint.suspensionAxis, AXIS_PIXELS * 0.5f * worldPerPixel); // travel
         glm::vec3 chassis;
-        if (connectedPosition(joint.connectedEntity, chassis)) { addEdge(point, chassis, linkColor); }
+        if (connectedPoint(joint.connectedEntity, point, chassis)) { addEdge(point, chassis, linkColor); }
         endJoint();
     });
     // A distance joint: the two anchors and the segment between them.
@@ -445,7 +513,7 @@ void appendJointLines(World &world, std::vector<HelperLine> &lines, const glm::m
         if (!beginJoint(point, worldPerPixel)) { return; }
         cross(point, CROSS_PIXELS * worldPerPixel);
         glm::vec3 connected;
-        if (connectedPosition(connectedId, connected)) { addEdge(point, connected, linkColor); }
+        if (connectedPoint(connectedId, point, connected)) { addEdge(point, connected, linkColor); }
         endJoint();
     };
     world.getAllEntitiesWith<IdComponent, FilterJoint3DComponent>().each([&](IdComponent &idc,

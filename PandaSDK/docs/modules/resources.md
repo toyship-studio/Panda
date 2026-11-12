@@ -22,7 +22,6 @@ namespace {
 
     void init(AssetHandler &handler) {
         shader = handler.createAsset<ShaderAsset>(SHADER_ID, "particles-shaders/particles.vert", "particles-shaders/particles.frag");
-        shader->setSystemInputs(false, false); // unlit: no scene lights, no shadow map
         MaterialData data;
         data.inputs = {
             MaterialField("baseColorTexture", MaterialFieldType::TEXTURE, StaticResources::whiteTexture.asBaseAsset(), true),
@@ -76,16 +75,25 @@ ResourceProvider provider() {
 Module shaders live in a resource folder of the module, `engine/resources/<module>-shaders/*.hlsl`,
 named `<name>.vert.hlsl` and `<name>.frag.hlsl`. The common baker compiles them with the
 engine's (`slangc` to SPIR-V on macOS and Linux, the source on D3D11) into
-`<module>-shaders/<name>.vert` and `.frag` of the resources, and the module loads them by that
-path, like the core loads its own from `default-shaders/`. The shared includes of the core
-(`Panda/resources/default-shaders/include/*.hlsli`: lighting, shadows, the UBO blocks generated
-from `ShaderInterface`) are available to module shaders. Any other resource folder of the module
-(`engine/resources/<module>-textures`) is shipped as it is; the folder name is the module's namespace.
+`<module>-shaders/<name>.vert` and `.frag` of the resources and ships the sources next to them;
+the module loads a shader by that path, like the core loads its own from `default-shaders/`. The
+shared includes of the core (`panda/*.hlsli`: the feature blocks, lighting, shadows, the wind —
+see [Shaders](../shaders.md)) are available to module shaders. Any other resource folder of the
+module (`engine/resources/<module>-textures`) is shipped as it is; the folder name is the module's
+namespace.
 
-`ShaderAsset::setSystemInputs(sceneLights, shadowMap, occlusionVolume, environmentMap)` tells
-the renderer which system inputs the shader declares; built-in shaders have no SPIR-V
-reflection, so the flags are the contract (a lit terrain: `true, true, true`; a depth pass:
-`false, false`).
+A shader that reads a scene feature block (`panda/lighting.hlsli`, `panda/wind.hlsli`, …) is a
+**scene shader**: a project compiles it for its own feature set. Register it from `init`, with
+the source paths relative to the resources root:
+
+```cpp
+extensions.sceneShaders.add(shader2D, "terrain-shaders/terrain.vert.hlsl", "terrain-shaders/terrain.frag.hlsl");
+```
+
+The editor cooks the registered shaders into the project cache when a project opens or its
+features change and reloads the assets in place; the export cooks them into the game. A shader
+that reads only `panda/draw.hlsli` and its own blocks (a depth pass, an unlit particle) is not
+registered: the baked program of the bundle serves every project.
 
 ## Materials and templates
 

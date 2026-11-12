@@ -593,7 +593,13 @@ void Physics2D::removeEntity(Entity entity) {
 bool Physics2D::findBody(Entity entity, RuntimeBodyData &outBody) {
     if (!isInitialized()) { return false; }
     const RuntimeBodyData *registered = m_bodies.find(entity.getId());
-    if (registered == nullptr) { return false; }
+    if (registered == nullptr) {
+        // A part of a compound body stands for its body (Physics3D::findBody).
+        const auto part = m_compoundParts.find(entity.getId());
+        if (part == m_compoundParts.end()) { return false; }
+        registered = m_bodies.find(part->second.body);
+        if (registered == nullptr) { return false; }
+    }
     outBody = *registered;
     return true;
 }

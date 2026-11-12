@@ -7,6 +7,12 @@ described by the code and by a compact contract here. History lives in git.
 Read the document of a subsystem before changing it, and update it in the same change when a
 contract moves.
 
+## Vision
+
+- `vision.md`: what Panda is — a lightweight "tiny Unity", configured by text, fast because a
+  project enables only what its game needs, scripted in C++. Read it before any decision that
+  changes what the engine offers or how it is configured.
+
 ## Contracts
 
 - `architecture.md`: library boundaries, the project model, the MVC contract of editor panels;
@@ -17,6 +23,10 @@ contract moves.
 - `rendering.md`: the Miren input model and 3D textures, the shader toolchain (slangc, shader
   includes, global UBOs generated from C++ structs), system material fields and scene wind.
 - `lighting.md`: sun shadows (CSM), the Occlusion Volume, the world environment map.
+- `shader-features.md`: the scene data a project enables — the feature catalog and the `PANDA_*`
+  blocks, the names as a fixed contract, the `rendering` project settings, how a feature is
+  switched off (compile and compute; the blocks are always bound), the scene shaders compiled
+  per project.
 - `terrain.md`: terrain 2D/3D: assets, the LOD pyramid, brushes, flora, the terrain editor,
   physics, script API, and the path to open-world performance.
 - `vegetation.md`: the vegetation surface of the engine: the crown and grass material contract
@@ -58,5 +68,6 @@ documentation site (`context/infrastructure.md`, section 4).
 - The scripting ABI stays compact: large subsystems (PandaUI) are SDK libraries; only frame
   data, events and handles cross the ABI.
 - New `StaticResources` ids are appended to the end of the sequence only (a contract with the
-  cooked assets of projects). `SCENE_LIGHTS`, `PANDA_FIELDS` and the `MATERIAL_FIELDS` of shader
-  templates take new fields at the end only.
+  cooked assets of projects). The engine blocks (`PANDA_*`, `ShaderBlocks.hpp`) and the
+  `MATERIAL_FIELDS` of shader templates take new fields at the end only; a block, a field, a
+  feature or a system texture is never renamed (`shader-features.md`).

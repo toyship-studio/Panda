@@ -14,12 +14,11 @@ cbuffer MATERIAL_FIELDS {
     float emissiveIntensity; // HDR: glow multiplier (may be > 1)
 };
 
-#include "panda/sun.hlsli"
+#include "panda/lighting.hlsli"
 #include "panda/brdf.hlsli"
-
-// World environment map (system input, equirect: the top of the image — zenith, u = atan2(z, x)).
-Texture2D environmentMap;
-SamplerState environmentMapSampler;
+#if PANDA_FEATURE_ENVIRONMENT
+#include "panda/environment.hlsli" // the world environment map: sky reflections
+#endif
 
 Texture2D baseColorTexture;
 SamplerState baseColorTextureSampler;
@@ -50,6 +49,7 @@ struct PSOutput {
     float4 emissive : SV_Target1;
 };
 
+#if PANDA_FEATURE_ENVIRONMENT
 // Environment map reflection: a sample along the reflected ray, blur by roughness — through
 // the map's mip (roughness × highest mip; SampleLevel bypasses the atan2 discontinuity at the
 // seam), the weight — the split-sum approximation of the environment BRDF without a LUT (Karis,
@@ -70,6 +70,7 @@ float3 environmentReflection(float3 normal, float3 viewDirection, float3 f0, flo
     const float2 scaleBias = float2(-1.04, 1.04) * a004 + r.zw;
     return radiance * (f0 * scaleBias.x + scaleBias.y);
 }
+#endif
 
 PSOutput main(PSInput input) {
     float4 baseColorSample = baseColorTexture.Sample(baseColorTextureSampler, input.fragTexCoord);
@@ -124,17 +125,17 @@ PSOutput main(PSInput input) {
     // Occlusion volume: sky visibility dims ambient, transmittance — the sun (in sunVisibility);
     // the sample is half a cell outward along the normal — a start from the surface: the
     // object's own bark/body does not dim its own upper surfaces.
-    const float2 volume = volumeOcclusion(input.worldPos + surfaceNormal * (0.5 * occlusionTexel.w));
-    if (directionalDirectionIntensity.w > 0.0) {
-        float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
-        float3 radiance = directionalColor.rgb * directionalDirectionIntensity.w *
+    const float2 volume = sceneOcclusion(input.worldPos + surfaceNormal * (0.5 * occlusionSurfaceOffset()));
+    if (sunDirectionIntensity.w > 0.0) {
+        float3 lightDirection = normalize(sunDirectionIntensity.xyz);
+        float3 radiance = sunColor.rgb * sunDirectionIntensity.w *
                           sunVisibility(input.worldPos, input.worldNormal, volume.y);
         lighting += shadeLight(
             surfaceNormal, viewDirection, lightDirection, radiance, albedo / PI, metallic, roughness, f0
         );
     }
 
-    int pointLightCount = (int)sceneLightCounts.x;
+    int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
@@ -153,14 +154,16 @@ PSOutput main(PSInput input) {
     }
 
     float3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo * occlusion *
-                     lerp(1.0, volume.x, occlusionParams.x);
+                     ambientOcclusion(volume);
+#if PANDA_FEATURE_ENVIRONMENT
     // Sky reflections: dimmed by the material AO and by the sky visibility from the occlusion
     // volume (under the canopy the sky is not reflected), like ambient.
     [branch]
     if (environmentParams.z > 0.5) {
         ambient += environmentReflection(surfaceNormal, viewDirection, f0, roughness) * occlusion *
-                   lerp(1.0, volume.x, occlusionParams.x);
+                   ambientOcclusion(volume);
     }
+#endif
     float3 color = (ambient + lighting) * input.fragLight + emissive;
 
     // HDR: the output is linear light; the implicit Tonemap pass at frame end does Reinhard + sRGB.

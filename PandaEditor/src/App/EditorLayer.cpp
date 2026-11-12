@@ -1761,9 +1761,9 @@ void EditorLayer::updateStripStatus(double deltaTime) {
     const auto gigabytes = [](uint64_t bytes) { return (double)bytes / (1024.0 * 1024.0 * 1024.0); };
     char text[128];
     snprintf(
-        text, sizeof(text), "MEM %.1fG   VRAM %.1fG   CPU %.0f%%   GPU %.0f%%",
+        text, sizeof(text), "MEM %.1fG   VRAM %.1fG   CPU %.0f%%   GPU %.0f%% %.1f ms",
         gigabytes(system.residentBytes), gigabytes(gpu.allocatedBytes), system.cpuPercent,
-        gpuPercent
+        gpuPercent, gpu.frameMs
     );
     m_editorController->setStripStatusText(text);
 }

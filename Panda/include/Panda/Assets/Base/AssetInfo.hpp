@@ -43,24 +43,6 @@ struct AssetInfo : public Rain::Codable {
         RAIN_FIELDS_END
     };
 
-    // The shader's system light inputs (ShaderAsset::setSystemInputs) — in the editor they are
-    // computed by reflection on load; export writes them into the runtime registry, which has
-    // no reflection (the cook is a ready binary). In the editor sidecar the shader still has
-    // no settings.
-    struct ShaderSettings : public Rain::Codable {
-        bool sceneLights = true;
-        bool shadowMap = false;
-        bool occlusionVolume = false;
-        bool environmentMap = false;
-
-        RAIN_FIELDS_BEGIN(ShaderSettings)
-        RAIN_FIELD(sceneLights)
-        RAIN_FIELD(shadowMap)
-        RAIN_FIELD(occlusionVolume)
-        RAIN_FIELD(environmentMap)
-        RAIN_FIELDS_END
-    };
-
     struct GltfMaterial : public Rain::Codable {
         std::string name;
         path_t baseColorTexturePath;
@@ -125,7 +107,7 @@ struct AssetInfo : public Rain::Codable {
         RAIN_FIELDS_END
     };
 
-    using Settings = std::variant<std::monostate, TextureSettings, MaterialSettings, MeshSettings, ShaderSettings>;
+    using Settings = std::variant<std::monostate, TextureSettings, MaterialSettings, MeshSettings>;
 
     AssetId id;
     AssetType type = AssetType::NONE;
@@ -142,8 +124,6 @@ struct AssetInfo : public Rain::Codable {
             encoder->encode("meta", std::get<MaterialSettings>(data.settings));
         } else if (data.type == AssetType::IMPORTED_MESH) {
             encoder->encode("meta", std::get<MeshSettings>(data.settings));
-        } else if (data.type == AssetType::SHADER && std::holds_alternative<ShaderSettings>(data.settings)) {
-            encoder->encode("meta", std::get<ShaderSettings>(data.settings)); // export registry only
         }
         encoder->endObject();
     }
@@ -165,9 +145,6 @@ struct AssetInfo : public Rain::Codable {
             MeshSettings settings;
             decoder->decode("meta", settings);
             data.settings = settings;
-        } else if (data.type == AssetType::SHADER) {
-            ShaderSettings settings;
-            if (decoder->decode("meta", settings)) { data.settings = settings; }
         }
         decoder->endObject();
         return true;

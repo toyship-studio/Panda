@@ -153,15 +153,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         path_t fullVertPath = m_runtimeDataPath / stripPandaPrefix(vertCookedPath);
         path_t fullFragPath = m_runtimeDataPath / stripPandaPrefix(fragCookedPath);
         if (std::filesystem::exists(fullVertPath) && std::filesystem::exists(fullFragPath)) {
-            ShaderAsset *shader = F_NEW(m_allocator, ShaderAsset)(fullVertPath, fullFragPath);
-            // System light inputs — from the export registry (the cooked file has no reflection).
-            if (auto *settings = std::get_if<AssetInfo::ShaderSettings>(&assetInfo.settings)) {
-                shader->setSystemInputs(
-                    settings->sceneLights, settings->shadowMap, settings->occlusionVolume,
-                    settings->environmentMap
-                );
-            }
-            asset = shader;
+            asset = F_NEW(m_allocator, ShaderAsset)(fullVertPath, fullFragPath);
             LOG_INFO("RUNTIME: Loaded shader %u", (uint32_t)id);
         } else {
             asset = F_NEW(m_allocator, ShaderAsset)();

@@ -1,7 +1,7 @@
 // Depth-only shadow map pass (CSM), the general mesh vertex. Pancaking: casters closer than the
 // light's near plane are pressed against it (z = max(z, 0), the light clip is orthographic ZO) —
 // distant geometry on the sun's side casts a shadow without inflating the cascade depth.
-#include "panda/vertex_ubo.hlsli"
+#include "panda/draw.hlsli"
 
 struct VSInput {
     float3 position : POSITION;

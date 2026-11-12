@@ -3,7 +3,8 @@
 ## 0.3.0
 
 - Compound bodies: a collider on an entity without a body of its own joins the body of the
-  nearest entity above it (2D and 3D). A cabinet of boards or a table with legs is one body.
+  nearest entity above it (2D and 3D). A cabinet of boards or a table with legs is one body; for
+  the script API a part stands for its body (mass, impulses, velocities).
 - Joints: Weld, Prismatic, Distance, Filter and Motor joints in 3D; `collideConnected` on every
   joint; a joint is made again when a body is rebuilt and lives with its component (added or
   removed at runtime, edited in Play); the Scene tab draws the joints (Show Joints).

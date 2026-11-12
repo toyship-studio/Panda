@@ -8,6 +8,7 @@
 #include <spirv_reflect.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -64,44 +65,33 @@ namespace {
         return line.substr(i + 1, end - i - 1);
     }
 
+    // The directive of a preprocessor line ("#  endif // x" — "endif"); empty — not a directive.
+    std::string directiveOf(const std::string &line) {
+        size_t i = line.find_first_not_of(" \t");
+        if (i == std::string::npos || line[i] != '#') { return {}; }
+        i = line.find_first_not_of(" \t", i + 1);
+        if (i == std::string::npos) { return {}; }
+        size_t end = i;
+        while (end < line.size() && std::isalpha(static_cast<unsigned char>(line[end]))) { end++; }
+        return line.substr(i, end - i);
+    }
+
     class IncludeExpander {
     public:
         explicit IncludeExpander(const std::vector<path_t> &roots)
             : m_roots(roots) {}
 
-        bool expand(const path_t &file, const std::string &displayName) {
-            const std::optional<std::string> text = readTextFile(file);
-            if (!text) {
-                LOG_ERROR_EDITOR("Shader include: cannot read %s", file.string().c_str());
-                return false;
-            }
+        // Text in front of the translation, as if it were the file displayName.
+        void prepend(const std::string &text, const std::string &displayName) {
             m_output += "#line 1 \"" + displayName + "\"\n";
-            std::istringstream lines(*text);
-            std::string line;
-            uint32_t lineNumber = 0;
-            while (std::getline(lines, line)) {
-                lineNumber++;
-                if (!line.empty() && line.back() == '\r') { line.pop_back(); }
-                const std::string spec = includeSpec(line);
-                if (spec.empty()) {
-                    m_output += line;
-                    m_output += '\n';
-                    continue;
-                }
-                const path_t resolved = resolve(file, spec);
-                if (resolved.empty()) {
-                    LOG_ERROR_EDITOR("%s:%u: shader include not found: %s", displayName.c_str(), lineNumber, spec.c_str());
-                    return false;
-                }
-                std::error_code error;
-                const path_t key = std::filesystem::weakly_canonical(resolved, error);
-                if (std::find(m_expanded.begin(), m_expanded.end(), key) == m_expanded.end()) {
-                    m_expanded.push_back(key);
-                    if (!expand(resolved, spec)) { return false; }
-                }
-                m_output += "#line " + std::to_string(lineNumber + 1) + " \"" + displayName + "\"\n";
-            }
-            return true;
+            m_output += text;
+            if (m_output.empty() || m_output.back() != '\n') { m_output += '\n'; }
+        }
+
+        // The translation: the file with every include inserted in place.
+        bool expandRoot(const path_t &file) {
+            m_stack.push_back(canonical(file));
+            return expand(file, file.filename().string());
         }
 
         std::string take() {
@@ -109,6 +99,68 @@ namespace {
         }
 
     private:
+        bool expand(const path_t &file, const std::string &displayName) {
+            const std::optional<std::string> text = readTextFile(file);
+            if (!text) {
+                LOG_ERROR_EDITOR("Shader include: cannot read %s", file.string().c_str());
+                return false;
+            }
+            m_output += lineDirective(1, displayName);
+            std::istringstream lines(*text);
+            std::string line;
+            uint32_t lineNumber = 0;
+            while (std::getline(lines, line)) {
+                lineNumber++;
+                if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+                const std::string directive = directiveOf(line);
+                const std::string spec = directive == "include" ? includeSpec(line) : std::string();
+                if (spec.empty()) {
+                    m_output += line;
+                    m_output += '\n';
+                    // The compiler skips the #line of an include together with a false branch around
+                    // it: the position is restored after every directive that ends a branch.
+                    if (directive == "else" || directive == "elif" || directive == "endif") {
+                        m_output += lineDirective(lineNumber + 1, displayName);
+                    }
+                    continue;
+                }
+                const path_t resolved = resolve(file, spec);
+                if (resolved.empty()) {
+                    LOG_ERROR_EDITOR("%s:%u: shader include not found: %s", displayName.c_str(), lineNumber, spec.c_str());
+                    return false;
+                }
+                if (!include(resolved, spec)) { return false; }
+                m_output += lineDirective(lineNumber + 1, displayName);
+            }
+            return true;
+        }
+
+        // An included file goes in at every #include, under an include guard: the compiler, which
+        // knows the branches, takes the first occurrence that is live. A file that is being
+        // expanded right now (a cycle) is skipped — its guard is already defined at that point.
+        bool include(const path_t &file, const std::string &displayName) {
+            const path_t key = canonical(file);
+            if (std::find(m_stack.begin(), m_stack.end(), key) != m_stack.end()) { return true; }
+            size_t index = std::find(m_files.begin(), m_files.end(), key) - m_files.begin();
+            if (index == m_files.size()) { m_files.push_back(key); }
+            const std::string guard = "PANDA_INCLUDED_" + std::to_string(index);
+            m_output += "#ifndef " + guard + "\n#define " + guard + "\n";
+            m_stack.push_back(key);
+            const bool expanded = expand(file, displayName);
+            m_stack.pop_back();
+            m_output += "#endif\n";
+            return expanded;
+        }
+
+        static path_t canonical(const path_t &file) {
+            std::error_code error;
+            return std::filesystem::weakly_canonical(file, error);
+        }
+
+        static std::string lineDirective(uint32_t lineNumber, const std::string &displayName) {
+            return "#line " + std::to_string(lineNumber) + " \"" + displayName + "\"\n";
+        }
+
         path_t resolve(const path_t &from, const std::string &spec) const {
             const path_t local = from.parent_path() / spec;
             if (std::filesystem::is_regular_file(local)) { return local; }
@@ -120,7 +172,8 @@ namespace {
         }
 
         const std::vector<path_t> &m_roots;
-        std::vector<path_t> m_expanded;
+        std::vector<path_t> m_files; // the included files of the translation: the index names the guard
+        std::vector<path_t> m_stack; // the files being expanded right now
         std::string m_output;
     };
 
@@ -143,14 +196,18 @@ void setSlangcExecutable(const path_t &path) {
     if (!path.empty()) { s_slangcExecutable = path.string(); }
 }
 
-std::optional<std::string> expandHlslIncludes(const path_t &input, const std::vector<path_t> &includeRoots) {
+std::optional<std::string>
+expandHlslIncludes(const path_t &input, const std::vector<path_t> &includeRoots, const std::string &prelude) {
     IncludeExpander expander(includeRoots);
-    if (!expander.expand(input, input.filename().string())) { return std::nullopt; }
+    if (!prelude.empty()) { expander.prepend(prelude, "panda/features.hlsli"); }
+    if (!expander.expandRoot(input)) { return std::nullopt; }
     return expander.take();
 }
 
-bool expandHlslIncludesToFile(const path_t &input, const path_t &output, const std::vector<path_t> &includeRoots) {
-    const std::optional<std::string> text = expandHlslIncludes(input, includeRoots);
+bool expandHlslIncludesToFile(
+    const path_t &input, const path_t &output, const std::vector<path_t> &includeRoots, const std::string &prelude
+) {
+    const std::optional<std::string> text = expandHlslIncludes(input, includeRoots, prelude);
     if (!text) { return false; }
     if (readTextFile(output) == text) { return true; }
     std::filesystem::create_directories(output.parent_path());

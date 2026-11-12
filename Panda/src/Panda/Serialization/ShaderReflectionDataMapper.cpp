@@ -1,4 +1,5 @@
 #include "Panda/Serialization/ShaderReflectionDataMapper.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <algorithm>
 
@@ -58,11 +59,9 @@ MaterialData ShaderReflectionDataMapper::toMaterialData(const ShaderSpirvReflect
         data.inputs.emplace_back(MaterialField(member.name, type, getDefaultValueFor(type)));
     }
     for (auto image : reflection.separate_images) {
-        // The system light textures (the SCENE_LIGHTS contract) are fed by the renderer every
-        // frame — they do not belong to the material author.
-        if (image.name == "occlusionVolume" || image.name == "shadowMap" || image.name == "environmentMap") {
-            continue;
-        }
+        // The system textures of the shader features are fed by the renderer every frame — they
+        // do not belong to the material author.
+        if (ShaderFeatures::isFeatureTexture(image.name)) { continue; }
         MaterialFieldType type = MaterialFieldType::TEXTURE;
         data.inputs.emplace_back(MaterialField(image.name, type, getDefaultValueFor(type)));
     }

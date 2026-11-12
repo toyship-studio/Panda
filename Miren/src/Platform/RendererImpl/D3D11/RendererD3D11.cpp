@@ -369,23 +369,19 @@ void RendererD3D11::submit(Frame *frame) {
             viewChanged(frame->m_views[viewId]);
             addUniqueContext(swapContexts, m_ctx);
         }
-        submit(&draw);
+        submit(&draw, frame->m_viewInputs[draw.m_viewId]);
     }
     for (Fern::GraphicsContext *ctx : swapContexts) {
         ctx->swapBuffers();
     }
 }
 
-void RendererD3D11::submit(RenderPass *draw) {
+void RendererD3D11::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
     if (!draw->m_shader.isValid()) { return; }
     D3D11Shader &shader = m_shaders[draw->m_shader.id];
     if (!shader.isValid()) { return; }
     shader.bind(m_deviceContext);
-    draw->m_inputs.finishWriting();
-    PassInput *input;
-    while ((input = draw->m_inputs.readInput()) != nullptr) {
-        addInput(draw->m_shader, *input);
-    }
+    addInputs(viewInputs, *draw);
 
     const bool scissorEnabled = !draw->m_scissorRect.isZero();
     applyRenderStates(draw, scissorEnabled);

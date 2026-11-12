@@ -26,6 +26,7 @@ public:
     SettingsRegistry settings;
     ResourceProviderRegistry resourceProviders;
     ShaderTemplateRegistry shaderTemplates;
+    SceneShaderRegistry sceneShaders; // engine shaders compiled per project with its shader features
     MeshLayoutRegistry meshLayouts;
     ScriptHostApiRegistry scriptHostApis;
     AppSystemRegistry appSystems; // driven by Application: start / tick / stop of the process-wide services

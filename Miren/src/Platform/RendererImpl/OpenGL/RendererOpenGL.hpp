@@ -64,7 +64,7 @@ public:
 private:
     Fern::GraphicsContext *selectContext(View &view);
     void viewChanged(View &view);
-    void submit(RenderPass *draw);
+    void submit(RenderPass *draw, RenderPassInputs &viewInputs);
 
     Fern::GraphicsContext *m_defaultCtx;
     Fern::GraphicsContext *m_ctx;

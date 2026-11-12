@@ -38,10 +38,6 @@ namespace {
 
 } // namespace
 
-bool Renderer3D::shaderUsesSceneLights(AssetRef<ShaderAsset> shader) {
-    return shader && shader->usesSceneLights();
-}
-
 Renderer3D::Renderer3D()
     : m_viewId(0)
     , m_viewProj(1.f)
@@ -57,54 +53,17 @@ Renderer3D::Renderer3D(Panda::Renderer3D &&other)
 void Renderer3D::begin(RenderingMode mode, Miren::ViewId id) {
     m_mode = mode;
     m_viewId = id;
+    // A caster with its own depth variant reads the scene blocks (the light direction, the wind);
+    // the shadow atlas is the render target of the pass, so the blocks go without the textures.
+    if (mode == RenderingMode::SHADOW_DEPTH) { m_scene.bindBlocks(id); }
 }
 
 void Renderer3D::setLighting(const WorldLightingData &lighting) {
     m_sceneLighting = lighting;
-    // The lighting is one per frame: the block is assembled here, the draw calls bind the ready
-    // memory.
-    m_lightingUbo = SceneLightsUbo::from(lighting);
-}
-
-void Renderer3D::bindSceneLightingIfNeeded(AssetRef<MaterialAsset> material) {
-    PANDA_PROFILE_SCOPE_N("Renderer3D: lighting");
-    if (!material) { return; }
-    AssetRef<ShaderAsset> shader = material->getShaderAsset();
-    if (!shaderUsesSceneLights(shader)) { return; }
-    Miren::addInputUniformBuffer("SCENE_LIGHTS", &m_lightingUbo, sizeof(m_lightingUbo));
-    bindSystemLightTextures(
-        shader, m_sceneLighting.shadows.atlas.get(), m_sceneLighting.occlusion.volume.get(),
-        m_sceneLighting.environment.map.get()
-    );
-}
-
-void Renderer3D::bindSystemLightTextures(
-    AssetRef<ShaderAsset> shader, TextureAsset *shadowAtlas, TextureAsset *occlusionVolume,
-    TextureAsset *environmentMap
-) {
-    if (!shader) { return; }
-    // The environment map of the world; without it — the built-in sky gradient.
-    if (shader->usesEnvironmentMap()) {
-        Miren::addInputTexture(
-            "environmentMap",
-            environmentMap ? environmentMap->getMirenHandle() : StaticResources::defaultSkyTexture->getMirenHandle()
-        );
-    }
-    // The shadow atlas; without it — a depth placeholder (a depth2d slot, the shader does not
-    // reach the sample).
-    if (shader->usesShadowMap()) {
-        Miren::addInputTexture(
-            "shadowMap",
-            shadowAtlas ? shadowAtlas->getMirenHandle() : StaticResources::shadowFallbackTexture->getMirenHandle()
-        );
-    }
-    // The crown occlusion atlas; without it — a white placeholder (there is no occlusion).
-    if (shader->usesOcclusionVolume()) {
-        Miren::addInputTexture(
-            "occlusionVolume",
-            occlusionVolume ? occlusionVolume->getMirenHandle() : StaticResources::occlusionFallbackTexture->getMirenHandle()
-        );
-    }
+    // The lighting is one per frame: the blocks are assembled here and given to the view of the
+    // pass, every draw of the view reads them.
+    m_scene.assemble(lighting);
+    m_scene.bind(m_viewId);
 }
 
 // Shadow depth pass: the program by the vertex layout and the material; for the masked variant —
@@ -117,16 +76,14 @@ Miren::ProgramHandle Renderer3D::bindShadowDepthProgram(
     // A caster with its OWN depth variant (the shadowVariant of the shader — like
     // instancedVariant): the impostor billboard turns the quad towards the light in the vertex
     // shader, the builtin shadow_depth cannot reproduce such geometry. The material fields are
-    // bound as a whole (the mask atlas + the parameters), the light direction — the SCENE_LIGHTS
-    // blob by hand: the system mechanism is silent in the cascades, and its textures (the shadow
-    // atlas) are a render target now, not an input.
+    // bound as a whole (the mask atlas + the parameters), the light direction comes with the
+    // scene blocks of the cascade view (begin).
     if (material) {
         Miren::ProgramHandle shadowVariant = material->getShaderAsset()->getShadowMirenHandle();
         if (shadowVariant.isValid()) {
             Miren::setState(buildShadowRenderState(material));
             Miren::setDepthBias(0.f, m_sceneLighting.shadows.slopeBias);
             material->bindFields();
-            Miren::addInputUniformBuffer("SCENE_LIGHTS", &m_lightingUbo, sizeof(m_lightingUbo));
             return shadowVariant;
         }
     }
@@ -220,11 +177,9 @@ void Renderer3D::submit(UUID id, glm::mat4 &model, const RuntimeMesh &mesh, Asse
             material->bindFields();
         }
     }
-    if (m_mode == RenderingMode::DEFAULT) { bindSceneLightingIfNeeded(material); }
     {
         PANDA_PROFILE_SCOPE_N("Renderer3D: ubo+draw");
-        const VertexUbo ubo{m_viewProj, model};
-        Miren::addInputUniformBuffer("UBO_VERT", &ubo, sizeof(ubo));
+        bindBlock(DrawUbo{m_viewProj, model});
         Miren::setVertexBuffer(mesh.m_vertexBufferHandle);
         Miren::setIndexBuffer(mesh.m_indexBufferHandle, 0, mesh.m_indicesCount);
         Miren::submit(m_viewId, shaderHandle);
@@ -261,12 +216,10 @@ void Renderer3D::drawInstancedPrimitive(
             PANDA_PROFILE_SCOPE_N("Renderer3D: bindFields");
             material->bindFields();
         }
-        bindSceneLightingIfNeeded(material);
     }
     {
         PANDA_PROFILE_SCOPE_N("Renderer3D: ubo+draw");
-        const VertexUbo ubo{m_viewProj, model};
-        Miren::addInputUniformBuffer("UBO_VERT", &ubo, sizeof(ubo));
+        bindBlock(DrawUbo{m_viewProj, model});
         Miren::setVertexBuffer(vertexBuffer);
         Miren::setIndexBuffer(indexBuffer, 0, indicesCount);
         Miren::setInstanceBuffer(instanceBuffer, instanceLayout, 0, instanceCount);
@@ -368,12 +321,8 @@ void Renderer3D::submitSky(
     }
     Miren::ProgramHandle shaderHandle = material->getShaderAsset()->getMirenHandle();
     material->bindFields();
-    // The sky needs the scene lighting: the sun direction/color for the disc (the shader declares
-    // the blob by its prefix; a custom sky shader without SCENE_LIGHTS is filtered out by the
-    // reflection flag).
-    bindSceneLightingIfNeeded(material);
-    const VertexUbo ubo{skyViewProj, glm::mat4(1.f)};
-    Miren::addInputUniformBuffer("UBO_VERT", &ubo, sizeof(ubo));
+    // The sky reads the scene blocks too: the sun for a disc, the environment map and its exposure.
+    bindBlock(DrawUbo{skyViewProj, glm::mat4(1.f)});
     Miren::setVertexBuffer(sky.m_vertexBufferHandle);
     Miren::setIndexBuffer(sky.m_indexBufferHandle, 0, sky.m_indicesCount);
     Miren::setState(MIREN_STATE_CULL_FACE);
@@ -438,9 +387,7 @@ void Renderer3D::submit(
         shaderHandle = material->getShaderAsset()->getMirenHandle();
         material->bindFields();
     }
-    if (m_mode == RenderingMode::DEFAULT) { bindSceneLightingIfNeeded(material); }
-    const VertexUbo ubo{m_viewProj, model};
-    Miren::addInputUniformBuffer("UBO_VERT", &ubo, sizeof(ubo));
+    bindBlock(DrawUbo{m_viewProj, model});
     Miren::setVertexBuffer(primitive.vertexBufferHandle);
     Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
     Miren::submit(m_viewId, shaderHandle);

@@ -22,8 +22,8 @@ cbuffer MATERIAL_FIELDS {
     float4 surfaceParams; // x — species crown metallic, y — roughness (Cook-Torrance), z — leaf translucency
 };
 
-#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see shadow.hlsli)
-#include "panda/sun.hlsli"
+#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see panda/shadows.hlsli)
+#include "panda/lighting.hlsli"
 #include "panda/brdf.hlsli"
 
 Texture2D imposterColorTexture;
@@ -52,11 +52,11 @@ float ellipsoidChord(float3 p0, float3 d) {
 // transmittance.
 float billboardSunVisibility(float3 shadowPos, float chord, float volumeTransmittance) {
     float csmWeight;
-    float shadow = sampleShadow(shadowPos, float3(0.0, 1.0, 0.0), csmWeight);
-    float self = lerp(1.0, exp(-chord), shadowParams.w * csmWeight);
+    float shadow = sunShadow(shadowPos, float3(0.0, 1.0, 0.0), csmWeight);
+    float self = lerp(1.0, exp(-chord), shadowStrength() * csmWeight);
     // Occlusion volume: beyond the CSM distance the canopy transmittance is the only
     // light and shade of the forest.
-    return lerp(1.0, shadow, csmWeight) * self * lerp(1.0, volumeTransmittance, volumeSunStrength(csmWeight));
+    return lerp(1.0, shadow, csmWeight) * self * sunTransmittance(volumeTransmittance, csmWeight);
 }
 
 struct PSInput {
@@ -156,11 +156,10 @@ PSOutput main(PSInput input) {
     // (along the crown normal): the lit shell reads the volume outside itself, the interior gets
     // darker; without the shift, at the zone junction the billboard darkened by the visibility
     // difference inside its own crown.
-    const float2 volume = volumeOcclusion(input.worldPos + volumeNormal * occlusionTexel.w);
-    float3 color = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo *
-                   lerp(1.0, volume.x, occlusionParams.x);
-    if (directionalDirectionIntensity.w > 0.0) {
-        const float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
+    const float2 volume = sceneOcclusion(input.worldPos + volumeNormal * occlusionSurfaceOffset());
+    float3 color = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo * ambientOcclusion(volume);
+    if (sunDirectionIntensity.w > 0.0) {
+        const float3 lightDirection = normalize(sunDirectionIntensity.xyz);
         const float3 rayN = float3(
             dot(lightDirection, right) / radiusXZ, lightDirection.y / radiusY,
             dot(lightDirection, forward) / radiusXZ
@@ -175,7 +174,7 @@ PSOutput main(PSInput input) {
                                      : float3(0.0, 0.0, 0.0);
         const float3 shadowPos =
             float3(input.worldBase.x, input.worldPos.y, input.worldBase.z) + sunOffset;
-        const float3 sunRadiance = directionalColor.rgb * directionalDirectionIntensity.w;
+        const float3 sunRadiance = sunColor.rgb * sunDirectionIntensity.w;
         const float sunLit = billboardSunVisibility(shadowPos, chord, volume.y);
         color += shadeLight(normal, viewDirection, lightDirection, sunRadiance, albedo, metallic, roughness, f0) *
                  sunLit;

@@ -39,11 +39,12 @@ cbuffer MATERIAL_FIELDS {
     float translucency;  // leaf translucency: share of sun through the blade when the sun is behind the leaf
 };
 
-#include "panda/panda_fields.hlsli"
-
-#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see shadow.hlsli)
-#include "panda/sun.hlsli"
+#define PANDA_SHADOW_SINGLE_TAP // vegetation: a single compare tap (see panda/shadows.hlsli)
+#include "panda/lighting.hlsli"
 #include "panda/brdf.hlsli"
+#if PANDA_FEATURE_WIND
+#include "panda/wind.hlsli"
+#endif
 
 Texture2D baseColorTexture;
 SamplerState baseColorTextureSampler;
@@ -175,6 +176,7 @@ PSOutput main(PSInput input) {
     // Wind: a per-leaf flutter of the normal (the geometry is static), the phase is the leaf
     // random from the tile alpha; the gust energy (layers 1+2) comes from the vertex shader —
     // only layer 3 here.
+#if PANDA_FEATURE_WIND
     [branch]
     if (windStrength > 0.001) {
         const float leafRand = normalSample.a;
@@ -187,6 +189,7 @@ PSOutput main(PSInput input) {
         const float3 flutterAxis = hash3(leafRand * 431.7) * 2.0 - 1.0;
         leafNormal = normalize(leafNormal + flutterAxis * (flutter * swing * 0.45));
     }
+#endif
     // Undo the shoot tile's brightness normalization (CROWN_BRIGHTNESS_GAIN).
     const float3 albedo = baseColorFactor.rgb * input.fragTint * tile.rgb * 1.28;
     const float metallic = saturate(metallicFactor);
@@ -199,11 +202,11 @@ PSOutput main(PSInput input) {
     // cut the sky and the sun for it, while the leaves in the interior stay inside and darken.
     // Without the shift the cell is larger than the shell, and the crown's own density attenuated
     // the sunlit leaves along with the shaded ones.
-    const float2 volume = volumeOcclusion(input.worldPos + crownNormal * occlusionTexel.w);
+    const float2 volume = sceneOcclusion(input.worldPos + crownNormal * occlusionSurfaceOffset());
     float3 lighting = float3(0.0, 0.0, 0.0);
-    if (directionalDirectionIntensity.w > 0.0) {
-        const float3 lightDirection = normalize(directionalDirectionIntensity.xyz);
-        const float3 sunRadiance = directionalColor.rgb * directionalDirectionIntensity.w;
+    if (sunDirectionIntensity.w > 0.0) {
+        const float3 lightDirection = normalize(sunDirectionIntensity.xyz);
+        const float3 sunRadiance = sunColor.rgb * sunDirectionIntensity.w;
         // The CSM shadow attenuates the entire sun contribution of the leaf (diffuse and highlight
         // exist only in light); sampled at the fragment point, the normal offset is the crown
         // normal.
@@ -224,7 +227,7 @@ PSOutput main(PSInput input) {
                         (translucency * backLit * (0.3 + 0.7 * lobe) * sunLit);
         }
     }
-    const int pointLightCount = (int)sceneLightCounts.x;
+    const int pointLightCount = (int)lightCounts.x;
     [loop]
     for (int i = 0; i < pointLightCount; ++i) {
         const float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
@@ -244,7 +247,7 @@ PSOutput main(PSInput input) {
     }
 
     const float3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo *
-                           lerp(1.0, volume.x, occlusionParams.x);
+                           ambientOcclusion(volume);
     const float3 color = (ambient + lighting) * input.fragLight;
 
     PSOutput output;
