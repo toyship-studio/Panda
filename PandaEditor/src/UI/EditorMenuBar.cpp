@@ -35,6 +35,7 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId UiGallery = 25;
     constexpr Fern::MenuCommandId GameView = 26;
     constexpr Fern::MenuCommandId SaveAll = 27;
+    constexpr Fern::MenuCommandId NewWindow = 28;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
 } // namespace EditorMenuCommand
 
@@ -74,6 +75,8 @@ void EditorMenuBar::rebuild() {
         fileMenu.addItem("Reload", EditorMenuCommand::Reload, primaryShortcut(Fern::Key::KEY_R));
     }
     fileMenu.addItem("Open Project", EditorMenuCommand::OpenProject, primaryShortcut(Fern::Key::KEY_O));
+    // One project per window: another project opens in another instance of the editor.
+    fileMenu.addItem("New Window", EditorMenuCommand::NewWindow, primaryShiftShortcut(Fern::Key::KEY_N));
 
     const std::vector<RecentProject> &recentProjects = m_output->menuBarGetRecentProjectsList();
     bool hasRecentProjects = false;
@@ -193,6 +196,9 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
             break;
         case EditorMenuCommand::SaveAll:
             m_output->menuBarSaveAll();
+            break;
+        case EditorMenuCommand::NewWindow:
+            m_output->menuBarNewWindow();
             break;
         case EditorMenuCommand::Reload:
             m_output->menuBarReload();

@@ -1,5 +1,9 @@
 #include "UI/EditorController.hpp"
 
+#include <Panda/Serialization/WorldMapper.hpp>
+#include <Rain/Coders/JsonDecoder.hpp>
+#include <Rain/Coders/JsonEncoder.hpp>
+#include <sstream>
 #include <Foundation/GraphicsAPI.hpp>
 
 #include "Preview/ThumbnailsManager.hpp"
@@ -697,6 +701,45 @@ void EditorController::hierarchyDidRequestDuplicate(const std::vector<Panda::UUI
     selectEntitiesByIds(dupIds);
 }
 
+void EditorController::hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids) {
+    if (!m_panelsWorld) { return; }
+    std::vector<Panda::Entity> entities;
+    for (Panda::UUID id : ids) {
+        Panda::Entity entity = m_panelsWorld->getById(id);
+        if (entity.isValid()) { entities.push_back(entity); }
+    }
+    if (entities.empty()) { return; }
+    // The clipboard holds text: a fragment of a world file. It pastes into this world, into another
+    // world or project (another editor window), and reads in any text editor.
+    Rain::JsonEncoder encoder(true);
+    std::ostringstream text;
+    Panda::WorldMapper::saveEntities(*m_panelsWorld, entities, encoder, text);
+    setClipboardText(text.str());
+}
+
+void EditorController::hierarchyDidRequestPaste() {
+    if (!m_panelsWorld) { return; }
+    const std::string text = getClipboardText();
+    if (text.empty()) { return; }
+    Rain::JsonDecoder decoder;
+    std::istringstream stream(text);
+    std::vector<Panda::Entity> added;
+    if (!Panda::WorldMapper::loadEntities(*m_panelsWorld, decoder, stream, added) || added.empty()) {
+        m_outputView->appendLog(
+            OutputPanelView::LogLevel::Warning, "Paste — the clipboard holds no entities (a fragment of a world file)"
+        );
+        return;
+    }
+    std::unordered_set<Panda::Entity> roots(added.begin(), added.end());
+    std::vector<Panda::UUID> ids;
+    for (Panda::Entity entity : added) { ids.push_back(entity.getId()); }
+    Panda::AddRemoveEntitiesCommand command(roots);
+    m_panelsWorld->getCommandHistory().SAVE(command, false); // the entities exist — the command is for undo
+    m_panelsWorld->setChanged();
+    refreshFromWorld();
+    selectEntitiesByIds(ids);
+}
+
 void EditorController::hierarchyDidRequestDelete(const std::vector<Panda::UUID> &ids) {
     if (!m_panelsWorld || ids.empty()) { return; }
     std::unordered_set<Panda::UUID> idSet(ids.begin(), ids.end());
@@ -926,6 +969,23 @@ void EditorController::clearAssetUndoStack(Panda::AssetId id) {
 
 void EditorController::selectAsset(Panda::AssetId id) {
     entityDidSelectAsset(id);
+    revealAsset(id); // the selection is shown where the asset lives too
+}
+
+void EditorController::revealAsset(Panda::AssetId id) {
+    if (id == Panda::AssetId(0)) { return; }
+    if (m_dockManager) { m_dockManager->showPanel("contentBrowser"); }
+    m_contentView->revealAsset(id);
+}
+
+void EditorController::revealEntity(Panda::UUID id) {
+    if (!id) { return; }
+    if (m_dockManager) { m_dockManager->showPanel("hierarchy"); }
+    m_hierarchyView->flashEntity(id);
+}
+
+void EditorController::selectEntity(Panda::UUID id) {
+    if (id) { selectEntitiesByIds({id}); } // the Hierarchy reveals a single selection itself
 }
 
 PandaUI::TextureHandle EditorController::assetThumbnail(Panda::AssetId id) {

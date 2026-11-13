@@ -166,6 +166,8 @@ public:
     void hierarchyDidRequestAddChild(Panda::UUID parentId) override;
     void hierarchyDidRequestAddPrimitive(Panda::UUID parentId, PrimitiveKind kind) override;
     void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &ids) override;
+    void hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids) override;
+    void hierarchyDidRequestPaste() override;
     void hierarchyDidRequestDelete(const std::vector<Panda::UUID> &ids) override;
     void hierarchyDidReparent(const std::vector<Panda::UUID> &items, Panda::UUID newParentId) override;
     void hierarchyDidRequestMaximize() override;
@@ -204,6 +206,9 @@ public:
     Panda::CommandHistory &assetUndoStack(Panda::AssetId id) override;
     void clearAssetUndoStack(Panda::AssetId id) override;
     void selectAsset(Panda::AssetId id) override;
+    void revealAsset(Panda::AssetId id) override;
+    void revealEntity(Panda::UUID id) override;
+    void selectEntity(Panda::UUID id) override;
     PandaUI::TextureHandle assetThumbnail(Panda::AssetId id) override;
     PandaUI::FontFamily assetFont(Panda::AssetId id) override;
     void pickAsset(

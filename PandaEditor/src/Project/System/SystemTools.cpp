@@ -722,12 +722,17 @@ bool SystemTools::relaunchOnExit() {
     return s_relaunchOnExit;
 }
 
-bool SystemTools::relaunchApplication() {
+bool SystemTools::startNewInstance(const std::vector<std::string> &args) {
 #ifdef PLATFORM_MACOS
     // Contents/Resources is two levels below the bundle; `open -n` starts a second instance while
     // this one is exiting.
     const path_t bundle = Fern::getStaticResourcesPath().parent_path().parent_path();
-    return spawnDetached("/usr/bin/open", {"-n", bundle.string()});
+    std::vector<std::string> openArgs = {"-n", bundle.string()};
+    if (!args.empty()) {
+        openArgs.push_back("--args");
+        openArgs.insert(openArgs.end(), args.begin(), args.end());
+    }
+    return spawnDetached("/usr/bin/open", openArgs);
 #elif defined(PLATFORM_LINUX)
     std::error_code error;
     const path_t executable = std::filesystem::read_symlink("/proc/self/exe", error);
@@ -735,7 +740,7 @@ bool SystemTools::relaunchApplication() {
         LOG_ERROR("Failed to resolve the executable for the restart: %s", error.message().c_str());
         return false;
     }
-    return spawnDetached(executable.string(), {});
+    return spawnDetached(executable.string(), args);
 #elif defined(PLATFORM_WINDOWS)
     std::wstring executable(MAX_PATH, L'\0');
     const DWORD length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
@@ -746,6 +751,10 @@ bool SystemTools::relaunchApplication() {
     executable.resize(length);
     std::wstring commandLine;
     appendArgvQuoted(commandLine, executable);
+    for (const std::string &arg : args) {
+        commandLine += L' ';
+        appendArgvQuoted(commandLine, widenUtf8(arg));
+    }
     STARTUPINFOW startupInfo = {};
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo = {};

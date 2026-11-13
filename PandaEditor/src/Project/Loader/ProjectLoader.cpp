@@ -180,7 +180,7 @@ ProjectLoader::~ProjectLoader() {
     GameContext::setScriptEngine(nullptr);
 }
 
-void ProjectLoader::loadInitialData() {
+void ProjectLoader::loadInitialData(bool openLastProject) {
     const path_t directory = editorDataDirectory();
     if (directory.empty()) {
         LOG_WARN("NO USER DATA DIRECTORY: THE EDITOR SETTINGS ARE NOT PERSISTED");
@@ -196,13 +196,22 @@ void ProjectLoader::loadInitialData() {
         m_editorSettingsStamp.sync(directory / "settings.json");
         if (!readJson(directory / "session.json", m_jsonDecoder, m_session)) { m_session = EditorSession(); }
     }
-    if (m_session.hasOpenedProject) { loadRecentProject(); }
+    if (openLastProject && m_session.hasOpenedProject) { loadRecentProject(); }
 }
 
 void ProjectLoader::saveSession() {
     const path_t directory = editorDataDirectory();
     if (directory.empty()) { return; }
     m_session.hasOpenedProject = !m_projectPath.empty();
+    // Several instances share the file (one project per window): the recent projects another
+    // instance has written since this one read the session are kept, after this instance's own.
+    EditorSession onDisk;
+    if (readJson(directory / "session.json", m_jsonDecoder, onDisk)) {
+        for (const RecentProject &project : onDisk.recentProjects) {
+            auto &recent = m_session.recentProjects;
+            if (std::find(recent.begin(), recent.end(), project) == recent.end()) { recent.push_back(project); }
+        }
+    }
     if (!writeJson(directory / "session.json", m_jsonEncoder, m_session)) {
         LOG_ERROR("CANNOT WRITE THE EDITOR SESSION AT %s", (directory / "session.json").string().c_str());
     }

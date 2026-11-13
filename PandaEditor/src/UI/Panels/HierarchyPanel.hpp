@@ -29,6 +29,10 @@ public:
     // A greyboxing primitive: an entity with a builtin mesh, a checker material and a collider.
     virtual void hierarchyDidRequestAddPrimitive(Panda::UUID parentId, PrimitiveKind kind) = 0;
     virtual void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &entityIds) = 0;
+    // The clipboard of entities is text — a fragment of a world file: Copy writes the entities
+    // with everything under them, Paste adds what the clipboard holds as new roots.
+    virtual void hierarchyDidRequestCopy(const std::vector<Panda::UUID> &entityIds) = 0;
+    virtual void hierarchyDidRequestPaste() = 0;
     virtual void hierarchyDidRequestDelete(const std::vector<Panda::UUID> &entityIds) = 0;
     virtual void hierarchyDidReparent(const std::vector<Panda::UUID> &itemIds, Panda::UUID newParentId) = 0; // 0 = to root
     virtual void hierarchyDidRequestMaximize() = 0; // zoom overlay of the left dock (chrome)
@@ -50,6 +54,7 @@ public:
     // The entity comes into view: its ancestors are expanded and the tree scrolls to its row when
     // it is outside the window (an entity picked in the viewport is found in the hierarchy).
     void revealEntity(Panda::UUID entityId);
+    void flashEntity(Panda::UUID entityId); // reveal + a blink of the row, the selection stays
 
 private:
     void addSubviews() override;

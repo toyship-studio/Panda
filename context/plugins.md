@@ -211,7 +211,9 @@ Registries of `EditorExtensions` (`editorExtensions()`; contributions are never 
 | `materialPreviews` | `MaterialPreview {matches, vertexColor, vertexLayout, packVertices, bindInputs}`: the preview sphere for materials on the contribution's shaders |
 
 `EditorHost` (`editorHost()`, implemented by `EditorController` and bound to its lifetime):
-`assetTitle`, `assetUndoStack` (the document stack), `clearAssetUndoStack`, `selectAsset`,
+`assetTitle`, `assetUndoStack` (the document stack), `clearAssetUndoStack`, `selectAsset`, `selectEntity`, `revealAsset` / `revealEntity` (show where
+it is: the Content Browser or the Hierarchy blinks it, the selection stays — a click on a reference
+field; a double click selects),
 `assetThumbnail`, `pickAsset`, `openFileDialog`, `beginViewportEditing(title, document, onStop)` /
 `endViewportEditing` (a viewport session: Undo from the viewport goes to the session document,
 closing its tab calls `onStop`), `refreshFromWorld`, `refreshAssetEditors`, `log`,

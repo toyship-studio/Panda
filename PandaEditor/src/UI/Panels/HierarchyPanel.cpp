@@ -184,10 +184,21 @@ void HierarchyPanelView::showContextMenu(TreeView &tree, Panda::UUID entityId, P
     if (entityId != Panda::UUID(0)) {
         menu->addSubmenu("Add Child", makeCreateMenu());
         menu->addItem("Duplicate", [this, entityId] { m_output->hierarchyDidRequestDuplicate({entityId}); });
+        menu->addItem("Copy", [this, entityId] {
+            // The whole selection when the clicked row is a part of it, else the row alone.
+            std::vector<Panda::UUID> ids;
+            for (TreeItem item : m_tree->selectedItems()) {
+                if (const std::uint32_t uuid = toUuid(item)) { ids.push_back(Panda::UUID(uuid)); }
+            }
+            if (std::find(ids.begin(), ids.end(), entityId) == ids.end()) { ids = {entityId}; }
+            m_output->hierarchyDidRequestCopy(ids);
+        });
+        menu->addItem("Paste", [this] { m_output->hierarchyDidRequestPaste(); });
         menu->addSeparator();
         menu->addItem("Delete", [this, entityId] { m_output->hierarchyDidRequestDelete({entityId}); });
     } else {
         menu->addSubmenu("Create Entity", makeCreateMenu());
+        menu->addItem("Paste", [this] { m_output->hierarchyDidRequestPaste(); });
     }
 
     auto popup = std::make_shared<Popup>(menu, Rect(position.x, position.y, 0.f, 0.f));
@@ -206,7 +217,21 @@ bool HierarchyPanelView::keyDown(KeyEvent &event) {
         const std::uint32_t uuid = toUuid(item);
         if (uuid != 0) { selected.push_back(Panda::UUID(uuid)); }
     }
+    const bool command = event.isSuperDown || event.isControlDown;
+    if (event.key == Key::V && command) { // a paste needs no selection
+        m_output->hierarchyDidRequestPaste();
+        return true;
+    }
     if (selected.empty()) { return false; }
+    if (event.key == Key::C && command) {
+        m_output->hierarchyDidRequestCopy(selected);
+        return true;
+    }
+    if (event.key == Key::X && command) { // cut: the text goes to the clipboard, the entities go
+        m_output->hierarchyDidRequestCopy(selected);
+        m_output->hierarchyDidRequestDelete(selected);
+        return true;
+    }
 
     if (event.key == Key::Delete || event.key == Key::Backspace) {
         m_output->hierarchyDidRequestDelete(selected);
@@ -265,6 +290,13 @@ void HierarchyPanelView::revealEntity(Panda::UUID entityId) {
         m_tree->setExpanded(toItem(static_cast<std::uint32_t>(above.getId())), true);
     }
     m_tree->revealItem(toItem(static_cast<std::uint32_t>(entityId)));
+}
+
+void HierarchyPanelView::flashEntity(Panda::UUID entityId) {
+    revealEntity(entityId); // the ancestors open
+    if (m_world && m_world->getById(entityId).isValid()) {
+        m_tree->flashItem(toItem(static_cast<std::uint32_t>(entityId)));
+    }
 }
 
 void HierarchyPanelView::setupLayout() {

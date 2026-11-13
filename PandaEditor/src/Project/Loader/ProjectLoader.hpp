@@ -38,7 +38,9 @@ class ProjectLoader final {
 public:
     ProjectLoader(World *world, ProjectLoaderOutput *output);
     ~ProjectLoader();
-    void loadInitialData();
+    // The editor settings and the session; openLastProject — the project the last session ended
+    // with is opened again (a second window starts on the start screen instead).
+    void loadInitialData(bool openLastProject = true);
     // The editor session (session.json): written at project open/close and at exit.
     void saveSession();
     void saveWindowState(LastOpenedProjectWindowState state);

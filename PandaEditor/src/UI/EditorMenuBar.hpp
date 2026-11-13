@@ -40,6 +40,7 @@ public:
     virtual void menuBarShowCppProject() = 0;
     virtual void menuBarSave() = 0;    // the document of the tab with the focus
     virtual void menuBarSaveAll() = 0; // every unsaved file document
+    virtual void menuBarNewWindow() = 0; // a second instance of the editor, on the start screen
     virtual void menuBarReload() = 0;
     virtual void menuBarCloseProject() = 0;
     virtual void menuBarAbout() = 0;

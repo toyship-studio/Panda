@@ -1,4 +1,5 @@
 #include "PandaUI/Elements/TreeView.hpp"
+#include "PandaUI/Elements/Flash.hpp"
 
 #include "PandaUI/Core/KeyboardEvent.hpp"
 #include "PandaUI/Core/Theme.hpp"
@@ -261,6 +262,16 @@ void TreeView::revealItem(TreeItem item) {
     setNeedsDisplay();
 }
 
+void TreeView::flashItem(TreeItem item) {
+    revealItem(item);
+    m_flashItem = item;
+    m_flashElapsed = 0.0;
+}
+
+bool TreeView::showsSelected(TreeItem item) const {
+    return isSelected(item) || (m_flashOn && item == m_flashItem);
+}
+
 void TreeView::setOnSelectionChanged(SelectionChangedCallback callback) {
     m_onSelectionChanged = std::move(callback);
 }
@@ -328,6 +339,19 @@ void TreeView::update(double deltaTime) {
         if (idx >= 0) { scrollItemIntoView(idx); }
     }
 
+    // The blink of flashItem: three short flashes, then the row is as it was.
+    if (m_flashItem) {
+        m_flashElapsed += deltaTime;
+        const bool done = m_flashElapsed >= Flash::DURATION;
+        const bool on = !done && Flash::isLit(m_flashElapsed);
+        if (done) { m_flashItem = nullptr; }
+        if (on != m_flashOn) {
+            m_flashOn = on;
+            applySelectionToVisible();
+            setNeedsDisplay();
+        }
+    }
+
     // Auto-scroll near the edges during a drag: ticked every frame (the cursor may sit still at the border).
     if (m_dragInside) {
         const Rect view = getWorldFrame();
@@ -389,7 +413,8 @@ void TreeView::updateVisibleRows(bool forceRebind) {
         const FlatItem &fi = m_flat[i];
         std::shared_ptr<TreeRow> row = acquireRow();
         row->configure(
-            fi.item, fi.depth, fi.expandable, isExpanded(fi.item), isSelected(fi.item), isFocused(), i == m_dropHighlightIndex
+            fi.item, fi.depth, fi.expandable, isExpanded(fi.item), showsSelected(fi.item),
+            isFocused() || (m_flashOn && fi.item == m_flashItem), i == m_dropHighlightIndex
         );
         m_dataSource.configureCell(row->content(), fi.item, fi.depth);
         row->setTop(static_cast<float>(i) * m_rowHeight);
@@ -474,7 +499,11 @@ void TreeView::handleContextMenu(TreeItem item, Point position) {
 }
 
 void TreeView::applySelectionToVisible() {
-    for (auto &entry : m_visibleRows) { entry.second->setRowSelected(isSelected(entry.second->item()), isFocused()); }
+    for (auto &entry : m_visibleRows) {
+        TreeItem item = entry.second->item();
+        // A blinking row is lit in the active color, whichever view has the focus.
+        entry.second->setRowSelected(showsSelected(item), isFocused() || (m_flashOn && item == m_flashItem));
+    }
 }
 
 void TreeView::focusChanged(bool) {

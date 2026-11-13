@@ -1,4 +1,5 @@
 #include "PandaUI/Elements/CollectionView.hpp"
+#include "PandaUI/Elements/Flash.hpp"
 
 #include "PandaUI/Core/KeyboardEvent.hpp"
 #include "PandaUI/Core/Theme.hpp"
@@ -233,11 +234,38 @@ bool CollectionView::viewportChanged() const {
     return viewport.width != m_lastViewport.width || viewport.height != m_lastViewport.height;
 }
 
+void CollectionView::flashIndex(int index) {
+    m_pendingFlash = index;
+    setNeedsDisplay();
+}
+
+bool CollectionView::showsSelected(int index) const {
+    return isSelected(index) || (m_flashOn && index == m_flashIndex);
+}
+
 void CollectionView::update(double deltaTime) {
     ScrollView::update(deltaTime);
     const float offsetY = getContentOffset().y;
     if (m_needsReload || viewportChanged() || offsetY != m_lastOffsetY) {
         updateVisibleCells(m_needsReload || viewportChanged());
+    }
+    // flashIndex waits for the data and the size, then scrolls to the cell and starts the blink.
+    if (m_pendingFlash >= 0 && getFrame().size.height > 0.f) {
+        m_flashIndex = m_pendingFlash < m_itemCount ? m_pendingFlash : -1;
+        m_pendingFlash = -1;
+        m_flashElapsed = 0.0;
+        if (m_flashIndex >= 0) { scrollIndexIntoView(m_flashIndex); }
+    }
+    if (m_flashIndex >= 0) {
+        m_flashElapsed += deltaTime;
+        const bool done = m_flashElapsed >= Flash::DURATION;
+        const bool on = !done && Flash::isLit(m_flashElapsed);
+        if (on != m_flashOn) {
+            m_flashOn = on;
+            applySelectionToVisible();
+            setNeedsDisplay();
+        }
+        if (done) { m_flashIndex = -1; }
     }
 }
 
@@ -283,7 +311,7 @@ void CollectionView::updateVisibleCells(bool forceRebuild) {
         std::shared_ptr<Cell> cell = acquireCell();
         cell->setItemIndex(index);
         m_dataSource.configureCell(cell->content(), index);
-        cell->setCellSelected(isSelected(index), isFocused());
+        cell->setCellSelected(showsSelected(index), isFocused() || (m_flashOn && index == m_flashIndex));
         cell->setFrameRect(m_layout->frameForItem(index, viewport));
         addContentSubview(cell);
         m_visibleCells[index] = cell;
@@ -391,7 +419,12 @@ void CollectionView::handleContextMenu(int index, Point position) {
 }
 
 void CollectionView::applySelectionToVisible() {
-    for (auto &entry : m_visibleCells) { entry.second->setCellSelected(isSelected(entry.first), isFocused()); }
+    for (auto &entry : m_visibleCells) {
+        // A blinking cell is lit in the active color, whichever view has the focus.
+        entry.second->setCellSelected(
+            showsSelected(entry.first), isFocused() || (m_flashOn && entry.first == m_flashIndex)
+        );
+    }
 }
 
 void CollectionView::focusChanged(bool) {

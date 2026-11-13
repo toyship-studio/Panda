@@ -257,6 +257,15 @@ The tab documents:
   filters, the catalog of the portal in pages, one card per plugin with its action; everything
   applies at once, no dirty state.
 
+The clipboard of entities is text: Copy in the Hierarchy writes a fragment of a world file
+(`{"entities": [...]}`, `WorldMapper::saveEntities`), Paste adds a fragment as new roots with new
+ids (`loadEntities`, an undo step of the world). Both go through a scratch world and
+`World::importEntity` (the cross-world form of the duplicate), so the fragment has one reader
+and one writer with the world file. One project per process: File → New Window starts a second
+instance on the start screen (`SystemTools::startNewInstance`, `--new-window`); the instances
+share `settings.json` (guarded by the disk stamp) and `session.json` (the recent projects of
+the other instances are merged on write).
+
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). The documents of `EditorExtensions::documentTypes` (the two settings
 documents and the Plugins tab; modules may add theirs) open from the "+" of any dock and from the

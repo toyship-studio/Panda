@@ -46,8 +46,13 @@ public:
     static void setRelaunchOnExit(bool relaunch);
     static bool relaunchOnExit();
     // Starts a new instance of this application (macOS: `open -n` on the bundle; Windows: the
-    // executable of the process; Linux: /proc/self/exe). Returns false when it could not start.
-    static bool relaunchApplication();
+    // executable of the process; Linux: /proc/self/exe) with the given arguments. Returns false
+    // when it could not start. A restart is a new instance started as this one exits; a second
+    // window is a new instance next to this one (NEW_WINDOW_ARGUMENT) — one project per process.
+    static bool startNewInstance(const std::vector<std::string> &args = {});
+    // The argument of an instance started as a second window: it shows the start screen instead
+    // of reopening the project of the last session.
+    static constexpr const char *NEW_WINDOW_ARGUMENT = "--new-window";
     // Starts a program without waiting for it or wiring its pipes (the update helper, the new
     // editor after an update).
     static bool startDetached(const path_t &executable, const std::vector<std::string> &args);

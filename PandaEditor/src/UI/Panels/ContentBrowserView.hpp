@@ -45,6 +45,8 @@ public:
 
     void refresh();             // rescan Assets (the current folder is preserved by path)
     void clearAssetSelection(); // clear the selection in the grid (e.g. when an entity is selected)
+    // Opens the folder of the asset and blinks its cell; the selection of the editor stays.
+    void revealAsset(Panda::AssetId asset);
     // An asset thumbnail is ready/updated: rebind its cell if it is visible in the current folder.
     void thumbnailDidBecomeReady(Panda::AssetId assetId);
 
@@ -59,7 +61,9 @@ private:
     bool keyDown(PandaUI::KeyEvent &event) override;
     bool pointerDown(PandaUI::PointerEvent &event) override;
 
-    void setCurrentFolder(Folder *folder);
+    // notify = false — a navigation the user did not make by hand (revealAsset): the selection of
+    // the editor is not cleared.
+    void setCurrentFolder(Folder *folder, bool notify = true);
     void emitSelection();
     std::vector<Panda::AssetId> selectedAssets() const;         // the registered ones from the selection
     void rebuildBreadcrumb();

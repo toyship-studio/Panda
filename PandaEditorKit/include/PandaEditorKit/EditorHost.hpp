@@ -39,6 +39,12 @@ public:
     // previous data — a reset, as on reload.
     virtual void clearAssetUndoStack(Panda::AssetId id) = 0;
     virtual void selectAsset(Panda::AssetId id) = 0; // selection in the editor → the asset's editor tab
+    // "Where is it": the Content Browser opens the folder of the asset and blinks its cell, the
+    // Hierarchy opens the ancestors of the entity and blinks its row. The selection and the tabs
+    // stay as they are — what a click on a reference field does (a double click selects).
+    virtual void revealAsset(Panda::AssetId id) = 0;
+    virtual void revealEntity(Panda::UUID id) = 0;
+    virtual void selectEntity(Panda::UUID id) = 0; // selection in the editor → the entity's tab
     // Asset thumbnail (material — a sphere, texture — a picture); invalid — none or still baking.
     virtual PandaUI::TextureHandle assetThumbnail(Panda::AssetId id) = 0;
     // The face of a font asset in the editor's own UI (the preview of the font tab); Sans when the

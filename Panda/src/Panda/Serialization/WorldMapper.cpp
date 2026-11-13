@@ -14,12 +14,13 @@ namespace {
 
     struct WorldDocument {
         World *world = nullptr;
+        bool settings = true; // false — a fragment: the entities alone
 
         static void encode(const char *key, Rain::Encoder *encoder, const WorldDocument &document) {
             World &world = *document.world;
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             encoder->beginObject(key);
-            SettingsMapper::encode(SettingsScope::World, world.context(), *encoder);
+            if (document.settings) { SettingsMapper::encode(SettingsScope::World, world.context(), *encoder); }
             size_t droppedForeign = 0; // foreign components a coder without opaque values leaves out
             encoder->beginArray("entities");
             for (auto entityHandle : world.getAllEntitiesWith<IdComponent>()) {
@@ -121,6 +122,48 @@ bool WorldMapper::load(World &world, Rain::Decoder &decoder, std::istream &strea
     WorldDocument document;
     document.world = &world;
     return decoder.decode(stream, document);
+}
+
+// A fragment goes through a scratch world on both sides: the entities are copied into it and it is
+// written, or it is read like any world (foreign components kept, the hierarchy repaired — a
+// parent outside the fragment makes a root) and its roots are copied out. One reader and one
+// writer serve the file and the fragment.
+void WorldMapper::saveEntities(
+    World &world, const std::vector<Entity> &entities, Rain::Encoder &encoder, std::ostream &stream
+) {
+    World fragment;
+    for (Entity entity : entities) {
+        // An entity under another one of the set travels with its ancestor.
+        bool covered = false;
+        for (Entity above = entity.getParent(); above.isValid() && !covered; above = above.getParent()) {
+            for (Entity other : entities) {
+                if (other == above) { covered = true; }
+            }
+        }
+        if (covered) { continue; }
+        Entity copy = fragment.importEntity(world, entity);
+        // A root of the fragment stands where the entity stood in its world, whatever was above it.
+        if (entity.getParent().isValid()) { copy.getTransform().setTransform(world.getWorldSpaceTransformMatrix(entity)); }
+    }
+    WorldDocument document;
+    document.world = &fragment;
+    document.settings = false;
+    encoder.encode(stream, document);
+}
+
+bool WorldMapper::loadEntities(
+    World &world, Rain::Decoder &decoder, std::istream &stream, std::vector<Entity> &added
+) {
+    World fragment;
+    WorldDocument document;
+    document.world = &fragment;
+    if (!decoder.decode(stream, document)) { return false; }
+    for (auto entityHandle : fragment.getAllEntitiesWith<IdComponent>()) {
+        if (!fragment.isValidEntt(entityHandle)) { continue; }
+        Entity entity = fragment.entity(entityHandle);
+        if (!entity.getParent().isValid()) { added.push_back(world.importEntity(fragment, entity)); }
+    }
+    return true;
 }
 
 } // namespace Panda

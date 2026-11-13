@@ -521,7 +521,7 @@ World &World::operator=(World &other) {
 
 Entity World::duplicateEntity(Entity entity) {
     if (!entity) { return {}; }
-    Entity duplicate = duplicateSubtree(entity);
+    Entity duplicate = copySubtree(*this, entity);
     // Next to the source: under the same parent, with the same transform.
     Entity parent = entity.getParent();
     if (parent) { attach(duplicate, parent); }
@@ -534,6 +534,16 @@ Entity World::duplicateEntity(Entity entity) {
     return duplicate;
 }
 
+Entity World::importEntity(World &source, Entity entity) {
+    if (!entity) { return {}; }
+    Entity imported = copySubtree(source, entity);
+    // A running world hears about the copy as about a restored entity, like a duplicate.
+    if (m_isRunning) { restoreSubtree(imported); }
+    bumpStructureVersion();
+    m_changed = true;
+    return imported;
+}
+
 void World::restoreSubtree(Entity entity) {
     runEntityHooks(entity, false);
     for (UUID childId : entity.getChildEntities()) {
@@ -541,7 +551,7 @@ void World::restoreSubtree(Entity entity) {
     }
 }
 
-Entity World::duplicateSubtree(Entity entity) {
+Entity World::copySubtree(World &source, Entity entity) {
     const entt::entity src = entity.m_handle;
     const entt::entity dst = m_registry.create();
     m_registry.emplace<IdComponent>(dst);
@@ -551,16 +561,17 @@ Entity World::duplicateSubtree(Entity entity) {
     // hierarchy under the duplicate is built below).
     for (const ComponentType &type : GameContext::getExtensions().components.types()) {
         if (!type.duplicated) { continue; }
-        auto *pool = m_registry.storage(type.typeId);
-        if (pool == nullptr || !pool->contains(src)) { continue; }
-        pool->push(dst, pool->value(src));
+        auto *from = source.m_registry.storage(type.typeId);
+        auto *to = m_registry.storage(type.typeId);
+        if (from == nullptr || to == nullptr || !from->contains(src)) { continue; }
+        to->push(dst, from->value(src));
     }
     m_entityIdMap[duplicate.getId()] = duplicate;
     // The children of the source in their order, with their transforms as they are; a deleted
     // child is not copied.
     const std::vector<UUID> children = entity.getChildEntities();
     for (UUID childId : children) {
-        if (isValid(childId)) { attach(duplicateSubtree(getById(childId)), duplicate); }
+        if (source.isValid(childId)) { attach(copySubtree(source, source.getById(childId)), duplicate); }
     }
     return duplicate;
 }

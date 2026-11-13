@@ -100,7 +100,7 @@ namespace {
 
 } // namespace
 
-EditorLayer::EditorLayer(Fern::Window *window)
+EditorLayer::EditorLayer(Fern::Window *window, bool openLastProject)
     : m_editingWorld()
     , m_playingWorld()
     , m_currentWorld(&m_editingWorld)
@@ -110,7 +110,8 @@ EditorLayer::EditorLayer(Fern::Window *window)
     , m_window(window)
     , m_menuBar(window, this)
     , m_pandaUI(window)
-    , m_viewports() {}
+    , m_viewports() {
+    m_openLastProject = openLastProject;}
 
 EditorLayer::~EditorLayer() = default; // Editor::EditorController is complete here (see include) — for unique_ptr
 
@@ -141,7 +142,7 @@ void EditorLayer::onAttach() {
     m_viewports.init();
     m_viewports.scene().setWorld(m_currentWorld);
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
-    m_loader.loadInitialData();
+    m_loader.loadInitialData(m_openLastProject);
     // The wind of the loaded world goes into SceneWind BEFORE the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
     // fields (windStrength/windGustiness), not the default.
@@ -1282,6 +1283,14 @@ void EditorLayer::menuBarSave() {
 
 void EditorLayer::menuBarSaveAll() {
     saveAll();
+}
+
+void EditorLayer::menuBarNewWindow() {
+    // The session is written first: the new instance reads the recent projects from it.
+    m_loader.saveSession();
+    if (!SystemTools::startNewInstance({SystemTools::NEW_WINDOW_ARGUMENT})) {
+        LOG_ERROR_EDITOR("A new editor window could not be started");
+    }
 }
 
 void EditorLayer::menuBarReload() {

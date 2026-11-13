@@ -115,6 +115,9 @@ public:
     // that, it knows the structure); applied in the next update, after the flat list is rebuilt
     // and the tree has a size, so it may follow setExpanded and reloadData in the same frame.
     void revealItem(TreeItem item);
+    // "Here it is": reveals the item and blinks its row for a moment. The selection is not
+    // touched — the answer to "where does this reference point", not a navigation.
+    void flashItem(TreeItem item);
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnContextMenu(ContextMenuCallback callback);
 
@@ -192,6 +195,10 @@ private:
     TreeItem m_anchorItem = nullptr;         // range anchor (Shift selection)
     TreeItem m_cursorItem = nullptr;         // keyboard navigation cursor
     TreeItem m_pendingReveal = nullptr;      // revealItem: scrolled to in update, once the rows are rebuilt
+    TreeItem m_flashItem = nullptr;          // flashItem: the row that blinks
+    double m_flashElapsed = 0.0;
+    bool m_flashOn = false;                  // the blink is in its lit phase
+    bool showsSelected(TreeItem item) const; // selected, or lit by the blink
 
     std::unordered_map<int, std::shared_ptr<TreeRow>> m_visibleRows; // flatIndex → realized row
     std::vector<std::shared_ptr<TreeRow>> m_recyclePool;

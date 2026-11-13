@@ -203,6 +203,10 @@ public:
     // field is the truth. Returns the number of repaired links; each is logged.
     size_t repairHierarchy();
     Entity duplicateEntity(Entity entity);
+    // A copy of an entity of ANOTHER world with everything under it, as a root of this world: new
+    // ids, the hierarchy below the copy rebuilt, the component values as they are (a reference to
+    // an entity outside the subtree keeps its id, as in a duplicate). What a paste is made of.
+    Entity importEntity(World &source, Entity entity);
     bool isValidEntt(entt::entity handle);
     bool isValid(UUID entityId);
 
@@ -236,7 +240,9 @@ private:
     // One frame phase: the hooks of the world systems in the registry order, destroyPending after
     // each.
     void runPhase(FramePhase phase, double time);
-    Entity duplicateSubtree(Entity entity);
+    // The entity of `source` and everything under it, copied into this world; `source` is this
+    // world for a duplicate and another one for an import.
+    Entity copySubtree(World &source, Entity entity);
     // The tombstone of the entity was put on or taken off (Entity::setDeleted): the running
     // systems lose or get back the entity and everything under it (entityRemoved / entityRestored).
     void deletionChanged(Entity entity);

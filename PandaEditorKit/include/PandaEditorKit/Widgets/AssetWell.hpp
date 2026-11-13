@@ -9,7 +9,8 @@
 namespace Editor {
 
 // Composite asset reference field: [preview+name | replace | reset].
-// A click on the value — SELECTION of the asset in the editor (its editor tab), NOT a reset; a click
+// A click on the value shows where the asset is (the Content Browser opens its folder and blinks
+// the cell; the selection and the tabs stay); a double click selects it (its editor tab). A click
 // on an empty field and the "replace" button open the Asset Picker; reset — by a separate button,
 // only when there is a value. D&D acceptance of the "asset.<kind>" payload. Preview: the host's
 // thumbnail (materials, textures), otherwise — the type icon. The picker and thumbnails — EditorHost.

@@ -91,6 +91,9 @@ public:
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnContextMenu(ContextMenuCallback callback); // right-click on a cell (index) or the background (index<0)
     void setOnActivate(std::function<void(int index)> callback); // double-click on a cell
+    // "Here it is": scrolls the item into view and blinks its cell for a moment. The selection is
+    // not touched. May follow reloadData in the same frame — applied in the next update.
+    void flashIndex(int index);
 
     void update(double deltaTime) override;
     bool keyDown(KeyEvent &event) override; // ↑/↓ — change the selection (when the collection is focused)
@@ -135,6 +138,11 @@ private:
     std::function<void(int)> m_onActivate;
     ContextMenuCallback m_onContextMenu;
 
+    int m_pendingFlash = -1;          // flashIndex: waits for the reload
+    int m_flashIndex = -1;            // the cell that blinks
+    double m_flashElapsed = 0.0;
+    bool m_flashOn = false;           // the blink is in its lit phase
+    bool showsSelected(int index) const; // selected, or lit by the blink
     bool m_needsReload = true;        // full rebuild is deferred to update() (the viewport size is valid there)
     float m_lastOffsetY = -1.f;       // to detect scrolling between frames
     Size m_lastViewport = Size(-1.f, -1.f); // to detect a resize (the grid will be laid out again)

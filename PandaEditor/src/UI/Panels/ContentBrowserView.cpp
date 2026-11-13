@@ -328,7 +328,31 @@ void ContentBrowserView::addSubviews() {
     updateStatus();
 }
 
-void ContentBrowserView::setCurrentFolder(Folder *folder) {
+void ContentBrowserView::revealAsset(Panda::AssetId asset) {
+    // The folder that holds the file of the asset, anywhere in the tree.
+    Folder *found = nullptr;
+    int fileIndex = -1;
+    std::vector<Folder *> pending = {m_dataSource.root()};
+    while (!pending.empty() && !found) {
+        Folder *folder = pending.back();
+        pending.pop_back();
+        if (!folder) { continue; }
+        for (size_t i = 0; i < folder->files.size(); i++) {
+            if (folder->files[i].assetId == asset) {
+                found = folder;
+                fileIndex = static_cast<int>(i);
+                break;
+            }
+        }
+        for (const std::shared_ptr<Folder> &child : folder->children) { pending.push_back(child.get()); }
+    }
+    if (!found) { return; }
+    if (found != m_dataSource.currentFolder()) { setCurrentFolder(found, false); }
+    // The grid lists the subfolders first, then the files.
+    m_grid->flashIndex(static_cast<int>(found->children.size()) + fileIndex);
+}
+
+void ContentBrowserView::setCurrentFolder(Folder *folder, bool notify) {
     if (!folder) { return; }
     m_dataSource.setCurrentFolder(folder);
     m_grid->clearSelection();
@@ -338,7 +362,7 @@ void ContentBrowserView::setCurrentFolder(Folder *folder) {
     m_tree->setSelectedItem(folder);
     rebuildBreadcrumb();
     updateStatus();
-    if (m_output) { m_output->contentDidSelectAssets({}); } // navigation clears the file selection
+    if (notify && m_output) { m_output->contentDidSelectAssets({}); } // navigation clears the file selection
 }
 
 void ContentBrowserView::emitSelection() {

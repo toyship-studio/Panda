@@ -33,7 +33,8 @@ class EditorLayer : public Layer,
                     public Editor::EngineBridge,
                     public Editor::StartScreenControllerOutput {
 public:
-    explicit EditorLayer(Fern::Window *window);
+    // openLastProject = false — a second window: the start screen, not the project of the last session.
+    explicit EditorLayer(Fern::Window *window, bool openLastProject = true);
     ~EditorLayer() override; // out of line: m_editorController is a unique_ptr to an incomplete type
 
     virtual void onAttach() override;
@@ -175,6 +176,7 @@ private:
     void menuBarShowCppProject() override;
     void menuBarSave() override;
     void menuBarSaveAll() override;
+    void menuBarNewWindow() override;
     void menuBarReload() override;
     void menuBarCloseProject() override;
     void menuBarAbout() override;
@@ -232,6 +234,7 @@ private:
     EditorViewportSettings m_viewportSettings;
     AssetId m_pendingWorldLoad;
     Fern::Window *m_window;
+    bool m_openLastProject = true; // false — a second window: starts on the start screen
     EditorMenuBar m_menuBar;
     PandaUIImpl m_pandaUI;
     // The Scene and Game viewports: the targets, the editor camera, the gizmo and the selection, the

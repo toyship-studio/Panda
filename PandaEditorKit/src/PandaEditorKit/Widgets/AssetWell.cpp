@@ -26,8 +26,9 @@ namespace {
 
 } // namespace
 
-// The "preview + name" zone: a click selects the asset (an empty field — opens the picker). A separate
-// Control so that the replace/reset buttons are not part of the clickable area of the value.
+// The "preview + name" zone: a click reveals the asset, a double click selects it (an empty field —
+// opens the picker). A separate Control so that the replace/reset buttons are not part of the
+// clickable area of the value.
 class AssetWell::MainZone final : public Control {
 public:
     explicit MainZone(AssetWell *owner)
@@ -45,12 +46,28 @@ public:
     }
 
 protected:
+    bool pointerDown(PointerEvent &event) override {
+        m_doubleClick = event.button == PointerButton::Left && event.clickCount >= 2;
+        return Control::pointerDown(event);
+    }
+    // Both actions run on the release, like every click: selecting rebuilds the form this field
+    // sits in, and the release is dispatched with its view kept alive.
     void performPrimaryAction() override {
-        m_owner->m_assetId ? m_owner->m_onSelect(m_owner->m_assetId) : m_owner->openPicker();
+        const uint32_t asset = m_owner->m_assetId;
+        const bool doubleClick = m_doubleClick;
+        m_doubleClick = false; // the next activation (the keyboard) is a plain click again
+        if (!asset) {
+            m_owner->openPicker();
+        } else if (doubleClick) {
+            if (m_owner->m_onSelect) { m_owner->m_onSelect(asset); }
+        } else {
+            editorHost().revealAsset(Panda::AssetId(asset));
+        }
     }
 
 private:
     AssetWell *m_owner;
+    bool m_doubleClick = false; // the press that started this click was the second of a double click
 };
 
 AssetWell::AssetWell(

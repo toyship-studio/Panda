@@ -1,6 +1,9 @@
 #include "PandaEditorKit/Widgets/EntityWell.hpp"
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
+#include "PandaEditorKit/EditorHost.hpp"
+#include "PandaEditorKit/Widgets/Icons.hpp"
+
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/World.hpp>
 
@@ -19,13 +22,22 @@ EntityWell::EntityWell(Panda::World &world, Panda::UUID initial, std::function<v
     layout().setHeight(Length::points(28.f));
     layout().setFlexDirection(FlexDirection::Row);
     layout().setAlignItems(Align::Center);
-    layout().setJustifyContent(Justify::Center);
-    layout().setPadding(Edge::Horizontal, 8.f);
+    layout().setPadding(Edge::Left, 8.f);
+    layout().setPadding(Edge::Right, 2.f);
     surface().setCornerRadius(Radius::sm);
     surface().setBorderWidth(1.f);
     m_label = std::make_shared<Label>("");
     m_label->setFont(Typo::Item);
+    m_label->setUserInteractionEnabled(false);
+    m_label->layout().setFlexGrow(1.f);
+    m_label->layout().setFlexShrink(1.f);
     addSubview(m_label);
+    auto clear = std::make_shared<IconButton>(Ic::Clear, Ic::RowSize, 24.f);
+    clear->setCornerRadius(Radius::sm);
+    clear->setTooltip("Clear Entity");
+    clear->setOnClick([this] { setValue(0); });
+    m_clearButton = clear;
+    addSubview(clear);
     applyStyle();
     refresh();
 }
@@ -46,22 +58,38 @@ void EntityWell::dragExited() {
 
 bool EntityWell::performDrop(const DragInfo &drag) {
     m_dropHovered = false;
-    m_entityId = Panda::UUID(drag.payload.items.front());
-    refresh();
     applyStyle();
-    if (m_onChange) { m_onChange(m_entityId); }
+    setValue(Panda::UUID(drag.payload.items.front()));
     return true;
+}
+
+void EntityWell::setValue(Panda::UUID id) {
+    m_entityId = id;
+    refresh();
+    if (m_onChange) { m_onChange(m_entityId); }
 }
 
 void EntityWell::themeChanged() {
     applyStyle();
 }
 
+bool EntityWell::pointerDown(PointerEvent &event) {
+    m_doubleClick = event.button == PointerButton::Left && event.clickCount >= 2;
+    return Control::pointerDown(event);
+}
+
+// Both actions run on the release, like every click: selecting rebuilds the form this field sits
+// in, and the release is dispatched with its view kept alive.
 void EntityWell::performPrimaryAction() {
-    if (!m_entityId) { return; }
-    m_entityId = 0;
-    refresh();
-    if (m_onChange) { m_onChange(0); }
+    const Panda::UUID entity = m_entityId;
+    const bool doubleClick = m_doubleClick;
+    m_doubleClick = false; // the next activation (the keyboard) is a plain click again
+    if (!entity) { return; } // an empty slot only takes a drop
+    if (doubleClick) {
+        editorHost().selectEntity(entity);
+    } else {
+        editorHost().revealEntity(entity);
+    }
 }
 
 void EntityWell::refresh() {
@@ -72,6 +100,10 @@ void EntityWell::refresh() {
     }
     m_label->setText(name.empty() ? "None (entity)" : name);
     m_label->setTextRole(name.empty() ? TextRole::Muted : TextRole::Primary);
+    // The clear button exists only while there is something to clear.
+    const bool hasValue = static_cast<bool>(m_entityId);
+    m_clearButton->setHidden(!hasValue);
+    m_clearButton->layout().setDisplay(hasValue ? Display::Flex : Display::None);
 }
 
 void EntityWell::applyStyle() {

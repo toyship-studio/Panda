@@ -257,16 +257,21 @@ bool Context::handlePointerDown(PointerEvent event) {
         event.clickCount = m_clickCount;
         View *target = hitTest(m_mousePosition);
         setFocusedView(focusTargetFor(target));
+        // The capture is taken BEFORE the dispatch: a handler may destroy the view it sits in (a
+        // press that rebuilds the form), and forgetView then clears the capture. Set after the
+        // dispatch, it would point at a dead view and the release would be sent into it.
+        m_mouseCaptureView = target;
         dispatchPointerDown(target, event);
-        m_mouseCaptureView = event.isHandled ? target : nullptr;
+        if (!event.isHandled) { m_mouseCaptureView = nullptr; }
         return event.isHandled;
     }
 
     event.isPrimary = m_touchPointers.empty();
     View *target = hitTest(event.position);
     setFocusedView(focusTargetFor(target));
+    m_touchPointers[event.pointerId] = {target, event.position}; // before the dispatch, as the mouse capture
     dispatchPointerDown(target, event);
-    m_touchPointers[event.pointerId] = {event.isHandled ? target : nullptr, event.position};
+    if (!event.isHandled) { m_touchPointers[event.pointerId].target = nullptr; }
     return event.isHandled;
 }
 

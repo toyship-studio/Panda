@@ -56,6 +56,34 @@ Every tab of the editor edits one file, and the file is always in reach:
 - The editor never writes over a hand-edited settings file on its own: a `project.json` or
   `settings.json` changed on disk is left alone on exit until Reload takes it.
 
+## Entities as text
+
+Copy (Cmd/Ctrl+C) in the Hierarchy puts the selected entities, with everything under them, on
+the clipboard as text — a fragment of a world file:
+
+```json
+{
+    "entities": [
+        { "id": 1234567890, ... }
+    ]
+}
+```
+
+The entity objects are the ones of a `.world` file ([the format](world-format.md)).
+
+Paste (Cmd/Ctrl+V) adds what the clipboard holds as new root entities with new ids; the
+hierarchy inside the fragment is kept. So a fragment pastes into the same world, into another
+world, into another project open in a second editor window, and it can be written or edited by
+hand or by an agent before pasting: any text of this shape works, a whole `.world` file included.
+A reference to an entity outside the fragment keeps its id; an asset is referenced by its id,
+which another project does not have — the pasted entity then shows a missing asset.
+
+## Several projects
+
+One editor window holds one project. File → New Window (Cmd/Ctrl+Shift+N) starts a second
+editor on the start screen; open another project there. The windows are separate processes:
+they share the editor settings and the list of recent projects, nothing else.
+
 ## Zed
 
 PandaEditor is inspired by the [Zed editor](https://zed.dev): the docks, the settings files and
