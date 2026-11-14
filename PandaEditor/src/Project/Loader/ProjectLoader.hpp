@@ -14,13 +14,60 @@
 
 namespace Panda {
 
+class ProjectLoader;
+
+// A world the project has open: the world and the `.world` file it is the document of (the
+// document model, context/architecture.md). The editor keeps any number of them open, a tab
+// each; one is active (ProjectLoader::activeWorld) — shown, edited and played.
+class WorldFile final : public FileDocument {
+public:
+    WorldFile(ProjectLoader &loader, uint32_t id);
+
+    // Stable while the world is open: the key of its tab.
+    uint32_t id() const {
+        return m_id;
+    }
+    World &world() {
+        return m_world;
+    }
+    // The file as a tab shows it; "Untitled World" for a world without one.
+    std::string name() const;
+
+    std::string title() const override;
+    path_t path() const override {
+        return m_path;
+    }
+    bool isDirty() const override {
+        return m_world.isChanged();
+    }
+    bool isChangedOnDisk() const override {
+        return m_stamp.isStale(m_path);
+    }
+    bool save() override;   // Save, or Save As for a world without a file
+    bool reload() override; // the same file again
+
+private:
+    friend class ProjectLoader;
+
+    ProjectLoader &m_loader;
+    uint32_t m_id;
+    World m_world;
+    path_t m_path;
+    DiskStamp m_stamp;             // the file as the editor last read or wrote it
+    EditorCameraSettings m_camera; // where the editor camera stood in this world
+    bool m_hasCamera = false;      // false — the world was not shown yet: the camera stays where it is
+};
+
 class ProjectLoaderOutput {
 public:
     virtual ~ProjectLoaderOutput() = default;
     virtual void loaderDidLoadProject(const std::string &name, const path_t &path) = 0;
     virtual void loaderDidLoadCloseProject() = 0;
+    // Another world became the active one: the editor shows it from now on.
+    virtual void loaderDidActivateWorld() = 0;
+    // The active world was read from a file (opened into an untouched new world, reloaded), got
+    // its starter content, or its file changed (Save As).
     virtual void loaderDidLoadWorld() = 0;
-    virtual void loaderDidCreateNewWorld() = 0;
     // settings.json was reread: the editor applies the scope (it is not saved back).
     virtual void loaderDidReloadEditorSettings() = 0;
     virtual EditorCameraSettings getEditorCameraSettings() = 0;
@@ -33,10 +80,10 @@ public:
 // - the editor session: `session.json` next to it — recent projects, the window, the dock layout;
 // - the project scope: `<project>/.Panda/project.json` — the sections of the registry
 //   (projectSettings), in version control;
-// - the project session: `<project>/.Panda/session.json` — the last world and the camera.
+// - the project session: `<project>/.Panda/session.json` — the open worlds and the camera in each.
 class ProjectLoader final {
 public:
-    ProjectLoader(World *world, ProjectLoaderOutput *output);
+    explicit ProjectLoader(ProjectLoaderOutput *output);
     ~ProjectLoader();
     // The editor settings and the session; openLastProject — the project the last session ended
     // with is opened again (a second window starts on the start screen instead).
@@ -44,12 +91,35 @@ public:
     // The editor session (session.json): written at project open/close and at exit.
     void saveSession();
     void saveWindowState(LastOpenedProjectWindowState state);
-    // The files the loader holds in memory, as file documents (FileDocument.hpp): the open world,
-    // project.json and settings.json. Save, Reload and the unsaved-changes questions go through
-    // them (EditorLayer).
-    FileDocument &worldFile() {
-        return *m_worldFile;
+    // The files the loader holds in memory, as file documents (FileDocument.hpp): the open
+    // worlds, project.json and settings.json. Save, Reload and the unsaved-changes questions go
+    // through them (EditorLayer).
+    //
+    // The worlds the project has open, in the order of their tabs. One is active: the editor
+    // shows and edits it, Play plays its copy. There is always one — without a project, an
+    // empty world.
+    const std::vector<std::unique_ptr<WorldFile>> &worlds() const {
+        return m_worlds;
     }
+    WorldFile &activeWorld() {
+        return *m_activeWorld;
+    }
+    WorldFile *findWorld(uint32_t id);
+    WorldFile *findWorld(const path_t &path); // the open world of this file
+    bool isWorldFile(const FileDocument *file) const;
+    // The editor camera stays with the world it was looking at; the new active world brings its own.
+    void activateWorld(WorldFile &world);
+    // A world file in a tab of its own: an open one is activated, another one is read into a new
+    // document. An untouched new world gives its place to the file. nullptr — the file could not
+    // be read; nothing changes then.
+    WorldFile *openWorld(const path_t &path);
+    // A new world with the starter content, active.
+    WorldFile &newWorld();
+    // Drops the world from memory (the unsaved-changes question is the caller's). The last one
+    // leaves a new world behind: the editor always has a world to show.
+    void closeWorld(WorldFile &world);
+    bool saveWorld(WorldFile &world);   // false — nothing was written (an error, a cancelled Save As)
+    bool reloadWorld(WorldFile &world); // file → memory; false — the file is broken or gone
     FileDocument &projectSettingsFile() {
         return *m_projectSettingsFile;
     }
@@ -72,15 +142,12 @@ public:
     // The script build on disk is newer than the loaded one (a step of Reload; the build is not
     // a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
-    void newWorld();
-    bool openWorld(const path_t &path);
-    bool saveWorld();
     void closeProject();
     void createProject(const std::string &name, const path_t &path);
     const std::vector<RecentProject> &getRecentProjectsList();
     bool hasOpenedProject();
     const path_t &getOpenedProjectPath();
-    const path_t &getOpenedWorldPath();
+    const path_t &getOpenedWorldPath(); // the file of the active world; empty — it has none yet
     void removeRecentProject(int index);
     // The sections of the project scope (ProjectWorldSettings, ProjectModuleSettings, the
     // sections of the modules): read by type, written as a whole by saveProjectSettings.
@@ -104,21 +171,32 @@ public:
     const DockLayoutState &getDockLayout();
 
 private:
-    class WorldFile;
     class ProjectSettingsFile;
     class EditorSettingsFile;
     // The file → memory side of the two settings documents (FileDocument::reload).
     bool reloadProjectSettings();
     bool reloadEditorSettings();
-    bool loadWorld(const path_t &path);
     ScriptEngineConfig makeScriptsConfig();
-    bool saveWorldAs();
-    bool writeWorld(const path_t &path);
-    void registerCurrentWorldAsset();
-    void createDefaultWorld();
-    // The open world into the project files: the session's last world, and the start world of
-    // the project when it has none yet.
+    // A new world document at the end of the list (not active): empty, or with the starter content.
+    WorldFile &addWorld(bool starterContent);
+    // The document of the file: the open one, the untouched new active world, or a new document.
+    // Nothing is activated. nullptr — the file could not be read.
+    WorldFile *loadWorld(const path_t &path);
+    bool readWorld(WorldFile &world, const path_t &path); // file → the document
+    bool saveWorldAs(WorldFile &world);
+    bool writeWorld(WorldFile &world, const path_t &path);
+    void registerWorldAsset(const path_t &path);
+    // The world becomes the active one and brings its camera (the previous one is not asked).
+    void showWorld(WorldFile &world);
+    // Every open world goes; one empty world stays, active.
+    void resetWorlds();
+    // The worlds of the last session, else the start world of the project, else a new world.
+    void openSessionWorlds();
+    // The start world of the project, when it has none yet: the active world, once it has a file.
     void syncWorldPaths();
+    // The open worlds and their cameras into the project session.
+    void collectSession();
+    std::string projectRelative(const path_t &path) const; // forward slashes; empty — outside the project
     void loadRecentProject();
     void appendRecentProject();
     void finalizeOpenedProject();
@@ -129,10 +207,11 @@ private:
     Rain::JsonEncoder m_jsonEncoder;
     Rain::JsonDecoder m_jsonDecoder;
     // The files as the editor last read or wrote them (the Reload contract).
-    DiskStamp m_worldStamp;
     DiskStamp m_projectSettingsStamp;
     DiskStamp m_editorSettingsStamp;
-    std::unique_ptr<FileDocument> m_worldFile;
+    std::vector<std::unique_ptr<WorldFile>> m_worlds; // the open worlds, in the order of their tabs
+    WorldFile *m_activeWorld = nullptr;               // one of m_worlds, always
+    uint32_t m_nextWorldId = 1;
     std::unique_ptr<FileDocument> m_projectSettingsFile;
     std::unique_ptr<FileDocument> m_editorSettingsFile;
     bool m_projectSettingsDirty = false; // the project scope has edits project.json does not
@@ -143,8 +222,6 @@ private:
     ProjectSession m_projectSession;
     ProjectCreator m_projectCreator;
     path_t m_projectPath;
-    path_t m_worldPath;
-    World *m_world;
     ProjectLoaderOutput *m_output;
     ScriptEngine m_scriptEngine;
     AssetHandlerEditor *m_assetHandler;

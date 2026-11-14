@@ -91,8 +91,10 @@ and background jobs (`PandaAsync`).
   `world` (`ProjectWorldSettings.startWorld`, the main world) and `modules`
   (`ProjectModuleSettings`), the sections of modules after them
   (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The state
-  of the last session (the world that was open, the editor camera) is `.Panda/session.json`,
-  outside version control. The editor's own files are in the user data directory
+  of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
+  of the editor camera in each, and the one that was active) is `.Panda/session.json`,
+  outside version control. A project opens the worlds of its session, else its start world,
+  else a new world. The editor's own files are in the user data directory
   (`SystemTools::userDataDirectory()`): `settings.json`, the editor scope (`viewport`,
   `appearance`, the sections of modules), written on every change, and `session.json` (recent
   projects, the window, the dock layout: the panels and their docks, the split weights, the active
@@ -180,14 +182,28 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 One file — one document; a tab is a view of a document. The model has two layers.
 
 **File documents** (`Project/Documents/FileDocument.hpp`, the application layer) are the files
-the editor holds in memory: the open world, `project.json`, `settings.json` and every loaded
+the editor holds in memory: the open worlds, `project.json`, `settings.json` and every loaded
 asset. A file document answers five questions — its title and path, whether the memory has
 unsaved edits (`isDirty`), whether the file is newer than what the editor last read or wrote
 (`isChangedOnDisk`, a `DiskStamp` per file), and it can `save` (memory → file) and `reload`
-(file → memory). The loader owns the first three (`ProjectLoader::worldFile`,
+(file → memory). The loader owns the first three kinds (`ProjectLoader::worlds`,
 `projectSettingsFile`, `editorSettingsFile`), the asset database builds the asset ones on demand
 (`AssetHandlerEditor::fileDocuments`: loaded assets that are dirty or changed on disk). A file
 document exists without a tab (a loaded texture, the settings with their tab closed).
+
+**The open worlds.** A project has any number of worlds open, each a `WorldFile` of the loader:
+the `World`, its file, the disk stamp and the pose of the editor camera in it. One of them is
+**active** (`ProjectLoader::activeWorld`): the editor shows and edits it, Play plays its copy,
+the export cooks it. There is always one — without a project it is an empty world. Opening a
+world (`openWorld`) adds it next to the open ones and drops nothing, so there is no
+unsaved-changes question; an untouched new world gives its place to the file. `newWorld` adds a
+world with the starter content (not an edit: the world is clean until it is touched),
+`closeWorld` drops one and leaves a new world behind the last. The list and the active world
+are the loader's; `EditorLayer` follows it through `loaderDidActivateWorld` (another world is
+shown: the selection, the entity tabs and the panels reset) and `loaderDidLoadWorld` (the
+active world got another content). The game plays a copy of the active world, so that world
+does not change while the game runs: a tab click is refused, a command that changes it (open,
+new, closing the active tab) stops the game first.
 
 Three operations are written once over them, in `EditorLayer`, whatever the file is:
 
@@ -198,7 +214,7 @@ Three operations are written once over them, in `EditorLayer`, whatever the file
 - **Reload** rereads what changed on disk and asks the same question when the memory has edits
   too (`reloadFromDisk`, below).
 - **The unsaved-changes gate** (`runAfterUnsavedQuestion`) stands before everything that drops
-  the memory — another world or project, closing, quitting: it names the dirty documents; Save
+  the memory — another project, closing, quitting: it names the dirty documents; Save
   writes them, Don't Save lets the action drop them (the project settings, which outlive the
   action, go back to their file), Cancel stops the action. A save nobody asked for (the session written on exit or project
   switch) leaves a settings file changed on disk alone.
@@ -221,10 +237,17 @@ the name of what they show — an entity tab the entity, the settings tabs "Proj
 
 The tab documents:
 
-- the **world** (`WorldDocument` in the coordinator): the Scene tab, titled with the name of
-  the world file (`world.world`; `Untitled World` before the first save; the panel id stays
-  `viewport` in saved layouts), dirty is the world's change flag, the undo stack is the world's,
-  Save writes the world file (a world without a file yet asks for one). Its settings are the sidebar of
+- a **world** (`WorldDocument` in the coordinator, one per open world): a tab of the center
+  dock, titled with the name of the world file (`world.world`; `Untitled World` before the
+  first save), dirty is the world's change flag, the undo stack is the world's, Save writes the
+  world file (a world without a file yet asks for one), closing the tab closes the world (with
+  the question when it has edits). The tabs follow the loader's list and the active world
+  follows the selected tab (`EditorController::syncWorldTabs`, once a frame: a tab callback
+  never rebuilds the docks it is called from). The editor has one viewport: it lives in the tab
+  of the active world (the content of a world tab is a host panel, the viewport is re-parented
+  into the active one), so a world tab stays in the center (`DockPanel::movable`). World tabs
+  are reopened from the project session, not from the saved layout (`DockPanel::restored`); the
+  layout only remembers that a world was in front. The settings of the active world are the sidebar of
   the viewport (the N-panel of Blender): the sections of the world scope over the world's
   context, opaque, shown and hidden by the overlay button and Window → World Settings, remembered
   in the layout. Edits are undo steps of the world (`SettingsUpdate<T>`, Kit
@@ -297,10 +320,11 @@ edit to all selected entities. Entity selection and asset selection are mutually
 Two viewports over one world (`PandaEditor/src/Viewport/EditorViewports.hpp`), the model of
 Unity's Scene and Game views:
 
-- **Scene** — the editor's view of the current world through the editor camera: selection and its
+- **Scene** — the editor's view of the active world through the editor camera: selection and its
   outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
-  In EDIT it shows the editing world; in PLAY the playing copy, as it runs (what a separate
-  Simulate mode used to do: Simulate is gone, the Scene tab during Play is it).
+  It is the viewport in the tab of the active world ("The document model" above). In EDIT it
+  shows the editing world; in PLAY the playing copy, as it runs (what a separate Simulate mode
+  used to do: Simulate is gone, the Scene during Play is it).
 - **Game** — the frame of the game: the main camera, the game PandaUI on top (`GAME_UI_VIEW` draws
   into the Game surface), the input of the game (`Panda::Input` and the game UI get the game's
   events while the Game renders; `Input`'s viewport frame is always the Game tab's). No editor
@@ -815,6 +839,12 @@ and debugs the game.
   script API and the rules for the ids of the loaded entities do not.
 - Worlds: a world renders into fixed views, so two worlds cannot be drawn in one frame (a
   preview of another world next to the edited one). `WorldFrame` would carry the views.
+- Worlds: an open world that is not active keeps what its systems built for drawing (the
+  shadow atlas, the meshes of a terrain) until its tab closes. Releasing it on deactivation is
+  a hook the world systems do not have yet.
+- Worlds: the tabs of the worlds cannot be reordered by dragging (they are pinned to the
+  center, and a pinned tab is not draggable), and a switch of the active world drops the
+  selection and the entity tabs instead of remembering them per world.
 - Scripting: the engine-side duplicate of the main-thread guard in `InnerScriptHook` (protection
   against bypassing the SDK) is not done.
 - Scripting: `requireMainThreadApi` covers only the high-risk Bamboo APIs; the remaining ones are

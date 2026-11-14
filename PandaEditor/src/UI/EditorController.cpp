@@ -45,6 +45,8 @@
 #include <Panda/WorldCommands/CommandHistory.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -99,7 +101,22 @@ namespace {
     constexpr const char *UI_GALLERY_DOCUMENT = "uiGallery";
     constexpr const char *GAME_DOCUMENT = "game";
     constexpr const char *GAME_TAB_ID = "doc:game"; // EditorTabs names a document tab doc:<type>
-    constexpr const char *SCENE_TAB_ID = "viewport";
+    // The tab of an open world: world:<id of the open world>. The ids live for one run, so a saved
+    // layout only remembers that a world was in front of the center (WORLD_TAB_MARKER; "viewport"
+    // is how the layouts saved before the world tabs name it).
+    constexpr const char *WORLD_TAB_PREFIX = "world:";
+    constexpr const char *WORLD_TAB_MARKER = "world";
+    constexpr const char *LEGACY_SCENE_TAB_ID = "viewport";
+
+    std::string worldTabId(uint32_t worldId) {
+        return WORLD_TAB_PREFIX + std::to_string(worldId);
+    }
+    bool isWorldTab(const std::string &tabId) {
+        return tabId.rfind(WORLD_TAB_PREFIX, 0) == 0;
+    }
+    uint32_t worldIdOfTab(const std::string &tabId) {
+        return static_cast<uint32_t>(std::strtoul(tabId.c_str() + std::strlen(WORLD_TAB_PREFIX), nullptr, 10));
+    }
 
     // A view is on screen when nothing up its chain is hidden (a tab that is not the selected one
     // of its dock is hidden by the TabView) and it belongs to a window.
@@ -113,41 +130,73 @@ namespace {
 
 } // namespace
 
-// The world document: the Scene tab. Dirty is the world's change flag, Save writes the world
-// file, the undo stack is the world's, a refresh after undo/redo rereads the panels and the
-// settings sidebar.
+// A world document: the tab of one open world. Dirty is the world's change flag, Save writes the
+// world file, the undo stack is the world's. The tab content is a host panel: the one viewport of
+// the editor lives in the host of the active world (EditorController::syncWorldTabs), the other
+// hosts are empty.
 class WorldDocument final : public Document {
 public:
-    explicit WorldDocument(EditorController *controller)
-        : m_controller(controller) {}
+    WorldDocument(EditorController *controller, uint32_t worldId)
+        : m_controller(controller)
+        , m_worldId(worldId)
+        , m_host(std::make_shared<Panel>()) {
+        m_host->setBackgroundColor(ThemeColor::windowBackground);
+        m_host->layout().setFlexDirection(FlexDirection::Column);
+        m_host->layout().setFlexGrow(1.f);
+    }
+
+    uint32_t worldId() const {
+        return m_worldId;
+    }
+    const std::shared_ptr<Panel> &host() const {
+        return m_host;
+    }
 
     // The name of the file the tab edits, as every document tab shows it.
     std::string title() override {
-        const std::filesystem::path file = filePath();
-        return file.empty() ? "Untitled World" : file.filename().string();
+        const OpenWorld *world = m_controller->openWorld(m_worldId);
+        return world ? world->name : "World";
+    }
+    std::string icon() override {
+        return Ic::PanelViewport;
     }
     std::shared_ptr<PandaUI::View> view() override {
-        return m_controller->m_viewportView;
+        return m_host;
     }
     bool isDirty() override {
-        return m_controller->m_panelsWorld && m_controller->m_panelsWorld->isChanged();
+        const OpenWorld *world = m_controller->openWorld(m_worldId);
+        return world && world->dirty;
     }
     bool save() override {
-        return m_controller->m_bridge && m_controller->m_bridge->saveWorld();
+        return m_controller->m_bridge && m_controller->m_bridge->saveWorld(m_worldId);
     }
     std::filesystem::path filePath() override {
-        return m_controller->m_bridge ? m_controller->m_bridge->worldFilePath() : std::filesystem::path();
+        const OpenWorld *world = m_controller->openWorld(m_worldId);
+        return world ? world->path : std::filesystem::path();
     }
     Panda::CommandHistory *undoStack() override {
-        return m_controller->m_panelsWorld ? &m_controller->m_panelsWorld->getCommandHistory() : nullptr;
+        // The active world is what the panels show: in Play that is the playing copy, and its
+        // edits go away with it.
+        if (isActive()) {
+            return m_controller->m_panelsWorld ? &m_controller->m_panelsWorld->getCommandHistory() : nullptr;
+        }
+        const OpenWorld *world = m_controller->openWorld(m_worldId);
+        return world && world->world ? &world->world->getCommandHistory() : nullptr;
     }
     void refresh() override {
+        if (!isActive()) { return; } // the panels show the active world
         if (m_controller->m_panelsWorld) { m_controller->m_panelsWorld->setChanged(); }
         m_controller->refreshFromWorld();
     }
 
 private:
+    bool isActive() const {
+        return m_controller->m_bridge && m_controller->m_bridge->activeWorldId() == m_worldId;
+    }
+
     EditorController *m_controller;
+    uint32_t m_worldId;
+    std::shared_ptr<Panel> m_host;
 };
 
 // The Game document: the Game tab. The frame of the game, rendered by the engine into the Game
@@ -193,7 +242,6 @@ EditorController::EditorController()
         registerCoreAssetKinds(editorExtensions());
         registerDocumentTypes();
     }
-    m_worldDocument = std::make_unique<WorldDocument>(this);
     buildLayout();
     registerShortcuts();
     pushSelectionToPanels(); // initial state: empty → status "-"
@@ -303,7 +351,96 @@ void EditorController::openGameView() {
 }
 
 void EditorController::showSceneView() {
-    if (m_dockManager) { m_dockManager->showPanel(SCENE_TAB_ID); }
+    if (m_dockManager && m_bridge) { m_dockManager->showPanel(worldTabId(m_bridge->activeWorldId())); }
+}
+
+/* ------------------------------ World tabs ------------------------------ */
+
+const OpenWorld *EditorController::openWorld(uint32_t worldId) const {
+    for (const OpenWorld &world : m_openWorlds) {
+        if (world.id == worldId) { return &world; }
+    }
+    return nullptr;
+}
+
+WorldDocument *EditorController::worldDocument(uint32_t worldId) {
+    // Only this coordinator opens tabs with the world prefix, and only with world documents.
+    Document *document = m_editorTabs ? m_editorTabs->documentForTab(worldTabId(worldId)) : nullptr;
+    return static_cast<WorldDocument *>(document);
+}
+
+Document *EditorController::activeWorldDocument() {
+    return m_bridge ? worldDocument(m_bridge->activeWorldId()) : nullptr;
+}
+
+void EditorController::syncWorldTabs() {
+    if (!m_bridge || !m_editorTabs || !m_dockManager || m_inWorldSync) { return; }
+    m_inWorldSync = true;
+    // The worlds whose tabs the user closed leave the list of the project (their documents have
+    // asked about the edits). The tab the user landed on says which world is shown next.
+    if (!m_closedWorldTabs.empty()) {
+        const std::vector<uint32_t> closed = std::move(m_closedWorldTabs);
+        m_closedWorldTabs.clear();
+        for (uint32_t worldId : closed) {
+            if (worldId == m_bridge->activeWorldId() && m_bridge->canActivateWorld()) {
+                const std::string selected = m_dockManager->selectedPanelId(Dock::Center);
+                if (isWorldTab(selected)) { m_bridge->activateWorld(worldIdOfTab(selected)); }
+            }
+            m_bridge->closeWorld(worldId);
+        }
+    }
+    m_openWorlds = m_bridge->openWorlds();
+    // The tabs follow the list: the tab of a world that is gone closes, a new world gets a tab.
+    m_closingWorldTab = true;
+    for (size_t i = 0; i < m_worldTabs.size();) {
+        if (openWorld(m_worldTabs[i]) != nullptr) {
+            ++i;
+            continue;
+        }
+        m_editorTabs->closeTab(worldTabId(m_worldTabs[i]));
+        m_worldTabs.erase(m_worldTabs.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    m_closingWorldTab = false;
+    bool opened = false;
+    for (const OpenWorld &world : m_openWorlds) {
+        const std::string tabId = worldTabId(world.id);
+        if (std::find(m_worldTabs.begin(), m_worldTabs.end(), world.id) == m_worldTabs.end()) {
+            m_worldTabs.push_back(world.id);
+            m_editorTabs->openDocument(tabId, std::make_unique<WorldDocument>(this, world.id), Dock::Center);
+            opened = true;
+        }
+        m_dockManager->setPanelTitle(tabId, world.name); // a no-op while the name stands (Save As changes it)
+    }
+    // The active world and the selected tab follow each other.
+    const uint32_t activeId = m_bridge->activeWorldId();
+    const std::string activeTab = worldTabId(activeId);
+    if (activeId != m_shownWorldId || opened) {
+        // The active world changed outside the tabs (a world was opened, created or closed): its
+        // tab comes forward. A tab that has just been added selected itself — the active one stays.
+        m_shownWorldId = activeId;
+        m_dockManager->activateTransientPanel(activeTab);
+    } else {
+        const std::string selected = m_dockManager->selectedPanelId(Dock::Center);
+        if (isWorldTab(selected) && selected != activeTab) {
+            if (m_bridge->canActivateWorld()) {
+                m_bridge->activateWorld(worldIdOfTab(selected));
+                m_shownWorldId = m_bridge->activeWorldId();
+            } else {
+                // The game plays a copy of the active world: the tabs do not switch until it stops.
+                m_dockManager->activateTransientPanel(activeTab);
+                m_outputView->appendLog(OutputPanelView::LogLevel::Warning, "Stop the game to switch to another world");
+            }
+        }
+    }
+    // The one viewport of the editor lives in the tab of the active world.
+    WorldDocument *active = worldDocument(m_bridge->activeWorldId());
+    if (active != nullptr && m_viewportView && m_viewportView->getSuperview() != active->host().get()) {
+        Context *context = m_root ? m_root->getContext() : nullptr;
+        View *focused = context ? context->getFocusedView() : nullptr; // a re-parent drops the focus
+        active->host()->addSubview(m_viewportView);
+        if (context && focused) { context->setFocusedView(focused); }
+    }
+    m_inWorldSync = false;
 }
 
 void EditorController::focusGameView() {
@@ -313,11 +450,15 @@ void EditorController::focusGameView() {
 
 Panda::DockLayoutState EditorController::captureDockLayout() const {
     Panda::DockLayoutState state = m_dockManager->captureLayout();
+    // Which world is in front is the project session's to say: the layout only remembers that
+    // one was.
+    if (isWorldTab(state.selectedCenter)) { state.selectedCenter = WORLD_TAB_MARKER; }
     state.worldSettingsVisible = m_viewportView && m_viewportView->isSidebarVisible();
     return state;
 }
 
 void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
+    syncWorldTabs(); // the world tabs first: the pinned tabs of the center follow them
     m_dockManager->applyLayout(state);
     // Pinned editor tabs: restored after the layout (the world is already set —
     // EditorLayer calls setWorld before applyDockLayout; dead targets are skipped).
@@ -326,6 +467,9 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
         // Every restored tab selected itself as it opened: the active tabs of the session go back on
         // top, and the keyboard returns to the dock it was in (the active document of undo).
         m_dockManager->applySelection(state);
+        if (m_bridge && (state.selectedCenter == WORLD_TAB_MARKER || state.selectedCenter == LEGACY_SCENE_TAB_ID)) {
+            m_dockManager->activateTransientPanel(worldTabId(m_bridge->activeWorldId()));
+        }
         if (state.focusedDock >= 0 && state.focusedDock <= 3) {
             m_dockManager->focusDock(static_cast<Dock>(state.focusedDock));
         }
@@ -446,6 +590,7 @@ void EditorController::refreshSettingsDocuments() {
 
 void EditorController::worldContextChanged() {
     m_lastUndoDocument = nullptr; // the undo target pointed into the previous context
+    viewportDidRequestStopEditing(); // a viewport session edits what the previous world showed: the tool lets go
     if (!m_editorTabs) { return; }
     m_editorTabs->closeAllEntityTabs();
     m_editorTabs->clearHistory();
@@ -547,6 +692,7 @@ void EditorController::syncSelectionFromEngine() {
 
 void EditorController::updateChromeFromState(bool isEditMode) {
     if (!m_toolbarView) { return; }
+    syncWorldTabs();
     Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine();
     const bool scriptingReady = engine && engine->isLoaded();
     // The undo/redo buttons show the stack state of the ACTIVE document (just like Cmd+Z itself).
@@ -567,19 +713,9 @@ void EditorController::updateChromeFromState(bool isEditMode) {
         if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
     }
 
-    // The Scene tab is the document of the world file and carries its name. Synced here, with
-    // the chrome, and not on a world event: the name changes by several paths (open, new, Save
-    // As) and the tab may be built before the world is known. A no-op while the name stands.
-    if (m_dockManager && m_worldDocument) { m_dockManager->setPanelTitle(SCENE_TAB_ID, m_worldDocument->title()); }
-
-    // The "unsaved" indicator on the scene tab (viewport) — by World::isChanged() (reset on save/load).
-    const bool dirty = m_panelsWorld && m_panelsWorld->isChanged();
-    if (dirty != m_lastWorldDirty) {
-        m_lastWorldDirty = dirty;
-        if (m_dockManager) { m_dockManager->setPanelDirty("viewport", dirty); }
-    }
-    // The "unsaved" dots on asset tabs: per tab, by isChanged of EXACTLY their assets
-    // (the document model: tabs are the source of truth about what is unsaved).
+    // The "unsaved" dots: per tab, by isDirty of ITS document — a world tab by the change flag of
+    // its world, an asset tab by exactly its assets (the document model: tabs are the source of
+    // truth about what is unsaved).
     if (m_editorTabs) {
         m_editorTabs->syncDirtyStates();
         m_editorTabs->processPendingCloseRequests();
@@ -593,9 +729,9 @@ void EditorController::buildLayout() {
     std::vector<DockPanel> panels;
     m_viewportView = std::make_shared<ViewportPanelView>(this);
     m_gameView = std::make_shared<GameViewportView>(); // the Game tab is a document (GameDocument) over this surface
-    // The Scene is fixed: it is not hidden (not in the strip), has no close button and is not dragged
-    // out of the center. Its panel id stays "viewport" (the saved layouts know it by that name).
-    panels.push_back({"viewport", "Scene", Ic::PanelViewport, m_viewportView, Dock::Center, true, false, false});
+    // The viewport is not a panel of its own: every open world is a tab of the center
+    // (syncWorldTabs), and the viewport lives in the tab of the active one.
+    m_viewportView->layout().setFlexGrow(1.f);
     panels.push_back({"hierarchy", "Hierarchy", Ic::PanelHierarchy, m_hierarchyView, Dock::Left});
     // The Inspector panel is gone: the selection opens as transient tabs (EditorTabs) in the right dock.
     panels.push_back({"contentBrowser", "Content Browser", Ic::PanelContentBrowser, m_contentView, Dock::Bottom});
@@ -609,10 +745,9 @@ void EditorController::buildLayout() {
 
     m_dockManager = std::make_unique<DockManager>(m_toolbarView, centerTabs, std::move(panels));
     m_editorTabs = std::make_unique<EditorTabs>(m_dockManager.get(), this);
-    // The file of a tab's document in its context menu: the Scene tab is the world document.
+    // The file of a tab's document in its context menu.
     m_dockManager->setTabMenuExtender([this](const std::string &panelId, Menu &menu) {
-        Document *document = panelId == SCENE_TAB_ID ? m_worldDocument.get() : m_editorTabs->documentForTab(panelId);
-        if (document) { addFileItems(menu, document->filePath()); }
+        if (Document *document = m_editorTabs->documentForTab(panelId)) { addFileItems(menu, document->filePath()); }
     });
     // The world settings live in the viewport sidebar (the world document), not in a panel.
     m_worldSettingsView = std::make_shared<SettingsSectionsView>(Panda::SettingsScope::World);
@@ -1514,8 +1649,8 @@ Document *EditorController::activeDocument() {
             return document;
         }
         if (dock != Dock::Center) { // a side dock without a document tab — the world
-            m_lastUndoDocument = m_worldDocument.get();
-            return m_worldDocument.get();
+            m_lastUndoDocument = activeWorldDocument();
+            return m_lastUndoDocument;
         }
     }
     // The viewport (or focus nowhere): a viewport session edits ITS OWN document — Cmd+Z undoes the stroke.
@@ -1529,10 +1664,10 @@ Document *EditorController::activeDocument() {
         // A form rebuild (undo/redo/refreshTab) destroys the view with the focus — Context nulls
         // it. The undo target did NOT change by that: the last one is held until the user clicks
         // somewhere else (a redo after an undo must hit the same stack).
-        return m_lastUndoDocument ? m_lastUndoDocument : m_worldDocument.get();
+        return m_lastUndoDocument ? m_lastUndoDocument : activeWorldDocument();
     }
-    m_lastUndoDocument = m_worldDocument.get();
-    return m_worldDocument.get();
+    m_lastUndoDocument = activeWorldDocument();
+    return m_lastUndoDocument;
 }
 
 void EditorController::undo() {
@@ -1545,8 +1680,9 @@ void EditorController::undo() {
     stack->UNDO();
     // The world stack (the viewport, the entity tabs): the panels reread the world; a document of
     // its own: its form rereads the document.
-    if (m_panelsWorld && stack == &m_panelsWorld->getCommandHistory()) {
-        m_worldDocument->refresh();
+    Document *world = activeWorldDocument();
+    if (world && m_panelsWorld && stack == &m_panelsWorld->getCommandHistory()) {
+        world->refresh();
     } else {
         document->refresh();
     }
@@ -1560,8 +1696,9 @@ void EditorController::redo() {
         return;
     }
     stack->REDO();
-    if (m_panelsWorld && stack == &m_panelsWorld->getCommandHistory()) {
-        m_worldDocument->refresh();
+    Document *world = activeWorldDocument();
+    if (world && m_panelsWorld && stack == &m_panelsWorld->getCommandHistory()) {
+        world->refresh();
     } else {
         document->refresh();
     }
@@ -1701,7 +1838,8 @@ Panda::World *EditorController::tabsWorld() {
 }
 
 bool EditorController::tabsSaveWorld() {
-    return m_worldDocument && m_worldDocument->save();
+    Document *world = activeWorldDocument(); // an entity tab is a view of the active world
+    return world && world->save();
 }
 
 bool EditorController::tabsSaveAsset(Panda::AssetId id) {
@@ -1709,11 +1847,22 @@ bool EditorController::tabsSaveAsset(Panda::AssetId id) {
 }
 
 std::filesystem::path EditorController::tabsWorldFilePath() {
-    return m_worldDocument ? m_worldDocument->filePath() : std::filesystem::path();
+    Document *world = activeWorldDocument();
+    return world ? world->filePath() : std::filesystem::path();
 }
 
 void EditorController::tabsDocumentClosed(Document *document) {
     if (m_lastUndoDocument == document) { m_lastUndoDocument = nullptr; }
+    if (auto *world = dynamic_cast<WorldDocument *>(document)) {
+        // The viewport outlives the tab it lived in: the next sync moves it into the tab of the
+        // world that is active then.
+        if (m_viewportView && m_viewportView->getSuperview() == world->host().get()) {
+            m_viewportView->removeFromSuperview();
+        }
+        // The user closed the tab: the world leaves the list of the project on the next sync,
+        // not from inside the dock's close.
+        if (!m_closingWorldTab) { m_closedWorldTabs.push_back(world->worldId()); }
+    }
 }
 
 void EditorController::tabsApplySelection(

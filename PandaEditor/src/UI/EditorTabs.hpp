@@ -60,6 +60,10 @@ public:
     void showSelection(const std::vector<Panda::Entity> &entities, const std::vector<Panda::AssetId> &assets);
     // A document of the registry (EditorExtensions::documentTypes) in the dock; an open one is activated.
     void openDocumentType(const std::string &typeId, Dock dock);
+    // A document the coordinator makes itself (an open world), in a tab that stays in its dock and
+    // is not saved with the layout: the coordinator opens it again from its own list.
+    void openDocument(std::string tabId, std::unique_ptr<Document> document, Dock dock);
+    void closeTab(const std::string &tabId); // without a question: the document is gone already
 
     void setRuntimeMode(bool runtime);   // the PLAY banner on all entity tabs
     void refreshTransforms();            // gizmo drag: a light refresh of the Transform fields
@@ -131,7 +135,8 @@ private:
     void bindEntry(TabEntry &entry); // the forms reread the live targets
     const char *iconFor(const TabEntry &entry) const;
     std::string titleFor(const TabEntry &entry) const;
-    void openEntry(TabEntry entry, Dock dock, bool preview);
+    // pinnedToDock — the tab stays in the dock and is not saved with the layout (openDocument).
+    void openEntry(TabEntry entry, Dock dock, bool preview, bool pinnedToDock = false);
 
     // Selection history (objects, not tabs): back/forward move the cursor and select anew.
     struct HistoryEntry {

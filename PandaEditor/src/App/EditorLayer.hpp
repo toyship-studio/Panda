@@ -56,9 +56,9 @@ public:
     uint32_t m_uiLayoutsPerSecond = 0;
     float m_uiLayoutWindow = 0.f;
     float m_profilerRefreshWindow = 0.f; // Profiler panel throttling (0.25 s)
+    void loaderDidActivateWorld() override;
     void loaderDidLoadWorld() override;
     void loaderDidLoadCloseProject() override;
-    void loaderDidCreateNewWorld() override;
     void loaderDidReloadEditorSettings() override;
     EditorCameraSettings getEditorCameraSettings() override;
     void setEditorCameraSettings(EditorCameraSettings settings) override;
@@ -79,7 +79,13 @@ private:
     void closeAppRequest();
     void closeApp();
     void saveOpenedProjectWindowState();
-    void reloadOpenedWorld(); // re-read the current world from disk (Reimport)
+    // The world the editor edits: the active one of the open worlds (ProjectLoader).
+    World &editingWorld() {
+        return m_loader.activeWorld().world();
+    }
+    // The editor shows another world, or the same one with another content: the selection, the
+    // entity tabs and the panels follow.
+    void worldDidChange();
     // The file documents (FileDocument.hpp): every file the editor holds in memory that needs
     // attention, in the order of Reload — the settings, the assets, the world. The asset
     // documents are built for the call and live in `assets`.
@@ -141,9 +147,13 @@ private:
     void revertProjectSettings() override;
     void projectSettingsEdited() override;
     bool isProjectSettingsDirty() override;
-    bool saveWorld() override;
     bool saveAsset(uint32_t assetId) override;
-    std::filesystem::path worldFilePath() override;
+    std::vector<Editor::OpenWorld> openWorlds() override;
+    uint32_t activeWorldId() override;
+    bool canActivateWorld() override;
+    void activateWorld(uint32_t worldId) override;
+    bool saveWorld(uint32_t worldId) override;
+    void closeWorld(uint32_t worldId) override;
     std::filesystem::path settingsFilePath(Panda::SettingsScope scope) override;
     void openInExternalEditor(const std::filesystem::path &path) override;
     void revealInFileManager(const std::filesystem::path &path) override;
@@ -210,9 +220,8 @@ private:
     Editor::UpdateIndicatorModel updateIndicatorModel() const;
     std::string updateStatusLine() const;
 
-    World m_editingWorld;
-    World m_playingWorld;
-    World *m_currentWorld;
+    World m_playingWorld; // Play runs in a copy of the edited world
+    World *m_currentWorld; // what the editor shows: the edited world, or the playing copy
     SceneState m_sceneState;
     bool m_pendingStop = false; // script quit → Stop at the start of the next frame (not in the middle of update)
     bool m_windowFocused = true;    // the editor window has the keyboard focus (Fern WindowFocus / WindowLostFocus)

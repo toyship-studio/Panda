@@ -101,17 +101,18 @@ namespace {
 } // namespace
 
 EditorLayer::EditorLayer(Fern::Window *window, bool openLastProject)
-    : m_editingWorld()
-    , m_playingWorld()
-    , m_currentWorld(&m_editingWorld)
+    : m_playingWorld()
+    , m_currentWorld(nullptr)
     , m_sceneState(SceneState::EDIT)
-    , m_loader(&m_editingWorld, this)
+    , m_loader(this)
     , m_pendingWorldLoad(0)
     , m_window(window)
     , m_menuBar(window, this)
     , m_pandaUI(window)
     , m_viewports() {
-    m_openLastProject = openLastProject;}
+    m_openLastProject = openLastProject;
+    m_currentWorld = &editingWorld();
+}
 
 EditorLayer::~EditorLayer() = default; // Editor::EditorController is complete here (see include) — for unique_ptr
 
@@ -147,7 +148,7 @@ void EditorLayer::onAttach() {
     // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
     // fields (windStrength/windGustiness), not the default.
-    SceneWind::apply(m_editingWorld.getWindSettings());
+    SceneWind::apply(editingWorld().getWindSettings());
     if (!m_loader.hasOpenedProject()) { updateWindowState(); }
     m_menuBar.rebuild();
 
@@ -175,7 +176,7 @@ void EditorLayer::onAttach() {
     m_startScreenController->setNewProjectDefaults("UntitledGame", defaultProjectParentPath().string());
     syncStartScreenModel();
     m_editorController = std::make_unique<Editor::EditorController>();
-    m_editorController->setWorld(&m_editingWorld); // panels read the real engine world directly
+    m_editorController->setWorld(m_currentWorld); // panels read the real engine world directly
     m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
     // A ready thumbnail → targeted update of the visible grid cell (cells are configured once).
     m_thumbnails->setOnThumbnailReady([this](Panda::AssetId assetId) {
@@ -443,21 +444,48 @@ void EditorLayer::save() {
     saveAll();
 }
 
-bool EditorLayer::saveWorld() {
-    FileDocument &world = m_loader.worldFile();
+std::vector<Editor::OpenWorld> EditorLayer::openWorlds() {
+    std::vector<Editor::OpenWorld> worlds;
+    worlds.reserve(m_loader.worlds().size());
+    for (const std::unique_ptr<WorldFile> &world : m_loader.worlds()) {
+        worlds.push_back({world->id(), world->name(), world->path(), world->isDirty(), &world->world()});
+    }
+    return worlds;
+}
+
+uint32_t EditorLayer::activeWorldId() {
+    return m_loader.activeWorld().id();
+}
+
+bool EditorLayer::canActivateWorld() {
+    return m_sceneState == SceneState::EDIT;
+}
+
+void EditorLayer::activateWorld(uint32_t worldId) {
+    if (m_sceneState != SceneState::EDIT) { return; }
+    if (WorldFile *world = m_loader.findWorld(worldId)) { m_loader.activateWorld(*world); }
+}
+
+bool EditorLayer::saveWorld(uint32_t worldId) {
+    WorldFile *world = m_loader.findWorld(worldId);
+    if (world == nullptr) { return false; }
     // A world without a file yet is saved even when untouched: Save names it (Save As).
-    if (!world.isDirty() && !world.path().empty()) { return true; }
-    return saveFile(world);
+    if (!world->isDirty() && !world->path().empty()) { return true; }
+    return saveFile(*world);
+}
+
+void EditorLayer::closeWorld(uint32_t worldId) {
+    WorldFile *world = m_loader.findWorld(worldId);
+    if (world == nullptr) { return; }
+    // The game plays a copy of the active world: it ends with that world.
+    if (world == &m_loader.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
+    m_loader.closeWorld(*world);
 }
 
 bool EditorLayer::saveAsset(uint32_t assetId) {
     auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
     const std::unique_ptr<FileDocument> file = assetHandler ? assetHandler->fileDocument(assetId) : nullptr;
     return file && saveFile(*file);
-}
-
-std::filesystem::path EditorLayer::worldFilePath() {
-    return m_loader.getOpenedWorldPath();
 }
 
 std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) {
@@ -518,13 +546,16 @@ void EditorLayer::openWorldAsset(uint32_t worldAssetId) {
         LOG_ERROR_EDITOR("World asset %u has empty path", worldAssetId);
         return;
     }
-    path_t worldPath = assetHandler->getProjectPath() / assetRelativePath;
-    if (worldPath == m_loader.getOpenedWorldPath()) { return; } // already open
-    runAfterUnsavedQuestion([this, worldPath]() {
-        if (!m_loader.openWorld(worldPath)) {
-            LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
-        }
-    });
+    const path_t worldPath = assetHandler->getProjectPath() / assetRelativePath;
+    // Nothing is dropped: the world opens in a tab of its own next to the open ones. The game
+    // plays a copy of the active world, so it stops before another world takes that place.
+    if (m_sceneState != SceneState::EDIT) { stop(); }
+    if (m_loader.openWorld(worldPath) == nullptr) {
+        LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
+        return;
+    }
+    // Its tab comes forward, also when the world was open and active already (behind the Game tab).
+    if (m_editorController) { m_editorController->showSceneView(); }
 }
 
 void EditorLayer::setSceneState(Editor::SceneState state) {
@@ -562,7 +593,9 @@ EditorLayer::FileDocuments EditorLayer::fileDocuments() {
             files.all.push_back(asset.get());
         }
     }
-    files.all.push_back(&m_loader.worldFile());
+    for (const std::unique_ptr<WorldFile> &world : m_loader.worlds()) {
+        files.all.push_back(world.get());
+    }
     return files;
 }
 
@@ -606,7 +639,7 @@ bool EditorLayer::saveFile(FileDocument &file) {
     if (file.isChangedOnDisk()) { return resolveFileConflict(file) != FileResolution::Cancelled; }
     if (!file.save()) { return false; }
     LOG_INFO_EDITOR("Saved %s.", file.title().c_str());
-    if (&file == &m_loader.worldFile() && m_sceneState != SceneState::EDIT) {
+    if (&file == &m_loader.activeWorld() && m_sceneState != SceneState::EDIT) {
         // Save writes the world being edited. Play runs on its copy: what the simulation and the
         // inspector change there lives until Stop.
         LOG_INFO_EDITOR("The changes made while playing are not saved: Stop discards them.");
@@ -617,9 +650,7 @@ bool EditorLayer::saveFile(FileDocument &file) {
 bool EditorLayer::saveAll() {
     const FileDocuments files = fileDocuments();
     for (FileDocument *file : files.all) {
-        // A world without a file yet is saved even when untouched: Save names it (Save As).
-        const bool unnamedWorld = file == &m_loader.worldFile() && file->path().empty();
-        if (!file->isDirty() && !unnamedWorld) { continue; }
+        if (!file->isDirty()) { continue; }
         if (!saveFile(*file)) { return false; }
     }
     return true;
@@ -629,7 +660,7 @@ void EditorLayer::reloadFromDisk() {
     // A single synchronization of the editor with the disk (the Reload button / Cmd+R), by
     // modification time: a file document changed on disk is reread; when the memory has edits
     // too, the user picks the version that stays; Cancel aborts the rest. The script build is a
-    // step of its own before the world (nothing edits it in memory).
+    // step of its own before the worlds (nothing edits it in memory).
     if (m_sceneState != SceneState::EDIT) { stop(); }
     std::string reloaded;
     bool scriptsChecked = false;
@@ -641,7 +672,7 @@ void EditorLayer::reloadFromDisk() {
     };
     const FileDocuments files = fileDocuments();
     for (FileDocument *file : files.all) {
-        if (file == &m_loader.worldFile()) { reloadScripts(); }
+        if (!scriptsChecked && m_loader.isWorldFile(file)) { reloadScripts(); }
         if (!file->isChangedOnDisk()) { continue; }
         const std::string title = file->title(); // the document may not outlive its reload
         const FileResolution resolution = takeDiskVersion(*file);
@@ -747,7 +778,7 @@ TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
         case SettingsScope::Editor: return m_loader.editorSettings();
         case SettingsScope::World: break;
     }
-    return m_editingWorld.context(); // the world scope is the coordinator's (the panels' world)
+    return editingWorld().context(); // the world scope is the coordinator's (the panels' world)
 }
 
 void EditorLayer::applyEditorSettings() {
@@ -788,7 +819,7 @@ void EditorLayer::updateViewportTools(double deltaTime) {
     // The tools work in the Scene with the editor camera and the pointer of its surface; in a Game
     // frame they see no viewport (the pointer is empty).
     const Editor::ViewportToolFrame frame{
-        .world = m_editingWorld,
+        .world = editingWorld(),
         .camera = m_viewports.editorCamera(),
         .view = m_viewports.sceneView(),
         .viewProj = m_viewports.sceneViewProj(),
@@ -967,7 +998,7 @@ void EditorLayer::windowSizeChanged(Size size) {
 void EditorLayer::play() {
     if (m_sceneState == SceneState::PLAY) { return; }
     m_sceneState = SceneState::PLAY;
-    m_playingWorld = m_editingWorld;
+    m_playingWorld = editingWorld();
     m_currentWorld = &m_playingWorld;
     SelectionContext::setWorld(m_currentWorld); // the same ids: the selection moves to the copy
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
@@ -1002,7 +1033,7 @@ void EditorLayer::stop() {
     Input::releaseAll(); // what the game still held: its releases go to the editor now
     m_pendingWorldLoad = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
-    m_currentWorld = &m_editingWorld;
+    m_currentWorld = &editingWorld();
     SelectionContext::setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
     m_viewports.scene().setWorld(m_currentWorld);
     if (m_editorController) {
@@ -1164,16 +1195,36 @@ std::string EditorLayer::worldDisplayName() {
     return worldPath.empty() ? "Untitled World" : worldPath.filename().stem().string();
 }
 
+void EditorLayer::loaderDidActivateWorld() {
+    // The game plays a copy of the world that was active when it started: it ends before another
+    // world takes that place (the tabs do not switch while it runs; opening a world stops it).
+    if (m_sceneState != SceneState::EDIT) { stop(); }
+    m_currentWorld = &editingWorld();
+    m_viewports.scene().setWorld(m_currentWorld);
+    SelectionContext::unselectAll(); // the selection is of one world, and ids repeat between worlds
+    SelectionContext::setWorld(m_currentWorld);
+    if (m_editorController) {
+        m_editorController->worldContextChanged(); // the entity tabs point into the previous world
+        m_editorController->setActiveWorld(m_currentWorld);
+    }
+    worldDidChange();
+}
+
 void EditorLayer::loaderDidLoadWorld() {
+    worldDidChange();
+}
+
+void EditorLayer::worldDidChange() {
     SelectionContext::unselectAll();
-    if (m_editorController) { m_editorController->worldContextChanged(); }
     m_menuBar.rebuild();
-    if (m_editorController) { m_editorController->setWorldDisplayName(worldDisplayName()); }
-    if (m_editorController) { m_editorController->refreshFromWorld(); } // migration: re-read the hierarchy tree
+    if (!m_editorController) { return; }
+    m_editorController->worldContextChanged();
+    m_editorController->setWorldDisplayName(worldDisplayName());
+    m_editorController->refreshFromWorld(); // the Hierarchy rereads the tree
+    m_editorController->syncWorldTabs();    // no tab outlives its world
 }
 
 void EditorLayer::loaderDidLoadCloseProject() {
-    m_editingWorld.clear();
     m_playingWorld.clear();
     SelectionContext::unselectAll();
     if (m_editorController) { m_editorController->worldContextChanged(); }
@@ -1188,14 +1239,6 @@ void EditorLayer::loaderDidLoadCloseProject() {
         m_startScreenController->setStatus("Select a project or create a new one.");
     }
     showStartScreen();
-}
-
-void EditorLayer::loaderDidCreateNewWorld() {
-    SelectionContext::unselectAll();
-    if (m_editorController) { m_editorController->worldContextChanged(); }
-    m_playingWorld.clear();
-    m_menuBar.rebuild();
-    if (m_editorController) { m_editorController->refreshFromWorld(); }
 }
 
 EditorCameraSettings EditorLayer::getEditorCameraSettings() {
@@ -1272,7 +1315,9 @@ void EditorLayer::menuBarOpenProject(const RecentProject &project) {
 }
 
 void EditorLayer::menuBarNewWorld() {
-    runAfterUnsavedQuestion([this]() { m_loader.newWorld(); });
+    // A new world opens in a tab of its own next to the open ones: nothing is dropped.
+    if (m_sceneState != SceneState::EDIT) { stop(); }
+    m_loader.newWorld();
 }
 
 namespace {
@@ -1342,29 +1387,18 @@ void EditorLayer::menuBarReload() {
     reloadFromDisk();
 }
 
-void EditorLayer::reloadOpenedWorld() {
-    // Rereads the CURRENT world from disk on request (Reimport of the open world): unsaved edits
-    // ask which version stays; a broken file only logs an error — the current world is not
-    // touched in that case.
-    if (m_loader.getOpenedWorldPath().empty()) {
-        LOG_WARN_EDITOR("Reload skipped: current world has no file yet");
-        return;
-    }
-    if (m_sceneState != SceneState::EDIT) { stop(); }
-    takeDiskVersion(m_loader.worldFile());
-}
-
 void EditorLayer::reloadWorldAsset(uint32_t worldAssetId) {
-    // Reimport in Content Browser: only the OPEN world is re-read; another world is neither
-    // touched nor opened (there is nowhere to load it — the world lives in ProjectLoader).
+    // Reimport in the Content Browser: a world is reread when it is open (unsaved edits ask which
+    // version stays; a broken file only logs an error). A world that is not open has nothing in
+    // memory to refresh.
     auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
     if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) { return; }
     const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
     if (assetRelativePath.empty()) { return; }
-    if (assetHandler->getProjectPath() / assetRelativePath != m_loader.getOpenedWorldPath()) {
-        return;
-    }
-    reloadOpenedWorld();
+    WorldFile *world = m_loader.findWorld(assetHandler->getProjectPath() / assetRelativePath);
+    if (world == nullptr) { return; }
+    if (world == &m_loader.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
+    takeDiskVersion(*world);
 }
 
 void EditorLayer::menuBarCloseProject() {
@@ -1773,7 +1807,7 @@ bool EditorLayer::cookRuntimeData() {
 
     GameExporter exporter;
     ExportResult result =
-        exporter.exportGame(exportSettings, m_loader.getOpenedProjectPath(), *assetHandler, m_editingWorld);
+        exporter.exportGame(exportSettings, m_loader.getOpenedProjectPath(), *assetHandler, editingWorld());
 
     if (result.success) {
         LOG_INFO_EDITOR("========================================");

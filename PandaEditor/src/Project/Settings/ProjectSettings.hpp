@@ -43,7 +43,7 @@ struct ModuleRef final : public Rain::Codable {
 // of sections by name, the settings registry; the modules add their own sections the same way,
 // EditorSettingsTypes registers these). Paths are relative to the project, with forward slashes.
 
-// "world": the main world of the project. The editor opens it when the project has no session;
+// "world": the main world of the project. The editor opens it when the session has no worlds;
 // the scene list and the start world of the export are ahead (context/roadmap.md).
 struct ProjectWorldSettings final : public Rain::Codable {
     std::string startWorld;
@@ -63,16 +63,28 @@ struct ProjectModuleSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-// The session of the project — `.Panda/session.json`, not in version control: where the user
-// was. The world open at the end of the last session (empty — the start world) and the editor
-// camera.
-struct ProjectSession final : public Rain::Codable {
-    std::string lastWorld;
+// A world the session had open: its file (relative to the project) and where the editor camera
+// stood in it.
+struct SessionWorld final : public Rain::Codable {
+    std::string path;
     EditorCameraSettings camera;
 
-    RAIN_FIELDS_BEGIN(ProjectSession)
-    RAIN_FIELD(lastWorld)
+    RAIN_FIELDS_BEGIN(SessionWorld)
+    RAIN_FIELD(path)
     RAIN_FIELD(camera)
+    RAIN_FIELDS_END
+};
+
+// The session of the project — `.Panda/session.json`, not in version control: where the user
+// was. The worlds open at the end of the last session, in the order of their tabs (none — the
+// start world), and the one that was active.
+struct ProjectSession final : public Rain::Codable {
+    std::vector<SessionWorld> worlds;
+    std::string activeWorld;
+
+    RAIN_FIELDS_BEGIN(ProjectSession)
+    RAIN_FIELD(worlds)
+    RAIN_FIELD(activeWorld)
     RAIN_FIELDS_END
 };
 

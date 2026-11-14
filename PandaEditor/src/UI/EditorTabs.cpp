@@ -533,8 +533,10 @@ EditorTabs::TabEntry EditorTabs::makeAssetEntry(std::string id, std::vector<Pand
     return entry;
 }
 
-void EditorTabs::openEntry(TabEntry entry, Dock dock, bool preview) {
+void EditorTabs::openEntry(TabEntry entry, Dock dock, bool preview, bool pinnedToDock) {
     DockPanel panel;
+    panel.movable = !pinnedToDock;
+    panel.restored = !pinnedToDock;
     panel.id = entry.id;
     // An object tab is titled by its targets (the entry is not in the list yet, so the document
     // cannot resolve them itself); a document of the registry names itself.
@@ -630,6 +632,19 @@ void EditorTabs::openDocumentType(const std::string &typeId, Dock dock) {
     entry.document = type->create();
     if (!entry.document) { return; }
     openEntry(std::move(entry), dock, /*preview*/ false);
+}
+
+void EditorTabs::openDocument(std::string tabId, std::unique_ptr<Document> document, Dock dock) {
+    if (!document || m_docks->activateTransientPanel(tabId)) { return; }
+    TabEntry entry;
+    entry.id = std::move(tabId);
+    entry.typeId = "document"; // not empty: the document names itself, like a document of the registry
+    entry.document = std::move(document);
+    openEntry(std::move(entry), dock, /*preview*/ false, /*pinnedToDock*/ true);
+}
+
+void EditorTabs::closeTab(const std::string &tabId) {
+    m_docks->closeTransientPanel(tabId); // onTransientClosed removes the TabEntry
 }
 
 void EditorTabs::setRuntimeMode(bool runtime) {

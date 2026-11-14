@@ -147,8 +147,10 @@ features the project enables, see `shaders.md`; without the section every featur
 switches a module of the distribution off; an empty list enables all). Modules may add sections
 of their own; a section whose module is absent is preserved.
 
-`.Panda/session.json` is the state of the last editor session (the world that was open, the
-editor camera); it is not in version control and may be deleted at any time.
+`.Panda/session.json` is the state of the last editor session (`worlds`: the world files that
+were open, in tab order, each with the pose of the editor camera; `activeWorld`: the one that
+was in front); it is not in version control and may be deleted at any time — the project then
+opens its start world.
 
 The editor's own settings (`settings.json`, the editor scope: the viewport display options, the
 theme, the sections of the modules) and its session live in the user data directory, not in the

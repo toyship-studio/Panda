@@ -61,34 +61,25 @@ namespace {
 
 } // namespace
 
-// The open world: `.world` of the project. Reload is opening the same file again.
-class ProjectLoader::WorldFile final : public FileDocument {
-public:
-    explicit WorldFile(ProjectLoader &loader)
-        : m_loader(loader) {}
-    std::string title() const override {
-        const path_t &path = m_loader.m_worldPath;
-        return path.empty() ? "the new world" : "world \"" + path.stem().string() + "\"";
-    }
-    path_t path() const override {
-        return m_loader.m_worldPath;
-    }
-    bool isDirty() const override {
-        return m_loader.m_world->isChanged();
-    }
-    bool isChangedOnDisk() const override {
-        return m_loader.m_worldStamp.isStale(m_loader.m_worldPath);
-    }
-    bool save() override {
-        return m_loader.saveWorld();
-    }
-    bool reload() override {
-        return !m_loader.m_worldPath.empty() && m_loader.openWorld(path_t(m_loader.m_worldPath));
-    }
+WorldFile::WorldFile(ProjectLoader &loader, uint32_t id)
+    : m_loader(loader)
+    , m_id(id) {}
 
-private:
-    ProjectLoader &m_loader;
-};
+std::string WorldFile::name() const {
+    return m_path.empty() ? "Untitled World" : m_path.filename().string();
+}
+
+std::string WorldFile::title() const {
+    return m_path.empty() ? "the new world" : "world \"" + m_path.stem().string() + "\"";
+}
+
+bool WorldFile::save() {
+    return m_loader.saveWorld(*this);
+}
+
+bool WorldFile::reload() {
+    return m_loader.reloadWorld(*this);
+}
 
 // `.Panda/project.json`: the project scope of the settings.
 class ProjectLoader::ProjectSettingsFile final : public FileDocument {
@@ -148,9 +139,8 @@ private:
     ProjectLoader &m_loader;
 };
 
-ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
+ProjectLoader::ProjectLoader(ProjectLoaderOutput *output)
     : m_output(output)
-    , m_world(world)
     , m_jsonEncoder(true)
     , m_jsonDecoder()
     , m_editorSettings()
@@ -158,11 +148,12 @@ ProjectLoader::ProjectLoader(World *world, ProjectLoaderOutput *output)
     , m_projectSettings()
     , m_projectSession()
     , m_projectPath()
-    , m_worldPath()
     , m_assetHandler(nullptr)
-    , m_worldFile(std::make_unique<WorldFile>(*this))
     , m_projectSettingsFile(std::make_unique<ProjectSettingsFile>(*this))
     , m_editorSettingsFile(std::make_unique<EditorSettingsFile>(*this)) {
+    // The editor always has a world to show: without a project it is this empty one. The output
+    // is not told — it is still being constructed and takes the world from activeWorld().
+    m_activeWorld = &addWorld(/*starterContent*/ false);
     registerEditorSettingsTypes(GameContext::getExtensions().settings);
     SettingsMapper::reset(SettingsScope::Editor, m_editorSettings);
     SettingsMapper::reset(SettingsScope::Project, m_projectSettings);
@@ -175,6 +166,9 @@ ProjectLoader::~ProjectLoader() {
     saveSession();
     saveEditorSettings(false);
     saveProjectSettings(false);
+    // The worlds go before the assets they reference.
+    m_activeWorld = nullptr;
+    m_worlds.clear();
     m_assetHandler->closeProject();
     Panda::StaticResources::deinitStaticResources();
     GameContext::setScriptEngine(nullptr);
@@ -286,18 +280,17 @@ void ProjectLoader::openProject(const path_t &path) {
         return;
     }
     if (hasOpenedProject()) {
-        // Project switch: save the settings of the old project and release its world BEFORE the old
+        // Project switch: save the settings of the old project and release its worlds BEFORE the old
         // script build is unloaded in reloadScriptsDll — otherwise script instances would be
         // destroyed by the code of an already unloaded library. The registry of the old project is
-        // saved and closed by the handler's closeProject; the UI is not notified (no flicker of the
-        // start screen) — the panels are updated by loaderDidLoadProject of the new project.
+        // saved and closed by the handler's closeProject; the start screen is not shown in between —
+        // the panels are updated by loaderDidLoadProject of the new project.
         saveProjectSettings(false);
-        m_world->clear();
+        resetWorlds();
         m_assetHandler->closeProject();
     }
     m_projectPath = path;
     path_t projectName = path.filename();
-    m_worldPath.clear();
     const path_t dataDirectory = projectDataDirectory(m_projectPath);
     // The sections of the project scope and the project session.
     {
@@ -318,12 +311,11 @@ void ProjectLoader::openProject(const path_t &path) {
     // registry and the world. Engine parts are not unloaded — the modules of the previous project
     // stay, new ones are added; the live world gets pools for the new component types.
     if (ProjectModules::load(m_projectSettings.get<ProjectModuleSettings>()) > 0) {
-        m_world->prepareComponentTypes();
+        for (const std::unique_ptr<WorldFile> &world : m_worlds) { world->m_world.prepareComponentTypes(); }
         // The sections of the new modules were read as foreign values: they get their types now.
         SettingsMapper::adoptForeign(SettingsScope::Project, m_projectSettings);
         SettingsMapper::adoptForeign(SettingsScope::Editor, m_editorSettings);
     }
-    m_output->setEditorCameraSettings(m_projectSession.camera);
     applyShaderFeatures();
     // First switch the asset registry and the scripts to the new project, then notify the UI:
     // loaderDidLoadProject rescans the asset panels — they must already see the NEW registry.
@@ -333,18 +325,7 @@ void ProjectLoader::openProject(const path_t &path) {
     ShaderCook::cookAndReloadSceneShaders(m_projectPath);
     m_output->loaderDidLoadProject(projectName.string(), m_projectPath);
     LOG_INFO("LOADED PROJECT AT PATH %s", m_projectPath.string().c_str());
-    // The world of the last session, else the start world of the project, else a new one.
-    const std::string &lastWorld = m_projectSession.lastWorld;
-    const std::string &startWorld = m_projectSettings.get<ProjectWorldSettings>().startWorld;
-    if (!lastWorld.empty() && std::filesystem::exists(m_projectPath / lastWorld)) {
-        loadWorld(m_projectPath / lastWorld);
-        return;
-    }
-    if (!startWorld.empty()) {
-        loadWorld(m_projectPath / startWorld);
-        return;
-    }
-    createDefaultWorld();
+    openSessionWorlds();
 }
 
 namespace {
@@ -454,7 +435,7 @@ void ProjectLoader::reloadScriptsDll() {
         if (!errorCode) { m_scriptsDllTime = diskTime; }
     }
     if (m_scriptEngine.isLoaded()) {
-        m_world->updateScriptsAndFields();
+        for (const std::unique_ptr<WorldFile> &world : m_worlds) { world->m_world.updateScriptsAndFields(); }
         writeScriptsManifest(
             m_projectPath / ".Panda" / "scripts-manifest.json", m_scriptEngine.getManifest(),
             m_jsonEncoder
@@ -474,7 +455,7 @@ const path_t &ProjectLoader::getOpenedProjectPath() {
 }
 
 const path_t &ProjectLoader::getOpenedWorldPath() {
-    return m_worldPath;
+    return m_activeWorld->m_path;
 }
 
 void ProjectLoader::createProject(const std::string &name, const path_t &path) {
@@ -518,104 +499,6 @@ const std::vector<RecentProject> &ProjectLoader::getRecentProjectsList() {
     return m_session.recentProjects;
 }
 
-void ProjectLoader::newWorld() {
-    m_worldPath.clear();
-    m_projectSession.lastWorld.clear();
-    createDefaultWorld();
-}
-
-bool ProjectLoader::openWorld(const path_t &path) {
-    if (path.extension() != ".world") {
-        LOG_ERROR_EDITOR("Cannot open world from unsupported file: %s", path.string().c_str());
-        return false;
-    }
-    if (!isSubpath(path, m_projectPath)) {
-        LOG_ERROR_EDITOR("World must be inside the project directory: %s", path.string().c_str());
-        return false;
-    }
-    if (!loadWorld(path)) { return false; }
-    registerCurrentWorldAsset();
-    return true;
-}
-
-bool ProjectLoader::saveWorld() {
-    if (m_worldPath.empty()) { return saveWorldAs(); }
-    if (!writeWorld(m_worldPath)) { return false; }
-    syncWorldPaths();
-    registerCurrentWorldAsset();
-    return true;
-}
-
-bool ProjectLoader::writeWorld(const path_t &path) {
-    std::ofstream file(path);
-    if (file.is_open()) {
-        WorldMapper::save(*m_world, m_jsonEncoder, file);
-        file.close();
-        m_world->setChanged(false);
-        m_worldStamp.sync(path);
-        return true;
-    } else {
-        LOG_ERROR("ERROR SAVING WORLD AT PATH %s", path.string().c_str());
-        return false;
-    }
-}
-
-bool ProjectLoader::loadWorld(const path_t &path) {
-    if (path.empty()) {
-        createDefaultWorld();
-        return false;
-    }
-    std::ifstream file(path);
-    if (file.is_open()) {
-        const bool decoded = WorldMapper::load(*m_world, m_jsonDecoder, file);
-        file.close();
-        // Broken JSON: the current world and m_worldPath are NOT touched — fix the file and
-        // repeat Reload; an accidental Save does not silently overwrite the broken file.
-        if (!decoded) {
-            LOG_ERROR_EDITOR("WORLD FILE IS BROKEN (JSON parse error): %s", path.string().c_str());
-            return false;
-        }
-    } else {
-        LOG_INFO("CANNOT LOAD WORLD AT PATH %s", path.string().c_str());
-        m_worldPath.clear();
-        m_projectSession.lastWorld.clear();
-        createDefaultWorld();
-        return false;
-    }
-    m_worldPath = path;
-    m_worldStamp.sync(path);
-    syncWorldPaths();
-    if (m_scriptEngine.isLoaded()) { m_world->updateScriptsAndFields(); }
-    LOG_INFO("LOADED WORLD AT PATH %s", m_worldPath.string().c_str());
-    m_output->loaderDidLoadWorld();
-    return true;
-}
-
-bool ProjectLoader::saveWorldAs() {
-    std::optional<path_t> optionalPath =
-        SystemTools::saveFileDialog("World\0*.world\0", (m_projectPath / "Assets").string().c_str(), "world.world");
-    if (!optionalPath.has_value()) { return false; }
-    path_t previousPath = m_worldPath;
-    m_worldPath = optionalPath.value();
-    if (m_worldPath.extension() != ".world") { m_worldPath.replace_extension(".world"); }
-    if (!writeWorld(m_worldPath)) {
-        m_worldPath = previousPath;
-        return false;
-    }
-    syncWorldPaths();
-    registerCurrentWorldAsset();
-    m_output->loaderDidLoadWorld();
-    return true;
-}
-
-void ProjectLoader::registerCurrentWorldAsset() {
-    if (!std::filesystem::exists(m_worldPath)) { return; }
-    if (!isSubpath(m_worldPath, m_projectPath)) { return; }
-    if (m_assetHandler->getAssetId(m_worldPath)) { return; }
-    if (!m_assetHandler->canImport(m_worldPath)) { return; }
-    m_assetHandler->registerAsset(m_worldPath);
-}
-
 namespace {
 
     // Starter content of a new world: camera, sun, reference sprite, sky.
@@ -637,36 +520,263 @@ namespace {
         Entity sky = world.instantiateEntity();
         sky.setName("Sky");
         sky.addComponent<SkyComponent>();
-        world.setChanged(true);
         world.sort();
+        // The starter content is not an edit: an untouched new world closes without a question
+        // and gives its place to a file that is opened.
+        world.setChanged(false);
     }
 
 } // namespace
 
-void ProjectLoader::createDefaultWorld() {
-    m_world->clear(); // the default settings too
-    fillDefaultWorld(*m_world);
-    if (m_scriptEngine.isLoaded()) { m_world->updateScriptsAndFields(); }
-    m_output->loaderDidCreateNewWorld();
+/* ------------------------------ The open worlds ------------------------------ */
+
+WorldFile *ProjectLoader::findWorld(uint32_t id) {
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        if (world->m_id == id) { return world.get(); }
+    }
+    return nullptr;
+}
+
+WorldFile *ProjectLoader::findWorld(const path_t &path) {
+    if (path.empty()) { return nullptr; }
+    // One document per file, however the path is spelled (a dialog, the asset registry and the
+    // session each build it their own way).
+    const path_t normal = path.lexically_normal();
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        if (world->m_path.empty()) { continue; }
+        std::error_code errorCode;
+        if (world->m_path.lexically_normal() == normal || std::filesystem::equivalent(world->m_path, path, errorCode)) {
+            return world.get();
+        }
+    }
+    return nullptr;
+}
+
+bool ProjectLoader::isWorldFile(const FileDocument *file) const {
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        if (world.get() == file) { return true; }
+    }
+    return false;
+}
+
+WorldFile &ProjectLoader::addWorld(bool starterContent) {
+    m_worlds.push_back(std::make_unique<WorldFile>(*this, m_nextWorldId++));
+    WorldFile &world = *m_worlds.back();
+    if (starterContent) {
+        fillDefaultWorld(world.m_world);
+        if (m_scriptEngine.isLoaded()) { world.m_world.updateScriptsAndFields(); }
+    }
+    return world;
+}
+
+void ProjectLoader::activateWorld(WorldFile &world) {
+    if (&world == m_activeWorld) { return; }
+    // The editor camera stays with the world it was looking at.
+    m_activeWorld->m_camera = m_output->getEditorCameraSettings();
+    m_activeWorld->m_hasCamera = true;
+    showWorld(world);
+}
+
+void ProjectLoader::showWorld(WorldFile &world) {
+    m_activeWorld = &world;
+    m_output->loaderDidActivateWorld();
+    if (world.m_hasCamera) { m_output->setEditorCameraSettings(world.m_camera); }
+}
+
+void ProjectLoader::resetWorlds() {
+    // The empty world becomes active first: nothing of the editor points into a world that goes.
+    std::vector<std::unique_ptr<WorldFile>> gone = std::move(m_worlds);
+    m_worlds.clear();
+    showWorld(addWorld(/*starterContent*/ false));
+}
+
+WorldFile &ProjectLoader::newWorld() {
+    // An empty world (a project that had nothing to open) is filled in place.
+    if (m_activeWorld->m_path.empty() && !m_activeWorld->isDirty() && m_activeWorld->m_world.isEmpty()) {
+        fillDefaultWorld(m_activeWorld->m_world);
+        if (m_scriptEngine.isLoaded()) { m_activeWorld->m_world.updateScriptsAndFields(); }
+        m_output->loaderDidLoadWorld();
+        return *m_activeWorld;
+    }
+    WorldFile &world = addWorld(/*starterContent*/ true);
+    activateWorld(world);
+    return world;
+}
+
+WorldFile *ProjectLoader::openWorld(const path_t &path) {
+    if (path.extension() != ".world") {
+        LOG_ERROR_EDITOR("Cannot open world from unsupported file: %s", path.string().c_str());
+        return nullptr;
+    }
+    if (!isSubpath(path, m_projectPath)) {
+        LOG_ERROR_EDITOR("World must be inside the project directory: %s", path.string().c_str());
+        return nullptr;
+    }
+    WorldFile *world = loadWorld(path);
+    if (world == nullptr) { return nullptr; }
+    registerWorldAsset(path);
+    activateWorld(*world);
+    return world;
+}
+
+WorldFile *ProjectLoader::loadWorld(const path_t &path) {
+    if (WorldFile *open = findWorld(path)) { return open; }
+    // An untouched new world gives its place to the file; otherwise the file gets a document of
+    // its own.
+    const bool reuse = m_activeWorld->m_path.empty() && !m_activeWorld->isDirty();
+    WorldFile *world = reuse ? m_activeWorld : &addWorld(/*starterContent*/ false);
+    if (!readWorld(*world, path)) {
+        if (!reuse) { m_worlds.pop_back(); }
+        return nullptr;
+    }
+    return world;
+}
+
+bool ProjectLoader::readWorld(WorldFile &world, const path_t &path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        LOG_ERROR_EDITOR("World file not found: %s", path.string().c_str());
+        return false;
+    }
+    const bool decoded = WorldMapper::load(world.m_world, m_jsonDecoder, file);
+    file.close();
+    // Broken JSON: the world in memory and its path are NOT touched — fix the file and repeat
+    // Reload; an accidental Save does not silently overwrite the broken file.
+    if (!decoded) {
+        LOG_ERROR_EDITOR("WORLD FILE IS BROKEN (JSON parse error): %s", path.string().c_str());
+        return false;
+    }
+    world.m_path = path;
+    world.m_stamp.sync(path);
+    if (m_scriptEngine.isLoaded()) { world.m_world.updateScriptsAndFields(); }
+    LOG_INFO("LOADED WORLD AT PATH %s", path.string().c_str());
+    if (&world == m_activeWorld) {
+        syncWorldPaths();
+        m_output->loaderDidLoadWorld();
+    }
+    return true;
+}
+
+bool ProjectLoader::reloadWorld(WorldFile &world) {
+    return !world.m_path.empty() && readWorld(world, path_t(world.m_path));
+}
+
+void ProjectLoader::closeWorld(WorldFile &world) {
+    size_t index = 0;
+    while (index < m_worlds.size() && m_worlds[index].get() != &world) { ++index; }
+    if (index == m_worlds.size()) { return; }
+    // The last world: a new one takes its place.
+    if (m_worlds.size() == 1) { addWorld(/*starterContent*/ true); }
+    // The neighbor becomes active: the next tab, the previous one after the last.
+    if (&world == m_activeWorld) { showWorld(*m_worlds[index + 1 < m_worlds.size() ? index + 1 : index - 1]); }
+    m_worlds.erase(m_worlds.begin() + static_cast<std::ptrdiff_t>(index));
+}
+
+bool ProjectLoader::saveWorld(WorldFile &world) {
+    if (world.m_path.empty()) { return saveWorldAs(world); }
+    if (!writeWorld(world, world.m_path)) { return false; }
+    syncWorldPaths();
+    registerWorldAsset(world.m_path);
+    return true;
+}
+
+bool ProjectLoader::writeWorld(WorldFile &world, const path_t &path) {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        LOG_ERROR("ERROR SAVING WORLD AT PATH %s", path.string().c_str());
+        return false;
+    }
+    WorldMapper::save(world.m_world, m_jsonEncoder, file);
+    file.close();
+    world.m_world.setChanged(false);
+    world.m_stamp.sync(path);
+    return true;
+}
+
+bool ProjectLoader::saveWorldAs(WorldFile &world) {
+    std::optional<path_t> optionalPath =
+        SystemTools::saveFileDialog("World\0*.world\0", (m_projectPath / "Assets").string().c_str(), "world.world");
+    if (!optionalPath.has_value()) { return false; }
+    path_t path = optionalPath.value();
+    if (path.extension() != ".world") { path.replace_extension(".world"); }
+    // One document per file: a world saved over the file of another open world would leave two
+    // documents of one file, each overwriting the other.
+    if (WorldFile *open = findWorld(path); open != nullptr && open != &world) {
+        LOG_ERROR_EDITOR("%s is open in another tab: close it or choose another name", path.filename().string().c_str());
+        return false;
+    }
+    if (!writeWorld(world, path)) { return false; }
+    world.m_path = path;
+    syncWorldPaths();
+    registerWorldAsset(path);
+    if (&world == m_activeWorld) { m_output->loaderDidLoadWorld(); }
+    return true;
+}
+
+void ProjectLoader::registerWorldAsset(const path_t &path) {
+    if (!std::filesystem::exists(path)) { return; }
+    if (!isSubpath(path, m_projectPath)) { return; }
+    if (m_assetHandler->getAssetId(path)) { return; }
+    if (!m_assetHandler->canImport(path)) { return; }
+    m_assetHandler->registerAsset(path);
+}
+
+void ProjectLoader::openSessionWorlds() {
+    // Opening rewrites nothing of the session: it is collected again when it is written.
+    const ProjectSession session = m_projectSession;
+    WorldFile *active = nullptr;
+    for (const SessionWorld &entry : session.worlds) {
+        const path_t path = m_projectPath / entry.path;
+        if (entry.path.empty() || !std::filesystem::exists(path)) { continue; }
+        WorldFile *world = loadWorld(path);
+        if (world == nullptr) { continue; }
+        world->m_camera = entry.camera;
+        world->m_hasCamera = true;
+        // The first one is read into the empty world, which is already shown.
+        if (world == m_activeWorld) { m_output->setEditorCameraSettings(entry.camera); }
+        if (entry.path == session.activeWorld) { active = world; }
+    }
+    if (m_activeWorld->m_path.empty()) { // the session had nothing to open
+        const std::string &startWorld = m_projectSettings.get<ProjectWorldSettings>().startWorld;
+        if (startWorld.empty() || loadWorld(m_projectPath / startWorld) == nullptr) { newWorld(); }
+    }
+    if (active != nullptr && active != m_activeWorld) { showWorld(*active); }
+}
+
+std::string ProjectLoader::projectRelative(const path_t &path) const {
+    if (!isSubpath(path, m_projectPath)) { return {}; }
+    // generic_string — forward slashes: the project files are portable between Windows and macOS.
+    return std::filesystem::relative(path, m_projectPath).generic_string();
 }
 
 void ProjectLoader::syncWorldPaths() {
-    std::string relative;
-    if (isSubpath(m_worldPath, m_projectPath)) {
-        // generic_string — forward slashes: the project files are portable between Windows and macOS.
-        relative = std::filesystem::relative(m_worldPath, m_projectPath).generic_string();
+    ProjectWorldSettings &settings = m_projectSettings.get<ProjectWorldSettings>();
+    if (!settings.startWorld.empty()) { return; }
+    settings.startWorld = projectRelative(m_activeWorld->m_path); // the first world of the project
+}
+
+void ProjectLoader::collectSession() {
+    const EditorCameraSettings camera = m_output->getEditorCameraSettings();
+    m_activeWorld->m_camera = camera;
+    m_activeWorld->m_hasCamera = true;
+    m_projectSession = ProjectSession();
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        SessionWorld entry;
+        entry.path = projectRelative(world->m_path);
+        if (entry.path.empty()) { continue; } // a world without a file is not a part of the session
+        // A world that was never shown remembers where the camera stood when the session ended.
+        entry.camera = world->m_hasCamera ? world->m_camera : camera;
+        if (world.get() == m_activeWorld) { m_projectSession.activeWorld = entry.path; }
+        m_projectSession.worlds.push_back(std::move(entry));
     }
-    m_projectSession.lastWorld = relative;
-    ProjectWorldSettings &world = m_projectSettings.get<ProjectWorldSettings>();
-    if (world.startWorld.empty()) { world.startWorld = relative; } // the first world of the project
 }
 
 void ProjectLoader::closeProject() {
     saveProjectSettings(false);
+    resetWorlds(); // the worlds go before the assets they reference
     m_assetHandler->closeProject();
     SettingsMapper::reset(SettingsScope::Project, m_projectSettings);
     m_projectSession = ProjectSession();
-    m_worldPath.clear();
     m_projectPath.clear();
     saveSession();
     m_output->loaderDidLoadCloseProject();
@@ -702,7 +812,7 @@ bool ProjectLoader::saveProjectSettings(bool overwriteDiskEdits) {
         m_projectSettingsStamp.sync(projectSettingsPath());
         if (saved) { m_projectSettingsDirty = false; }
     }
-    m_projectSession.camera = m_output->getEditorCameraSettings();
+    collectSession();
     if (!writeJson(dataDirectory / "session.json", m_jsonEncoder, m_projectSession)) {
         LOG_ERROR("CANNOT WRITE THE PROJECT SESSION AT %s", (dataDirectory / "session.json").string().c_str());
     }

@@ -9,8 +9,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Panda {
+class World;
 class PluginStore; // full type — Project/Plugins/PluginStore.hpp
 enum class BuildAction; // full type — Project/Build/ProjectBuilder.hpp
 enum class ScriptsBuildConfig;
@@ -22,6 +24,16 @@ namespace Editor {
 
 enum class SceneState; // full type — Toolbar.hpp (needed only on the calling/implementing side)
 
+// A world the project has open, as its tab sees it (the file document is ProjectLoader's
+// WorldFile). The id is stable while the world is open.
+struct OpenWorld final {
+    uint32_t id = 0;
+    std::string name;           // the file name; "Untitled World" for a world without a file
+    std::filesystem::path path; // empty — no file yet
+    bool dirty = false;
+    Panda::World *world = nullptr;
+};
+
 // Requests of the editor chrome (EditorController) to the engine/host — implemented by EditorLayer. One seam
 // instead of a set of injected lambdas: exactly what the editor asks of the engine is visible at a glance.
 class EngineBridge {
@@ -30,17 +42,24 @@ public:
 
     // The file documents of the application (Project/Documents/FileDocument.hpp) for their tabs.
     virtual void save() = 0;                      // every unsaved file document (Save All)
-    virtual bool saveWorld() = 0;                 // the world alone; false — cancelled or failed
     virtual bool saveAsset(uint32_t assetId) = 0; // one asset; false — cancelled or failed
-    virtual std::filesystem::path worldFilePath() = 0; // empty — the world has no file yet
     virtual std::filesystem::path settingsFilePath(Panda::SettingsScope scope) = 0;
+    // The worlds the project has open, in the order of their tabs. One of them is active: the
+    // viewport, the Hierarchy and the settings sidebar show it, and Play plays its copy.
+    virtual std::vector<OpenWorld> openWorlds() = 0;
+    virtual uint32_t activeWorldId() = 0;
+    // false while the game runs: it plays a copy of the active world, and that world stays.
+    virtual bool canActivateWorld() = 0;
+    virtual void activateWorld(uint32_t worldId) = 0;
+    virtual bool saveWorld(uint32_t worldId) = 0;  // one world; false — cancelled or failed
+    virtual void closeWorld(uint32_t worldId) = 0; // drops it from memory; its tab has asked about the edits
     // A file of the project outside the editor: in the external editor of the editor settings
     // (the text form of the file: a binary asset opens its sidecar), and in the file manager.
     virtual void openInExternalEditor(const std::filesystem::path &path) = 0;
     virtual void revealInFileManager(const std::filesystem::path &path) = 0;
-    virtual void openWorldAsset(uint32_t worldAssetId) = 0; // opens a registry world (with the save dialog)
-    // Reimport of a world: rereads it from disk if exactly that world is currently open (otherwise a no-op —
-    // Reimport does not open worlds). The same path as File → Reload World From Disk.
+    virtual void openWorldAsset(uint32_t worldAssetId) = 0; // a registry world in a tab of its own (an open one is activated)
+    // Reimport of a world: rereads it from disk when it is open (otherwise a no-op — Reimport does
+    // not open worlds).
     virtual void reloadWorldAsset(uint32_t worldAssetId) = 0;
     virtual void setSceneState(SceneState state) = 0; // play / simulate / stop
     // The unified synchronization of the engine with the disk (the Reload button / Cmd+R): changed

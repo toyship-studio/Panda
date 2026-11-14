@@ -386,7 +386,7 @@ void DockManager::showTabMenu(Dock dock, int tabIndex, Point position) {
             rebuild();
         });
     }
-    if (panel->closable) { // moving — only non-fixed ones (the viewport stays in the center)
+    if (panel->closable && panel->movable) { // moving — only non-fixed ones (a world tab stays in the center)
         menu->addSeparator();
         const std::pair<const char *, Dock> targets[] = {
             {"Dock Left", Dock::Left},
@@ -413,8 +413,8 @@ Panda::DockLayoutState DockManager::captureLayout() const {
     for (const DockPanel &p : m_panels) {
         if (p.transient) {
             // Pinned editor tabs are saved as a separate list (the id encodes the object),
-            // the preview one is session-only and goes away.
-            if (!p.preview) {
+            // the preview one is session-only and goes away; a tab its owner reopens is the owner's.
+            if (!p.preview && p.restored) {
                 Panda::PinnedTabPlacement pinned;
                 pinned.id = p.id;
                 pinned.dock = static_cast<int>(p.dock);
@@ -551,10 +551,12 @@ void DockManager::rebuild() {
     m_center->removeAllTabs(); // the center is re-laid out too (scenes + center panels from the specification)
     for (const DockPanel &p : m_panels) {
         if (!p.open) { continue; }
-        // draggable = closable: fixed panels (viewport, closable=false) cannot be dragged out of the dock.
+        // Fixed panels (closable=false) and the tabs that stay in their dock (movable=false: the
+        // worlds) cannot be dragged.
         if (auto dock = dockTabView(p.dock)) {
-            const int idx =
-                dock->addTab(p.title, p.content, p.closable, tabIdForPanel(p.id), p.closable, icons().get(p.icon));
+            const int idx = dock->addTab(
+                p.title, p.content, p.closable, tabIdForPanel(p.id), p.closable && p.movable, icons().get(p.icon)
+            );
             if (p.preview) { dock->setTabPreview(idx, true); } // preview lives in the specification, style in the tab
         }
     }
@@ -650,7 +652,7 @@ void DockManager::stripDidActivatePanel(const std::string &idRef) {
 void DockManager::stripDidRequestDock(const std::string &idRef, Dock dock) {
     const std::string id = idRef; // a copy at the boundary (see stripDidActivatePanel)
     DockPanel *p = findPanel(id);
-    if (!p || p->dock == dock) { return; } // Center is allowed now — it is a full-fledged dock
+    if (!p || p->dock == dock || !p->movable) { return; } // Center is allowed now — it is a full-fledged dock
     p->dock = dock;
     rebuild();
     setVisible(dock, true);

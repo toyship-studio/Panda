@@ -105,7 +105,12 @@ public:
     CreateActions newEntityActions();
     CreateActions newAssetActions();
     void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
-    void showSceneView(); // activates the Scene tab — Stop
+    void showSceneView(); // activates the tab of the active world — Stop
+    // The open worlds of the project as tabs of the center dock (EngineBridge::openWorlds). The
+    // tabs follow the list, the active world follows the selected tab (not while the game runs),
+    // and the one viewport of the editor moves into the tab of the active world. Once a frame,
+    // and whenever the layer changes the set of worlds or the active one.
+    void syncWorldTabs();
     void focusGameView(); // the keyboard focus to the Game surface (a click on the game)
     // Once a frame: what the Scene surface collected for the editor camera, the gizmo and the tools.
     SceneNavigation takeSceneNavigation() {
@@ -342,7 +347,6 @@ private:
     // Cache of the toolbar enable states (init = the buttons' default enabled) — pushed to the View only
     // on change.
     bool m_tbCanUndo = true, m_tbCanRedo = true, m_tbCanPlay = true, m_tbCanStop = true, m_tbCanReload = true;
-    bool m_lastWorldDirty = false; // the last "unsaved" state pushed to the scene tab (World::isChanged)
     std::shared_ptr<HierarchyPanelView> m_hierarchyView;
     std::shared_ptr<ContentBrowserView> m_contentView;
     std::shared_ptr<ToolbarPanelView> m_toolbarView;
@@ -356,9 +360,18 @@ private:
     std::shared_ptr<PandaUI::View> m_root;
     std::unique_ptr<DockManager> m_dockManager;
     std::unique_ptr<EditorTabs> m_editorTabs; // editor tabs of the selection (after m_dockManager)
-    // The world document: the viewport tab; its settings sidebar shows the sections of the world
-    // scope over the context of the panels' world.
-    std::unique_ptr<WorldDocument> m_worldDocument;
+    // The world documents: a tab per open world (EditorTabs owns them). The viewport lives in
+    // the tab of the active one; its settings sidebar shows the sections of the world scope over
+    // the context of the panels' world.
+    WorldDocument *worldDocument(uint32_t worldId);
+    Document *activeWorldDocument();
+    const OpenWorld *openWorld(uint32_t worldId) const; // from the list as of the last sync
+    std::vector<OpenWorld> m_openWorlds;
+    std::vector<uint32_t> m_worldTabs;       // the worlds that have a tab
+    std::vector<uint32_t> m_closedWorldTabs; // the user closed their tabs: they leave the list on the next sync
+    uint32_t m_shownWorldId = 0;             // the active world the tabs were last synced to
+    bool m_inWorldSync = false;              // the sync changes the active world itself: no nested sync
+    bool m_closingWorldTab = false;          // the sync closes the tab of a world that is gone: not a request
     std::shared_ptr<SettingsSectionsView> m_worldSettingsView;
     // The active target of an edit from a tab (RAII through tabsBegin/EndEntityTarget): selectedEntities
     // returns it instead of SelectionContext — edits of pinned tabs hit their own objects.

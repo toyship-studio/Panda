@@ -44,7 +44,7 @@ Every tab of the editor edits one file, and the file is always in reach:
 
 - Right-click a tab or an asset in the Content Browser: the menu starts with the path of the
   file (a click copies it), **Open in External Editor** and **Reveal in File Manager**. An
-  entity tab and the Scene tab show the `.world` file; a texture or a model opens its text
+  entity tab and a world tab show the `.world` file; a texture or a model opens its text
   sidecar (`.pmeta`); a shader opens both files of its pair.
 - The external editor is chosen in Editor Settings → External Tools, or as
   `"externalTools": {"editor": "zed"}` in `settings.json`: a command, the path of an executable,
@@ -77,6 +77,25 @@ world, into another project open in a second editor window, and it can be writte
 hand or by an agent before pasting: any text of this shape works, a whole `.world` file included.
 A reference to an entity outside the fragment keeps its id; an asset is referenced by its id,
 which another project does not have — the pasted entity then shows a missing asset.
+
+## Several worlds
+
+A project keeps several worlds open at once, each in a tab of the center of the window:
+
+- A double click on a `.world` file in the Content Browser opens it in a tab of its own; File →
+  New → World adds a new one. Nothing is asked: the worlds that are open stay open, with their
+  unsaved edits and their undo history.
+- The tab in front is the active world: the viewport, the Hierarchy, the inspector tabs and the
+  world settings show it, Play plays it and the export cooks it. Each world remembers where the
+  editor camera stood in it.
+- Entities go from one world to another through the clipboard: Copy in one tab, Paste in
+  another.
+- Closing a tab closes the world and asks about its unsaved edits. Save (Cmd/Ctrl+S) writes
+  the world in front, Save All every open one.
+- While the game runs the active world does not change: a click on another world tab is
+  refused until Stop. Opening or creating a world stops the game.
+
+The worlds that were open come back with the project (`.Panda/session.json`).
 
 ## Several projects
 

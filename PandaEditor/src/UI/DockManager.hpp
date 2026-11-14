@@ -40,6 +40,12 @@ struct DockPanel {
     // not get into the strip and "+", and closing REMOVES it (does not switch it to open=false).
     bool transient = false;
     bool preview = false; // unpinned (the title is dimmed); a double click on the tab pins it
+    // false — the tab stays in its dock: it is not dragged and has no "Dock ..." items (a world
+    // tab: the viewport lives in the center).
+    bool movable = true;
+    // false — a transient tab its owner reopens itself (the worlds of the project session): it
+    // is not saved among the pinned tabs of the layout.
+    bool restored = true;
 };
 
 // Commands from the visibility strip — implemented by DockManager (it is the docking coordinator).

@@ -68,6 +68,10 @@ World::~World() {
         m_isRunning = false;
         GameContext::s_runningWorld = nullptr;
     }
+    // The commands of the undo history hold entities of this world, and a command destroys the
+    // tombstone it kept for undo: they go while the registry is alive (the members are destroyed
+    // in the reverse order — the registry before the history).
+    m_commandHistory.CLEAR();
 }
 
 void World::startRunning() {
