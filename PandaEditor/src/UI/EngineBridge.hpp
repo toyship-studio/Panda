@@ -24,8 +24,8 @@ namespace Editor {
 
 enum class SceneState; // full type — Toolbar.hpp (needed only on the calling/implementing side)
 
-// A world the project has open, as its tab sees it (the file document is ProjectLoader's
-// WorldFile). The id is stable while the world is open.
+// A world the project has open, as its tab sees it (the file document is a WorldFile of
+// FileDocuments). The id is stable while the world is open.
 struct OpenWorld final {
     uint32_t id = 0;
     std::string name;           // the file name; "Untitled World" for a world without a file

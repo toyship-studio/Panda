@@ -57,10 +57,12 @@ once, in the catalog.
   has every feature; the project template of the editor writes the lean set (`lights`, `shadows`,
   `environment`). The dependencies are closed on reading: `shadows` or `occlusion` bring `lights`,
   switching `lights` off switches them off.
-- The editor applies the set on project open, on save of the project settings and on Reload
-  when `project.json` is newer than the editor's last read or write
-  (`ProjectLoader::applyShaderFeatures`): it becomes `ShaderFeatures::enabled()`, the set of the
-  process; a changed set recooks the scene shaders and reloads the loaded project shaders.
+- The editor applies the set on project open (`ProjectLoader::applyShaderFeatures`) and
+  whenever `project.json` is written or read again — Save, Reload when the file is newer than the
+  editor's last read or write, Don't Save (`ProjectLoader::applyProjectSettings`, called when the
+  project settings document reports the write or the read): it becomes
+  `ShaderFeatures::enabled()`, the set of the process; a changed set recooks the scene shaders and
+  reloads the loaded project shaders.
 - The export writes the set into the manifest (`RuntimeManifest::shaderFeatures`); the runtime
   enables it before the world loads.
 - An application without a project has every feature and may narrow the set with

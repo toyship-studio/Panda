@@ -1368,9 +1368,9 @@ void EditorController::contentDidRequestImport(const std::vector<Panda::AssetId>
     auto *handler = assetHandler();
     if (!handler) { return; }
     for (Panda::AssetId id : assets) {
-        // Reimport of a world is a reread from disk through the engine if it is currently open:
-        // a regular reload is a no-op for a world (the world lives in ProjectLoader, not in the
-        // asset loading registry).
+        // Reimport of a world is a reread from disk when it is open: a regular reload is a no-op
+        // for a world (an open world is a file document — FileDocuments — not an asset of the
+        // loading registry).
         if (handler->getInfo(id).type == Panda::AssetType::WORLD) {
             if (m_bridge) { m_bridge->reloadWorldAsset(id); }
             continue;

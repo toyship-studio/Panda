@@ -336,59 +336,12 @@ void AssetHandlerEditor::noteAssetDiskSync(AssetId id) {
     if (!relativePath.empty()) { m_editorMeta[id].disk.sync(m_projectPath / relativePath); }
 }
 
-namespace {
-
-    // A loaded asset as a file document: the asset documents do the saving, the database the
-    // reloading. The disk state is taken once, when the list is built.
-    class AssetFile final : public FileDocument {
-    public:
-        AssetFile(AssetHandlerEditor &handler, AssetId id, bool changedOnDisk)
-            : m_handler(handler)
-            , m_id(id)
-            , m_changedOnDisk(changedOnDisk) {}
-        std::string title() const override {
-            return "\"" + m_handler.getAssetName(m_id) + "\"";
-        }
-        path_t path() const override {
-            return m_handler.getProjectPath() / m_handler.assetPath(m_id);
-        }
-        bool isDirty() const override {
-            return m_handler.documents().isAssetChanged(m_id);
-        }
-        bool isChangedOnDisk() const override {
-            return m_changedOnDisk;
-        }
-        bool save() override {
-            return m_handler.documents().saveAsset(m_id);
-        }
-        bool reload() override {
-            m_handler.reload(m_id); // the same path as "Don't Save" in a tab
-            return true;
-        }
-
-    private:
-        AssetHandlerEditor &m_handler;
-        AssetId m_id;
-        bool m_changedOnDisk;
-    };
-
-} // namespace
-
-std::unique_ptr<FileDocument> AssetHandlerEditor::fileDocument(AssetId id) {
-    if (!isLoaded(id) || !m_registry.contains(id)) { return nullptr; }
-    return std::make_unique<AssetFile>(*this, id, isAssetChangedOnDisk(id));
-}
-
-std::vector<std::unique_ptr<FileDocument>> AssetHandlerEditor::fileDocuments() {
-    std::vector<std::unique_ptr<FileDocument>> files;
+std::vector<AssetId> AssetHandlerEditor::loadedProjectAssets() const {
+    std::vector<AssetId> ids;
     for (const auto &[id, entry] : m_loadedAssets) {
-        if (!m_registry.contains(id)) { continue; } // static resources have no file of the project
-        const bool changedOnDisk = isAssetChangedOnDisk(id);
-        if (changedOnDisk || m_documents.isAssetChanged(id)) {
-            files.push_back(std::make_unique<AssetFile>(*this, id, changedOnDisk));
-        }
+        if (m_registry.contains(id)) { ids.push_back(id); }
     }
-    return files;
+    return ids;
 }
 
 void AssetHandlerEditor::setAssetOpenedInTab(AssetId id, bool opened) {

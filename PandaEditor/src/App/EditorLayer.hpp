@@ -29,6 +29,7 @@ namespace Panda {
 
 class EditorLayer : public Layer,
                     public ProjectLoaderOutput,
+                    public FileDocumentsOutput,
                     public EditorMenuBarOutput,
                     public Editor::EngineBridge,
                     public Editor::StartScreenControllerOutput {
@@ -56,12 +57,16 @@ public:
     uint32_t m_uiLayoutsPerSecond = 0;
     float m_uiLayoutWindow = 0.f;
     float m_profilerRefreshWindow = 0.f; // Profiler panel throttling (0.25 s)
-    void loaderDidActivateWorld() override;
-    void loaderDidLoadWorld() override;
     void loaderDidLoadCloseProject() override;
-    void loaderDidReloadEditorSettings() override;
-    EditorCameraSettings getEditorCameraSettings() override;
-    void setEditorCameraSettings(EditorCameraSettings settings) override;
+#pragma endregion
+
+#pragma region File documents output
+    void documentsDidActivateWorld() override;
+    void documentsDidLoadWorld() override;
+    void documentsDidReadSettings(SettingsScope scope) override;
+    void documentsDidWriteSettings(SettingsScope scope) override;
+    EditorCameraSettings documentsEditorCamera() override;
+    void documentsSetEditorCamera(const EditorCameraSettings &camera) override;
 #pragma endregion
 
 private:
@@ -79,21 +84,14 @@ private:
     void closeAppRequest();
     void closeApp();
     void saveOpenedProjectWindowState();
-    // The world the editor edits: the active one of the open worlds (ProjectLoader).
+    // The world the editor edits: the active one of the open worlds (FileDocuments).
     World &editingWorld() {
-        return m_loader.activeWorld().world();
+        return m_documents.activeWorld().world();
     }
     // The editor shows another world, or the same one with another content: the selection, the
     // entity tabs and the panels follow.
     void worldDidChange();
-    // The file documents (FileDocument.hpp): every file the editor holds in memory that needs
-    // attention, in the order of Reload — the settings, the assets, the world. The asset
-    // documents are built for the call and live in `assets`.
-    struct FileDocuments {
-        std::vector<std::unique_ptr<FileDocument>> assets;
-        std::vector<FileDocument *> all;
-    };
-    FileDocuments fileDocuments();
+    // Save, Reload and the unsaved-changes question over the file documents (m_documents.list()).
     enum class FileResolution { Saved, Reloaded, Cancelled };
     // The memory has edits and so does the disk (or the disk version is asked for): the user
     // picks the version that stays.
@@ -228,6 +226,10 @@ private:
     bool m_gameInputActive = false; // the game owns the input: Play, the Game tab renders and has the focus
     uint32_t m_gameMouseButtons = 0; // the buttons the game pressed (bit = Fern::MouseButton): their releases are its
     Editor::ScenePointer m_scenePointer; // the pointer over the Scene surface this frame (the gizmo, the tools)
+    // Every file the editor holds in memory: the settings of the editor and of the project, the
+    // open worlds, the asset documents (Project/Documents/FileDocuments.hpp). Before the loader:
+    // the loader opens and closes them with the project and outlives none of them.
+    FileDocuments m_documents;
     ProjectLoader m_loader;
     EditorUpdater m_updater;
     uint64_t m_shownUpdateRevision = ~uint64_t(0);

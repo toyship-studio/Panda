@@ -100,8 +100,10 @@ and background jobs (`PandaAsync`).
   projects, the window, the dock layout: the panels and their docks, the split weights, the active
   tab of every dock including the center, the pinned editor tabs and the dock that had the keyboard
   focus — restored after the pinned tabs are reopened, since each one selects itself as it opens).
-  `ProjectLoader` owns the stores (`TypeContext`) of
-  both scopes and reads and writes them with `SettingsMapper`.
+  The stores (`TypeContext`) of both scopes are file documents (`SettingsFile`, below); they
+  read and write their files with `SettingsMapper`. `ProjectLoader` is the life of the project:
+  opening, creating and closing it, its modules, its script build, its shader features and the
+  two sessions.
 - Several worlds (scenes) are part of the project model. The scene list is still ahead (see
   "Multiple worlds / scene management" in `context/roadmap.md`).
 - World files are ordinary assets: Content Browser, drag and drop, script fields, loading by
@@ -181,27 +183,41 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 
 One file — one document; a tab is a view of a document. The model has two layers.
 
-**File documents** (`Project/Documents/FileDocument.hpp`, the application layer) are the files
-the editor holds in memory: the open worlds, `project.json`, `settings.json` and every loaded
-asset. A file document answers five questions — its title and path, whether the memory has
-unsaved edits (`isDirty`), whether the file is newer than what the editor last read or wrote
+**File documents** (the application layer) are the files the editor holds in memory: the open
+worlds, `project.json`, `settings.json` and every loaded asset. A file document
+(`FileDocument`) answers five questions — its title and path, whether the memory has unsaved
+edits (`isDirty`), whether the file is newer than what the editor last read or wrote
 (`isChangedOnDisk`, a `DiskStamp` per file), and it can `save` (memory → file) and `reload`
-(file → memory). The loader owns the first three kinds (`ProjectLoader::worlds`,
-`projectSettingsFile`, `editorSettingsFile`), the asset database builds the asset ones on demand
-(`AssetHandlerEditor::fileDocuments`: loaded assets that are dirty or changed on disk). A file
-document exists without a tab (a loaded texture, the settings with their tab closed).
+(file → memory). A document owns what its file is in memory and reads and writes the file
+itself. Everything of the model is in one place, `PandaEditor/src/Project/Documents/`:
 
-**The open worlds.** A project has any number of worlds open, each a `WorldFile` of the loader:
-the `World`, its file, the disk stamp and the pose of the editor camera in it. One of them is
-**active** (`ProjectLoader::activeWorld`): the editor shows and edits it, Play plays its copy,
-the export cooks it. There is always one — without a project it is an empty world. Opening a
+- `FileDocument.hpp` — the interface and `DiskStamp`;
+- `WorldFile` — a world and its `.world` file (and the pose of the editor camera in it);
+- `SettingsFile` — a settings scope and its JSON file: `settings.json` of the user (the editor
+  scope, written on every change) and `.Panda/project.json` (the project scope, edits wait for
+  Save);
+- `AssetFile` — a loaded asset and its file. The asset database owns the asset (a texture the
+  renderer uses exists without a document), so this document is a view made when needed;
+- `FileDocuments` — the one owner: the two settings files and the open worlds, the asset
+  documents on demand, and `list()` — every document that needs attention in the order of
+  Reload (the settings, the assets, the worlds). It follows up the reads and writes of its
+  documents for the project (the start world, the asset registry) and tells the editor through
+  `FileDocumentsOutput` (`EditorLayer`): another world is active, the active world got another
+  content, a settings file was read or written (the editor applies its scope, the loader the
+  shader features of the project), the pose of the editor camera. `EditorLayer` owns it;
+  `ProjectLoader` opens and closes what is in it with the project.
+
+A file document exists without a tab (a loaded texture, the settings with their tab closed).
+
+**The open worlds.** A project has any number of worlds open, each a `WorldFile`. One of them
+is **active** (`FileDocuments::activeWorld`): the editor shows and edits it, Play plays its
+copy, the export cooks it. There is always one — without a project it is an empty world. Opening a
 world (`openWorld`) adds it next to the open ones and drops nothing, so there is no
 unsaved-changes question; an untouched new world gives its place to the file. `newWorld` adds a
 world with the starter content (not an edit: the world is clean until it is touched),
-`closeWorld` drops one and leaves a new world behind the last. The list and the active world
-are the loader's; `EditorLayer` follows it through `loaderDidActivateWorld` (another world is
-shown: the selection, the entity tabs and the panels reset) and `loaderDidLoadWorld` (the
-active world got another content). The game plays a copy of the active world, so that world
+`closeWorld` drops one and leaves a new world behind the last. `EditorLayer` follows the list
+through `documentsDidActivateWorld` (another world is shown: the selection, the entity tabs and
+the panels reset) and `documentsDidLoadWorld` (the active world got another content). The game plays a copy of the active world, so that world
 does not change while the game runs: a tab click is refused, a command that changes it (open,
 new, closing the active tab) stops the game first.
 
@@ -572,8 +588,8 @@ What follows from the rules:
   `finishRunning` carries out what is left, the requests of the scripts' `shutdown` included,
   before the world stops. The children go with the entity, and so do its bodies in the
   simulation.
-- The template of a new world (camera, sun, sprite, sky) is `ProjectLoader::createDefaultWorld`
-  (`PandaEditor/src/Project/Loader/ProjectLoader.cpp`).
+- The template of a new world (camera, sun, sprite, sky) is `fillStarterContent` in
+  `PandaEditor/src/Project/Documents/FileDocuments.cpp` (`FileDocuments::newWorld`).
 
 ## Scripting, Bamboo and ABI
 

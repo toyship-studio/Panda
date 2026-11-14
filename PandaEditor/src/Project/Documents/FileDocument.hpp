@@ -8,11 +8,12 @@
 
 namespace Panda {
 
-// A file the editor holds in memory and edits (the document model, context/architecture.md): the
+// A file the editor holds in memory and edits (the document model, context/architecture.md): a
 // world, the settings of the project and of the editor, an asset. It is the unit of Save, of
 // Reload and of the unsaved-changes questions — those three operations are written once over
 // this interface (EditorLayer), whatever the file is. A tab is a view of one file document; a
 // file document exists without a tab too (a loaded texture, the settings with their tab closed).
+// Every kind lives in this folder, and FileDocuments is the one place that holds them.
 class FileDocument {
 public:
     virtual ~FileDocument() = default;

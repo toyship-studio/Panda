@@ -54,11 +54,10 @@ public:
     // asset file (the fragment stage and the includes are files of their own), so it is also
     // compared by the text its sources expand to.
     bool isAssetChangedOnDisk(AssetId id);
-    // The assets that need attention as file documents (FileDocument.hpp): the loaded ones with
-    // unsaved edits or with a file changed on disk. An asset nobody loaded is read fresh on its
-    // next use and is not listed.
-    std::vector<std::unique_ptr<FileDocument>> fileDocuments();
-    std::unique_ptr<FileDocument> fileDocument(AssetId id); // one loaded asset; null — not loaded
+    // The loaded assets of the project (the static resources of the engine have no file of the
+    // project). Their file documents are made by FileDocuments; an asset nobody loaded is read
+    // fresh on its next use and has nothing in memory to save or reload.
+    std::vector<AssetId> loadedProjectAssets() const;
     void setAssetOpenedInTab(AssetId id, bool opened);
     const path_t &getProjectPath();
     const std::map<AssetId, AssetInfo> &getRegistry();
