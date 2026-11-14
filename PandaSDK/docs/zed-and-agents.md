@@ -82,7 +82,12 @@ which another project does not have — the pasted entity then shows a missing a
 
 One editor window holds one project. File → New Window (Cmd/Ctrl+Shift+N) starts a second
 editor on the start screen; open another project there. The windows are separate processes:
-they share the editor settings and the list of recent projects, nothing else.
+they share the editor settings and the list of recent projects, nothing else. A project runs
+its own code and loads its own modules, so a process of its own keeps a crash of one game away
+from another project.
+
+The window title is `<project> — <world file>`. On macOS every editor has its own Dock icon;
+the icon carries the name of the project on a colored band (the color follows the name).
 
 ## Zed
 

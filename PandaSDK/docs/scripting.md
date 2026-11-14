@@ -58,6 +58,9 @@ REGISTER_SCRIPT(MoveScript)
   the Game tab counts for pointer input): typing into the inspector or clicking the Hierarchy
   during Play does not reach the scripts. The keys of the window are released when it loses the
   focus.
+- The world. A game runs one world at a time, and a script never names it: `WorldAPI` and
+  `WorldLightingAPI` act in the world the script runs in, an `EntityHandle` is an entity of that
+  world. `WorldAPI::load` replaces the world with another world file at the end of the frame.
 - `WorldAPI::destroyEntity` may be called from any callback, for any entity, the script's own
   included: the entity is destroyed after the callbacks that are running now, and until then it
   is still in the world.

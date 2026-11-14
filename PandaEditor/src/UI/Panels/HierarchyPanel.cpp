@@ -163,21 +163,11 @@ void HierarchyPanelView::showContextMenu(TreeView &tree, Panda::UUID entityId, P
     if (!context) { return; }
 
     auto menu = std::make_shared<Menu>();
-    // Create submenu: Empty Entity + primitives. For an entity — creating a child, for the
-    // background — at the root.
+    // What can be created: for an entity — a child, for the background — at the root.
     const auto makeCreateMenu = [this, entityId] {
         auto create = std::make_shared<Menu>();
-        create->addItem("Empty Entity", [this, entityId] { m_output->hierarchyDidRequestAddChild(entityId); });
-        create->addSeparator();
-        const std::pair<const char *, PrimitiveKind> primitives[] = {
-            {"Cube", PrimitiveKind::Cube},           {"Sphere", PrimitiveKind::Sphere},
-            {"Capsule", PrimitiveKind::Capsule},     {"Plane", PrimitiveKind::Plane},
-            {"Cylinder", PrimitiveKind::Cylinder},
-        };
-        for (const auto &[title, kind] : primitives) {
-            create->addItem(title, [this, entityId, kind = kind] {
-                m_output->hierarchyDidRequestAddPrimitive(entityId, kind);
-            });
+        for (const CreateAction &action : m_output->hierarchyCreateActions(entityId)) {
+            create->addItem(action.title, action.run);
         }
         return create;
     };

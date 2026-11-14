@@ -22,8 +22,9 @@ std::unordered_map<UUID, AssetRef<Asset>> s_scriptCreatedAssets;
 // The Handle comes from a user script: a broken reference (the entity was deleted at runtime,
 // the field is not set, the id is from another world) must not crash the engine. An invalid
 // Entity is returned + a one-time error in the console for each id — the call becomes a no-op.
+// The entity is looked up in the running world: scripts exist and act only there.
 Entity resolveScriptEntity(Handle entityHandle) {
-    World *world = GameContext::getCurrentWorld();
+    World *world = GameContext::getRunningWorld();
     Entity entity = world ? world->getById(entityHandle) : Entity();
     if (!entity.isValid()) {
         static std::unordered_set<uint32_t> reported;
@@ -121,13 +122,19 @@ namespace InternalCalls {
         GameContext::requestWorldLoad(AssetId(worldHandle));
     }
 
+    // The world functions act in the running world. A call that arrives while no world runs (a
+    // UI callback of the bundle after the stop) finds nothing and creates nothing.
     Handle world_FindByTag(const char *tag) {
-        Entity entity = GameContext::getCurrentWorld()->findByTag(tag);
+        World *world = GameContext::getRunningWorld();
+        if (!world) { return 0; }
+        Entity entity = world->findByTag(tag);
         return entity.isValid() ? (Handle)entity.getId() : 0; // not found — 0, not a getId assert
     }
 
     uint32_t world_FindAllByTag(const char *tag, Handle *entityHandles, uint32_t capacity) {
-        std::vector<Entity> entities = GameContext::getCurrentWorld()->findAllByTag(tag);
+        World *world = GameContext::getRunningWorld();
+        if (!world) { return 0; }
+        std::vector<Entity> entities = world->findAllByTag(tag);
         const uint32_t count = static_cast<uint32_t>(entities.size());
         if (!entityHandles || capacity == 0) { return count; }
 
@@ -139,7 +146,9 @@ namespace InternalCalls {
     }
 
     Handle world_CreateEntity(const char *tag) {
-        Entity entity = GameContext::getCurrentWorld()->instantiateEntity();
+        World *world = GameContext::getRunningWorld();
+        if (!world) { return 0; }
+        Entity entity = world->instantiateEntity();
         entity.setName(tag);
 #ifdef PND_EDITOR
         entity.sortWorld();
@@ -150,17 +159,17 @@ namespace InternalCalls {
     void world_DestroyEntity(Handle id) {
         Entity entity = resolveScriptEntity(id);
         if (!entity.isValid()) { return; }
-        GameContext::getCurrentWorld()->destroy(entity); // a running world: after the callbacks
+        entity.getWorld()->destroy(entity); // a running world: after the callbacks
     }
 
     void worldLighting_SetAmbientColor(float r, float g, float b, float a) {
-        World *world = GameContext::getCurrentWorld();
+        World *world = GameContext::getRunningWorld();
         if (!world) { return; }
         world->getLightingSettings().ambientColor = Color(r, g, b, a);
     }
 
     void worldLighting_SetAmbientIntensity(float intensity) {
-        World *world = GameContext::getCurrentWorld();
+        World *world = GameContext::getRunningWorld();
         if (!world) { return; }
         world->getLightingSettings().ambientIntensity = intensity;
     }

@@ -4,6 +4,7 @@
 
 namespace Panda {
 
+World *SelectionContext::s_world = nullptr;
 std::unordered_set<AssetId> SelectionContext::s_selectedAssets;
 std::unordered_set<path_t> SelectionContext::s_selectedFiles;
 std::unordered_set<UUID> SelectionContext::s_selectedEntities;

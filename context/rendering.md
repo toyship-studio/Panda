@@ -285,11 +285,12 @@ per application.
   `directionDegrees` (the default 0° is +X). In a world the owner is `World::getWindSettings()`
   (the `wind` section of `.world`, the settings registry; editor: Settings → WIND). An
   application without a world keeps its own settings.
-- The application layers apply the settings with `SceneWind::apply`. `EditorLayer::onAttach`
-  applies the wind of the loaded world right after `loadInitialData` (before `applyDockLayout`:
-  pinned material tabs must show the values of the world), and `EditorLayer::onUpdate` applies
-  the wind of the active world every frame. `RuntimeLayer` is symmetric; an application without a
-  world applies its own settings before it renders.
+- A world applies its settings itself: `World::update` calls `SceneWind::apply` when the frame
+  of the world begins, so what a world draws is drawn in its own wind and no layer has to
+  remember it. `EditorLayer::onAttach` also applies the wind of the loaded world right after
+  `loadInitialData` (before `applyDockLayout` and before the first frame: pinned material tabs
+  must show the values of the world). An application without a world applies its own settings
+  before it renders.
 - `apply()` publishes `windStrength` and `windGustiness` to `MaterialSystemValues` (the
   `veg_crown` and `veg_grass` templates have these fields). `windStrength = 0` switches the wind
   branch off: in calm, and in the impostor bake, where `FloraImposter` mutes the wind through the

@@ -636,7 +636,38 @@ void EditorController::hierarchyDidSelectEntities(const std::vector<Panda::UUID>
     selectEntitiesByIds(ids);
 }
 
-void EditorController::hierarchyDidRequestAddChild(Panda::UUID parentId) {
+CreateActions EditorController::hierarchyCreateActions(Panda::UUID parentId) {
+    CreateActions actions;
+    actions.push_back({"Empty Entity", [this, parentId] { createEntity(parentId); }});
+    const std::pair<const char *, PrimitiveKind> primitives[] = {
+        {"Cube", PrimitiveKind::Cube},       {"Sphere", PrimitiveKind::Sphere},     {"Capsule", PrimitiveKind::Capsule},
+        {"Plane", PrimitiveKind::Plane},     {"Cylinder", PrimitiveKind::Cylinder},
+    };
+    for (const auto &[title, kind] : primitives) {
+        actions.push_back({title, [this, parentId, kind = kind] { createPrimitive(parentId, kind); }});
+    }
+    return actions;
+}
+
+CreateActions EditorController::newEntityActions() {
+    return m_panelsWorld ? hierarchyCreateActions(Panda::UUID(0)) : CreateActions();
+}
+
+CreateActions EditorController::newAssetActions() {
+    // The titles do not depend on the folder: the menu is built before the browser has one.
+    if (!assetHandler()) { return {}; }
+    CreateActions actions = contentCreateActions(m_contentView ? m_contentView->currentDirectory() : Panda::path_t());
+    for (CreateAction &action : actions) {
+        // The new asset appears in the folder the browser shows: the browser comes forward.
+        action.run = [this, run = std::move(action.run)] {
+            if (m_dockManager) { m_dockManager->showPanel("contentBrowser"); }
+            run();
+        };
+    }
+    return actions;
+}
+
+void EditorController::createEntity(Panda::UUID parentId) {
     if (!m_panelsWorld) { return; }
     Panda::Entity created = m_panelsWorld->instantiateEntity();
     created.setName("GameObject " + std::to_string(m_nextEntity++));
@@ -649,7 +680,7 @@ void EditorController::hierarchyDidRequestAddChild(Panda::UUID parentId) {
     selectEntitiesByIds({newId});
 }
 
-void EditorController::hierarchyDidRequestAddPrimitive(Panda::UUID parentId, PrimitiveKind kind) {
+void EditorController::createPrimitive(Panda::UUID parentId, PrimitiveKind kind) {
     if (!m_panelsWorld) { return; }
     struct PrimitiveSpec {
         const char *name;
@@ -1229,7 +1260,23 @@ void EditorController::contentDidRequestOpenWorld(Panda::AssetId assetId) {
     if (m_bridge) { m_bridge->openWorldAsset(assetId); }
 }
 
-void EditorController::contentDidRequestCreateMaterial(const Panda::path_t &directory, Panda::AssetId shaderId) {
+CreateActions EditorController::contentCreateActions(const Panda::path_t &directory) {
+    CreateActions actions;
+    // A material starts with the first built-in shader; the inspector changes it.
+    actions.push_back({"Material", [this, directory] {
+                           createMaterial(directory, builtinShaderOptions().front().first);
+                       }});
+    actions.push_back({"Postprocessing", [this, directory] { createPostprocessing(directory); }});
+    actions.push_back({"Postprocess Shader", [this, directory] { createPostprocessShader(directory); }});
+    // The assets of the modules; the registry does not change while the project is open.
+    for (const AssetCreator &creator : editorExtensions().assetCreators) {
+        const AssetCreator *creatorPtr = &creator;
+        actions.push_back({creator.title, [this, directory, creatorPtr] { createAsset(directory, *creatorPtr); }});
+    }
+    return actions;
+}
+
+void EditorController::createMaterial(const Panda::path_t &directory, Panda::AssetId shaderId) {
     auto *handler = assetHandler();
     if (!handler) { return; }
     const Panda::AssetId created = handler->documents().createMaterialAsset(directory, shaderId);
@@ -1242,7 +1289,7 @@ void EditorController::contentDidRequestCreateMaterial(const Panda::path_t &dire
     m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created material");
 }
 
-void EditorController::contentDidRequestCreatePostprocessing(const Panda::path_t &directory) {
+void EditorController::createPostprocessing(const Panda::path_t &directory) {
     auto *handler = assetHandler();
     if (!handler) { return; }
     const Panda::AssetId created = handler->documents().createPostprocessingAsset(directory);
@@ -1255,7 +1302,7 @@ void EditorController::contentDidRequestCreatePostprocessing(const Panda::path_t
     m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created postprocessing");
 }
 
-void EditorController::contentDidRequestCreateAsset(const Panda::path_t &directory, const AssetCreator &creator) {
+void EditorController::createAsset(const Panda::path_t &directory, const AssetCreator &creator) {
     auto *handler = assetHandler();
     if (!handler || creator.create == nullptr) { return; }
     // The file is written by the contribution (EditorExtensions::assetCreators), registration and
@@ -1263,7 +1310,7 @@ void EditorController::contentDidRequestCreateAsset(const Panda::path_t &directo
     const Panda::path_t path = creator.create(directory);
     const Panda::AssetId created = path.empty() ? Panda::AssetId(0) : handler->documents().registerCreatedAsset(path);
     if (!created) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed: " + creator.title);
+        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to create " + creator.title);
         return;
     }
     refreshAssetPanels();
@@ -1282,7 +1329,7 @@ void EditorController::contentDidRequestRename(Panda::AssetId assetId, const std
     pushSelectionToPanels(); // the name in the inspector/status may have changed
 }
 
-void EditorController::contentDidRequestCreatePostprocessShader(const Panda::path_t &directory) {
+void EditorController::createPostprocessShader(const Panda::path_t &directory) {
     auto *handler = assetHandler();
     if (!handler) { return; }
     if (!handler->documents().createPostprocessShader(directory)) {
@@ -1647,6 +1694,10 @@ void EditorController::tabsAssetTabClosed(Panda::AssetId id) {
     if (auto *handler = assetHandler()) { handler->setAssetOpenedInTab(id, false); }
     // A viewport session without the tab of its document is an invisible LMB capture: the tool lets go.
     if (m_viewportEditingDocument == id) { viewportDidRequestStopEditing(); }
+}
+
+Panda::World *EditorController::tabsWorld() {
+    return m_panelsWorld;
 }
 
 bool EditorController::tabsSaveWorld() {

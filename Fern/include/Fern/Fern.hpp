@@ -31,6 +31,12 @@ Window *createWindow(
     WindowFlags flags = FERN_WINDOW_FLAGS_DEFAULT
 );
 void disposeWindow(Window *window);
+/// A name drawn over the icon the desktop shows for the running application (macOS: the Dock
+/// tile, through NSApplication.applicationIconImage), on a band whose color follows the name:
+/// what tells two instances of one application apart. An empty name restores the plain icon.
+/// The other platforms group the windows of an application under one icon and show the window
+/// titles, so they do nothing here.
+void setApplicationIconLabel(const char *label);
 Vec2 getCursorPosition();
 const char *getClipboardText();
 void setClipboardText(const char *text);

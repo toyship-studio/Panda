@@ -13,7 +13,6 @@
 #include <Panda/GameLogic/Input.hpp>
 #include <Panda/GameLogic/Systems/ScriptSystem.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
-#include <Panda/Renderer/SceneWind.hpp>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
 #include <Panda/UI/PandaUIImpl.hpp>
 
@@ -67,7 +66,6 @@ void RuntimeLayer::onAttach() {
     m_pandaUI->initialize();
 
     m_world = F_NEW(Foundation::getAllocator(), World)();
-    GameContext::setCurrentWorld(m_world);
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
 
     m_projectLoader = F_NEW(Foundation::getAllocator(), RuntimeProjectLoader)();
@@ -87,15 +85,11 @@ void RuntimeLayer::onAttach() {
 
     m_world->startRunning();
     loadPendingWorldRequest();
-    // The world's wind — into SceneWind before the first frame (system material fields).
-    SceneWind::apply(m_world->getWindSettings());
     LOG_INFO("RUNTIME: Game started");
 }
 
 void RuntimeLayer::onUpdate(double deltaTime) {
     PANDA_PROFILE_SCOPE_N("Panda::RuntimeLayer::onUpdate");
-    // Every frame: a world change/script edits reach the system material fields.
-    if (m_world) { SceneWind::apply(m_world->getWindSettings()); }
     if (m_world && m_world->isRunning()) {
         m_world->update(deltaTime, WorldFrame{.mainCamera = true, .simulate = true});
     }
@@ -198,7 +192,6 @@ void RuntimeLayer::onDetach() {
 
     if (m_world) {
         if (m_world->isRunning()) { m_world->finishRunning(); }
-        GameContext::setCurrentWorld(nullptr);
         F_DELETE(Foundation::getAllocator(), m_world);
         m_world = nullptr;
     }

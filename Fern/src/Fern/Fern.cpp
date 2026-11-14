@@ -49,6 +49,11 @@ void disposeWindow(Window *window) {
     s_system->disposeWindow(window);
 }
 
+void setApplicationIconLabel(const char *label) {
+    PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
+    s_system->setApplicationIconLabel(label != nullptr ? label : "");
+}
+
 void pollEvents() {
     PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
     s_system->pollEvents();

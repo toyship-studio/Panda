@@ -175,7 +175,7 @@ namespace Terrain {
             // editor tools).
             asset->markVoxelsDirty(minX, minY, minZ, maxX, maxY, maxZ);
             GameContext::markRuntimeMutatedAsset(assetId); // editor Stop rolls back to the file
-            World *world = GameContext::getCurrentWorld();
+            World *world = GameContext::getRunningWorld();
             if (world != nullptr) {
                 TerrainPhysics::voxelsUpdated(*world, entity, minX, minY, minZ, maxX, maxY, maxZ);
             }
@@ -223,7 +223,7 @@ namespace Terrain {
             // Runtime mutation: no dirty flag (see setVoxels).
             asset->markVerticesDirty(minX, minZ, maxX, maxZ);
             GameContext::markRuntimeMutatedAsset(assetId); // editor Stop rolls back to the file
-            World *world = GameContext::getCurrentWorld();
+            World *world = GameContext::getRunningWorld();
             if (world != nullptr) {
                 TerrainPhysics::heightsUpdated(*world, entity, minX, minZ, maxX, maxZ);
             }

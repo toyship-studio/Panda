@@ -1,5 +1,6 @@
 #pragma once
 
+#include "UI/CreateAction.hpp"
 #include "UI/Panels/ContentBrowserDataSource.hpp"
 
 #include <PandaEditorKit/EditorExtensions.hpp> // Editor::AssetCreator
@@ -24,15 +25,11 @@ public:
     virtual void contentDidRequestRefresh() = 0; // Refresh: registry rescan + panel rebuild
     virtual void contentDidRequestAddToScene(const std::vector<Panda::AssetId> &assets) = 0; // mesh instance in world
     virtual void contentDidRequestOpenWorld(Panda::AssetId assetId) = 0; // open the .world as the current world
-    // A new material in the directory (RMB on the grid background) with the chosen built-in shader.
-    virtual void contentDidRequestCreateMaterial(const Panda::path_t &directory, Panda::AssetId shaderId) = 0;
-    virtual void contentDidRequestCreatePostprocessing(const Panda::path_t &directory) = 0; // an empty .postfx
+    // The assets that can be created in the directory (RMB on the grid background): the same list
+    // as in File → New.
+    virtual CreateActions contentCreateActions(const Panda::path_t &directory) = 0;
     // Rename a single-file asset (material/postprocessing); newName is without the extension.
     virtual void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) = 0;
-    virtual void contentDidRequestCreatePostprocessShader(const Panda::path_t &directory) = 0; // a pair of templates
-    // The "New …" of an editor part's contribution (EditorExtensions::assetCreators): the file is
-    // written by the contribution, registered and selected by the coordinator.
-    virtual void contentDidRequestCreateAsset(const Panda::path_t &directory, const AssetCreator &creator) = 0;
 };
 
 // VIEW: the content browser — a view of the real file system <project>/Assets. The folder tree is
@@ -47,6 +44,8 @@ public:
     void clearAssetSelection(); // clear the selection in the grid (e.g. when an entity is selected)
     // Opens the folder of the asset and blinks its cell; the selection of the editor stays.
     void revealAsset(Panda::AssetId asset);
+    // The folder the browser shows: where File → New puts an asset. Empty without a project.
+    Panda::path_t currentDirectory();
     // An asset thumbnail is ready/updated: rebind its cell if it is visible in the current folder.
     void thumbnailDidBecomeReady(Panda::AssetId assetId);
 

@@ -43,6 +43,11 @@ public:
     void prepareComponentTypes();
     World(World &world) = delete;
     ~World();
+    // A world is a self-contained object: its entities, settings, the state of its systems, its
+    // renderers and its undo history are its own, and any number of worlds may be alive (the
+    // one being edited, a playing copy, a scratch world of a clipboard fragment). Running is
+    // exclusive: a process is one game, so one world runs at a time, and between startRunning
+    // and finishRunning it is the world the scripts act in (GameContext::getRunningWorld).
     void startRunning();
     void finishRunning();
     // World frame by stages (WorldFrame). The runtime calls it only on a running world.
@@ -103,9 +108,8 @@ public:
     const WorldLightingSettings &getLightingSettings() const {
         return settings<WorldLightingSettings>();
     }
-    // Scene wind of the world. It is applied to the global SceneWind by the application LAYER
-    // (EditorLayer/RuntimeLayer): at startup — before the UI is built (pinned tabs see the
-    // world's value) — and every frame.
+    // Scene wind of the world. The world applies it to SceneWind itself when its frame begins
+    // (update), so what is drawn in a frame of a world is drawn in the wind of that world.
     SceneWindSettings &getWindSettings() {
         return context<SceneWindSettings>();
     }

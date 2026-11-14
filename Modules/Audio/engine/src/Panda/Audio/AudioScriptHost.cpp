@@ -30,7 +30,7 @@ namespace {
 
     Target resolve(Handle entityHandle) {
         Target target;
-        target.world = GameContext::getCurrentWorld();
+        target.world = GameContext::getRunningWorld();
         target.entity = resolveScriptEntity(entityHandle); // invalid + a one-time error for a broken handle
         return target;
     }

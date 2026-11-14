@@ -37,6 +37,8 @@ namespace EditorMenuCommand {
     constexpr Fern::MenuCommandId SaveAll = 27;
     constexpr Fern::MenuCommandId NewWindow = 28;
     constexpr Fern::MenuCommandId OpenRecentProjectBase = 1000;
+    constexpr Fern::MenuCommandId NewEntityBase = 2000;
+    constexpr Fern::MenuCommandId NewAssetBase = 3000;
 } // namespace EditorMenuCommand
 
 Fern::MenuShortcut primaryShortcut(Fern::Key key) {
@@ -64,20 +66,27 @@ void EditorMenuBar::rebuild() {
     Fern::MenuBar menuBar;
 
     auto &fileMenu = menuBar.addMenu("File");
+    // The first section is what begins something: New lists everything the project can create
+    // (a world, the entities of the open world, the assets), New Window starts another instance
+    // of the editor — one project per window.
     if (hasProject) {
-        fileMenu.addItem("New World", EditorMenuCommand::NewWorld, primaryShortcut(Fern::Key::KEY_N));
-        // The document model: Save writes the file of the tab with the focus, Save All every
-        // unsaved file (the shortcuts of Zed).
-        fileMenu.addItem("Save", EditorMenuCommand::Save, primaryShortcut(Fern::Key::KEY_S));
-        fileMenu.addItem("Save All", EditorMenuCommand::SaveAll, primaryAltShortcut(Fern::Key::KEY_S));
-        // Synchronization of the engine with the disk (changed assets/scripts/world) — closes
-        // the loop of external edits (agent, code editor, git) without a restart.
-        fileMenu.addItem("Reload", EditorMenuCommand::Reload, primaryShortcut(Fern::Key::KEY_R));
+        auto &newMenu = fileMenu.addSubmenu("New");
+        newMenu.addItem("World", EditorMenuCommand::NewWorld, primaryShortcut(Fern::Key::KEY_N));
+        const std::vector<std::string> entities = m_output->menuBarNewEntityTitles();
+        if (!entities.empty()) { newMenu.addSeparator(); }
+        for (size_t i = 0; i < entities.size(); ++i) {
+            newMenu.addItem(entities[i], EditorMenuCommand::NewEntityBase + static_cast<Fern::MenuCommandId>(i));
+        }
+        const std::vector<std::string> assets = m_output->menuBarNewAssetTitles();
+        if (!assets.empty()) { newMenu.addSeparator(); }
+        for (size_t i = 0; i < assets.size(); ++i) {
+            newMenu.addItem(assets[i], EditorMenuCommand::NewAssetBase + static_cast<Fern::MenuCommandId>(i));
+        }
     }
-    fileMenu.addItem("Open Project", EditorMenuCommand::OpenProject, primaryShortcut(Fern::Key::KEY_O));
-    // One project per window: another project opens in another instance of the editor.
     fileMenu.addItem("New Window", EditorMenuCommand::NewWindow, primaryShiftShortcut(Fern::Key::KEY_N));
+    fileMenu.addSeparator();
 
+    fileMenu.addItem("Open Project", EditorMenuCommand::OpenProject, primaryShortcut(Fern::Key::KEY_O));
     const std::vector<RecentProject> &recentProjects = m_output->menuBarGetRecentProjectsList();
     bool hasRecentProjects = false;
     for (const RecentProject &project : recentProjects) {
@@ -103,6 +112,15 @@ void EditorMenuBar::rebuild() {
     }
 
     if (hasProject) {
+        fileMenu.addSeparator();
+        // The document model: Save writes the file of the tab with the focus, Save All every
+        // unsaved file (the shortcuts of Zed).
+        fileMenu.addItem("Save", EditorMenuCommand::Save, primaryShortcut(Fern::Key::KEY_S));
+        fileMenu.addItem("Save All", EditorMenuCommand::SaveAll, primaryAltShortcut(Fern::Key::KEY_S));
+        // Synchronization of the engine with the disk (changed assets/scripts/world) — closes
+        // the loop of external edits (agent, code editor, git) without a restart.
+        fileMenu.addItem("Reload", EditorMenuCommand::Reload, primaryShortcut(Fern::Key::KEY_R));
+        fileMenu.addSeparator();
 #ifdef PLATFORM_MACOS
         fileMenu.addItem("Show C++ Project", EditorMenuCommand::ShowCppProject);
 #endif
@@ -184,6 +202,14 @@ void EditorMenuBar::processCommand(Fern::MenuCommandId commandId) {
         commandId < EditorMenuCommand::OpenRecentProjectBase + recentProjects.size()) {
         const size_t index = static_cast<size_t>(commandId - EditorMenuCommand::OpenRecentProjectBase);
         if (!recentProjects[index].path.empty()) { m_output->menuBarOpenProject(recentProjects[index]); }
+        return;
+    }
+    if (commandId >= EditorMenuCommand::NewAssetBase) {
+        m_output->menuBarNewAsset(static_cast<size_t>(commandId - EditorMenuCommand::NewAssetBase));
+        return;
+    }
+    if (commandId >= EditorMenuCommand::NewEntityBase) {
+        m_output->menuBarNewEntity(static_cast<size_t>(commandId - EditorMenuCommand::NewEntityBase));
         return;
     }
 

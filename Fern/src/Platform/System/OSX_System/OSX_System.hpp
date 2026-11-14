@@ -22,6 +22,7 @@ public:
         WindowFlags flags
     ) override;
     void disposeWindow(Window *window) override;
+    void setApplicationIconLabel(const char *label) override;
     void pollEvents() override;
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;

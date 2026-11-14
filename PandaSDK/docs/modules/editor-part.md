@@ -34,7 +34,7 @@ rebuilds the settings and statistics sections; nothing is ever unregistered.
 |---|---|
 | `componentInspectors` | `ComponentInspector {component, displayName, icon, setPresence, build}`: the inspector section of a component type (by its registry key) and its Add Component entry |
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: the icon and the color of an asset kind in the Content Browser and on tabs, the form of its tab (`AssetEditor`) |
-| `assetCreators` | `AssetCreator {title, create(directory) → path}`: a "New …" entry of the Content Browser; the core registers and selects the new file |
+| `assetCreators` | `AssetCreator {title, create(directory) → path}`: an asset the editor can create: an entry of File → New and of the Content Browser menu. `title` is the noun ("Terrain"), the menu says "New"; the core registers and selects the new file |
 | `viewportTools` | `ViewportTool` (an owned object): runs before the world update in EDIT, may capture the left mouse button, draws helper lines |
 | `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the Scene tab shows, in EDIT and PLAY |
 | `settingsSections` | `SettingsSection {scope, title, build(section, store)}`: the form of a settings section ([Settings](settings.md)) |
@@ -123,7 +123,7 @@ std::unique_ptr<AssetEditor> createEditor2D(const AssetEditorContext &context) {
 }
 
 extensions.assetKinds.add({"terrain2d", Ic::Terrain, Color(0x86A65BFF), createEditor2D});
-extensions.assetCreators.push_back({"New Terrain", createTerrain2D}); // writes a flat terrain, returns the path
+extensions.assetCreators.push_back({"Terrain", createTerrain2D}); // writes a flat terrain, returns the path
 ```
 
 An `AssetEditor` is one object per open tab; `build(container)` fills the tab form and is

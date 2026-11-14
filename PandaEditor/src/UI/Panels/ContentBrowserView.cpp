@@ -448,27 +448,20 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
     } else { // grid background: creating assets in the current folder + opening it in Finder
         const Panda::path_t directory = currentFolder->path;
         if (directory.empty()) { return; } // no project open
-        menu->addItem("New Material", [this, directory] { // the shader is Unlit; changed in the inspector
-            if (m_output) {
-                m_output->contentDidRequestCreateMaterial(directory, builtinShaderOptions().front().first);
+        if (m_output) {
+            for (const CreateAction &action : m_output->contentCreateActions(directory)) {
+                menu->addItem("New " + action.title, action.run);
             }
-        });
-        menu->addItem("New Postprocessing", [this, directory] {
-            if (m_output) { m_output->contentDidRequestCreatePostprocessing(directory); }
-        });
-        menu->addItem("New Postprocess Shader", [this, directory] {
-            if (m_output) { m_output->contentDidRequestCreatePostprocessShader(directory); }
-        });
-        for (const AssetCreator &creator : editorExtensions().assetCreators) { // modules' "New …" items
-            const AssetCreator *creatorPtr = &creator; // the registry does not change while the project is open
-            menu->addItem(creator.title, [this, directory, creatorPtr] {
-                if (m_output) { m_output->contentDidRequestCreateAsset(directory, *creatorPtr); }
-            });
         }
         menu->addSeparator();
         menu->addItem("Reveal in Finder", [directory] { Panda::SystemTools::open(directory); });
     }
     presentMenu(menu, position);
+}
+
+Panda::path_t ContentBrowserView::currentDirectory() {
+    Folder *folder = m_dataSource.currentFolder();
+    return folder ? folder->path : Panda::path_t();
 }
 
 bool ContentBrowserView::pointerDown(PointerEvent &) {

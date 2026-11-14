@@ -29,10 +29,10 @@ struct SceneWindSettings final : public Rain::Codable {
 // accumulation is lazy, by application time, on reading phaseVector (there are no hooks in
 // Application). apply() publishes the strength and the gustiness into the system material
 // fields windStrength / windGustiness — the engine sets the fields of that name in all
-// materials. Applying is owned by the application layer: EditorLayer/RuntimeLayer apply the
-// wind of the active world at startup and every frame; an application without a world applies
-// its own settings before it renders. Without the wind shader feature (ShaderFeatures) the wind
-// is calm for everyone who asks: the applied strength is zero and the phases stand still.
+// materials. A world applies its own wind when its frame begins (World::update): what a world
+// draws is drawn in its wind. An application without a world applies its own settings before it
+// renders. Without the wind shader feature (ShaderFeatures) the wind is calm for everyone who
+// asks: the applied strength is zero and the phases stand still.
 class SceneWind final {
 public:
     static void apply(const SceneWindSettings &settings);

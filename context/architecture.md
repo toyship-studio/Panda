@@ -264,7 +264,18 @@ ids (`loadEntities`, an undo step of the world). Both go through a scratch world
 and one writer with the world file. One project per process: File → New Window starts a second
 instance on the start screen (`SystemTools::startNewInstance`, `--new-window`); the instances
 share `settings.json` (guarded by the disk stamp) and `session.json` (the recent projects of
-the other instances are merged on write).
+the other instances are merged on write). An instance says which project it holds
+(`EditorLayer::syncWindowIdentity`): the window title is `<project> — <world file>`, and the
+icon of the running application carries the project name (`Fern::setApplicationIconLabel`: on
+macOS a band over the Dock tile, drawn into `NSApplication.applicationIconImage`; the other
+desktops group the windows of an application under one icon and show the titles).
+
+What the editor can create is one list per kind, made by `EditorController`
+(`hierarchyCreateActions`, `contentCreateActions`; `CreateAction {title, run}`, the title is the
+noun). File → New shows both lists after World (entities to the root of the open world, assets
+into the folder the Content Browser shows); the context menus of the Hierarchy and of the
+Content Browser show the same lists. A module's `AssetCreator` joins the asset list. The File
+menu opens with what begins something — New, New Window — and the rest follows the separator.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). The documents of `EditorExtensions::documentTypes` (the two settings
@@ -397,6 +408,41 @@ walks the registries (`context/plugins.md`): an entity is written as keys named 
 component types (`Extensions::components`), and contribution settings are top-level keys
 (`Extensions::settings`, written and read by `SettingsMapper`; the core's `lighting`,
 `graphics` and `wind` are sections like the modules'). Foreign keys survive load and save.
+
+### The process, the project and the worlds
+
+Three rules fix what is global and what is not.
+
+- **A process is one project and one game.** The registries (`Extensions`), the loaded modules,
+  the script bundle and the asset handler are process-wide. A module cannot be unloaded from a
+  process, the game code runs inside it (Play), and a runtime has exactly one project. The
+  editor process is set up like the runtime's, so another project opens in another process
+  (File → New Window), never in the same one: a project sees only the modules it enabled, and
+  a crash of one game does not take another project down.
+- **A world is an object.** `World` owns its entities, its settings and the state of its
+  systems (the context), its renderers, its lighting and its undo history. Any number of worlds
+  may be alive at once: the edited world, the playing copy, the scratch world of a clipboard
+  fragment. A function works on the world it was given; nothing asks for "the current world".
+- **One world runs at a time.** Running (`World::startRunning` … `finishRunning`) is the
+  simulation of the game, and a process has one. The world registers itself as
+  `GameContext::getRunningWorld()` (there is no setter; a second start asserts), and that is the
+  world the script bundle and the script hosts of the modules address (`resolveScriptEntity`).
+  A script therefore never names a world: `WorldAPI::findByTag` searches the world the script
+  runs in. Only the running world talks to the script bundle: an entity destroyed in another
+  world does not reach the script instances, though the worlds may hold entities with the same
+  ids (the playing copy has the ids of the edited world, a copied `.world` file the ids of its
+  source). A game made of several world files loads their entities into the running world (the
+  fragment reader of `WorldMapper` and `World::importEntity` are the mechanism; see "Open
+  items"); it does not run a second world.
+
+What follows from the rules:
+
+- What a frame of a world draws is drawn with the state of that world: `World::update` applies
+  the world's wind to `SceneWind` when the frame begins, the lighting is collected per world
+  (`LightingSystem`). The views a world renders into are fixed (`Views::SCENE_VIEW`, the shadow
+  views), so one world is drawn per frame.
+- The selection of the editor (`SelectionContext`) is of one world, the one the editor shows:
+  `SelectionContext::setWorld` on a switch between the edited world and the playing copy.
 
 ### Frame
 
@@ -764,6 +810,11 @@ and debugs the game.
 ## Open items
 
 - Project model: the scene list and the start scene in project settings (`context/roadmap.md`).
+- Worlds: a game cannot yet load a second world file into the running world (additive
+  loading). The engine side exists (`WorldMapper::loadEntities`, `World::importEntity`); the
+  script API and the rules for the ids of the loaded entities do not.
+- Worlds: a world renders into fixed views, so two worlds cannot be drawn in one frame (a
+  preview of another world next to the edited one). `WorldFrame` would carry the views.
 - Scripting: the engine-side duplicate of the main-thread guard in `InnerScriptHook` (protection
   against bypassing the SDK) is not done.
 - Scripting: `requireMainThreadApi` covers only the high-risk Bamboo APIs; the remaining ones are

@@ -193,7 +193,7 @@ public:
         return m_tabs->m_host->tabsWorldFilePath();
     }
     Panda::CommandHistory *undoStack() override {
-        Panda::World *world = Panda::GameContext::getCurrentWorld();
+        Panda::World *world = m_tabs->m_host->tabsWorld();
         return world ? &world->getCommandHistory() : nullptr;
     }
     void refresh() override {

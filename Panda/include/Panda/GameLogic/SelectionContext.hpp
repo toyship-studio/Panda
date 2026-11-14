@@ -10,9 +10,27 @@
 
 namespace Panda {
 
+// The selection of the editor: the assets and files of the project and the entities of one world —
+// the world the editor shows (setWorld).
 class SelectionContext final {
 public:
     SelectionContext() = delete;
+
+    // The world the selected entities belong to. The editor sets it when the world it shows
+    // changes (the edited world, the playing copy): the entities the new world does not have
+    // leave the selection; without a world nothing is selected.
+    static void setWorld(World *world) {
+        s_world = world;
+        if (!world) {
+            unselectAll();
+            return;
+        }
+        const std::unordered_set<UUID> selectedIds = s_selectedEntities;
+        for (UUID id : selectedIds) {
+            if (!world->isValid(id)) { removeSelectedEntity(id, false); }
+        }
+        updateValues();
+    }
 
     static std::unordered_set<UUID> getSelectedEntities() {
         return s_selectedEntities;
@@ -74,7 +92,7 @@ public:
 
     static void addSelectedEntity(UUID id, bool needToCalculateMedian = true) {
         if (isEntitySelected(id)) { return; }
-        World *world = GameContext::getCurrentWorld();
+        World *world = s_world;
         if (!world) { return; }
         if (!world->isValid(id)) { return; }
         s_selectedEntities.insert(id);
@@ -194,7 +212,7 @@ public:
         ++s_transformVersion; // selection transform recomputed — the editor polls this for Inspector↔gizmo sync
         resetValues();
         if (s_selectedEntities.empty()) { return; }
-        World *world = GameContext::getCurrentWorld();
+        World *world = s_world;
         if (!world) { return; }
         auto it = s_selectedEntities.begin();
         UUID id = *it;
@@ -238,6 +256,7 @@ private:
         return false;
     }
 
+    static World *s_world;
     static std::unordered_set<AssetId> s_selectedAssets;
     static std::unordered_set<path_t> s_selectedFiles;
     static std::unordered_set<UUID> s_selectedEntities;

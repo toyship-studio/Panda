@@ -66,10 +66,16 @@ World::~World() {
     if (m_isRunning) {
         runStopHooks();
         m_isRunning = false;
+        GameContext::s_runningWorld = nullptr;
     }
 }
 
 void World::startRunning() {
+    // One world runs at a time (GameContext::getRunningWorld): the script bundle and the script
+    // hosts of the modules address it from the first callback of the start to the last one of
+    // the stop.
+    PND_ASSERT(GameContext::s_runningWorld == nullptr, "A WORLD IS ALREADY RUNNING: ONE WORLD RUNS AT A TIME");
+    GameContext::s_runningWorld = this;
     m_isRunning = true; // from here on destroy waits for the callbacks to end: start is one of them
     m_physicsAccumulator = 0.0;
     Input::skipFixedTick(); // a key pressed before the start is not a press of the first step
@@ -87,6 +93,7 @@ void World::finishRunning() {
     runStopHooks();
     PND_ASSERT(m_subtreeTracked.empty(), "ENTITIES ARE STILL TRACKED AFTER THE SYSTEMS HAVE STOPPED");
     m_isRunning = false;
+    GameContext::s_runningWorld = nullptr;
 }
 
 void World::runStartHooks() {
@@ -137,6 +144,9 @@ void World::runPhase(FramePhase phase, double time) {
 }
 
 void World::update(double deltaTime, WorldFrame frame) {
+    // The wind of this world for everything its frame draws (the scene blocks, the system
+    // material fields, the modules): a world brings its own, nobody sets it from outside.
+    SceneWind::apply(getWindSettings());
     m_renderer3d.resetStats();
     m_renderer2d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
     m_renderer3d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
@@ -332,9 +342,13 @@ void World::destroySubtree(Entity entity) {
         if (m_registry.valid(child.m_handle)) { destroySubtree(child); }
     }
     const UUID entityId = entity.getId();
-    if (ExternalCalls::entityWillBeDeleted) { ExternalCalls::entityWillBeDeleted(entityId); }
-    // In a running world the state the systems keep for the entity leaves with it.
-    if (m_isRunning) { runEntityHooks(entity, /*removed*/ true); }
+    // In a running world the script instances of the entity and the state the systems keep for
+    // it leave with it. A world that does not run has neither: the instances of the script
+    // bundle are the running world's, and another world may hold an entity with the same id.
+    if (m_isRunning) {
+        if (ExternalCalls::entityWillBeDeleted) { ExternalCalls::entityWillBeDeleted(entityId); }
+        runEntityHooks(entity, /*removed*/ true);
+    }
     m_entityIdMap.erase(entityId);
     m_registry.destroy(entity.m_handle);
 }
@@ -408,7 +422,7 @@ void World::clear() {
     for (const auto &[entityId, entity] : m_entityIdMap) {
         entityIds.push_back(entityId);
     }
-    if (ExternalCalls::entityWillBeDeleted) {
+    if (m_isRunning && ExternalCalls::entityWillBeDeleted) { // the script instances are the running world's
         for (UUID entityId : entityIds) {
             ExternalCalls::entityWillBeDeleted(entityId);
         }

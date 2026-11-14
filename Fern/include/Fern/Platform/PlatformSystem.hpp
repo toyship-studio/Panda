@@ -20,6 +20,8 @@ public:
         WindowFlags flags
     ) = 0;
     virtual void disposeWindow(Window *window) = 0;
+    // Fern::setApplicationIconLabel. Nothing to do where the desktop has no icon per instance.
+    virtual void setApplicationIconLabel(const char *label) {}
     virtual Vec2 getCursorPosition() const = 0;
     virtual const char *getClipboardText() = 0;
     virtual void setClipboardText(const char *text) = 0;

@@ -104,7 +104,7 @@ private:
 // ---- "New …" of the Content Browser context menu ----
 
 struct AssetCreator final {
-    std::string title; // "New Terrain"
+    std::string title; // the noun: "Terrain" (File → New → Terrain, "New Terrain" in the Content Browser)
     // Create a file in the project directory; return its path (empty — an error). The core registers
     // and selects the new asset.
     Panda::path_t (*create)(const Panda::path_t &directory) = nullptr;

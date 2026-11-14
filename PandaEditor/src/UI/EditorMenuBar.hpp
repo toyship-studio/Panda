@@ -23,6 +23,12 @@ public:
     virtual void menuBarOpenProject() = 0;
     virtual void menuBarOpenProject(const RecentProject &project) = 0;
     virtual void menuBarNewWorld() = 0;
+    // File → New: what the open project can create besides a world — the entities of the open
+    // world and the assets (the core's and the modules'). Titles for the menu, the index to create.
+    virtual std::vector<std::string> menuBarNewEntityTitles() = 0;
+    virtual std::vector<std::string> menuBarNewAssetTitles() = 0;
+    virtual void menuBarNewEntity(size_t index) = 0;
+    virtual void menuBarNewAsset(size_t index) = 0;
     virtual void menuBarUndo() = 0;
     virtual void menuBarRedo() = 0;
     // The settings (the document model): the world sidebar of the viewport (Window menu); the

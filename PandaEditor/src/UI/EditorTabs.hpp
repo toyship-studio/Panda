@@ -23,6 +23,8 @@ public:
     virtual void tabsBeginEntityTarget(const std::vector<Panda::UUID> &ids) = 0;
     virtual void tabsEndEntityTarget() = 0;
     virtual std::vector<Panda::Entity> tabsResolveEntities(const std::vector<Panda::UUID> &ids) = 0;
+    // The world the entity tabs show: the one of the panels (the edited world, the playing copy).
+    virtual Panda::World *tabsWorld() = 0;
     virtual std::vector<std::string> tabsScriptClasses() = 0;
     virtual void tabsRequestMaximize(PandaUI::View *view) = 0;
     // The asset tab is closed: the viewport session with this document ends (the tool lets go).

@@ -128,7 +128,7 @@ void EditorLayer::onAttach() {
     // ShaderBlocks.hpp: a mismatch means the layout has drifted and the files were not regenerated.
     const std::string staleIncludes = ShaderInterface::checkIncludes(AssetImporterBase::getShaderIncludeRoot());
     if (!staleIncludes.empty()) { LOG_ERROR_EDITOR("%s", staleIncludes.c_str()); }
-    GameContext::setCurrentWorld(m_currentWorld);
+    SelectionContext::setWorld(m_currentWorld); // the selection is of the world the editor shows
     // A script quit in the editor = Stop of the game, not closing the application. Deferred: the
     // request arrives in the middle of the world update — stop() tears down the playing world and
     // would crash the script frame in progress.
@@ -143,7 +143,8 @@ void EditorLayer::onAttach() {
     m_viewports.scene().setWorld(m_currentWorld);
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
     m_loader.loadInitialData(m_openLastProject);
-    // The wind of the loaded world goes into SceneWind BEFORE the UI is built: pinned material
+    // A world applies its wind itself when its frame begins. Here the wind of the loaded world
+    // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
     // fields (windStrength/windGustiness), not the default.
     SceneWind::apply(m_editingWorld.getWindSettings());
@@ -187,6 +188,7 @@ void EditorLayer::onAttach() {
         }
     );
     m_editorController->setBridge(this); // save / play-simulate-stop / reload / gizmo / rect-select — a single seam
+    m_menuBar.rebuild(); // File → New lists what the controller can create
     // The themes for the APPEARANCE section of the editor settings (the data plugins live here).
     Editor::setThemeProvider({
         [this] { return themeNames(); },
@@ -223,17 +225,15 @@ void EditorLayer::onDetach() {
     m_pandaUI.shutdown();
     GameContext::setQuitRequestHandler(nullptr);
     GameContext::setWorldLoadRequestHandler(nullptr);
-    GameContext::setCurrentWorld(nullptr);
+    SelectionContext::setWorld(nullptr);
 }
 
 void EditorLayer::onUpdate(double deltaTime) {
+    syncWindowIdentity();
     m_stripFrameCounter++;
     updateStripStatus(deltaTime);
     m_updater.tick(deltaTime);
     pushUpdateStatus();
-    // Wind of the ACTIVE world (editing/playing) — every frame before the worlds and panels are
-    // updated: Settings edits and world switches reach the system fields of materials.
-    if (m_currentWorld) { SceneWind::apply(m_currentWorld->getWindSettings()); }
     if (m_pendingStop) { // script quit from the previous frame → Stop before the worlds update begins
         m_pendingStop = false;
         if (m_sceneState != SceneState::EDIT) { stop(); }
@@ -969,7 +969,7 @@ void EditorLayer::play() {
     m_sceneState = SceneState::PLAY;
     m_playingWorld = m_editingWorld;
     m_currentWorld = &m_playingWorld;
-    GameContext::setCurrentWorld(m_currentWorld);
+    SelectionContext::setWorld(m_currentWorld); // the same ids: the selection moves to the copy
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
     m_viewports.scene().setWorld(m_currentWorld);
     m_pendingWorldLoad = AssetId(0);
@@ -1003,7 +1003,7 @@ void EditorLayer::stop() {
     m_pendingWorldLoad = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
     m_currentWorld = &m_editingWorld;
-    GameContext::setCurrentWorld(m_currentWorld);
+    SelectionContext::setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
     m_viewports.scene().setWorld(m_currentWorld);
     if (m_editorController) {
         m_editorController->setActiveWorld(m_currentWorld); // panels → the editing world
@@ -1137,6 +1137,28 @@ void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &pa
     showEditorChrome();
 }
 
+// Several editors run at once, one project each: the window title and the label on the
+// application icon say which project this one holds. Followed every frame — the world file
+// changes on Open, New and Save As, and a comparison of two strings costs nothing.
+void EditorLayer::syncWindowIdentity() {
+    std::string project;
+    std::string title = "Welcome";
+    if (m_loader.hasOpenedProject()) {
+        project = m_loader.getOpenedProjectPath().filename().string();
+        const path_t &worldPath = m_loader.getOpenedWorldPath();
+        const std::string world = worldPath.empty() ? std::string("Untitled World") : worldPath.filename().string();
+        title = project + " \xE2\x80\x94 " + world; // an em dash, UTF-8
+    }
+    if (title != m_windowTitle) {
+        m_windowTitle = title;
+        m_window->setTitle(title.c_str());
+    }
+    if (project != m_iconLabel) {
+        m_iconLabel = project;
+        Fern::setApplicationIconLabel(project.c_str());
+    }
+}
+
 std::string EditorLayer::worldDisplayName() {
     const path_t &worldPath = m_loader.getOpenedWorldPath();
     return worldPath.empty() ? "Untitled World" : worldPath.filename().stem().string();
@@ -1145,13 +1167,6 @@ std::string EditorLayer::worldDisplayName() {
 void EditorLayer::loaderDidLoadWorld() {
     SelectionContext::unselectAll();
     if (m_editorController) { m_editorController->worldContextChanged(); }
-    const path_t &worldPath = m_loader.getOpenedWorldPath();
-    if (worldPath.empty()) {
-        m_window->setTitle("Untitled World");
-    } else {
-        std::string title = worldPath.filename().string();
-        m_window->setTitle(title.c_str());
-    }
     m_menuBar.rebuild();
     if (m_editorController) { m_editorController->setWorldDisplayName(worldDisplayName()); }
     if (m_editorController) { m_editorController->refreshFromWorld(); } // migration: re-read the hierarchy tree
@@ -1178,7 +1193,6 @@ void EditorLayer::loaderDidLoadCloseProject() {
 void EditorLayer::loaderDidCreateNewWorld() {
     SelectionContext::unselectAll();
     if (m_editorController) { m_editorController->worldContextChanged(); }
-    m_window->setTitle("Untitled World");
     m_playingWorld.clear();
     m_menuBar.rebuild();
     if (m_editorController) { m_editorController->refreshFromWorld(); }
@@ -1259,6 +1273,37 @@ void EditorLayer::menuBarOpenProject(const RecentProject &project) {
 
 void EditorLayer::menuBarNewWorld() {
     runAfterUnsavedQuestion([this]() { m_loader.newWorld(); });
+}
+
+namespace {
+
+    std::vector<std::string> titlesOf(const Editor::CreateActions &actions) {
+        std::vector<std::string> titles;
+        for (const Editor::CreateAction &action : actions) { titles.push_back(action.title); }
+        return titles;
+    }
+
+    // The list is made again at the click: the folder of the Content Browser is the one of now.
+    void runAction(const Editor::CreateActions &actions, size_t index) {
+        if (index < actions.size()) { actions[index].run(); }
+    }
+
+} // namespace
+
+std::vector<std::string> EditorLayer::menuBarNewEntityTitles() {
+    return m_editorController ? titlesOf(m_editorController->newEntityActions()) : std::vector<std::string>();
+}
+
+std::vector<std::string> EditorLayer::menuBarNewAssetTitles() {
+    return m_editorController ? titlesOf(m_editorController->newAssetActions()) : std::vector<std::string>();
+}
+
+void EditorLayer::menuBarNewEntity(size_t index) {
+    if (m_editorController) { runAction(m_editorController->newEntityActions(), index); }
+}
+
+void EditorLayer::menuBarNewAsset(size_t index) {
+    if (m_editorController) { runAction(m_editorController->newAssetActions(), index); }
 }
 
 const std::vector<RecentProject> &EditorLayer::menuBarGetRecentProjectsList() {
@@ -1696,8 +1741,9 @@ bool EditorLayer::cookRuntimeData() {
     const ProjectModuleSettings &modules = m_loader.projectSettings().get<ProjectModuleSettings>();
     AssetHandlerEditor *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
 
-    // Validate before exporting. The export cooks the open world (GameContext::getCurrentWorld);
-    // the start world of the project settings takes over with the scene list (context/roadmap.md).
+    // Validate before exporting. The export cooks the open world as it is edited (not the copy
+    // a running game plays in); the start world of the project settings takes over with the
+    // scene list (context/roadmap.md).
     std::string openWorld;
     if (!m_loader.getOpenedWorldPath().empty()) {
         openWorld = std::filesystem::relative(m_loader.getOpenedWorldPath(), m_loader.getOpenedProjectPath()).generic_string();
@@ -1725,10 +1771,9 @@ bool EditorLayer::cookRuntimeData() {
     exportSettings.appName = m_loader.getOpenedProjectPath().filename().string();
     exportSettings.modules = ProjectModules::enabledIds(modules);
 
-    World *world = GameContext::getCurrentWorld();
-
     GameExporter exporter;
-    ExportResult result = exporter.exportGame(exportSettings, m_loader.getOpenedProjectPath(), *assetHandler, *world);
+    ExportResult result =
+        exporter.exportGame(exportSettings, m_loader.getOpenedProjectPath(), *assetHandler, m_editingWorld);
 
     if (result.success) {
         LOG_INFO_EDITOR("========================================");
@@ -1818,7 +1863,6 @@ void EditorLayer::updateWindowState() {
         }
     } else {
         m_window->setFlags(FERN_WINDOW_FLAG_CLOSABLE);
-        m_window->setTitle("Welcome");
         m_window->setState(Fern::WindowState::WindowStateNormal);
         m_window->setSize({800, 600});
     }

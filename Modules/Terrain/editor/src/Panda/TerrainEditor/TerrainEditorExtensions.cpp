@@ -270,8 +270,8 @@ void registerExtensions(EditorExtensions &extensions) {
     extensions.assetKinds.add({"terrain2d", Ic::Terrain, terrainColor, createEditor2D});
     extensions.assetKinds.add({"terrain3d", Ic::Terrain, terrainColor, createEditor3D});
 
-    extensions.assetCreators.push_back({"New Terrain", createTerrain2D});      // flat 128×128 heightmap
-    extensions.assetCreators.push_back({"New Terrain 3D", createTerrain3D});   // voxel, flat ground
+    extensions.assetCreators.push_back({"Terrain", createTerrain2D});      // flat 128×128 heightmap
+    extensions.assetCreators.push_back({"Terrain 3D", createTerrain3D});   // voxel, flat ground
 
     s_tool = static_cast<Panda::TerrainTool *>(&extensions.viewportTools.add(std::make_unique<Panda::TerrainTool>()));
 

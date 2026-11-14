@@ -1,6 +1,7 @@
 #pragma once
 
 #include <PandaEditorKit/Widgets/EditorView.hpp>
+#include "UI/CreateAction.hpp"
 #include "UI/Widgets/PanelHeader.hpp"
 
 #include <Panda/Base/UUID.hpp>
@@ -25,9 +26,9 @@ class HierarchyPanelOutput {
 public:
     virtual ~HierarchyPanelOutput() = default;
     virtual void hierarchyDidSelectEntities(const std::vector<Panda::UUID> &entityIds) = 0; // empty = clear selection
-    virtual void hierarchyDidRequestAddChild(Panda::UUID parentId) = 0;                     // 0 = at the scene root
-    // A greyboxing primitive: an entity with a builtin mesh, a checker material and a collider.
-    virtual void hierarchyDidRequestAddPrimitive(Panda::UUID parentId, PrimitiveKind kind) = 0;
+    // What can be created under the entity (0 = at the root of the world): the same list as in
+    // File → New.
+    virtual CreateActions hierarchyCreateActions(Panda::UUID parentId) = 0;
     virtual void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &entityIds) = 0;
     // The clipboard of entities is text — a fragment of a world file: Copy writes the entities
     // with everything under them, Paste adds what the clipboard holds as new roots.

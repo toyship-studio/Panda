@@ -3,15 +3,11 @@
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/Packages/PackageLoader.hpp"
 
-#ifdef PND_EDITOR
-#    include "Panda/GameLogic/SelectionContext.hpp"
-#endif
-
 #include <utility>
 
 namespace Panda {
 
-World *GameContext::s_currentWorld = nullptr;
+World *GameContext::s_runningWorld = nullptr;
 AssetHandler *GameContext::s_assetHandler = nullptr;
 ScriptEngine *GameContext::s_scriptEngine = nullptr;
 GameContext::WorldLoadRequestHandler GameContext::s_worldLoadRequestHandler = nullptr;
@@ -29,23 +25,8 @@ PackageLoader &GameContext::getPackageLoader() {
     return loader;
 }
 
-World *GameContext::getCurrentWorld() {
-    return s_currentWorld;
-}
-
-void GameContext::setCurrentWorld(World *world) {
-    s_currentWorld = world;
-#ifdef PND_EDITOR
-    if (!world) {
-        SelectionContext::unselectAll();
-        return;
-    }
-    std::unordered_set<UUID> selectedIds = SelectionContext::getSelectedEntities();
-    for (UUID id : selectedIds) {
-        if (!world->isValid(id)) { SelectionContext::removeSelectedEntity(id, false); }
-    }
-    SelectionContext::updateValues();
-#endif
+World *GameContext::getRunningWorld() {
+    return s_runningWorld;
 }
 
 AssetHandler *GameContext::getAssetHandler() {

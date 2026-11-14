@@ -56,11 +56,12 @@ namespace {
 extensions.scriptHostApis.add({Scripting::TERRAIN_HOST_API_NAME, Scripting::TERRAIN_HOST_API_VERSION, &s_table});
 ```
 
-- `resolveScriptEntity(handle)` turns the handle into an `Entity` of the current world; a
+- `resolveScriptEntity(handle)` turns the handle into an `Entity` of the running world; a
   handle that no longer points to anything gives an invalid entity and one error in the
   console per handle, so a stale reference in a script is a no-op, not a crash.
-  `GameContext::getCurrentWorld()` is the world the scripts run in (a ray cast without an
-  entity).
+  `GameContext::getRunningWorld()` is the world the scripts run in (a ray cast without an
+  entity). One world runs at a time; while none does it is `nullptr`, and a function returns
+  0 and zeros.
 - A function never fails loudly: an entity without the component, a missing simulation, a
   bad range return 0 and zeros. Scripts are user code.
 - The table object lives as long as the process (a static); the registry keeps the pointer.

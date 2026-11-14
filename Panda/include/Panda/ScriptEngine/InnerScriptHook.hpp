@@ -8,8 +8,9 @@ namespace Panda {
 
 class Entity;
 
-// Entity by a handle from a script: a broken reference → invalid Entity + a one-time error in
-// the console (the call does a no-op). For core functions and contribution tables (ScriptHostApis).
+// Entity of the running world by a handle from a script: a broken reference → invalid Entity + a
+// one-time error in the console (the call does a no-op). For core functions and contribution
+// tables (ScriptHostApis).
 Entity resolveScriptEntity(Handle entityHandle);
 
 namespace ExternalCalls {

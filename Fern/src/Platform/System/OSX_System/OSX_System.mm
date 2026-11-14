@@ -185,6 +185,73 @@ const char * OSX_System::getClipboardText() {
     return [object UTF8String];
 }
 
+void OSX_System::setApplicationIconLabel(const char *label) {
+    @autoreleasepool {
+        // The icon of the bundle, taken before the first change: an empty label brings it back.
+        static NSImage *s_plainIcon = nil;
+        if (s_plainIcon == nil) { s_plainIcon = [[NSApp applicationIconImage] retain]; }
+        NSString *text = [NSString stringWithUTF8String:label];
+        if (text == nil || [text length] == 0 || s_plainIcon == nil) {
+            [NSApp setApplicationIconImage:s_plainIcon];
+            return;
+        }
+        // The hue of the band follows the name (FNV-1a): two projects differ by color even
+        // where the tile is too small to read.
+        uint32_t hash = 2166136261u;
+        for (const char *c = label; *c != 0; ++c) { hash = (hash ^ static_cast<uint8_t>(*c)) * 16777619u; }
+        NSColor *bandColor = [NSColor colorWithCalibratedHue:(hash % 360u) / 360.0
+                                                  saturation:0.62
+                                                  brightness:0.5
+                                                       alpha:0.96];
+        // Drawn at once into a bitmap: the Dock and the switcher scale it down.
+        const NSInteger side = 512;
+        NSBitmapImageRep *bitmap = [[[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                                            pixelsWide:side
+                                                                            pixelsHigh:side
+                                                                         bitsPerSample:8
+                                                                       samplesPerPixel:4
+                                                                              hasAlpha:YES
+                                                                              isPlanar:NO
+                                                                        colorSpaceName:NSCalibratedRGBColorSpace
+                                                                           bytesPerRow:0
+                                                                          bitsPerPixel:0] autorelease];
+        NSGraphicsContext *context = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
+        if (bitmap == nil || context == nil) { return; }
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext setCurrentContext:context];
+        const NSRect bounds = NSMakeRect(0.0, 0.0, side, side);
+        [s_plainIcon drawInRect:bounds fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1.0];
+        // The band lies over the lower part of the icon body (the body leaves a margin of the tile).
+        const NSRect band = NSMakeRect(46.0, 52.0, side - 92.0, 132.0);
+        [bandColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:band xRadius:40.0 yRadius:40.0] fill];
+        // The largest size at which the name fits; at the floor a longer name ends in an ellipsis.
+        const CGFloat available = band.size.width - 40.0;
+        NSMutableParagraphStyle *paragraph = [[[NSMutableParagraphStyle alloc] init] autorelease];
+        [paragraph setAlignment:NSTextAlignmentCenter];
+        [paragraph setLineBreakMode:NSLineBreakByTruncatingTail];
+        NSDictionary *attributes = nil;
+        for (CGFloat fontSize = 92.0;; fontSize -= 6.0) {
+            attributes = @{
+                NSFontAttributeName : [NSFont systemFontOfSize:fontSize weight:NSFontWeightSemibold],
+                NSForegroundColorAttributeName : [NSColor whiteColor],
+                NSParagraphStyleAttributeName : paragraph,
+            };
+            if (fontSize <= 58.0 || [text sizeWithAttributes:attributes].width <= available) { break; }
+        }
+        const CGFloat textHeight = [text sizeWithAttributes:attributes].height;
+        [text drawInRect:NSMakeRect(
+                             band.origin.x + 20.0, band.origin.y + (band.size.height - textHeight) * 0.5, available,
+                             textHeight
+                         )
+            withAttributes:attributes];
+        [NSGraphicsContext restoreGraphicsState];
+        NSImage *image = [[[NSImage alloc] initWithSize:NSMakeSize(side, side)] autorelease];
+        [image addRepresentation:bitmap];
+        [NSApp setApplicationIconImage:image];
+    }
+}
+
 void OSX_System::setClipboardText(const char *text) {
     NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];

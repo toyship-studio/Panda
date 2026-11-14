@@ -22,8 +22,11 @@ public:
     static PackageLoader &getPackageLoader();
     using WorldLoadRequestHandler = std::function<void(AssetId)>;
 
-    static World *getCurrentWorld();
-    static void setCurrentWorld(World *world);
+    // The world that runs (World::startRunning … finishRunning), nullptr while none does. A
+    // process is one game and one world runs in it at a time: this is the world the script
+    // bundle and the script hosts of the modules address. Nothing else asks "which world" — a
+    // function works on the world it was given. The world registers itself; there is no setter.
+    static World *getRunningWorld();
     static AssetHandler *getAssetHandler();
     static void setAssetHandler(AssetHandler *handler);
     static ScriptEngine *getScriptEngine();
@@ -45,7 +48,8 @@ public:
     static std::unordered_set<AssetId> takeRuntimeMutatedAssets();
 
 private:
-    static World *s_currentWorld;
+    friend class World; // sets the running world when it starts and stops
+    static World *s_runningWorld;
     static AssetHandler *s_assetHandler;
     static ScriptEngine *s_scriptEngine;
     static WorldLoadRequestHandler s_worldLoadRequestHandler;

@@ -175,7 +175,7 @@ namespace {
         float maxDistance, Handle ignoredEntityHandle, Scripting::RaycastHit3DData *hit
     ) {
         *hit = {};
-        World *world = GameContext::getCurrentWorld();
+        World *world = GameContext::getRunningWorld();
         Physics3D *physics = world ? world->findContext<Physics3D>() : nullptr;
         if (!physics) { return 0; }
         // 0 means "nothing is ignored"; a stale handle is reported like in any other entity call.

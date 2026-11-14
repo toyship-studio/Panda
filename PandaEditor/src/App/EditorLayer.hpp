@@ -49,6 +49,7 @@ public:
 #pragma region Project loader output
     void loaderDidLoadProject(const std::string &name, const path_t &path) override;
     std::string worldDisplayName(); // name of the open world for the UI (file stem / Untitled World)
+    void syncWindowIdentity();      // the window title and the application icon label name the project
     // Layout passes of the chrome UI over a one-second window (Statistics panel).
     uint64_t m_lastUiLayoutCount = 0;
     uint32_t m_uiLayoutAccum = 0;
@@ -163,6 +164,10 @@ private:
     void menuBarOpenProject() override;
     void menuBarOpenProject(const RecentProject &project) override;
     void menuBarNewWorld() override;
+    std::vector<std::string> menuBarNewEntityTitles() override;
+    std::vector<std::string> menuBarNewAssetTitles() override;
+    void menuBarNewEntity(size_t index) override;
+    void menuBarNewAsset(size_t index) override;
     void menuBarUndo() override;
     void menuBarRedo() override;
     void menuBarOpenWorldSettings() override;
@@ -235,6 +240,8 @@ private:
     AssetId m_pendingWorldLoad;
     Fern::Window *m_window;
     bool m_openLastProject = true; // false — a second window: starts on the start screen
+    std::string m_windowTitle;     // what syncWindowIdentity has set: "<project> — <world file>"
+    std::string m_iconLabel;       // the project name on the application icon (empty — none)
     EditorMenuBar m_menuBar;
     PandaUIImpl m_pandaUI;
     // The Scene and Game viewports: the targets, the editor camera, the gizmo and the selection, the

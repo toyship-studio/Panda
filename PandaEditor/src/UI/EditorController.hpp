@@ -100,6 +100,10 @@ public:
     bool isGameViewportFocused() const {
         return m_gameView && m_gameView->isFocused();
     }
+    // File → New: the entities go to the root of the open world, the assets into the folder the
+    // Content Browser shows. The same lists as in the context menus of the two panels.
+    CreateActions newEntityActions();
+    CreateActions newAssetActions();
     void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
     void showSceneView(); // activates the Scene tab — Stop
     void focusGameView(); // the keyboard focus to the Game surface (a click on the game)
@@ -163,8 +167,9 @@ public:
 
     // HierarchyPanelOutput.
     void hierarchyDidSelectEntities(const std::vector<Panda::UUID> &ids) override;
-    void hierarchyDidRequestAddChild(Panda::UUID parentId) override;
-    void hierarchyDidRequestAddPrimitive(Panda::UUID parentId, PrimitiveKind kind) override;
+    CreateActions hierarchyCreateActions(Panda::UUID parentId) override;
+    void createEntity(Panda::UUID parentId);
+    void createPrimitive(Panda::UUID parentId, PrimitiveKind kind);
     void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &ids) override;
     void hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids) override;
     void hierarchyDidRequestPaste() override;
@@ -240,10 +245,11 @@ public:
     void contentDidRequestRefresh() override;
     void contentDidRequestAddToScene(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestOpenWorld(Panda::AssetId assetId) override;
-    void contentDidRequestCreateMaterial(const Panda::path_t &directory, Panda::AssetId shaderId) override;
-    void contentDidRequestCreatePostprocessing(const Panda::path_t &directory) override;
-    void contentDidRequestCreatePostprocessShader(const Panda::path_t &directory) override;
-    void contentDidRequestCreateAsset(const Panda::path_t &directory, const AssetCreator &creator) override;
+    CreateActions contentCreateActions(const Panda::path_t &directory) override;
+    void createMaterial(const Panda::path_t &directory, Panda::AssetId shaderId);
+    void createPostprocessing(const Panda::path_t &directory);
+    void createPostprocessShader(const Panda::path_t &directory);
+    void createAsset(const Panda::path_t &directory, const AssetCreator &creator);
     void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) override;
 
 
@@ -273,6 +279,7 @@ public:
     void tabsBeginEntityTarget(const std::vector<Panda::UUID> &ids) override;
     void tabsEndEntityTarget() override;
     std::vector<Panda::Entity> tabsResolveEntities(const std::vector<Panda::UUID> &ids) override;
+    Panda::World *tabsWorld() override;
     std::vector<std::string> tabsScriptClasses() override;
     void tabsRequestMaximize(PandaUI::View *view) override;
     void tabsAssetTabClosed(Panda::AssetId id) override;
