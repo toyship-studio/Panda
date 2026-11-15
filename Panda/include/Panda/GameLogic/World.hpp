@@ -28,6 +28,7 @@ namespace Panda {
 // passes (picking, editor overlays) — renderPass.
 struct WorldFrame {
     bool mainCamera = false;
+    glm::mat4 projection = glm::mat4(1.f); // of the camera; viewProj = projection * view
     glm::mat4 viewProj = glm::mat4(1.f);
     glm::mat4 skyViewProj = glm::mat4(1.f);
     glm::vec3 cameraPosition = glm::vec3(0.f);
@@ -120,6 +121,20 @@ public:
     // CAMERA's viewProj in update*, consumed by postprocessing (flares in bloom_apply).
     glm::vec4 getFrameSunScreen() const {
         return m_lighting.sunScreen();
+    }
+    // The camera the last update drew the world through (the main camera is resolved inside the
+    // update, after the simulation): what works on the frame afterwards — the postprocessing —
+    // needs its matrices.
+    const glm::mat4 &getFrameProjection() const {
+        return m_frameProjection;
+    }
+    const glm::mat4 &getFrameViewProj() const {
+        return m_frameViewProj;
+    }
+    // The screen-space ambient occlusion computed from the frame that was just drawn
+    // (SsaoRenderer): the next frame of this world shades with it.
+    void setScreenOcclusion(const SsaoData &occlusion) {
+        m_lighting.setScreenOcclusion(occlusion);
     }
     glm::mat4 getWorldSpaceTransformMatrix(Entity entity);
     void convertToWorldSpace(Entity entity);
@@ -291,6 +306,8 @@ private:
     Renderer2D m_renderer2d;
     Renderer3D m_renderer3d;
     LightingSystem m_lighting; // frame lighting: lights, shadow cascades, occlusion volume
+    glm::mat4 m_frameProjection = glm::mat4(1.f);
+    glm::mat4 m_frameViewProj = glm::mat4(1.f);
 
     friend class Entity;
 };

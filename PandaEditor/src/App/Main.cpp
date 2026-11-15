@@ -12,9 +12,13 @@
 #include <Fern/Fern.hpp>
 #include <Panda.hpp>
 
+#include <filesystem>
 #include <string_view>
 
 int main(int argc, const char **argv) {
+    // The last lines of the log stay in memory from the first one: the MCP server of a project
+    // answers with them (App/EditorMcp), also about what happened before it started.
+    Foundation::LogHistory::enable();
     Fern::initialize();
     // The desktop identity on Linux: the class of the .desktop entry the install script writes.
     Fern::setDesktopIdentity("PandaEditor", "dev.pandaengine.PandaEditor");
@@ -27,13 +31,19 @@ int main(int argc, const char **argv) {
     // (context/plugins.md, decision 8); user plugins are stage 2.
     auto application = new Panda::Application();
     application->setMainWindow(window);
-    // A second window is a second instance: it starts on the start screen, the project of the
-    // last session belongs to the first one.
-    bool newWindow = false;
+    // The command line. `--new-window`: a second window is a second instance, it starts on the
+    // start screen — the project of the last session belongs to the first one. `--project <path>`:
+    // the instance opens this project (a restart, an agent or a script that starts the editor).
+    Panda::EditorLaunch launch;
     for (int i = 1; i < argc; i++) {
-        if (std::string_view(argv[i]) == Panda::SystemTools::NEW_WINDOW_ARGUMENT) { newWindow = true; }
+        const std::string_view argument(argv[i]);
+        if (argument == Panda::SystemTools::NEW_WINDOW_ARGUMENT) {
+            launch.openLastProject = false;
+        } else if (argument == Panda::SystemTools::PROJECT_ARGUMENT && i + 1 < argc) {
+            launch.project = std::filesystem::absolute(Panda::path_t(argv[++i])).lexically_normal();
+        }
     }
-    application->pushLayer(new Panda::EditorLayer(window, !newWindow));
+    application->pushLayer(new Panda::EditorLayer(window, std::move(launch)));
     application->loop();
     delete application;
     assetHandler->cleanup(); // dependency cascade inside — to a fixpoint
@@ -45,6 +55,8 @@ int main(int argc, const char **argv) {
     // staged by the updater is swapped in first (Linux here, Windows by the helper); it starts the
     // new editor itself.
     const bool relaunch = Panda::SystemTools::relaunchOnExit();
-    if (!Panda::EditorUpdater::finishOnExit(relaunch) && relaunch) { Panda::SystemTools::startNewInstance(); }
+    if (!Panda::EditorUpdater::finishOnExit(relaunch) && relaunch) {
+        Panda::SystemTools::startNewInstance(Panda::SystemTools::relaunchArguments());
+    }
     return 0;
 }

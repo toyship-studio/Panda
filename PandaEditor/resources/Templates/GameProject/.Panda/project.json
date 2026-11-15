@@ -4,5 +4,9 @@
     },
     "rendering": {
         "features": ["lights", "shadows", "environment"]
+    },
+    "mcp": {
+        "enabled": true,
+        "port": 7717
     }
 }

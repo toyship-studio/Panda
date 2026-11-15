@@ -5,4 +5,5 @@ cbuffer PANDA_POST {
     float4 resolutionTime;
     float4 cameraNearFar;
     float4 sunScreen;
+    float4 tonemapParams;
 };

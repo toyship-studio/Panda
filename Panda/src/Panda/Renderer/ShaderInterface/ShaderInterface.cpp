@@ -72,6 +72,7 @@ namespace {
             block<OcclusionUbo>("OcclusionUbo", ShaderFeature::Occlusion),
             block<EnvironmentUbo>("EnvironmentUbo", ShaderFeature::Environment),
             block<WindUbo>("WindUbo", ShaderFeature::Wind),
+            block<SsaoUbo>("SsaoUbo", ShaderFeature::Ssao),
             block<DrawUbo>("DrawUbo"),
             block<PostUbo>("PostUbo"),
         };

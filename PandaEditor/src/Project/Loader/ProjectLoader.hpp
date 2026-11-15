@@ -29,9 +29,10 @@ class ProjectLoader final {
 public:
     ProjectLoader(FileDocuments &documents, ProjectLoaderOutput *output);
     ~ProjectLoader();
-    // settings.json and the editor session; openLastProject — the project the last session ended
-    // with is opened again (a second window starts on the start screen instead).
-    void loadInitialData(bool openLastProject = true);
+    // settings.json and the editor session, then the project of this instance: `project` when
+    // the command line named one, else — openLastProject — the project the last session ended
+    // with (a second window starts on the start screen instead).
+    void loadInitialData(bool openLastProject, const path_t &project);
     // The exit, while the editor still answers (EditorLayer::onDetach): the files nobody asked to
     // write — the sessions, and the settings unless they were changed on disk.
     void saveOnExit();

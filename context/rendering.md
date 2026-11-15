@@ -4,8 +4,47 @@ Rendering contracts of the engine: Miren draw-call inputs and 3D textures, the s
 system material fields and scene wind. Miren is the backend library (Metal, OpenGL/GLES, D3D11).
 Code: `Miren/`, `MirenTools/`, `Panda/include/Panda/Renderer`, `Panda/resources/default-shaders`.
 
-The light of a frame (shadows, the Occlusion Volume, the environment map) is described in
-`context/lighting.md`.
+The light of a frame (shadows, the ambient occlusion, the Occlusion Volume, the environment map)
+is described in `context/lighting.md`.
+
+## The frame: one forward pipeline
+
+The engine has ONE render pipeline, forward, and no second one is planned.
+
+- **Why not several** (Godot's Forward+ / Mobile / Compatibility). Those exist to reach three
+  classes of hardware through three graphics APIs. Here Miren already hides the API, and the
+  scaling mechanism of a project is its shader features (`context/shader-features.md`): what a
+  game does not need is not computed and not compiled in. A second pipeline would double every
+  contract instead of removing work.
+- **Why forward and not deferred.** A material is a whole shader the user may replace: it
+  computes the final color of its pixel with the includes. A deferred pipeline would make every
+  material write a G-buffer instead — a second, incompatible shader contract — and would need its
+  own answer for transparency. Forward keeps one contract, works with transparency and with any
+  shading model, and costs what the project's features cost.
+- **What a screen-space technique reads.** There is no depth or normal prepass: the scene is
+  drawn once. The screen-space ambient occlusion works from the depth of the frame that was drawn
+  last (`context/lighting.md`); a technique added later (reflections, contact shadows) takes the
+  same route or reads the scene after it is drawn.
+
+The order of a frame (Miren executes views by descending id, `MirenViewDistribution`):
+
+1. Bakes that the scene reads: the light atlas of the environment map, impostors.
+2. The shadow cascades.
+3. The scene: color (RGBA16F, linear light, not clamped) and emissive (RGBA16F), depth.
+4. `PostprocessingPipeline`: auto exposure → bloom (from the emissive target) → the chain of the
+   camera (linear HDR) → the Tonemap → the antialiasing. The last two are the engine's:
+   - the Tonemap (`tonemap.frag`) multiplies by the exposure of the camera (`2^exposure`),
+     applies its curve (`Panda::Tonemap`: AgX — the default, ACES, Khronos PBR Neutral,
+     Reinhard, none; `tonemapParams` of `PANDA_POST`), encodes sRGB and adds a dither of one
+     display step (a sky gradient does not band in 8 bits);
+   - the antialiasing (`fxaa.frag`, FXAA 3.11 quality) works on the display picture. In the
+     runtime it is the pass that goes to the screen; where the chain ends in a texture it has
+     the view `ANTIALIASING_VIEW`.
+   A camera owns the look (`CameraComponent`: bloom, auto exposure, `tonemap`, `exposure`,
+   `antialiasing`); `PostprocessingFrameInputs::setCamera` is the one place that maps a camera to
+   the pipeline, the editor and the runtime call it.
+5. The ambient occlusion of this frame, for the next one.
+6. The editor composite, picking, the game UI, the UI.
 
 ## Miren: uniform model
 
@@ -177,22 +216,29 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
 - Files in `panda/` (the names are a contract, `context/shader-features.md`):
   - `features.hlsli`: generated, the macros of the bake; never included by hand;
   - `blocks/`: the generated blocks — `frame`, `view`, one per feature (`lights`, `shadows`,
-    `occlusion`, `environment`, `wind`), `draw` and `post` (see the next subsection); a feature
+    `occlusion`, `environment`, `wind`, `ssao`), `draw` and `post` (see the next subsection); a feature
     block carries the guard (`#error` when the project has the feature off) and the declarations
     of the feature's system textures;
   - the public includes of the features: `frame.hlsli`, `view.hlsli`, `lights.hlsli`,
-    `environment.hlsli`, `wind.hlsli` (the block and its documentation), `shadows.hlsli` (the
-    block, `sampleCascade` — a tent, or a single tap under `PANDA_SHADOW_SINGLE_TAP` — and
-    `sampleShadow`), `occlusion.hlsli` (the block, `volumeOcclusion` and `volumeSunStrength`);
+    `wind.hlsli` (the block and its documentation), `environment.hlsli` (the block,
+    `environmentDiffuse` and `environmentSpecular`), `shadows.hlsli` (the block, `sampleCascade`
+    — the soft shadow or the tent, or a single tap under `PANDA_SHADOW_SINGLE_TAP` — and
+    `sampleShadow`), `occlusion.hlsli` (the block, `volumeOcclusion` and `volumeSunStrength`),
+    `ssao.hlsli` (the block and `sampleScreenOcclusion`);
   - `lighting.hlsli`: the umbrella of a lit shader — `view` + `lights`, and `shadows` /
-    `occlusion` when the project has them; `sceneOcclusion`, `occlusionSurfaceOffset`,
-    `ambientOcclusion`, `sunShadow`, `shadowStrength`, `sunTransmittance` and `sunVisibility`
-    degrade to "open" without their feature, so one source compiles in every
-    project;
+    `occlusion` / `ssao` / `environment` when the project has them; `ambientLight` (the flat
+    ambient plus the light of the map), `screenOcclusion`, `sceneOcclusion`,
+    `occlusionSurfaceOffset`, `ambientOcclusion`, `sunShadow`, `shadowStrength`,
+    `sunTransmittance` and `sunVisibility` degrade to "open" without their feature, so one
+    source compiles in every project;
   - `draw.hlsli` (`PANDA_DRAW`, the matrices of a draw), `post.hlsli` (`PANDA_POST`);
-  - `brdf.hlsli`: GGX and `shadeLight(…, diffuseAlbedo, …)`. PBR passes `albedo / PI`; foliage
-    and billboards pass the raw albedo, which is the energy convention of the world (the lit,
-    terrain and grass shaders use a raw N·L).
+  - `brdf.hlsli`: the surface model — GGX with the height-correlated Smith visibility,
+    `shadeLight(…, diffuseAlbedo, …)` for a light (PBR passes `albedo / PI`; foliage and
+    billboards pass the raw albedo, which is the energy convention of the world: the lit,
+    terrain and grass shaders use a raw N·L), `shadeAmbient` for the surroundings (multiple
+    scattering kept, the specular part occluded by `specularOcclusion`), `environmentBrdf`,
+    `filterRoughness` (the roughness a pixel needs so that a highlight on a curved or
+    normal-mapped surface does not sparkle).
 
   Shaders hold no copies of these functions. The impostor billboard keeps its own
   `billboardSunVisibility` (the chord of self-shadowing) on top of the shared ones.
@@ -202,10 +248,11 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
 ### The engine blocks: the source of the layout
 
 - The blocks declared by several shaders — `PANDA_FRAME`, `PANDA_VIEW`, the feature blocks
-  (`PANDA_LIGHTS`, `PANDA_SHADOWS`, `PANDA_OCCLUSION`, `PANDA_ENVIRONMENT`, `PANDA_WIND`),
-  `PANDA_DRAW` and `PANDA_POST` — are described ONCE, by the C++ structs of
+  (`PANDA_LIGHTS`, `PANDA_SHADOWS`, `PANDA_OCCLUSION`, `PANDA_ENVIRONMENT`, `PANDA_WIND`,
+  `PANDA_SSAO`), `PANDA_DRAW` and `PANDA_POST` — are described ONCE, by the C++ structs of
   `Panda/include/Panda/Renderer/ShaderInterface/ShaderBlocks.hpp` (`FrameUbo`, `ViewUbo`,
-  `LightsUbo`, `ShadowsUbo`, `OcclusionUbo`, `EnvironmentUbo`, `WindUbo`, `DrawUbo`, `PostUbo`).
+  `LightsUbo`, `ShadowsUbo`, `OcclusionUbo`, `EnvironmentUbo`, `WindUbo`, `SsaoUbo`, `DrawUbo`,
+  `PostUbo`).
   They are PODs that follow the cbuffer / std140 rules and are bound as bytes. A struct carries
   the name of its block (`NAME`): `bindBlock` binds by it, the generator writes the `cbuffer`
   and derives the file from it. The meaning of the fields is in the comments of the structs. The
@@ -214,7 +261,8 @@ D3D11: HLSL → [expand] → HLSL' is the cooked shader; D3DCompile at runtime (
   (`XUbo::from`): Renderer3D once per frame, the material preview, the impostor bake. `PANDA_FRAME` is bound by `MaterialAsset::bindFields()` with the fields of every material
   draw, so the time reaches postprocessing passes and previews too.
 - The blocks local to one pass (`MATERIAL_FIELDS`, `SHADOW_MASK`, `BLOOM_*`, `HELPER_*`,
-  `BAKE_*`) are not generated; `Std140Buffer` packs the dynamic layouts.
+  `BAKE_*`, `ENVIRONMENT_BAKE`, `SSAO_PASS`) are not generated; `Std140Buffer` packs the dynamic
+  layouts.
 - The generator `Panda::ShaderInterface` (`generate` / `writeIncludes` / `checkIncludes`) reads
   the Rain metadata of the fields (`RAIN_FIELDS`: Rain gives the name, the offset and the type,
   and for C arrays the element type and the length, `FieldInfo::elementTypeId` / `count`) and
@@ -328,6 +376,12 @@ flat. The signal is value noise: a sine reads as machine-made waves, white noise
 
 ## Open items
 
+- Antialiasing is FXAA alone: geometry thinner than a pixel still shimmers. MSAA needs
+  multisampled targets in the three Miren backends; a temporal resolve would also hide the grain
+  of the soft shadows and of the ambient occlusion.
+- The depth buffer is a standard one (near 0 → far 1): reversed depth would keep precision at a
+  distance for everything that reads it.
+- Glass: a glTF material with transmission is imported as opaque.
 - View inputs are written once per view, but a backend still resolves and sets them for every
   draw of the view; skipping the repeat for consecutive draws of one program is open
   (`context/shader-features.md`).

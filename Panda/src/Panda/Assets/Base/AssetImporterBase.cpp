@@ -431,10 +431,16 @@ UUID AssetImporterBase::addGltfSceneToWorld(const path_t &path, AssetRef<Importe
         cgltf_free(data);
         return UUID(0);
     }
+    // The root is the file: it has no transform of its own (the user places it). Every node of
+    // the scene is an entity under it — a scene has any number of root nodes, each with its pose.
     Entity rootEntity = world.instantiateEntity();
     rootEntity.setName(path.filename().string());
     for (size_t i = 0; i < data->scene->nodes_count; ++i) {
-        processGltfNodeRecurse(data, data->scene->nodes[i], rootEntity, world, asset, path);
+        cgltf_node *node = data->scene->nodes[i];
+        Entity nodeEntity = world.instantiateEntity();
+        nodeEntity.setName(node->name ? node->name : "node " + std::to_string(i));
+        world.setParent(nodeEntity, rootEntity, false);
+        processGltfNodeRecurse(data, node, nodeEntity, world, asset, path);
     }
     LOG_INFO("MESH %s ADDED TO WORLD. TOTAL %d NODES", path.filename().string().c_str(), data->nodes_count);
     LOG_INFO_EDITOR("MESH %s ADDED TO WORLD. TOTAL %d NODES", path.filename().string().c_str(), data->nodes_count);

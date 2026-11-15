@@ -103,6 +103,9 @@ struct ShadowsUbo final {
     glm::vec4 shadowTexelWorld; // world size of a cascade texel (m)
     glm::vec4 shadowDepthScale; // depth texel of a cascade: world bias → depth units
     glm::vec4 shadowBias;       // x — normal offset (texels), y — receiver depth bias (texels), z — number of cascades
+    // The soft edge: x — tan of the angular radius of the sun (the penumbra radius per meter
+    // between the caster and the receiver; 0 — the fixed filter), y — the widest penumbra radius (m).
+    glm::vec4 shadowSoftness;
 
     RAIN_FIELDS_BEGIN(ShadowsUbo)
     RAIN_FIELD(shadowMatrices)
@@ -111,6 +114,7 @@ struct ShadowsUbo final {
     RAIN_FIELD(shadowTexelWorld)
     RAIN_FIELD(shadowDepthScale)
     RAIN_FIELD(shadowBias)
+    RAIN_FIELD(shadowSoftness)
     RAIN_FIELDS_END
 
     static ShadowsUbo from(const ShadowData &shadows);
@@ -145,10 +149,15 @@ struct OcclusionUbo final {
 struct EnvironmentUbo final {
     static constexpr const char *NAME = "PANDA_ENVIRONMENT";
 
-    glm::vec4 environmentParams; // x — exposure, y — highest mip of the map, z — 1 if the map is set (else no reflections), w — 0
+    glm::vec4 environmentParams; // x — exposure, y — highest mip of the map, z — 1 if the map is set (else no light of the map), w — 0
+    // The tiles of the environmentLighting atlas (EnvironmentLighting): uv rect of a tile, xy —
+    // offset, zw — size. 0..4 — the radiance prefiltered for roughness 0.2, 0.4 … 1; 5 — the
+    // irradiance over π. All zero without a map.
+    glm::vec4 environmentTiles[6];
 
     RAIN_FIELDS_BEGIN(EnvironmentUbo)
     RAIN_FIELD(environmentParams)
+    RAIN_FIELD(environmentTiles)
     RAIN_FIELDS_END
 
     static EnvironmentUbo from(const EnvironmentData &environment);
@@ -165,6 +174,21 @@ struct WindUbo final {
     RAIN_FIELDS_END
 
     static WindUbo from(const glm::vec4 &phase);
+};
+
+// Feature ssao — the screen-space ambient occlusion the last frame left (SsaoRenderer).
+struct SsaoUbo final {
+    static constexpr const char *NAME = "PANDA_SSAO";
+
+    glm::mat4 ssaoViewProj; // world → clip of the frame ssaoMap was computed from
+    glm::vec4 ssaoParams;   // x — intensity (0 — no occlusion), y — 1 when the rows of the map go bottom-up
+
+    RAIN_FIELDS_BEGIN(SsaoUbo)
+    RAIN_FIELD(ssaoViewProj)
+    RAIN_FIELD(ssaoParams)
+    RAIN_FIELDS_END
+
+    static SsaoUbo from(const SsaoData &ssao);
 };
 
 // Per-draw and per-pass blocks, bound by the renderer or the pipeline directly:
@@ -189,11 +213,13 @@ struct PostUbo final {
     glm::vec4 resolutionTime; // xy — target size of THIS pass (px), z — time (s)
     glm::vec4 cameraNearFar;  // x — near, y — far
     glm::vec4 sunScreen;      // xy — sun screen position (UV), z — "in frame" (flares, glare)
+    glm::vec4 tonemapParams;  // x — the curve of the camera (Panda::Tonemap), y — the exposure multiplier (2^stops)
 
     RAIN_FIELDS_BEGIN(PostUbo)
     RAIN_FIELD(resolutionTime)
     RAIN_FIELD(cameraNearFar)
     RAIN_FIELD(sunScreen)
+    RAIN_FIELD(tonemapParams)
     RAIN_FIELDS_END
 };
 

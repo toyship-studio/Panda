@@ -95,6 +95,13 @@ public:
     Miren::TextureHandle result() const {
         return m_result;
     }
+    // The size of the output texture in pixels (the frame times the scale of the window).
+    uint32_t pixelWidth() const {
+        return m_pixelWidth;
+    }
+    uint32_t pixelHeight() const {
+        return m_pixelHeight;
+    }
     // A view draws into this output this frame (EDITOR_VIEWPORT_VIEW — the composite of the frame,
     // GAME_UI_VIEW — the game UI on top of it). The state of a Miren view is a snapshot per frame.
     void bindView(Miren::ViewId view) const;
@@ -103,6 +110,8 @@ private:
     Rect m_frame;
     Miren::TextureHandle m_result;
     Miren::FrameBufferHandle m_fb;
+    uint32_t m_pixelWidth = 0;
+    uint32_t m_pixelHeight = 0;
     bool m_initialized = false;
 };
 

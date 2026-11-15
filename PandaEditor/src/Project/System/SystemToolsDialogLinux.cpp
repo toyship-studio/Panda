@@ -10,6 +10,7 @@
 namespace Panda {
 
 SystemTools::SaveChangesChoice SystemTools::showSaveChangesDialog(const char *title, const char *message) {
+    if (SaveChangesChoice unattended; answerUnattended(title, &unattended)) { return unattended; }
     if (!gtk_init_check(nullptr, nullptr)) {
         LOG_ERROR("Failed to initialize GTK for the save changes dialog");
         return SaveChangesChoice::Cancel;

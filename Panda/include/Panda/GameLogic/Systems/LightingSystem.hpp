@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Panda/Renderer/CascadedShadowMap.hpp"
+#include "Panda/Renderer/EnvironmentLighting.hpp"
 #include "Panda/Renderer/OcclusionVolume.hpp"
 #include "Panda/Renderer/WorldLighting.hpp"
 
@@ -12,8 +13,8 @@ class World;
 
 // Frame lighting of the world: ambient and the environment map — from the world's lighting
 // settings, the sun and point lights — from components, shadow cascades and the occlusion volume —
-// fitted to the frame's camera and sun. Owns CascadedShadowMap and OcclusionVolume (state between
-// frames). World calls update once per frame before the scene pass; the cascade depth passes are
+// fitted to the frame's camera and sun. Owns CascadedShadowMap, OcclusionVolume and the light
+// atlas of the environment map, EnvironmentLighting (state between frames). World calls update once per frame before the scene pass; the cascade depth passes are
 // drawn by World through shadowMap(). Occlusion volume occluders are collected from the world
 // systems (contributions of the worldSystems registry).
 class LightingSystem final {
@@ -27,6 +28,11 @@ public:
     CascadedShadowMap &shadowMap() {
         return m_shadowMap;
     }
+    // The ambient occlusion the frame that was just drawn left (SsaoRenderer): the next update
+    // puts it into the lighting of its frame.
+    void setScreenOcclusion(const SsaoData &occlusion) {
+        m_screenOcclusion = occlusion;
+    }
     // Screen position of the frame's sun (xy — UV, z — "in frame" 0/1): postprocessing flares.
     glm::vec4 sunScreen() const {
         return m_sunScreen;
@@ -35,7 +41,9 @@ public:
 private:
     CascadedShadowMap m_shadowMap;
     OcclusionVolume m_occlusion;
+    EnvironmentLighting m_environment;
     WorldLightingData m_data;
+    SsaoData m_screenOcclusion;
     glm::vec4 m_sunScreen = glm::vec4(0.f);
 };
 

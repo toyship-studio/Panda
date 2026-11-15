@@ -37,6 +37,13 @@ namespace Views {
     // right away).
     extern Miren::ViewId BRANCH_BAKE_VIEWS_BEGIN;
     extern Miren::ViewId BRANCH_BAKE_VIEWS_END;
+    // The bake of the environment light atlas (EnvironmentLighting): one pass when the map of the
+    // world changes, before everything that reads the atlas.
+    extern Miren::ViewId ENVIRONMENT_BAKE_VIEW;
+    // Screen-space ambient occlusion (SsaoRenderer): the integral and its blur, after the scene
+    // and the postprocessing of the frame — the NEXT frame shades with the result.
+    extern Miren::ViewId SSAO_VIEW;
+    extern Miren::ViewId SSAO_BLUR_VIEW;
     // Finalization of previews/thumbnails (tonemap of the HDR scratch target into the display
     // texture) — after the render views above.
     extern Miren::ViewId PREVIEW_TONEMAP_VIEW;
@@ -53,6 +60,9 @@ namespace Views {
     extern Miren::ViewId POST_PROCESSING_VIEWS_BEGIN;
     // Runtime chain output (the final pass — straight to the screen); executed after all passes.
     extern Miren::ViewId POST_PROCESSING_OUTPUT_VIEW;
+    // The antialiasing pass of a chain whose result is a texture (the editor viewports, the
+    // previews): after the Tonemap. In the runtime it is the final pass and takes the output view.
+    extern Miren::ViewId ANTIALIASING_VIEW;
 
     inline Miren::ViewId shadowView(int cascadeIndex) {
         return SHADOW_VIEWS_BEGIN - cascadeIndex;

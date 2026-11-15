@@ -16,8 +16,10 @@ the editor loads.
    `Scripts/___PROJECTNAME___/scripts/configure_scripts.sh debug` (once),
    then `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`.
    Fix compilation errors yourself, using the output.
-3. Ask the user to press Reload (Cmd/Ctrl+R) — the editor picks up the fresh library (by mtime).
-   The user is also the one who runs and checks the game.
+3. Call the `reload` tool of the editor (its MCP server; without it ask the user to press
+   Reload, Cmd/Ctrl+R) — the editor picks up the fresh library (by mtime). Read the answer and
+   `logs` for errors; `play` and a `screenshot` of the `game` view show the game. Motion, input
+   and sound are checked by the user.
 
 After the scripts are loaded the editor updates `.Panda/scripts-manifest.json` — take the fields
 for binding in a world from there (panda-script-fields).

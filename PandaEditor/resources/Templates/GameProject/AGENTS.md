@@ -2,7 +2,8 @@
 
 A PandaEditor project. The entire project state is text files: worlds, materials and settings
 are JSON, gameplay is C++. Any editor and any coding agent can read and edit them directly; the
-running editor picks up the changes on one explicit command, Reload.
+running editor picks up the changes on one explicit command, Reload, and shows an agent the
+result through its MCP server.
 
 ## Structure
 
@@ -12,21 +13,45 @@ running editor picks up the changes on one explicit command, Reload.
 - `Scripts/___PROJECTNAME___/src/` — the game's C++ scripts, built into a library the editor
   loads.
 - `Scripts/___PROJECTNAME___/scripts/` — shell scripts for the builds (see "Building scripts").
-- `.Panda/` — service data: `project.json` (the project settings), `scripts-manifest.json`,
-  cooked data. Do not edit by hand.
+- `.Panda/` — `project.json` (the project settings: text, edit it like any other file) and
+  service data the editor writes (`scripts-manifest.json`, the caches, cooked data).
+- `.mcp.json` — where an MCP client finds the editor of this project (see "The running editor").
 - `Export/` — the build setup of the standalone game.
 - `.zed/tasks.json` — tasks for the Zed editor (configure, build, open the export projects,
   format). `.clangd` points at the debug build's compile database.
 
+## The running editor
+
+While the project is open in PandaEditor, the editor answers an agent through its MCP server
+(`.mcp.json`; the `"mcp"` section of `.Panda/project.json` switches it and names the port). The
+files stay the way to change the project; the tools are for what a file cannot do:
+
+| Tool | What it does |
+| --- | --- |
+| `status` | the project, Edit or Play, the open worlds, unsaved documents, the viewports, the frame statistics |
+| `reload` | the editor takes what changed on disk: worlds, assets, shaders, settings, the script build |
+| `screenshot` | a picture of the `scene` view (the editor camera) or of the `game` view (the main camera, the game UI) |
+| `logs` | the log of the editor: shader, import and script errors |
+| `play`, `stop` | runs the game inside the editor, returns to editing |
+| `camera` | places the editor camera of the `scene` view |
+| `save` | writes what the user changed in the editor to the files |
+| `open_world`, `restart`, `quit` | another world, a new start of the editor |
+
 ## Working rules
 
-- **Only a human runs and debugs the game.** Do not try to launch the editor or the game; ask
-  the user to check and give feedback.
-- **At the end of your work ask the user to press Reload (Cmd/Ctrl+R)** — the editor
-  synchronizes with the disk in a single command: it rereads changed assets, the fresh script
-  bundle and the world (by mtime). Broken world JSON is safe — the editor reports the error and
-  keeps the current world. A conflict (newer on disk plus unsaved edits in the editor) is
-  resolved by the user per item.
+- **Check your own work.** After editing files call `reload`, read its answer and `logs` for
+  errors, and look at a `screenshot` before saying that something works. `play` and a
+  `screenshot` of the `game` view show the game itself.
+- **What a still picture cannot show is the user's to check**: motion, input, sound, the feel of
+  the game. Say what to try.
+- **Without the tools, ask.** If the editor's tools are not there (the editor is not running, or
+  `"mcp"` is off in `.Panda/project.json`), do not launch the editor yourself: ask the user to
+  press Reload (Cmd/Ctrl+R) and to report what they see.
+- Reload synchronizes the editor with the disk in a single command: it rereads changed assets,
+  the fresh script bundle and the world (by mtime). Broken world JSON is safe — the editor
+  reports the error and keeps the current world. A file that is newer on disk and also has
+  unsaved edits in the editor is a conflict: `reload` fails and names it, and the user decides
+  which version stays (do not pass `discard` without asking).
 - Build the C++ scripts yourself (see "Building scripts") — Reload picks up the fresh library.
 - New asset files are registered by the editor; do not edit `.pmeta` sidecars by hand.
 - Detailed formats: `docs/` in the PandaSDK package (`world-format.md`, `assets.md`,
@@ -80,7 +105,7 @@ place:
 
 - `.Panda/scripts-manifest.json` is the source of truth: the editor writes it on every script
   load with the class names, the fields, their `fieldId` and types. **Always take `fieldId` from
-  there**, do not compute it. If the file is missing, ask the user to build/reload the scripts.
+  there**, do not compute it. If the file is missing, build the scripts and reload.
 - `name` — the name of the C++ class (`REGISTER_SCRIPT`).
 - `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world (the
   manifest has the same types as words).
@@ -92,9 +117,9 @@ place:
 
 ## Assets and materials
 
-- Put the file into `Assets/` — the editor registers new files when the project is opened or
-  rescanned and assigns ids in the `.pmeta` sidecars. If the id of a new file is needed right
-  away and the editor has not rescanned yet, ask the user.
+- Put the file into `Assets/` and call `reload`: the editor registers new files (Reload, the
+  Refresh button of the Content Browser, opening the project) and assigns their ids in the
+  `.pmeta` sidecars — read the id of a new asset from its sidecar afterwards.
 - Textures: `.png/.jpg`. sRGB (color) by default; DATA maps (normal, roughness, noise) need
   sRGB switched off — ask the user to toggle it in the texture inspector.
 - Meshes: `.gltf` (+ `.bin` and textures next to it). For every glTF material the editor creates
@@ -115,5 +140,5 @@ place:
    The scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`. The same commands
    are the Zed tasks "Configure ___PROJECTNAME___ Debug" and "Build ___PROJECTNAME___ Debug".
    Fix compilation errors yourself, using the output.
-3. Ask the user to press Reload (Cmd/Ctrl+R) — the editor picks up the fresh library (by mtime)
-   and updates `.Panda/scripts-manifest.json`.
+3. Call `reload` (or ask the user to press Reload, Cmd/Ctrl+R) — the editor picks up the fresh
+   library (by mtime) and updates `.Panda/scripts-manifest.json`.

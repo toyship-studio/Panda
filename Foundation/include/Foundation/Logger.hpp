@@ -1,7 +1,11 @@
 #pragma once
 
 #include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace Foundation {
 
@@ -16,6 +20,8 @@ public:
     static void log(std::string_view message, MessageType type);
 
 private:
+    friend class EditorLogger;
+    static void print(std::string_view message, MessageType type); // the console only
     enum class ColorType { DEFAULT, GREEN, YELLOW, RED };
     enum class ColorBgType { DEFAULT, RED };
     struct TextInfo {
@@ -44,6 +50,29 @@ public:
 
 private:
     static EditorLoggerCallback s_callback;
+};
+
+// A line of either log, as it was written.
+struct LogRecord {
+    uint64_t sequence = 0; // grows by one with every line and is never reused
+    Logger::MessageType type = Logger::MessageType::_INFO;
+    bool editor = false; // written for the user (EditorLogger): the Output panel of the editor shows it
+    char time[9] = {};   // "HH:MM:SS"
+    std::string text;
+};
+
+// The last lines of both logs, kept in memory for a tool attached to the running application:
+// the MCP server answers with them (the console of an application the system has started goes
+// nowhere, and the Output panel belongs to the UI). Off until enabled — a line then costs what it
+// did. Thread safe.
+class LogHistory {
+public:
+    static void enable(size_t capacity = 4096);
+    // The sequence the next line gets: a reader that remembers it asks later for what came after.
+    static uint64_t nextSequence();
+    // The lines from `from` on of `minimum` level and above, the oldest first; of more than
+    // `limit` such lines the newest ones. `total` (optional) — how many there were.
+    static std::vector<LogRecord> read(uint64_t from, Logger::MessageType minimum, size_t limit, size_t *total = nullptr);
 };
 
 } // namespace Foundation

@@ -85,6 +85,12 @@ namespace {
             data->shadows.strength = value;
             emit();
         });
+        // The angular radius of the sun (degrees): how fast the edge of a shadow softens with the
+        // distance from its caster. 0 — the fixed filter.
+        addNumberRow(section, "Softness", 0.f, 5.f, data->shadows.softness, [data, emit](float value) {
+            data->shadows.softness = value;
+            emit();
+        });
         // Biases against acne: slope — the rasterizer of the depth pass; normal offset and receiver
         // bias — in cascade texels (independent of the scene scale).
         addNumberRow(section, "Slope Bias", 0.f, 16.f, data->shadows.slopeBias, [data, emit](float value) {
@@ -97,6 +103,26 @@ namespace {
         });
         addNumberRow(section, "Depth Bias", 0.f, 8.f, data->shadows.receiverBias, [data, emit](float value) {
             data->shadows.receiverBias = value;
+            emit();
+        });
+    }
+
+    // Screen-space ambient occlusion: the contact darkening of the ambient light (the `ssao`
+    // feature of the project).
+    void buildSsao(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::WorldGraphicsSettings>(store.get<Panda::WorldGraphicsSettings>());
+        auto emit = [data] { commitSettings<Panda::WorldGraphicsSettings>(SettingsScope::World, *data); };
+        addToggleRow(section, "Enabled", data->ssao.enabled, [data, emit](bool on) {
+            data->ssao.enabled = on;
+            emit();
+        });
+        // How far an occluder reaches (m).
+        addNumberRow(section, "Radius", 0.05f, 4.f, data->ssao.radius, [data, emit](float value) {
+            data->ssao.radius = value;
+            emit();
+        });
+        addNumberRow(section, "Intensity", 0.f, 4.f, data->ssao.intensity, [data, emit](float value) {
+            data->ssao.intensity = value;
             emit();
         });
     }
@@ -401,6 +427,26 @@ namespace {
         ));
     }
 
+    // The MCP server of the editor for this project: an AI agent in the project folder looks at
+    // the editor and drives it through it (App/EditorMcp). Follows the section at once.
+    void buildProjectMcp(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::ProjectMcpSettings>(store.get<Panda::ProjectMcpSettings>());
+        auto emit = [data] { commitSettings<Panda::ProjectMcpSettings>(SettingsScope::Project, *data); };
+        addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
+            data->enabled = on;
+            emit();
+        });
+        addNumberRow(section, "Port", 1024.f, 65535.f, static_cast<float>(data->port), [data, emit](float value) {
+            data->port = static_cast<int>(std::lround(value));
+            emit();
+        });
+        section.addContent(makeFormHint(
+            "An AI agent (Claude Code and other MCP clients) sees the editor of this project and drives it: "
+            "screenshots of the viewports, the log, Reload, Play. The address is http://127.0.0.1:<port>/mcp, "
+            "local programs only; .mcp.json of the project names the same port."
+        ));
+    }
+
 } // namespace
 
 void setThemeProvider(ThemeProvider provider) {
@@ -414,6 +460,7 @@ void setUpdateProvider(UpdateProvider provider) {
 void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::World, "WORLD", buildLighting});
     extensions.settingsSections.push_back({SettingsScope::World, "SHADOWS", buildShadows});
+    extensions.settingsSections.push_back({SettingsScope::World, "AMBIENT OCCLUSION", buildSsao});
     extensions.settingsSections.push_back({SettingsScope::World, "OCCLUSION VOLUME", buildOcclusion});
     extensions.settingsSections.push_back({SettingsScope::World, "WIND", buildWind});
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});
@@ -423,6 +470,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});
     extensions.settingsSections.push_back({SettingsScope::Project, "MODULES", buildProjectModules});
+    extensions.settingsSections.push_back({SettingsScope::Project, "MCP SERVER", buildProjectMcp});
 }
 
 } // namespace Editor

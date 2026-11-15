@@ -1,4 +1,5 @@
 #include "EditorLayer.hpp"
+#include "App/EditorMcp.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
 #include "App/SystemStats.hpp"
 
@@ -100,7 +101,7 @@ namespace {
 
 } // namespace
 
-EditorLayer::EditorLayer(Fern::Window *window, bool openLastProject)
+EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
     : m_playingWorld()
     , m_currentWorld(nullptr)
     , m_sceneState(SceneState::EDIT)
@@ -111,11 +112,11 @@ EditorLayer::EditorLayer(Fern::Window *window, bool openLastProject)
     , m_menuBar(window, this)
     , m_pandaUI(window)
     , m_viewports() {
-    m_openLastProject = openLastProject;
+    m_launch = std::move(launch);
     m_currentWorld = &editingWorld();
 }
 
-EditorLayer::~EditorLayer() = default; // Editor::EditorController is complete here (see include) — for unique_ptr
+EditorLayer::~EditorLayer() = default; // EditorController and EditorMcp are complete here (see the includes) — for unique_ptr
 
 void EditorLayer::onAttach() {
     Foundation::EditorLogger::init(Editor::OutputPanelView::loggerCallback); // engine logs → Output panel
@@ -144,7 +145,7 @@ void EditorLayer::onAttach() {
     m_viewports.init();
     m_viewports.scene().setWorld(m_currentWorld);
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
-    m_loader.loadInitialData(m_openLastProject);
+    m_loader.loadInitialData(m_launch.openLastProject, m_launch.project);
     // A world applies its wind itself when its frame begins. Here the wind of the loaded world
     // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
@@ -215,6 +216,7 @@ void EditorLayer::onAttach() {
     // After the settings and the chrome: the first check runs at once when automatic updates are on.
     m_updater.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
     m_pluginStore.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
+    m_mcp = std::make_unique<EditorMcp>(*this); // listens once a project with the "mcp" section on is open
 
     LOG_INFO_EDITOR("EDITOR INITIALIZED");
 }
@@ -223,6 +225,7 @@ void EditorLayer::onDetach() {
     // The files nobody asked to write, while the editor still answers (the camera of the active
     // world goes into the session).
     m_loader.saveOnExit();
+    m_mcp.reset();
     Fern::setCursorLocked(false);
     ThumbnailsManager::setShared(nullptr);
     m_thumbnails.reset();
@@ -243,6 +246,9 @@ void EditorLayer::onUpdate(double deltaTime) {
         m_pendingStop = false;
         if (m_sceneState != SceneState::EDIT) { stop(); }
     }
+    // The requests of the agent, before the frame is built: a tool changes the state of the
+    // editor (Play, Reload, another world) where a click of the user would.
+    if (m_mcp) { m_mcp->update(); }
     // Size the engine viewports from the PandaUI panels BEFORE the world renders this frame.
     if (m_loader.hasOpenedProject()) {
         syncViewports();
@@ -636,11 +642,19 @@ bool EditorLayer::saveAll() {
 }
 
 void EditorLayer::reloadFromDisk() {
-    // A single synchronization of the editor with the disk (the Reload button / Cmd+R), by
-    // modification time: a file document changed on disk is reread; when the memory has edits
-    // too, the user picks the version that stays; Cancel aborts the rest. The script build is a
-    // step of its own before the worlds (nothing edits it in memory).
+    // A single synchronization of the editor with the disk (the Reload button / Cmd+R): the
+    // asset registry follows the project tree, then, by modification time, a file document
+    // changed on disk is reread; when the memory has edits too, the user picks the version that
+    // stays; Cancel aborts the rest. The script build is a step of its own before the worlds
+    // (nothing edits it in memory).
     if (m_sceneState != SceneState::EDIT) { stop(); }
+    // The registry follows the tree first: a file put into the project since the last scan
+    // becomes an asset (its sidecar gets an id), a file that is gone leaves the registry. The ids
+    // of the known assets live in their sidecars and do not change, so nothing loaded is touched.
+    if (auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler())) {
+        assetHandler->rescanProject();
+        if (m_editorController) { m_editorController->refreshAssetPanels(); }
+    }
     std::string reloaded;
     bool scriptsChecked = false;
     const auto reloadScripts = [&] {
@@ -1914,7 +1928,13 @@ void EditorLayer::restartEditor() {
     // The same flow as Quit, the unsaved-changes dialog included; main() starts the new instance
     // once this one has written its settings and torn the window down.
     runAfterUnsavedQuestion([this]() {
-        SystemTools::setRelaunchOnExit(true);
+        // The new instance opens the project of this one: the session file is shared by every
+        // running editor, the command line is not.
+        std::vector<std::string> arguments;
+        if (m_loader.hasOpenedProject()) {
+            arguments = {SystemTools::PROJECT_ARGUMENT, m_loader.getOpenedProjectPath().string()};
+        }
+        SystemTools::setRelaunchOnExit(true, std::move(arguments));
         closeApp();
     });
 }

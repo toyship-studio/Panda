@@ -20,7 +20,7 @@ namespace Panda {
 // every draw with the data of an empty scene, so a program compiled with the feature stays
 // correct. The names are a contract fixed for every version of the engine: a block grows at its
 // end only, a new capability is a new feature.
-enum class ShaderFeature : uint8_t { Lights, Shadows, Occlusion, Environment, Wind, Count };
+enum class ShaderFeature : uint8_t { Lights, Shadows, Occlusion, Environment, Wind, Ssao, Count };
 
 // A system texture of a feature: declared by the generated include, bound by the renderer to every
 // scene draw (a placeholder when the frame has none), never a material field.

@@ -73,14 +73,18 @@ ProjectLoader::~ProjectLoader() {
     GameContext::setScriptEngine(nullptr);
 }
 
-void ProjectLoader::loadInitialData(bool openLastProject) {
+void ProjectLoader::loadInitialData(bool openLastProject, const path_t &project) {
     const path_t directory = editorDataDirectory();
     if (directory.empty()) { LOG_WARN("NO USER DATA DIRECTORY: THE EDITOR SETTINGS ARE NOT PERSISTED"); }
     m_documents.editorSettingsFile().open(directory.empty() ? path_t() : directory / "settings.json");
     if (!directory.empty() && !readJson(directory / "session.json", m_jsonDecoder, m_session)) {
         m_session = EditorSession();
     }
-    if (openLastProject && m_session.hasOpenedProject) { loadRecentProject(); }
+    if (!project.empty()) {
+        openProject(project);
+    } else if (openLastProject && m_session.hasOpenedProject) {
+        loadRecentProject();
+    }
 }
 
 void ProjectLoader::saveOnExit() {

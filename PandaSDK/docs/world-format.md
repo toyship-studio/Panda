@@ -11,7 +11,7 @@ shows an error and does not touch the current world.
 ```json
 {
     "lighting": { "ambientColor": {"x":1,"y":1,"z":1,"w":1}, "ambientIntensity": 0.12, "environmentMap": 0, "environmentIntensity": 1 },
-    "graphics": { "shadows": { ... }, "occlusion": { ... } },
+    "graphics": { "shadows": { ... }, "occlusion": { ... }, "ssao": { ... } },
     "wind": { "strength": 0.4, "speed": 1, "gustiness": 0.5, "directionDegrees": 0 },
     "terrain": { "lod1": 120, "lod2": 240, "drawDistance": 0, "ring2Width": 4, "ring3Width": 16, "ring4Width": 32 },
     "flora": { "grass": 80, "grassDissolve": 0, "tree": 80, "imposter": 4000 },
@@ -25,10 +25,15 @@ draw distances in meters and the widths of the tile rings in columns, `flora` �
 in meters; the defaults are as in the example). A section and every field in it are optional:
 what is missing takes the engine defaults. The field names are the C++ field names of the
 settings structs: `graphics.shadows` — `enabled`, `cascadeCount`, `tileSize`, `distance`,
-`strength`, `slopeBias`, `normalOffset`, `receiverBias`; `graphics.occlusion` — `enabled`,
-`aoStrength`, `sunStrengthNear`, `sunStrengthFar`, `cellSize`, `windowChunks`, `extinction`,
-`surfaceOffset`, `contrast` (`Panda/include/Panda/GameLogic/WorldSettings.hpp`,
-`Renderer/SceneWind.hpp`). A section whose module is absent is preserved as is on load and save;
+`strength`, `softness` (the angular radius of the sun in degrees: the edge of a shadow widens with
+the distance from its caster; 0 — a fixed filter), `slopeBias`, `normalOffset`, `receiverBias`;
+`graphics.occlusion` — `enabled`, `aoStrength`, `sunStrengthNear`, `sunStrengthFar`, `cellSize`,
+`windowChunks`, `extinction`, `surfaceOffset`, `contrast`; `graphics.ssao` — `enabled`, `radius`
+(m), `intensity` (`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
+`lighting.environmentMap` is the id of a texture asset (an equirectangular `.hdr`): the default
+sky draws it and the lit shaders take the light of the sky from it, both scaled by
+`environmentIntensity`; `ambientColor` × `ambientIntensity` is a flat light added on top (0 —
+the map alone lights the scene). A section whose module is absent is preserved as is on load and save;
 the editor logs a warning about it.
 
 ## Entity
@@ -97,6 +102,15 @@ joins the body of the nearest entity above it that has one (a compound body: a c
 `rigidbody3dComponent` on the cabinet entity and a `boxCollider3dComponent` on each board under
 it); such an entity carries no joint.
 
+`cameraComponent` also holds the look of its frame: `bloomEnabled` / `bloomIntensity` /
+`bloomRadius`, `autoExposureEnabled` with its `autoExposureKey` / `Speed` / `Min` / `Max`,
+`exposure` (a compensation in stops, 0 by default), `tonemap` (`"agx"` — the default, `"aces"`,
+`"neutral"`, `"reinhard"`, `"none"`), `antialiasing` (true by default), `postprocessing` (the id
+of a `.postfx` chain) with `postprocessingEnabled`. A glTF asset placed in a world is an entity
+named after the file, under it an entity per node of the glTF scene with the node's transform,
+and under a node with a mesh one entity per primitive with an `importedSubmeshComponent`
+(`submeshIndex` — the index of the mesh in the glTF, `primitiveIndex`).
+
 The exact fields of the core components are in
 `Panda/include/Panda/Serialization/ComponentDtos.hpp` (C++ field name = JSON key); module
 components keep their DTOs in the module
@@ -142,9 +156,10 @@ key whose type is absent (the module is not loaded) survives load and save as is
 sections by name, in version control. The core sections are `world` (`startWorld` — the main
 world of the project, relative to the project with forward slashes; the editor opens it when the
 project has no session), `rendering` (`features: ["lights", "shadows", …]` — the shader
-features the project enables, see `shaders.md`; without the section every feature is on) and
+features the project enables, see `shaders.md`; without the section every feature is on),
 `modules` (`entries: [{id, version, enabled}]` — the module set, an entry with `enabled: false`
-switches a module of the distribution off; an empty list enables all). Modules may add sections
+switches a module of the distribution off; an empty list enables all) and `mcp` (`enabled`,
+`port` — the MCP server of the editor for this project, see `zed-and-agents.md`). Modules may add sections
 of their own; a section whose module is absent is preserved.
 
 `.Panda/session.json` is the state of the last editor session (`worlds`: the world files that

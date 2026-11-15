@@ -1,8 +1,10 @@
 #include "Foundation/Logger.hpp"
 #include "Foundation/PlatformDetection.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <deque>
 #include <mutex>
 #include <thread>
 
@@ -33,6 +35,34 @@ namespace {
         std::snprintf(out, sizeof(out), "%02d:%02d:%02d", local.tm_hour, local.tm_min, local.tm_sec);
     }
 
+    // LogHistory: the last lines of both logs. A lock of its own — a line is recorded before the
+    // console is written, and the two never nest.
+    struct History {
+        std::mutex mutex;
+        std::deque<Foundation::LogRecord> records;
+        size_t capacity = 0; // 0 — off
+        uint64_t next = 1;
+    };
+
+    History &history() {
+        static History instance;
+        return instance;
+    }
+
+    void record(std::string_view message, Foundation::Logger::MessageType type, bool editor) {
+        History &log = history();
+        std::lock_guard<std::mutex> lock(log.mutex);
+        if (log.capacity == 0) { return; }
+        Foundation::LogRecord line;
+        line.sequence = log.next++;
+        line.type = type;
+        line.editor = editor;
+        timeOfNow(line.time);
+        line.text.assign(message.data(), message.size());
+        log.records.push_back(std::move(line));
+        if (log.records.size() > log.capacity) { log.records.pop_front(); }
+    }
+
 } // namespace
 
 namespace Foundation {
@@ -53,6 +83,11 @@ void Logger::log(MessageType type, const char *format, ...) {
 }
 
 void Logger::log(std::string_view message, Logger::MessageType type) {
+    record(message, type, false);
+    print(message, type);
+}
+
+void Logger::print(std::string_view message, Logger::MessageType type) {
     TextInfo textInfo;
     switch (type) {
         case Logger::MessageType::_TRACE:
@@ -184,23 +219,53 @@ void EditorLogger::log(MessageType type, const char *format, ...) {
 }
 
 void EditorLogger::log(std::string_view message, MessageType type) {
+    Logger::MessageType loggerType = Logger::MessageType::_INFO;
+    switch (type) {
+        case Info:
+            loggerType = Logger::MessageType::_INFO;
+            break;
+        case Warning:
+            loggerType = Logger::MessageType::_WARNING;
+            break;
+        case Error:
+            loggerType = Logger::MessageType::_ERROR;
+            break;
+    }
+    record(message, loggerType, true);
     if (s_callback == nullptr || std::this_thread::get_id() != s_editorLoggerThread) {
-        Logger::MessageType loggerType = Logger::MessageType::_INFO;
-        switch (type) {
-            case Info:
-                loggerType = Logger::MessageType::_INFO;
-                break;
-            case Warning:
-                loggerType = Logger::MessageType::_WARNING;
-                break;
-            case Error:
-                loggerType = Logger::MessageType::_ERROR;
-                break;
-        }
-        Logger::log(message, loggerType);
+        Logger::print(message, loggerType);
         return;
     }
     s_callback(message, type);
+}
+
+void LogHistory::enable(size_t capacity) {
+    History &log = history();
+    std::lock_guard<std::mutex> lock(log.mutex);
+    log.capacity = std::max<size_t>(capacity, 1);
+    while (log.records.size() > log.capacity) { log.records.pop_front(); }
+}
+
+uint64_t LogHistory::nextSequence() {
+    History &log = history();
+    std::lock_guard<std::mutex> lock(log.mutex);
+    return log.next;
+}
+
+std::vector<LogRecord> LogHistory::read(uint64_t from, Logger::MessageType minimum, size_t limit, size_t *total) {
+    History &log = history();
+    std::lock_guard<std::mutex> lock(log.mutex);
+    std::vector<LogRecord> lines;
+    size_t count = 0;
+    // From the newest back: of more than `limit` lines the newest ones are the answer.
+    for (auto it = log.records.rbegin(); it != log.records.rend() && it->sequence >= from; ++it) {
+        if (it->type < minimum) { continue; }
+        ++count;
+        if (lines.size() < limit) { lines.push_back(*it); }
+    }
+    std::reverse(lines.begin(), lines.end());
+    if (total != nullptr) { *total = count; }
+    return lines;
 }
 
 } // namespace Foundation

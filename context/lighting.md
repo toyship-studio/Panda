@@ -1,10 +1,13 @@
-# Lighting: sun shadows, Occlusion Volume, environment map
+# Lighting: sun shadows, ambient occlusion, Occlusion Volume, environment map
 
-Scene lighting of the engine: cascaded sun shadows near the camera, the Occlusion Volume that
-shades vegetation mass at any distance, and the world environment map. Code:
+Scene lighting of the engine: cascaded sun shadows with a soft edge near the camera, the
+screen-space ambient occlusion that darkens contacts, the Occlusion Volume that shades vegetation
+mass at any distance, and the world environment map with the light it gives. Code:
 `Panda/Renderer/WorldLighting.hpp`, `Panda/Renderer/CascadedShadowMap`,
+`Panda/Renderer/SsaoRenderer`, `Panda/Renderer/EnvironmentLighting`,
 `Panda/Renderer/OcclusionVolume`, `Panda/GameLogic/Systems/LightingSystem`, and the shader
-includes in `Panda/resources/default-shaders/include/panda/`.
+includes in `Panda/resources/default-shaders/include/panda/`. The frame these belong to — one
+forward pipeline, HDR, the tonemap — is in `context/rendering.md`.
 
 The user's material and shader are fully replaceable: everything below is a contract of data
 blocks and system textures, not of particular shaders.
@@ -62,11 +65,30 @@ forest comes from the Occlusion Volume.
   (concentric, so it does not swim when the camera turns), the next cascade is blended in over the
   last 20% of the range, the normal offset × sinθ and the depth bias are measured IN TEXELS of the
   cascade, and the footprint is clamped to the tile. Filter (the atlas is LINEAR with compare, so
-  every tap is 2×2): lit, pbr, terrain and terrain3d use a 3×3 tent PCF on 4 bilinear taps;
+  every tap is 2×2): lit, pbr, terrain and terrain3d take the soft shadow (next item), or with a
+  softness of 0 a 3×3 tent PCF on 4 bilinear taps;
   vegetation (`veg_crown`, `veg_grass`, `grass`, `flora_billboard`) defines
   `PANDA_SHADOW_SINGLE_TAP` before the include and takes one tap (softness is not readable on
   foliage). Beyond the CSM distance `lerp(1, shadow, csmWeight)` leaves the sun open (the volume
   transmittance takes over); point lights are not attenuated.
+- **The soft edge** (`Settings::softness`, the angular radius of the sun in degrees, 1.5 by
+  default; `shadowSoftness` of `PANDA_SHADOWS`: x — its tangent, y — the widest penumbra radius,
+  0.3 m). The sun is a disc: the edge of a shadow widens with the distance between the caster and
+  the receiver — sharp at a contact, soft far from it (PCSS). `softCascade` in
+  `panda/shadows.hlsli`: 12 taps of a Vogel disc read the raw depth of the atlas
+  (`shadowMap.Load`) as far around the point as the widest penumbra reaches and average the
+  casters; the penumbra radius is `caster distance × tan(softness)`, never under 1.25 texels of
+  the cascade (the old tent width), and 16 compare taps of the same disc filter that wide. No
+  caster found — lit, without the filter. The disc turns from pixel to pixel by a hash of the
+  world position (grain instead of bands; there is no temporal accumulation to hide more). The
+  radius is in METERS, so the softness is the same in every cascade until the texels of a far
+  one are wider than the penumbra.
+- **Receiver plane bias.** A wide filter on a slope would compare taps aside of the point with
+  the depth of the point itself and shade the slope with its own surface. Every tap is compared
+  with the depth the receiver has THERE: the receiver is a plane, its slope in the cascade comes
+  from the geometric normal (`tileNormal = shadowMatrix × normal`; depth per uv =
+  −(depth per meter / uv per meter)² · n.uv / n.depth), capped for a surface edge-on to the sun.
+  The blocker search uses the same plane.
 - Sample points: grass samples the shadow at the ROOT of the tuft (`rootPos`); `veg_crown` at the
   fragment point (self-shadowing by the crown); `flora_billboard` at a point on the tree axis
   shifted toward the sun (sampling at the fragment point gave acne from its own shadow plane),
@@ -276,10 +298,54 @@ light to occlude and only the transmittance addition inside the CSM distance sta
   otherwise the joint between the zones reads as a step.
 - Sun transmittance across chunks uses integer ray shifts only (see the chunk bake).
 
+## Screen-space ambient occlusion
+
+The share of its surroundings a point sees past the geometry next to it: the darkening of
+contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer/SsaoRenderer`,
+`ssao.frag`, `ssao_blur.frag`, `panda/ssao.hlsli`.
+
+- **It belongs to the ambient light**, not to the picture: a lit shader multiplies its ambient
+  (flat and environment, diffuse and specular) by it and leaves the sun alone. A multiply over
+  the finished frame would dim sunlit surfaces and emissive ones too.
+- **No second pass over the geometry.** A lit shader needs the occlusion while it shades, before
+  the depth of its own frame exists. The usual answer is a depth prepass: the world drawn twice,
+  and a depth variant of every vertex shader (wind, terrain layouts, user shaders) that must
+  match the color pass. Here the occlusion is computed from the depth of the frame that has just
+  been drawn and read by the NEXT frame: `PostprocessingPipeline` runs `SsaoRenderer` after the
+  chain (views `SSAO_VIEW`, `SSAO_BLUR_VIEW`), the layer hands the result to the world
+  (`World::setScreenOcclusion`), `LightingSystem` puts it into `WorldLightingData::ssao` and
+  `SceneBlocks` binds `ssaoMap` with `PANDA_SSAO` (`ssaoViewProj` — the view-projection of that
+  frame). `sampleScreenOcclusion(worldPos)` projects the point with it and reads the map. A
+  point the last frame did not show — a disocclusion, a moving object, a cut — is recognized by
+  its view depth, stored in the g channel of the map (the tolerance grows with the slope of the
+  depth on screen), and stays open for one frame. Any shader gets the occlusion with one call
+  and nothing has a depth variant.
+- **The integral** is GTAO (Jimenez et al.) at half resolution: 3 slices through the view
+  direction, 4 steps each way along the screen for the highest horizon, the visible arc
+  integrated with the cosine of the normal. The normal comes from the depth (the neighbor on the
+  same surface on each axis). `ssao_blur.frag` averages 5×5 with a weight by how far a neighbor
+  is from the depth the slope of the surface predicts, and applies the intensity.
+- **Three details that decide the quality:**
+  - A pixel of the pass covers 2×2 texels of the depth and its center lies on their corner: the
+    point is the first of the four, addressed by its center (`floor(position) * 2 + 0.5`).
+    Reading at the corner let rounding choose the texel, and the neighbor one texel aside was
+    sometimes the same texel — a zero-length edge, a broken normal, bands across the frame.
+  - The distance of a point comes from the depth as `1 / ((1 − d) / near + d / far)`: a sum of
+    positive terms. The inverse projection matrix makes a far point the small difference of two
+    large numbers, and that noise bends the normal of a floor seen at a low angle.
+  - The slices and the steps are turned by a pattern that takes each of 25 values once in every
+    5×5 block, so the 5×5 blur cancels it exactly on a flat surface.
+- Settings: `WorldGraphicsSettings::ssao` (`SsaoSettings`: `enabled`, `radius` 0.6 m,
+  `intensity`), Settings → AMBIENT OCCLUSION; `graphics.ssao` in `.world`.
+- Limits: perspective cameras only (an orthographic frame gets none); what is off screen does
+  not occlude; the normal is geometric, so a low-poly curved mesh shows its facets in the
+  occlusion; transparent surfaces take the occlusion of what is behind them.
+
 ## Environment map
 
-An equirectangular texture of the world: the default sky draws it and PBR reflects it. There is
-one per world, distributed as a system texture like the shadow atlas and the occlusion volume.
+An equirectangular texture of the world: the default sky draws it and every lit surface is lit
+by it. There is one per world, distributed as system textures like the shadow atlas and the
+occlusion volume.
 
 ### Contract
 
@@ -293,13 +359,43 @@ one per world, distributed as a system texture like the shadow atlas and the occ
 - Frame data: `WorldLightingData::environment` (`EnvironmentData { map, intensity }`).
 - The `PANDA_ENVIRONMENT` block (the `environment` shader feature, `EnvironmentUbo`,
   `panda/environment.hlsli`): `float4 environmentParams`: x is exposure, y is the top mip of the
-  map (`floor(log2(max(w, h)))`), z = 1 when a map is set.
-- System texture: `Texture2D environmentMap; SamplerState environmentMapSampler;`, declared by
-  the block include and bound by `SceneBlocks::bind()` when the feature is on. The field does not
-  belong to the material (`ShaderReflectionDataMapper` skips the system textures of the
-  features). `default_pbr` reads the map under `#if PANDA_FEATURE_ENVIRONMENT`.
-- Without a map the slot holds `StaticResources::defaultSkyTexture`: a 64×32 equirectangular
-  gradient (zenith → horizon → ground) baked by code; `environmentParams.z = 0`.
+  map (`floor(log2(max(w, h)))`), z = 1 when the world has a map and its light is baked;
+  `float4 environmentTiles[6]` — the uv rects of the light atlas (below).
+- System textures: `environmentMap` and `environmentLighting`, declared by the block include and
+  bound by `SceneBlocks::bind()`. They do not belong to the material
+  (`ShaderReflectionDataMapper` skips the system textures of the features).
+- Without a map the map slot holds `StaticResources::defaultSkyTexture`: a 64×32
+  equirectangular gradient (zenith → horizon → ground) baked by code; the atlas slot holds a
+  black texture, `environmentParams.z = 0` and the tiles are zero: the functions of the include
+  return black, the scene is lit by the flat ambient alone.
+
+### The light of the map
+
+A lit shader cannot integrate the map per pixel, so the integrals are baked into one small atlas
+(`Panda/Renderer/EnvironmentLighting`, owned by `LightingSystem`; 264 × 312, RGBA16F): tiles of
+the same equirectangular layout, one under another.
+
+- Tiles 0..4: the radiance prefiltered with the GGX lobe of roughness 0.2, 0.4 … 1 (256×128
+  down to 16×8) — what a surface of that roughness reflects. Tile 5: the irradiance over π
+  (32×16) — what a matte surface receives.
+- Every tile has a gutter of 4 texels rendered from the directions past its edges (u wraps by
+  itself, v repeats the pole row), so bilinear filtering is seamless at the seam and the poles.
+- The bake (`environment_bake.frag`, view `ENVIRONMENT_BAKE_VIEW`) is ONE fullscreen pass over
+  the atlas: a pixel finds its tile and integrates 128 samples — the GGX distribution of half
+  vectors with the view along the direction (the split-sum approximation), or the cosine lobe.
+  The map is sampled with filtered importance sampling: the mip of a sample follows its solid
+  angle, so the sun of an HDR map smears over the lobe instead of sparkling. It runs when the
+  world gets another map (another Miren texture: a reimport rebakes), at most one bake per frame
+  for all worlds.
+- `environmentDiffuse(normal)` reads tile 5. `environmentSpecular(reflected, roughness)` blends
+  the two tiles around `roughness × 5`; under the first tile it blends from the map itself, whose
+  mip follows the angle a pixel covers (the derivatives of uv break at the seam of atan2) and
+  grows with roughness to meet the blur of the first tile. Both are multiplied by the exposure
+  of the map.
+- The reflectance is `panda/brdf.hlsli`: `environmentBrdf` (the analytic fit of the split-sum
+  integral, no lookup texture) inside `shadeAmbient`, which keeps the energy of multiple
+  scattering (a rough metal does not go dark) and occludes the specular part by
+  `specularOcclusion`.
 
 ### Consumers
 
@@ -309,12 +405,15 @@ one per world, distributed as a system texture like the shadow atlas and the occ
   discontinuity at the seam. There is no sun disk; it lives in the project's sky material. A
   custom sky shader gets the map by declaring `environmentMap` (and the whole block for the
   exposure).
-- `default_pbr.frag` (`environmentReflection`): when `environmentParams.z > 0.5`, the ambient
-  gains `env(reflect(−V, N), lod = roughness × maxMip) × (F0 · A + B)`, a split-sum approximation
-  of the environment BRDF without a LUT (Karis, mobile). It is attenuated by the material AO and
-  by the sky visibility of the Occlusion Volume, like the ambient. Blur comes from the texture
-  mips (box, not a GGX prefilter); a texture without mips keeps rough reflections sharp.
-- The other lit shaders (lit, terrain, grass, foliage, billboards) do not read the map.
+- `default_pbr.frag`: the surroundings of a surface are the flat ambient of the world (a sky of
+  one color: it lights and is reflected alike) plus the map — `irradiance = flat +
+  environmentDiffuse(N)`, `radiance = flat + environmentSpecular(reflect(−V, N), roughness)` —
+  given to `shadeAmbient` with the occlusion of the material, the sky visibility of the
+  Occlusion Volume and the screen-space occlusion. Metals have no diffuse part: with a flat
+  ambient alone they reflect that color.
+- `default_lit.frag`: `ambientLight(normal)` of `panda/lighting.hlsli` (the flat ambient plus
+  `environmentDiffuse`), with both occlusions.
+- The terrain, grass, foliage and billboard shaders still use the flat ambient alone.
 
 ### Import
 
@@ -335,11 +434,29 @@ Shadows:
 - Shadows beyond the CSM distance (a far map or a static cascade) are NOT planned: the sun moves
   all the time in the projects.
 
+Soft shadows:
+
+- The raw depth of the atlas is read with `Load` next to the comparison sampler. Verified on
+  Metal; the toolchain gives the GLSL a second sampler for it, which the OpenGL backend has not
+  been run with.
+- The grain of the turned disc is visible in a wide penumbra up close; a temporal accumulation
+  would remove it, there is none.
+
+Screen-space ambient occlusion:
+
+- The terrain, vegetation and module shaders do not call `screenOcclusion` yet: the ground of a
+  terrain takes no contact darkening from what stands on it.
+- Reversed depth would give the pass (and everything else) precision at a distance.
+- An orthographic frame has no occlusion.
+
 Environment map:
 
-- Diffuse IBL (irradiance): the ambient stays a flat world color.
-- A GGX prefilter of the mips and rotation of the map by azimuth.
-- Reflections in the editor's material previews (the preview block has no map).
+- Rotation of the map by azimuth; the sun of the map is not turned into the directional light
+  of the world (`FeatureTest/Tools/hdri_sun.py` finds it for a generated world).
+- The terrain, vegetation and module shaders take the flat ambient only (`ambientLight` is
+  there for them).
+- The editor's material previews have no map: no image based light in a thumbnail.
+- A world without a map has no light of the sky: the built-in gradient is not baked.
 
 Occlusion Volume: static meshes as occluders. To be done with the first scene that has buildings
 or rocks. The tag `IsStaticComponent` already exists (an empty entt component set with

@@ -412,7 +412,29 @@ namespace {
 
 } // namespace
 
+namespace {
+    SystemTools::Unattended *s_unattended = nullptr; // the innermost scope; the main thread only
+}
+
+SystemTools::Unattended::Unattended(SaveChangesChoice answer)
+    : m_answer(answer)
+    , m_outer(s_unattended) {
+    s_unattended = this;
+}
+
+SystemTools::Unattended::~Unattended() {
+    s_unattended = m_outer;
+}
+
+bool SystemTools::answerUnattended(const char *question, SaveChangesChoice *choice) {
+    if (s_unattended == nullptr) { return false; }
+    s_unattended->m_questions.emplace_back(question != nullptr ? question : "");
+    if (choice != nullptr) { *choice = s_unattended->m_answer; }
+    return true;
+}
+
 std::optional<path_t> SystemTools::openFolderDialog(const char *initialFolder) {
+    if (answerUnattended("Choose a folder")) { return std::nullopt; }
     NFD::Init();
     nfdu8char_t *outPath;
     nfdresult_t result = NFD::PickFolder(outPath);
@@ -448,6 +470,7 @@ path_t SystemTools::userDataDirectory() {
 }
 
 std::optional<path_t> SystemTools::openFileDialog() {
+    if (answerUnattended("Choose a file")) { return std::nullopt; }
     NFD::Init();
     nfdu8char_t *outPath;
     nfdresult_t result = NFD::OpenDialog(outPath);
@@ -466,6 +489,7 @@ std::optional<path_t> SystemTools::openFileDialog() {
 
 std::optional<path_t>
 SystemTools::saveFileDialog(const char *filter, const char *defaultPath, const char *defaultName) {
+    if (answerUnattended("Choose where to save the file")) { return std::nullopt; }
     NFD::Init();
     nfdu8char_t *outPath;
     nfdresult_t result = NFD::SaveDialog(outPath, nullptr, 0, defaultPath, defaultName);
@@ -594,6 +618,7 @@ namespace {
 } // namespace
 
 SystemTools::SaveChangesChoice SystemTools::showSaveChangesDialog(const char *title, const char *message) {
+    if (SaveChangesChoice unattended; answerUnattended(title, &unattended)) { return unattended; }
     const std::wstring wideTitle = toWideString(title);
     const std::wstring wideMessage = toWideString(message);
     const int choice =
@@ -646,6 +671,7 @@ bool SystemTools::runCommand(
 
 namespace {
     std::atomic<bool> s_relaunchOnExit{false};
+    std::vector<std::string> s_relaunchArguments;
 
 #ifdef PLATFORM_POSIX
     // Starts a process without waiting for it or wiring its pipes.
@@ -714,12 +740,17 @@ uint32_t SystemTools::currentProcessId() {
 #endif
 }
 
-void SystemTools::setRelaunchOnExit(bool relaunch) {
+void SystemTools::setRelaunchOnExit(bool relaunch, std::vector<std::string> arguments) {
+    s_relaunchArguments = std::move(arguments);
     s_relaunchOnExit = relaunch;
 }
 
 bool SystemTools::relaunchOnExit() {
     return s_relaunchOnExit;
+}
+
+const std::vector<std::string> &SystemTools::relaunchArguments() {
+    return s_relaunchArguments;
 }
 
 bool SystemTools::startNewInstance(const std::vector<std::string> &args) {

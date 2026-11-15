@@ -51,10 +51,6 @@ namespace StaticResources {
     // Implicit final tonemap (Reinhard+sRGB) — belongs to the pipeline, not shown in the UI.
     extern AssetRef<ShaderAsset> tonemapShader;
     extern AssetRef<MaterialAsset> tonemapMaterial;
-    // ACES variant of the implicit final tonemap — for the preview's tonemapOverride
-    // (Lab = the production curve).
-    extern AssetRef<ShaderAsset> tonemapAcesShader;
-    extern AssetRef<MaterialAsset> tonemapAcesMaterial;
     // Built-in bloom pyramid (BloomRenderer) — engine shaders, not shown in the UI.
     // Auto exposure (ExposureRenderer): engine shaders without materials.
     extern AssetRef<ShaderAsset> exposureMeasureShader;

@@ -102,7 +102,7 @@ namespace PrimitiveMeshes {
     MeshData buildSphere() {
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
-        addSphereRings(vertices, indices, 0.5f, 0.f, 24, 32, 0.f, glm::pi<float>(), 0.f, 1.f);
+        addSphereRings(vertices, indices, 0.5f, 0.f, 48, 64, 0.f, glm::pi<float>(), 0.f, 1.f);
         return pack(vertices, indices);
     }
 

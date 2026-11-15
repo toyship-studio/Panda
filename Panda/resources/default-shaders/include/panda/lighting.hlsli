@@ -3,7 +3,8 @@
 // helpers degrade without a feature — a shader written against this include compiles in any
 // project: without `lights` the scene is unlit (a white ambient of 1, no sun, no point lights —
 // the shader outputs its albedo), without `shadows` the sun is open, without `occlusion` the sky
-// and the sun are open and the sample offset is zero. Vegetation declares
+// and the sun are open and the sample offset is zero, without `ssao` the ambient is open.
+// Vegetation declares
 // PANDA_SHADOW_SINGLE_TAP before the include (see panda/shadows.hlsli).
 #include "panda/view.hlsli"
 #if PANDA_FEATURE_LIGHTS
@@ -28,6 +29,23 @@ static const float4 pointLightColorsIntensity[8] = {
 #if PANDA_FEATURE_OCCLUSION
 #include "panda/occlusion.hlsli"
 #endif
+#if PANDA_FEATURE_SSAO
+#include "panda/ssao.hlsli"
+#endif
+#if PANDA_FEATURE_ENVIRONMENT
+#include "panda/environment.hlsli"
+#endif
+
+// The diffuse light of the surroundings on a surface with this normal, before any occlusion:
+// the flat ambient of the world plus, when the project has `environment` and the world a map,
+// the light of the sky from that side (multiply by the diffuse albedo).
+float3 ambientLight(float3 normal) {
+    float3 light = ambientColorIntensity.rgb * ambientColorIntensity.w;
+#if PANDA_FEATURE_ENVIRONMENT
+    light += environmentDiffuse(normal);
+#endif
+    return light;
+}
 
 // Sky visibility (x) and sun transmittance (y) of the Occlusion Volume at a point; (1, 1) without
 // the feature. Sample outward from the surface by occlusionSurfaceOffset() along the normal: the
@@ -54,6 +72,17 @@ float occlusionSurfaceOffset() {
 float ambientOcclusion(float2 occlusion) {
 #if PANDA_FEATURE_OCCLUSION
     return lerp(1.0, occlusion.x, occlusionParams.x);
+#else
+    return 1.0;
+#endif
+}
+
+// The screen-space ambient occlusion at a point: the share of its surroundings it sees past
+// the geometry next to it (1 — open). It belongs to the ambient light — multiply the ambient by
+// it, never the sun; 1 without the feature.
+float screenOcclusion(float3 worldPos) {
+#if PANDA_FEATURE_SSAO
+    return sampleScreenOcclusion(worldPos);
 #else
     return 1.0;
 #endif

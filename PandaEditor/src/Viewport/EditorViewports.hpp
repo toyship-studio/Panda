@@ -85,6 +85,10 @@ public:
     bool gameHasCamera() const { // the last Game frame found a main camera
         return m_gameHasCamera;
     }
+    // The output of a viewport: its texture and its size in pixels (a screenshot reads it).
+    const ViewportSurface &surface(ViewportKind kind) const {
+        return kind == ViewportKind::Scene ? m_sceneSurface : m_gameSurface;
+    }
     // The view-projection of the editor camera of this frame (tools, helper lines, the gizmo).
     const glm::mat4 &sceneViewProj() const {
         return m_sceneViewProj;

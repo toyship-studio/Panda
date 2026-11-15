@@ -9,8 +9,8 @@ and background jobs (`PandaAsync`).
 
 ### Libraries
 
-- `Foundation`: the bottom layer shared by Fern, Miren and Panda — logging and the editor log
-  callback, asserts, the allocator and the memory blob, the profiler, platform and graphics API
+- `Foundation`: the bottom layer shared by Fern, Miren and Panda — logging, the editor log
+  callback and the log history in memory, asserts, the allocator and the memory blob, the profiler, platform and graphics API
   detection, the command buffer, a semaphore, thread names, a file reader, SHA-256.
 - `Rain`: serialization (text coders for JSON and YAML, and a binary coder).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
@@ -825,11 +825,13 @@ scripts take the SDK from the `PANDA_SDK_DIR` environment variable).
 ## Editor: reload from disk and agent-facing project files
 
 All project state is readable Rain JSON (`.world`, `.mat`, `.pmeta` sidecars, `.Panda/project.json`)
-plus C++ scripts, so an AI coding agent works with the project files directly; a human always runs
-and debugs the game.
+plus C++ scripts, so an AI coding agent works with the project files directly, and looks at the
+result through the MCP server of the editor (the next section).
 
-- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk by modification
-  time, as one walk over the file documents (see "The document model"): editor settings →
+- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk: first the asset
+  registry follows the project tree (`AssetHandlerEditor::rescanProject`: a new file becomes an
+  asset with an id in its sidecar, ids of known assets do not change), then, by modification
+  time, one walk over the file documents (see "The document model"): editor settings →
   project settings → assets → the script build → the world. A file changed on disk is reread; a
   file changed on disk AND in memory asks which version stays. After `project.json`: the shader
   features are applied, a module switched on in the file opens the project again (module
@@ -843,9 +845,49 @@ and debugs the game.
   template `Templates/GameProject` carries `AGENTS.md` (the rules and the file formats for any
   coding agent; `CLAUDE.md` only imports it) and `.claude/skills/*` for Claude Code. The
   user-facing version is `PandaSDK/docs/zed-and-agents.md`.
-- There is no MCP server: files are more expressive than a bridge. Reconsider only with a concrete
-  list of scenarios that files cannot express (live editor state: selection, screenshots, runtime
-  values); then JSON-RPC 2.0 inside the editor over localhost.
+
+## Editor: the MCP server
+
+Files are the way an agent changes a project; they cannot show it the result. The editor
+therefore answers an agent through an MCP server (Model Context Protocol), and the server holds
+only what a file cannot do: to look, to read what the editor said, to make the editor take the
+files, to run the game. There are no tools that edit a world or an asset — that would be a
+second way to do what a text file already does. The user-facing page is
+`PandaSDK/docs/zed-and-agents.md`.
+
+- `Panda::Mcp::Server` (`Panda/Mcp/McpServer.hpp`, the core): the protocol over `Fern::Net`. The
+  transport is Streamable HTTP in its smallest form — one endpoint `/mcp`, a POST with one
+  JSON-RPC message, one JSON answer, no session and no event stream, so a restart of the
+  application is invisible to the client. It owns no thread: `update()` once a frame on the main
+  thread accepts, reads, runs the tools and writes without blocking, and a tool touches the
+  engine like any other code of the frame. A tool that needs several frames returns a
+  `PendingResult` the server asks every frame. The server binds the loopback address and refuses
+  a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
+  the editor: a game runtime can host one the same way.
+- `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
+  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `restart`, `quit`. A
+  tool acts as the user does, through the same functions of `EditorLayer` (`reloadFromDisk`,
+  `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
+- Nobody is at the screen while a tool runs. `SystemTools::Unattended` is a scope in which a
+  native blocking dialog is not shown: the save-changes question answers as the scope says, a
+  file dialog answers "cancelled", and the scope records the question — the tool fails with it.
+  The guard sits at the bottom, in the dialog functions, so a dialog added later is covered.
+- The server belongs to the project: the `"mcp"` section of `project.json`
+  (`ProjectMcpSettings`: `enabled`, `port`) switches it, because the port is what the client
+  configuration of the project (`.mcp.json`) names. `EditorMcp::update` compares the section
+  with what runs every frame; a taken port is reported once. The template project has the
+  section on and a `.mcp.json`.
+- `screenshot` reads the output texture of a viewport (`ViewportSurface`): the tab of the
+  viewport comes forward (one viewport renders per frame), a few frames pass, `Miren::readTexture`
+  reads the texture back, and the picture is scaled down by area averaging and packed as PNG
+  (miniz). The buffer is owned by the render command too, so a dropped connection frees nothing
+  early.
+- `logs` answers from `Foundation::LogHistory`: the last lines of both logs (`LOG_*` of the
+  console and `LOG_*_EDITOR` of the Output panel) kept in memory with sequence numbers. The
+  editor enables it at the first line of `main`; a game leaves it off.
+- `restart` and `quit` answer first and exit a few frames after the answer has left
+  (`Server::hasUnsentData`). The new instance gets `--project <path>` (`EditorLaunch`), the
+  command line a restart of any kind uses: the session file is shared by every running editor.
 
 ## Open items
 

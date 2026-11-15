@@ -457,6 +457,24 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildCameraSection(const P
         "Exposure Max", data->autoExposureMax, 0.25f, 16.f,
         [data, emit](float v) { data->autoExposureMax = v; emit(); }, [](Cam &c) { return c.autoExposureMax; }
     );
+    // How the frame reaches the display: the exposure compensation in stops and the curve.
+    numberRow(
+        "Exposure", data->exposure, -8.f, 8.f,
+        [data, emit](float v) { data->exposure = v; emit(); }, [](Cam &c) { return c.exposure; }
+    );
+    addComboRow(
+        *section, "Tonemap", {"AgX", "ACES", "Neutral", "Reinhard", "None"}, static_cast<int>(data->tonemap),
+        [data, emit](int index) {
+            data->tonemap = static_cast<Panda::Tonemap>(index);
+            emit();
+        }
+    );
+    auto antialiasing = std::make_shared<Toggle>();
+    antialiasing->setOn(data->antialiasing);
+    antialiasing->setOnValueChanged([data, emit](Toggle &t) { data->antialiasing = t.isOn(); emit(); });
+    auto antialiasingR = std::make_shared<PropertyRow>("Antialiasing", antialiasing, false);
+    antialiasingR->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.antialiasing; }));
+    section->addContent(antialiasingR);
     return section;
 }
 

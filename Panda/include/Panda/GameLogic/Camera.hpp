@@ -16,12 +16,12 @@ public:
     virtual ~Camera() = default;
     virtual void updateProjectionMatrix() = 0;
 
-    glm::mat4 getProjection();
-    Size getViewportSize();
+    glm::mat4 getProjection() const;
+    Size getViewportSize() const;
     void setViewportSize(Size size);
-    float getNear();
+    float getNear() const;
     void setNear(float near);
-    float getFar();
+    float getFar() const;
     void setFar(float far);
 
     // MARK: Math

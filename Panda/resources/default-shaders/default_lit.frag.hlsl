@@ -95,7 +95,7 @@ PSOutput main(PSInput input) {
     // object's own bark/body does not dim its own upper surfaces.
     const float2 volume =
         sceneOcclusion(input.worldPos + normalize(input.worldNormal) * (0.5 * occlusionSurfaceOffset()));
-    float3 lighting = ambientColorIntensity.rgb * ambientColorIntensity.w * ambientOcclusion(volume);
+    float3 lighting = ambientLight(surfaceNormal) * ambientOcclusion(volume) * screenOcclusion(input.worldPos);
 
     if (sunDirectionIntensity.w > 0.0) {
         float3 lightDirection = normalize(sunDirectionIntensity.xyz);

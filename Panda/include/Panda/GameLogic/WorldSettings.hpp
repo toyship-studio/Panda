@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panda/Renderer/SsaoRenderer.hpp"
 #include "Panda/Assets/Base/AssetRef.hpp"
 #include "Panda/Renderer/CascadedShadowMap.hpp"
 #include "Panda/Renderer/OcclusionVolume.hpp"
@@ -31,17 +32,21 @@ struct WorldLightingSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-// World graphics: the core's frame lighting — shadows and the occlusion volume.
+// World graphics: the core's frame lighting — shadows, the occlusion volume, the screen-space
+// ambient occlusion.
 struct WorldGraphicsSettings final : public Rain::Codable {
     // Cascaded sun shadows: cascades/atlas tile/distance, strength and the biases against acne.
     CascadedShadowMap::Settings shadows;
     // Occlusion Volume: sky visibility and sun transmittance
     // from the flora scattering for all lit shaders.
     OcclusionVolume::Settings occlusion;
+    // Screen-space ambient occlusion: the contact darkening of the ambient light.
+    SsaoSettings ssao;
 
     RAIN_FIELDS_BEGIN(WorldGraphicsSettings)
     RAIN_FIELD(shadows)
     RAIN_FIELD(occlusion)
+    RAIN_FIELD(ssao)
     RAIN_FIELDS_END
 };
 

@@ -525,13 +525,9 @@ namespace StaticResources {
         defaultPbrShader->setInstancedVariant(instancedPbrShader.asBaseAsset());
         vegCrownShader->setInstancedVariant(instancedVegCrownShader.asBaseAsset());
         vegGrassShader->setInstancedVariant(instancedVegGrassShader.asBaseAsset());
-        // ACES variant of the implicit final pass (tonemapOverride): the Lab preview is finalized
-        // with the same curve as the user ACES chains of the worlds. At the end — the id rule.
-        tonemapAcesShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/tonemap_aces.frag"
-        );
-        tonemapAcesMaterial =
-            handler->createAsset<MaterialAsset>(ASSET_ID++, MaterialData{}, tonemapAcesShader);
+        // Two ids of a retired pair (the ACES variant of the final pass: the curve is a setting
+        // of the camera now, one tonemap shader): the ids after them are persisted in projects.
+        ASSET_ID = UUID(ASSET_ID + 2);
         // Depth variant of the impostor billboard (the forest shadow beyond Flora Distance): the
         // quad turns towards the light in its own vertex shader — the builtin shadow_depth does not
         // fit. At the end — the id rule.
@@ -661,8 +657,6 @@ namespace StaticResources {
         defaultPbrShader.reset();
         tonemapShader.reset();
         tonemapMaterial.reset();
-        tonemapAcesShader.reset();
-        tonemapAcesMaterial.reset();
         exposureMeasureShader.reset();
         exposureReduceShader.reset();
         exposureAdaptShader.reset();
@@ -708,8 +702,6 @@ namespace StaticResources {
     AssetRef<ShaderAsset> defaultPbrShader;
     AssetRef<ShaderAsset> tonemapShader;
     AssetRef<MaterialAsset> tonemapMaterial;
-    AssetRef<ShaderAsset> tonemapAcesShader;
-    AssetRef<MaterialAsset> tonemapAcesMaterial;
     AssetRef<ShaderAsset> exposureMeasureShader;
     AssetRef<ShaderAsset> exposureReduceShader;
     AssetRef<ShaderAsset> exposureAdaptShader;

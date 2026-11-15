@@ -87,14 +87,21 @@ namespace ShaderFeatures {
             {ShaderFeature::Environment,
              "environment",
              "PANDA_FEATURE_ENVIRONMENT",
-             "The environment map of the world: the default sky and the PBR reflections read it.",
-             {{"environmentMap", "Texture2D", "SamplerState"}},
+             "The environment map of the world: the default sky draws it and the lit shaders take the light of the "
+             "sky from it. One small atlas is baked when the map changes.",
+             {{"environmentMap", "Texture2D", "SamplerState"}, {"environmentLighting", "Texture2D", "SamplerState"}},
              {}},
             {ShaderFeature::Wind,
              "wind",
              "PANDA_FEATURE_WIND",
              "Scene wind: the phases advance every frame and the vegetation sways.",
              {},
+             {}},
+            {ShaderFeature::Ssao,
+             "ssao",
+             "PANDA_FEATURE_SSAO",
+             "Screen-space ambient occlusion: two half-resolution passes over the depth of the frame.",
+             {{"ssaoMap", "Texture2D", "SamplerState"}},
              {}},
         };
         return catalog;

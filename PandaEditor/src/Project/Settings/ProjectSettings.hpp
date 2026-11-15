@@ -63,6 +63,21 @@ struct ProjectModuleSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+// "mcp": the MCP server of the editor for this project (App/EditorMcp, PandaSDK/docs/zed-and-agents.md):
+// an AI agent that works in the project folder looks at the editor and drives it through it. The
+// port is the one the client configuration of the project names (`.mcp.json`:
+// http://127.0.0.1:<port>/mcp), so it lives with the project; two projects open at once need
+// different ports. Off — the editor listens to nothing.
+struct ProjectMcpSettings final : public Rain::Codable {
+    bool enabled = false;
+    int port = 7717;
+
+    RAIN_FIELDS_BEGIN(ProjectMcpSettings)
+    RAIN_FIELD(enabled)
+    RAIN_FIELD(port)
+    RAIN_FIELDS_END
+};
+
 // A world the session had open: its file (relative to the project) and where the editor camera
 // stood in it.
 struct SessionWorld final : public Rain::Codable {

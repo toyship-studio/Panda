@@ -114,25 +114,20 @@ void RuntimeLayer::updatePostprocessing() {
     inputs.depth = m_sceneDepth;
     if (m_world) {
         inputs.sunScreen = m_world->getFrameSunScreen(); // bloom_apply flares
+        inputs.projection = m_world->getFrameProjection();
+        inputs.viewProj = m_world->getFrameViewProj();
+        inputs.ssao = m_world->getGraphicsSettings().ssao;
         Entity cameraEntity = m_world->findMainCameraEntity();
         if (cameraEntity.isValid()) {
             CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
             if (camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }
-            inputs.bloom.enabled = camera.bloomEnabled;
-            inputs.bloom.intensity = camera.bloomIntensity;
-            inputs.bloom.radius = camera.bloomRadius;
-            inputs.exposure.enabled = camera.autoExposureEnabled;
-            inputs.exposure.key = camera.autoExposureKey;
-            inputs.exposure.speed = camera.autoExposureSpeed;
-            inputs.exposure.minExposure = camera.autoExposureMin;
-            inputs.exposure.maxExposure = camera.autoExposureMax;
-            inputs.cameraNear = camera.camera.getNear();
-            inputs.cameraFar = camera.camera.getFar();
+            inputs.setCamera(camera);
         }
     }
     m_postprocessing->applyToView(
         chain, inputs, width, height, Application::get()->getTime(), Views::POST_PROCESSING_OUTPUT_VIEW
     );
+    if (m_world) { m_world->setScreenOcclusion(m_postprocessing->screenOcclusion()); } // its next frame shades with it
 }
 
 void RuntimeLayer::ensureSceneFramebuffer(uint32_t width, uint32_t height) {

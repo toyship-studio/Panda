@@ -180,6 +180,8 @@ void World::update(double deltaTime, WorldFrame frame) {
         runPhase(FramePhase::PostUpdate, gameDelta);
     }
     if (frame.mainCamera) { resolveMainCamera(frame); }
+    m_frameProjection = frame.projection;
+    m_frameViewProj = frame.viewProj;
     m_renderer2d.setViewProj(frame.viewProj);
     m_renderer3d.setViewProj(frame.viewProj);
     renderWorld(frame.viewProj, frame.skyViewProj, frame.cameraPosition);
@@ -206,6 +208,7 @@ void World::resolveMainCamera(WorldFrame &frame) {
     WorldCamera &camera = cameraEntity.getComponent<CameraComponent>().camera;
     const glm::mat4 cameraWorldMtx = getWorldSpaceTransformMatrix(cameraEntity);
     const glm::mat4 projMtx = camera.getProjection();
+    frame.projection = projMtx;
     frame.viewProj = projMtx * glm::inverse(cameraWorldMtx);
     frame.skyViewProj = projMtx * glm::inverse(cameraEntity.getTransform().getSkyTransform());
     frame.cameraPosition = glm::vec3(cameraWorldMtx * glm::vec4(0.f, 0.f, 0.f, 1.f));

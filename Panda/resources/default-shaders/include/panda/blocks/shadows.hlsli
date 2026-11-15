@@ -11,6 +11,7 @@ cbuffer PANDA_SHADOWS {
     float4 shadowTexelWorld;
     float4 shadowDepthScale;
     float4 shadowBias;
+    float4 shadowSoftness;
 };
 Texture2D shadowMap;
 SamplerComparisonState shadowMapSampler;

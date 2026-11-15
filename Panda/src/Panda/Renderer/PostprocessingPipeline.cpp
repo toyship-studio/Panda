@@ -2,11 +2,15 @@
 #include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 #include "Panda/Assets/StaticResources.hpp"
+#include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/GameLogic/Components/BaseComponents.hpp"
+#include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
 #include <Foundation/Profile.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace Panda {
 
@@ -26,6 +30,40 @@ glm::vec4 projectSunToScreen(const glm::mat4 &viewProj, const glm::vec3 &toSun) 
         return glm::vec4(0.f);
     }
     return glm::vec4(uv, 1.f, 0.f);
+}
+
+const char *tonemapName(Tonemap curve) {
+    switch (curve) {
+        case Tonemap::AgX: return "agx";
+        case Tonemap::Aces: return "aces";
+        case Tonemap::Neutral: return "neutral";
+        case Tonemap::Reinhard: return "reinhard";
+        case Tonemap::None: return "none";
+    }
+    return "agx";
+}
+
+Tonemap tonemapFromName(const std::string &name) {
+    for (Tonemap curve : {Tonemap::AgX, Tonemap::Aces, Tonemap::Neutral, Tonemap::Reinhard, Tonemap::None}) {
+        if (name == tonemapName(curve)) { return curve; }
+    }
+    return Tonemap::AgX;
+}
+
+void PostprocessingFrameInputs::setCamera(const CameraComponent &camera) {
+    bloom.enabled = camera.bloomEnabled;
+    bloom.intensity = camera.bloomIntensity;
+    bloom.radius = camera.bloomRadius;
+    exposure.enabled = camera.autoExposureEnabled;
+    exposure.key = camera.autoExposureKey;
+    exposure.speed = camera.autoExposureSpeed;
+    exposure.minExposure = camera.autoExposureMin;
+    exposure.maxExposure = camera.autoExposureMax;
+    tonemap.curve = camera.tonemap;
+    tonemap.exposure = camera.exposure;
+    tonemap.antialiasing = camera.antialiasing;
+    cameraNear = camera.camera.getNear();
+    cameraFar = camera.camera.getFar();
 }
 
 namespace {
@@ -52,6 +90,7 @@ PostprocessingPipeline::~PostprocessingPipeline() {
             Miren::deleteTexture(target.color);
         }
     }
+    if (m_antialiasing.isValid()) { Miren::deleteProgram(m_antialiasing); }
 }
 
 
@@ -103,6 +142,11 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
     Miren::TextureHandle emissive = inputs.emissive;
     Miren::TextureHandle depth = inputs.depth;
     if (width == 0 || height == 0) { return input; }
+    // The ambient occlusion of this frame for the next one: from the depth the scene has just
+    // been drawn into (its views come after the whole chain).
+    m_screenOcclusion = ShaderFeatures::enabled().has(ShaderFeature::Ssao)
+                            ? m_ssao.apply(depth, width, height, inputs.projection, inputs.viewProj, inputs.ssao, m_quad)
+                            : SsaoData{};
     // The order of the engine part: exposure → bloom (the pipeline: HDR → luminance → adaptation →
     // bloom; everything after bloom is the user chain + the fallback tonemap).
     input = m_exposure.apply(input, width, height, inputs.exposure, time, m_quad);
@@ -110,9 +154,11 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
     // frame already with the glow.
     input = m_bloom.apply(input, emissive, width, height, inputs.bloom, m_quad);
     // Collect the active passes with valid shaders (no more than the view layout allows).
-    Miren::ProgramHandle shaders[MAX_PASSES + 1];
-    AssetRef<MaterialAsset> materials[MAX_PASSES + 1];
-    uint32_t downsamples[MAX_PASSES + 1];
+    // The user passes, the Tonemap, the antialiasing. A pass without a material is the engine's
+    // own program: it has no fields to bind.
+    Miren::ProgramHandle shaders[MAX_PASSES + 2];
+    AssetRef<MaterialAsset> materials[MAX_PASSES + 2];
+    uint32_t downsamples[MAX_PASSES + 2];
     int passCount = 0;
     if (chain) {
         for (PostprocessingPass &pass : chain->getPasses()) {
@@ -131,8 +177,7 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
     // space. A chain with its OWN tonemap (handlesTonemap) gets no fallback:
     // its passes after the tonemap pass already work in display (glare, lens flare, afterimage).
     const bool needsImplicitTonemap = !(chain && chain->handlesTonemap() && passCount > 0);
-    AssetRef<MaterialAsset> tonemapMaterial =
-        inputs.tonemapOverride ? inputs.tonemapOverride : StaticResources::tonemapMaterial;
+    AssetRef<MaterialAsset> tonemapMaterial = StaticResources::tonemapMaterial;
     if (needsImplicitTonemap && tonemapMaterial) {
         Miren::ProgramHandle tonemapShader = tonemapMaterial->getShaderAsset()->getMirenHandle();
         if (tonemapShader.isValid()) {
@@ -142,12 +187,28 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
             ++passCount;
         }
     }
+    // Antialiasing works on the picture, so it follows whatever brought the frame to the display.
+    int antialiasingPass = -1;
+    if (inputs.tonemap.antialiasing && passCount > 0) {
+        if (!m_antialiasing.isValid()) {
+            m_antialiasing = Miren::createProgram(
+                AssetImporterBase::loadShaderProgram("default-shaders/postprocess.vert", "default-shaders/fxaa.frag")
+            );
+        }
+        antialiasingPass = passCount;
+        shaders[passCount] = m_antialiasing;
+        materials[passCount] = AssetRef<MaterialAsset>();
+        downsamples[passCount] = 1;
+        ++passCount;
+    }
     if (passCount == 0) { return input; }
 
     Miren::TextureHandle current = input;
     for (int i = 0; i < passCount; ++i) {
         const bool isOutputPass = lastPassToOutput && i == passCount - 1;
-        const Miren::ViewId viewId = isOutputPass ? outputView : Views::postProcessingView(i);
+        const Miren::ViewId viewId = isOutputPass                 ? outputView
+                                     : i == antialiasingPass ? Views::ANTIALIASING_VIEW
+                                                             : Views::postProcessingView(i);
         // Pass target size: full / downsample; the output view (the screen) is not downsampled.
         uint32_t passWidth = width;
         uint32_t passHeight = height;
@@ -166,7 +227,7 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
 
         PANDA_PROFILE_SCOPE_N("Postprocessing: pass");
         Miren::setState(0);
-        materials[i]->bindFields();
+        if (materials[i]) { materials[i]->bindFields(); }
         Miren::addInputTexture("inputTexture", current);
         Miren::addInputTexture("originalTexture", input);
         if (emissive.isValid()) { Miren::addInputTexture("emissiveTexture", emissive); }
@@ -179,6 +240,9 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
         // The screen position of the sun (xy — UV, z — "in frame"): for the user passes —
         // flares/glare; the occlusion — by a sample of emissiveTexture at this point.
         postData.sunScreen = inputs.sunScreen;
+        postData.tonemapParams = glm::vec4(
+            static_cast<float>(inputs.tonemap.curve), std::exp2(inputs.tonemap.exposure), 0.f, 0.f
+        );
         bindBlock(postData);
         m_quad.submit(viewId, shaders[i]);
         if (target) { current = target->color; }

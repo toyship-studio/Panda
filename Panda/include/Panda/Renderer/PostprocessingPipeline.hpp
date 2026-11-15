@@ -6,6 +6,8 @@
 #include "Panda/Renderer/BloomRenderer.hpp"
 #include "Panda/Renderer/ExposureRenderer.hpp"
 #include "Panda/Renderer/FullscreenQuad.hpp"
+#include "Panda/Renderer/SsaoRenderer.hpp"
+#include "Panda/Renderer/Tonemap.hpp"
 
 #include <Miren/Miren.hpp>
 
@@ -30,15 +32,33 @@ struct PostprocessingFrameInputs {
     BloomSettings bloom; // built-in bloom of the camera: executed BEFORE the user chain
     // Screen position of the sun (World::getFrameSunScreen): bloom_apply flares. z = 0 — off.
     glm::vec4 sunScreen = glm::vec4(0.f);
-    // Replacement for the implicit final tonemap (the Lab preview is finalized with the
-    // production ACES curve). Empty — the engine Reinhard. Ignored by a chain with handlesTonemap.
-    AssetRef<MaterialAsset> tonemapOverride;
+    // The camera of the frame (World::getFrameProjection / getFrameViewProj) and the ambient
+    // occlusion settings of the world: the occlusion is computed from the depth of this frame for
+    // the next one (PostprocessingPipeline::screenOcclusion). Disabled by default.
+    glm::mat4 projection = glm::mat4(1.f);
+    glm::mat4 viewProj = glm::mat4(1.f);
+    SsaoSettings ssao = disabledSsao();
+    // The exposure compensation and the curve of the final Tonemap pass. A chain with
+    // handlesTonemap develops the frame itself: it reads the same values from PANDA_POST.
+    TonemapSettings tonemap;
+
+    // The look of a camera: its bloom, auto exposure, tonemap and clip planes. The one place that
+    // maps a camera to the pipeline — the editor and the runtime call it.
+    void setCamera(const struct CameraComponent &camera);
+
+private:
+    static SsaoSettings disabledSsao() {
+        SsaoSettings settings;
+        settings.enabled = false;
+        return settings;
+    }
 };
 
 // Executes the postprocessing chain: every enabled pass (an ordinary MaterialAsset) renders a
 // fullscreen quad into a ping-pong FBO; the input of the first pass is the scene frame. The chain
 // works in LINEAR HDR (RGBA16F targets); at the end the pipeline itself executes the implicit
-// Tonemap pass (Reinhard+sRGB) — it always runs, even with an empty/missing chain.
+// Tonemap pass (the exposure, the curve of the camera, sRGB) — it always runs, even with an
+// empty/missing chain.
 // Convention for the uniforms the pipeline substitutes (the rest are material fields):
 //   inputTexture    — the frame from the previous pass,
 //   originalTexture — the frame before the chain,
@@ -72,6 +92,11 @@ public:
         float time,
         Miren::ViewId outputView
     );
+    // The screen-space ambient occlusion of the frame the last apply worked on: hand it to the
+    // world (World::setScreenOcclusion), its next frame shades with it. Empty — none.
+    const SsaoData &screenOcclusion() const {
+        return m_screenOcclusion;
+    }
 
 private:
     Miren::TextureHandle
@@ -94,6 +119,9 @@ private:
     FullscreenQuad m_quad; // the single quad of the post effects (bloom/exposure get the same one)
     ExposureRenderer m_exposure;
     BloomRenderer m_bloom; // built-in bloom: the pyramid before the user chain
+    Miren::ProgramHandle m_antialiasing; // fxaa.frag: the pass after the Tonemap
+    SsaoRenderer m_ssao;   // the ambient occlusion of this frame, for the next one
+    SsaoData m_screenOcclusion;
 };
 
 } // namespace Panda

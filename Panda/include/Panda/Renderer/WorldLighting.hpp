@@ -4,6 +4,8 @@
 #include "Panda/Assets/TextureAsset.hpp"
 #include "Panda/Base/Base.hpp"
 
+#include <Miren/Base.hpp>
+
 #include <array>
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -53,6 +55,7 @@ struct ShadowData final {
     float normalOffset = 0.f; // receiver offset along the normal, in cascade texels
     float receiverBias = 0.f; // receiver depth offset, in cascade texels
     float slopeBias = 0.f;    // rasterizer slope bias of the depth pass
+    float softness = 0.f;     // angular radius of the sun (degrees): the penumbra per meter of caster distance
 };
 
 // Occlusion Volume (context/lighting.md):
@@ -98,6 +101,19 @@ struct OcclusionVolumeData final {
 struct EnvironmentData final {
     AssetRef<TextureAsset> map;
     float intensity = 1.f; // exposure of the map: sky and reflections together
+    // The light of the map baked for the lit shaders (EnvironmentLighting): the atlas of the
+    // irradiance and the prefiltered radiance, the system input environmentLighting. Empty — the
+    // world has no map: no image based light, only the flat ambient.
+    AssetRef<TextureAsset> lighting;
+};
+
+// Screen-space ambient occlusion (SsaoRenderer): computed from the depth of the frame that was
+// drawn last and read by the frame being drawn, which finds its points in it with the
+// view-projection of that frame. An invalid map — no occlusion.
+struct SsaoData final {
+    Miren::TextureHandle map = MIREN_INVALID_HANDLE; // r — the share of the sky a point sees, g — its view depth (m)
+    glm::mat4 viewProj = glm::mat4(1.f);             // world → clip of the frame the map was computed from
+    float intensity = 0.f;
 };
 
 struct WorldLightingData final {
@@ -110,6 +126,7 @@ struct WorldLightingData final {
     ShadowData shadows; // sun shadows of this frame (assembled by World)
     OcclusionVolumeData occlusion;  // occlusion volume (assembled by World from flora scattering)
     EnvironmentData environment;    // environment map of the world (the world's lighting settings)
+    SsaoData ssao;                  // the ambient occlusion the last frame left (World::setScreenOcclusion)
 };
 
 } // namespace Panda

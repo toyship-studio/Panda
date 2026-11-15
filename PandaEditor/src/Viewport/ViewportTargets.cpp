@@ -180,7 +180,10 @@ ViewportSurface::~ViewportSurface() {
 
 void ViewportSurface::init(Size size) {
     m_frame.size = size;
-    m_result = Miren::createTexture(renderTarget(size, Miren::TextureFormat::RGBA8, true));
+    const Miren::TextureCreate create = renderTarget(size, Miren::TextureFormat::RGBA8, true);
+    m_pixelWidth = create.m_width;
+    m_pixelHeight = create.m_height;
+    m_result = Miren::createTexture(create);
     Miren::FrameBufferAttachment attachments[] = {m_result};
     m_fb = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
     m_initialized = true;
@@ -192,7 +195,9 @@ void ViewportSurface::setFrame(Rect frame) {
     m_frame = frame;
     if (!resized) { return; }
     const Fern::Size dpi = windowDpi();
-    Miren::resizeTexture(m_result, frame.size.width * dpi.width, frame.size.height * dpi.height);
+    m_pixelWidth = static_cast<uint32_t>(frame.size.width * dpi.width);
+    m_pixelHeight = static_cast<uint32_t>(frame.size.height * dpi.height);
+    Miren::resizeTexture(m_result, m_pixelWidth, m_pixelHeight);
     Miren::deleteFrameBuffer(m_fb);
     Miren::FrameBufferAttachment attachments[] = {m_result};
     m_fb = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));

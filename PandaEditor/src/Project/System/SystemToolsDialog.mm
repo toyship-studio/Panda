@@ -9,6 +9,7 @@
 namespace Panda {
 
 SystemTools::SaveChangesChoice SystemTools::showSaveChangesDialog(const char *title, const char *message) {
+    if (SaveChangesChoice unattended; answerUnattended(title, &unattended)) { return unattended; }
     @autoreleasepool {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = [NSString stringWithUTF8String:title];

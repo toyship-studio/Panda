@@ -27,6 +27,14 @@ class EditorController; // coordinator of the PandaUI editor
 
 namespace Panda {
 
+class EditorMcp; // the MCP server of the editor (App/EditorMcp.hpp)
+
+// How this instance of the editor was started (the command line, App/Main.cpp).
+struct EditorLaunch final {
+    bool openLastProject = true; // false — a second window: the start screen, not the project of the last session
+    path_t project;              // --project <path>: this project instead of the one of the last session
+};
+
 class EditorLayer : public Layer,
                     public ProjectLoaderOutput,
                     public FileDocumentsOutput,
@@ -34,8 +42,7 @@ class EditorLayer : public Layer,
                     public Editor::EngineBridge,
                     public Editor::StartScreenControllerOutput {
 public:
-    // openLastProject = false — a second window: the start screen, not the project of the last session.
-    explicit EditorLayer(Fern::Window *window, bool openLastProject = true);
+    explicit EditorLayer(Fern::Window *window, EditorLaunch launch = {});
     ~EditorLayer() override; // out of line: m_editorController is a unique_ptr to an incomplete type
 
     virtual void onAttach() override;
@@ -70,6 +77,7 @@ public:
 #pragma endregion
 
 private:
+    friend class EditorMcp; // the tools of the agent act as the user does: Play, Reload, Save, the viewports
     void updateStripStatus(double deltaTime);
     double m_stripStatusTimer = 0.0;
     int m_stripFrameCounter = 0;
@@ -250,7 +258,7 @@ private:
     EditorViewportSettings m_viewportSettings;
     AssetId m_pendingWorldLoad;
     Fern::Window *m_window;
-    bool m_openLastProject = true; // false — a second window: starts on the start screen
+    EditorLaunch m_launch;
     std::string m_windowTitle;     // what syncWindowIdentity has set: "<project> — <world file>"
     std::string m_iconLabel;       // the project name on the application icon (empty — none)
     EditorMenuBar m_menuBar;
@@ -264,6 +272,9 @@ private:
     EditorUI m_editorUI;
     std::unique_ptr<Editor::EditorController> m_editorController;
     std::unique_ptr<Editor::StartScreenController> m_startScreenController;
+    // The MCP server of the open project (the "mcp" section of project.json): an AI agent looks
+    // at the editor and drives it through it.
+    std::unique_ptr<EditorMcp> m_mcp;
     UIRootMode m_uiRootMode = UIRootMode::None;
     PandaUI::TextureHandle m_sceneTexture; // the output of the Scene surface wrapped for its PandaUI panel
     Miren::TextureHandle m_sceneNative;    // last wrapped native handle — re-wrap only if it changes

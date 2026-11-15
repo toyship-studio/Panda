@@ -16,6 +16,9 @@ namespace Views {
     Miren::ViewId BLOOM_VIEWS_BEGIN = 25; // bloom pyramid 25..18 (downsample+upsample+apply, before the chain)
     Miren::ViewId POST_PROCESSING_VIEWS_BEGIN = 17; // passes 17..9 (8 user ones + Tonemap)
     Miren::ViewId POST_PROCESSING_OUTPUT_VIEW = 8;
+    Miren::ViewId ANTIALIASING_VIEW = 5; // after the Tonemap of a chain that ends in a texture
+    Miren::ViewId SSAO_VIEW = 7; // after the frame is on its way to the display: the result is for the next one
+    Miren::ViewId SSAO_BLUR_VIEW = 6;
     Miren::ViewId SCENE_VIEW = 30;
     // The emissive pass of the Lab preview: the sun disc into a separate texture with the SHARED
     // depth of the preview scene — after PREVIEW_RENDER_VIEW (39), before the bloom pyramid (29..22).
@@ -32,6 +35,7 @@ namespace Views {
     Miren::ViewId SHOOT_BAKE_VIEWS_END = 43;
     Miren::ViewId BRANCH_BAKE_VIEWS_BEGIN = 80; // 80..61: geometry, seed, ≤16 JFA, finish
     Miren::ViewId BRANCH_BAKE_VIEWS_END = 61;
+    Miren::ViewId ENVIRONMENT_BAKE_VIEW = 81; // before everything: the scene, the previews and the bakes read the atlas
 
 } // namespace Views
 

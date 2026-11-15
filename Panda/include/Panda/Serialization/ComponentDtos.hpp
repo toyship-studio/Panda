@@ -120,6 +120,9 @@ struct CameraComponentDto : public Rain::Codable {
     float autoExposureSpeed = 2.f;
     float autoExposureMin = 0.25f;
     float autoExposureMax = 4.f;
+    std::string tonemap = "agx"; // "agx", "aces", "neutral", "reinhard", "none" (Panda::Tonemap)
+    float exposure = 0.f;        // stops
+    bool antialiasing = true;    // FXAA over the finished frame
 
     RAIN_FIELDS_BEGIN(CameraComponentDto)
     RAIN_FIELD(isPrimary)
@@ -134,6 +137,9 @@ struct CameraComponentDto : public Rain::Codable {
     RAIN_FIELD(autoExposureSpeed)
     RAIN_FIELD(autoExposureMin)
     RAIN_FIELD(autoExposureMax)
+    RAIN_FIELD(tonemap)
+    RAIN_FIELD(exposure)
+    RAIN_FIELD(antialiasing)
     RAIN_FIELDS_END
 };
 

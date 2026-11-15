@@ -82,6 +82,7 @@ glm::vec3 CameraController::getPosition() {
 }
 
 void CameraController::setPosition(glm::vec3 position) {
+    m_animation.isActive = false; // a pose set from outside ends the flight in progress
     m_transform.setPosition(position);
 }
 
@@ -90,7 +91,24 @@ glm::quat CameraController::getRotation() {
 }
 
 void CameraController::setRotation(glm::quat quat) {
+    m_animation.isActive = false;
     syncAnglesFromRotation(quat);
+}
+
+glm::vec3 CameraController::getForward() {
+    return glm::vec3(m_front);
+}
+
+void CameraController::lookAt(glm::vec3 target) {
+    const glm::vec3 offset = target - m_transform.getPosition();
+    if (glm::length(offset) < 0.0001f) { return; }
+    const glm::vec3 direction = glm::normalize(offset);
+    // The same angles as syncAnglesFromRotation reads back: the camera keeps its roll at zero.
+    const float maxPitch = glm::radians(89.0f);
+    m_animation.isActive = false;
+    m_pitch = glm::clamp(asinf(glm::clamp(direction.y, -1.0f, 1.0f)), -maxPitch, maxPitch);
+    m_yaw = atan2f(-direction.x, -direction.z);
+    syncRotationFromAngles();
 }
 
 void CameraController::reset(glm::vec3 pos) {

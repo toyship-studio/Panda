@@ -27,8 +27,9 @@ The catalog is `Panda/Renderer/ShaderFeatures.hpp` (a closed enum with a static 
 | `lights` | `PANDA_LIGHTS` | ambient, the sun, point lights | collecting them every frame | |
 | `shadows` | `PANDA_SHADOWS`, `shadowMap` | the cascades | the cascade depth passes, the atlas | `lights` |
 | `occlusion` | `PANDA_OCCLUSION`, `occlusionVolume` | the volume window | the chunk bakes, the 3D texture | `lights` |
-| `environment` | `PANDA_ENVIRONMENT`, `environmentMap` | exposure, top mip, presence | the map of the world | |
+| `environment` | `PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting` | exposure, top mip, presence, the tiles of the light atlas | the map of the world, the bake of its light when it changes | |
 | `wind` | `PANDA_WIND` | direction, gust travel, flutter phase | the phases, the `windStrength` / `windGustiness` system fields | |
+| `ssao` | `PANDA_SSAO`, `ssaoMap` | the view-projection of the last frame, intensity | two half-resolution passes over the depth of the frame | |
 
 Engine blocks that are not features: `PANDA_FRAME` (the time; bound with the fields of every
 material draw, `MaterialAsset::bindFields`), `PANDA_VIEW` (the camera position; bound with the
@@ -81,7 +82,8 @@ Two places read the enabled set; binding does not.
 - **Compute.** `LightingSystem` fills the data of each feature on its own and leaves the data of
   an empty scene for one that is off: no lights is the unlit scene (a white ambient of 1, no
   sun), shadows and occlusion are disabled (no passes, no bakes, the atlas and the volume are
-  released), the environment has no map. `SceneWind` is calm for everyone who asks: the applied
+  released), the environment has no map and no light atlas, the screen-space occlusion is not
+  computed (`PostprocessingPipeline` skips its passes) and not handed to the frame. `SceneWind` is calm for everyone who asks: the applied
   strength is zero (the system fields included) and the phases stand still.
 - **Bind: always everything, once per view.** `SceneBlocks` gives the camera, the block of every
   feature and every system texture to the view the scene is drawn into (Miren view inputs,

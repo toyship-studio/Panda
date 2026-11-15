@@ -6,6 +6,9 @@
 #endif
 cbuffer PANDA_ENVIRONMENT {
     float4 environmentParams;
+    float4 environmentTiles[6];
 };
 Texture2D environmentMap;
 SamplerState environmentMapSampler;
+Texture2D environmentLighting;
+SamplerState environmentLightingSampler;

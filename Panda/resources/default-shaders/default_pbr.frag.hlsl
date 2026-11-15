@@ -49,29 +49,6 @@ struct PSOutput {
     float4 emissive : SV_Target1;
 };
 
-#if PANDA_FEATURE_ENVIRONMENT
-// Environment map reflection: a sample along the reflected ray, blur by roughness — through
-// the map's mip (roughness × highest mip; SampleLevel bypasses the atan2 discontinuity at the
-// seam), the weight — the split-sum approximation of the environment BRDF without a LUT (Karis,
-// "Physically Based Shading on Mobile"): F0 · A + B from N·V and roughness — a dielectric
-// reflects at grazing angles, a metal — with the albedo color.
-float3 environmentReflection(float3 normal, float3 viewDirection, float3 f0, float roughness) {
-    const float3 reflected = reflect(-viewDirection, normal);
-    const float2 uv =
-        float2(atan2(reflected.z, reflected.x), asin(clamp(-reflected.y, -1.0, 1.0))) * float2(0.1591, 0.3183) + 0.5;
-    const float3 radiance =
-        environmentMap.SampleLevel(environmentMapSampler, uv, roughness * environmentParams.y).rgb *
-        environmentParams.x;
-    const float4 c0 = float4(-1.0, -0.0275, -0.572, 0.022);
-    const float4 c1 = float4(1.0, 0.0425, 1.04, -0.04);
-    const float4 r = roughness * c0 + c1;
-    const float nDotV = saturate(dot(normal, viewDirection));
-    const float a004 = min(r.x * r.x, exp2(-9.28 * nDotV)) * r.x + r.y;
-    const float2 scaleBias = float2(-1.04, 1.04) * a004 + r.zw;
-    return radiance * (f0 * scaleBias.x + scaleBias.y);
-}
-#endif
-
 PSOutput main(PSInput input) {
     float4 baseColorSample = baseColorTexture.Sample(baseColorTextureSampler, input.fragTexCoord);
     float4 metallicRoughnessSample =
@@ -109,7 +86,10 @@ PSOutput main(PSInput input) {
     // Linear pipeline: sRGB textures are decoded on sampling, constant colors
     // and lights are converted by the engine on load — the input is already linear.
     float3 albedo = baseColor.rgb;
-    float roughness = clamp(roughnessFactor * metallicRoughnessSample.y, 0.04, 1.0);
+    // The roughness the pixel needs: a normal that turns inside the pixel widens the highlight
+    // instead of letting it sparkle.
+    float roughness =
+        filterRoughness(surfaceNormal, clamp(roughnessFactor * metallicRoughnessSample.y, 0.04, 1.0));
     float metallic = saturate(metallicFactor * metallicRoughnessSample.z);
     float occlusionSample = occlusionTexture.Sample(occlusionTextureSampler, input.fragTexCoord).x;
     float occlusion = lerp(1.0, occlusionSample, saturate(occlusionStrength));
@@ -153,20 +133,24 @@ PSOutput main(PSInput input) {
         );
     }
 
-    float3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo * occlusion *
-                     ambientOcclusion(volume);
+    // The light of the surroundings: the flat ambient of the world — a sky of one color, it
+    // lights and is reflected alike — plus the environment map. Dimmed by the occlusion of the
+    // material and by the sky visibility of the occlusion volume (under a canopy the sky neither
+    // lights nor is reflected).
+    const float3 flatAmbient = ambientColorIntensity.rgb * ambientColorIntensity.w;
+    float3 irradiance = flatAmbient;
+    float3 radiance = flatAmbient;
 #if PANDA_FEATURE_ENVIRONMENT
-    // Sky reflections: dimmed by the material AO and by the sky visibility from the occlusion
-    // volume (under the canopy the sky is not reflected), like ambient.
-    [branch]
-    if (environmentParams.z > 0.5) {
-        ambient += environmentReflection(surfaceNormal, viewDirection, f0, roughness) * occlusion *
-                   ambientOcclusion(volume);
-    }
+    irradiance += environmentDiffuse(surfaceNormal);
+    radiance += environmentSpecular(reflect(-viewDirection, surfaceNormal), roughness);
 #endif
+    float3 ambient = shadeAmbient(
+        surfaceNormal, viewDirection, irradiance, radiance, albedo, metallic, roughness, f0,
+        occlusion * ambientOcclusion(volume) * screenOcclusion(input.worldPos)
+    );
     float3 color = (ambient + lighting) * input.fragLight + emissive;
 
-    // HDR: the output is linear light; the implicit Tonemap pass at frame end does Reinhard + sRGB.
+    // HDR: the output is linear light; the tonemap pass at the end of the frame brings it to the display.
     const float outAlpha = (alphaMode != 2u) ? 1.0 : alpha;
     PSOutput output;
     output.color = float4(color, outAlpha);

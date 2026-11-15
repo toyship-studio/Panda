@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "Panda/Renderer/Tonemap.hpp"
 #include "Panda/Base/Base.hpp"
 #include "Panda/Serialization/ForeignValue.hpp"
 #include "Panda/GameLogic/Components/WorldCamera.hpp"
@@ -163,6 +164,11 @@ struct CameraComponent final {
     float autoExposureSpeed = 2.f;   // adaptation speed, 1/s
     float autoExposureMin = 0.25f;   // exposure limits
     float autoExposureMax = 4.f;
+    // How the frame reaches the display (the final Tonemap pass): the curve, and the exposure
+    // compensation in stops — the whole exposure, or a correction on top of the auto exposure.
+    Tonemap tonemap = Tonemap::AgX;
+    float exposure = 0.f;
+    bool antialiasing = true; // FXAA over the finished frame
 };
 
 struct DirectionalLightComponent final {

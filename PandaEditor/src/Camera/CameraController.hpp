@@ -40,6 +40,8 @@ public:
     void setPosition(glm::vec3 position);
     glm::quat getRotation();
     void setRotation(glm::quat quat);
+    glm::vec3 getForward();
+    void lookAt(glm::vec3 target); // turns the camera where it stands
     void setMoveSpeed(float metersPerSecond) {
         m_moveSpeed = metersPerSecond;
     }

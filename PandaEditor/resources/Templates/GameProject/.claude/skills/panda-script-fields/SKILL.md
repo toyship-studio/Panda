@@ -12,7 +12,7 @@ place.
 
 `.Panda/scripts-manifest.json` is written by the editor on every script load: class names,
 fields, their `fieldId` and types. **Always take `fieldId` from there**, do not compute it. If
-the file is missing, ask the user to build/reload the scripts.
+the file is missing, build the scripts and reload.
 
 ## Format in .world
 
@@ -38,4 +38,5 @@ the file is missing, ask the user to build/reload the scripts.
   starts — the initializer in the C++ class is not used.
 - A script without parameters: `{ "name": "MyScript", "scriptFields": [] }`.
 
-After the edit, ask the user to press Reload (Cmd/Ctrl+R).
+After the edit, call the `reload` tool of the editor (its MCP server; without it ask the user
+to press Reload, Cmd/Ctrl+R).

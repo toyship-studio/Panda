@@ -28,6 +28,10 @@ public:
         float slopeBias = 2.f;     // rasterizer slope bias of the depth pass
         float normalOffset = 1.f;  // receiver offset along the normal (texels)
         float receiverBias = 0.5f; // receiver depth offset (texels)
+        // The angular radius of the sun, degrees: the edge of a shadow widens by tan(softness) per
+        // meter between the caster and the receiver — sharp at the contact, soft far from it.
+        // 0 — the fixed filter of a few texels.
+        float softness = 1.5f;
 
         RAIN_FIELDS_BEGIN(Settings)
         RAIN_FIELD(enabled)
@@ -38,6 +42,7 @@ public:
         RAIN_FIELD(slopeBias)
         RAIN_FIELD(normalOffset)
         RAIN_FIELD(receiverBias)
+        RAIN_FIELD(softness)
         RAIN_FIELDS_END
     };
 

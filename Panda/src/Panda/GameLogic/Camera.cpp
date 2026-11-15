@@ -11,11 +11,11 @@ Camera::Camera(Size viewportSize)
     , m_zNear(zNearDefault)
     , m_zFar(zFarDefault) {}
 
-float Camera::getNear() {
+float Camera::getNear() const {
     return m_zNear;
 }
 
-float Camera::getFar() {
+float Camera::getFar() const {
     return m_zFar;
 }
 
@@ -29,11 +29,11 @@ void Camera::setNear(float near) {
     updateProjectionMatrix();
 }
 
-glm::mat4 Camera::getProjection() {
+glm::mat4 Camera::getProjection() const {
     return m_projection;
 }
 
-Size Camera::getViewportSize() {
+Size Camera::getViewportSize() const {
     return m_viewportSize;
 }
 

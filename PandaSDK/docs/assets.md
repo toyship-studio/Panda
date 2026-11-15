@@ -19,17 +19,19 @@ the project tree.
 
 **The editor maintains the registry** (it scans the project tree: new files are registered and
 ids are assigned). The right workflow for an agent: put the file into `Assets/` → the editor
-picks it up when the project is opened or on a manual rescan (the Refresh button of the Content
-Browser). Do not edit sidecars by hand; if you really have to, keep ids unique and keep each
-sidecar next to its file.
+picks it up on Reload (the `reload` tool), on the Refresh button of the Content Browser and when
+the project is opened; the id is then in the sidecar. Do not edit sidecars by hand; if you
+really have to, keep ids unique and keep each sidecar next to its file.
 
 ## Import by extension
 
 `.png/.jpg/.jpeg` — textures (sRGB by default; for data maps — normal/roughness/noise — switch
 sRGB off in the texture inspector). `.hdr` — textures with linear data (environment maps).
 `.gltf` — meshes: textures are imported according to their roles in the glTF spec, and for every
-glTF material a file `<material-name>.mat` is created next to the mesh (materials are shared by
-name within a folder — LOD variants of one object share one `.mat`). `.world`, `.mat`, `.hlsl`,
+glTF material a file `<material-name>.mat` on the PBR shader is created next to the mesh
+(materials are shared by name within a folder — LOD variants of one object share one `.mat`).
+Added to a world, a glTF is an entity named after the file with an entity per node of its scene
+under it (world-format.md). `.world`, `.mat`, `.hlsl`,
 `.postfx`, `.terrain` are registered as is. `.ttf`, `.otf`, `.ttc` — fonts: registered as is (no
 `meta`, the file is the asset; the export copies it into `Fonts/`), shown in the editor with a
 preview of the face; a script takes one through a `FontHandle` field (scripting.md, "Fonts in the

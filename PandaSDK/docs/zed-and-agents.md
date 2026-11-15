@@ -2,7 +2,8 @@
 
 Everything in a Panda project is a text file, and every build is plain CMake. That makes the
 project folder the interface: any text editor and any coding agent can work on it, and the
-running editor catches up with one command.
+running editor catches up with one command. An agent looks at the result through the MCP server
+of the editor.
 
 ## What is text
 
@@ -12,6 +13,7 @@ running editor catches up with one command.
 | `Assets/**.mat` | a material: the inputs of a shader, JSON ([assets](assets.md)) |
 | `Assets/**.pmeta` | the sidecar of an asset: its id and import settings; written by the editor |
 | `.Panda/project.json` | the project settings |
+| `.mcp.json` | where an MCP client finds the editor of the project ([the editor for an agent](#the-editor-for-an-agent)) |
 | `.Panda/scripts-manifest.json` | the classes and fields of the loaded script bundle; written by the editor on every script load ([scripting](scripting.md)) |
 | `Scripts/<Project>/src/` | the gameplay: C++ against the Bamboo SDK |
 | `Export/` | the CMake project of the standalone game |
@@ -28,15 +30,16 @@ sidecars.
    The shell scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`; the CMake panel
    finds the SDK itself.
 3. Press **Reload** in PandaEditor (File → Reload, Cmd/Ctrl+R, the same button is on the
-   toolbar). The editor synchronizes with the disk by modification time, in the order editor
-   settings → project settings → assets → scripts → world: whatever has not changed is left
-   alone. A file changed on disk that also has unsaved edits in the editor asks which version
+   toolbar). The asset registry follows the project tree first — a file put into the project
+   becomes an asset with an id in its sidecar, a file that is gone leaves — then the editor
+   synchronizes with the disk by modification time, in the order editor settings → project
+   settings → assets → scripts → world: whatever has not changed is left alone. A file changed on disk that also has unsaved edits in the editor asks which version
    stays: Save, Discard or Cancel. A broken world or settings file is reported and the editor
    keeps what it has. An edited `.Panda/project.json` is reread as a whole; a module switched on
    in it opens the project again, a module switched off needs a restart of the editor. A shader
    is reloaded when either of its files or any `.hlsli` it includes has changed.
-4. Press Play. Running and debugging the game is a human's job; the editor is not driven by
-   tools.
+4. Press Play. An agent does steps 3 and 4 itself, with the `reload` and `play` tools of the
+   editor, and looks at the result with `screenshot`.
 
 ## One file, one tab
 
@@ -128,8 +131,7 @@ editor uses the same build directories, so the two never rebuild each other's wo
 
 ## Coding agents
 
-An agent gets the project as files. There is no MCP server and no editor bridge, because the
-files already say everything the agent needs:
+An agent gets the project as files, and the files say everything it needs to change the game:
 
 - `AGENTS.md` in the project root: the working rules and the formats in short (worlds, script
   fields, assets and materials, building scripts). `CLAUDE.md` imports it; `.claude/skills/`
@@ -140,10 +142,65 @@ files already say everything the agent needs:
 
 The rules an agent follows, in short:
 
-- Only a human runs and debugs the game. The agent does not launch the editor or the game; it
-  asks the user to press Reload and to report back.
+- The agent checks its own work in the running editor: `reload`, then `logs` and a
+  `screenshot`. What a still picture cannot show — motion, input, sound — it leaves to the user
+  and says what to try.
+- Without the editor's tools the agent asks the user to press Reload and to report back. It does
+  not launch the editor itself.
 - The agent builds the scripts itself and fixes compilation errors from the output.
 - The editor owns the registry: new asset files are registered on open or rescan, and `.pmeta`
   sidecars are never edited by hand.
 - Entity ids are random uint32 values unique within a world, rotations are quaternions, and the
   hierarchy is two-sided.
+
+## The editor for an agent
+
+A file can say what the game is; it cannot show how the game looks. For that the editor has an
+[MCP](https://modelcontextprotocol.io) server: an agent that works in the project folder looks at
+the editor and drives it. The server is thin on purpose. Nothing in it edits a world or an
+asset — a text file does that already; it has only what a file cannot do:
+
+| Tool | What it does |
+| --- | --- |
+| `status` | the project, Edit or Play, the open worlds, the unsaved documents, the viewports, the editor camera, the frame statistics, the shader features, the number of errors in the log |
+| `reload` | Reload: the editor takes what changed on disk. Answers with what the editor logged |
+| `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
+| `logs` | the log of the editor and the engine: what the Output panel shows and the engine console. `since` returns only the new lines, `level` filters |
+| `play`, `stop` | Play and Stop |
+| `camera` | where the editor camera of the Scene is; `position` moves it, `target` turns it to a point |
+| `save` | Save All: what the user changed in the editor reaches the files |
+| `open_world` | opens a world file in a tab and makes it the active world |
+| `restart`, `quit` | starts the editor again with the same project (a module switched off in `project.json`, a rebuilt editor), closes it |
+
+A tool acts as the user would, with the same functions behind it. Nobody is at the screen while
+it runs, so the editor shows no dialog: where it would ask — a file changed on disk that also
+has unsaved edits, unsaved documents before a restart — the tool fails and says what the
+question was. `reload` takes `discard: true` (the disk wins), `save` takes `overwrite: true`
+(the editor wins), `restart` and `quit` take `discard: true`.
+
+The server belongs to the project. The `"mcp"` section of `.Panda/project.json` switches it and
+names the port (Project Settings → MCP Server):
+
+```json
+"mcp": { "enabled": true, "port": 7717 }
+```
+
+The editor listens while a project with the section on is open, at
+`http://127.0.0.1:<port>/mcp`, for programs of this computer only: it answers the loopback
+address and refuses a request that comes from a web page. A new project has the section on and
+a `.mcp.json` that names the same address, which is where Claude Code and other MCP clients
+look:
+
+```json
+{ "mcpServers": { "panda": { "type": "http", "url": "http://127.0.0.1:7717/mcp" } } }
+```
+
+Two projects open at once need different ports: change the port in both files of one of them.
+A project that should not be driven sets `"enabled": false`.
+
+The transport is the Streamable HTTP of MCP in its smallest form: one endpoint, a POST with one
+JSON-RPC message, one JSON answer, no session. A restart of the editor is therefore invisible to
+the client: its next request reaches the new process.
+
+`PandaEditor --project <path>` starts the editor with a project instead of the one of the last
+session (macOS: `open -n PandaEditor.app --args --project <path>`).

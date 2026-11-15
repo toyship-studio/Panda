@@ -19,16 +19,39 @@ contract fixed for every version of the engine: a block only grows at its end, n
 | `panda/frame.hlsli` | `PANDA_FRAME` | `frameTime.x` — seconds since the application started (every material draw, postprocessing included) |
 | `panda/view.hlsli` | `PANDA_VIEW` | `cameraPosition.xyz` — the camera (the scene pass, not postprocessing) |
 | `panda/lights.hlsli` | `PANDA_LIGHTS` | `ambientColorIntensity`, the sun (`sunDirectionIntensity` — xyz toward the light, w intensity; `sunColor`), `lightCounts.x` point lights in `pointLightPositionsRange[8]` / `pointLightColorsIntensity[8]`; colors are linear |
-| `panda/shadows.hlsli` | `PANDA_SHADOWS` + `shadowMap` | the cascaded sun shadows; `sampleShadow(pos, normal, out csmWeight)` |
+| `panda/shadows.hlsli` | `PANDA_SHADOWS` + `shadowMap` | the cascaded sun shadows with a soft edge; `sampleShadow(pos, normal, out csmWeight)` |
 | `panda/occlusion.hlsli` | `PANDA_OCCLUSION` + `occlusionVolume` | the Occlusion Volume; `volumeOcclusion(pos)` → (sky visibility, sun transmittance) |
-| `panda/environment.hlsli` | `PANDA_ENVIRONMENT` + `environmentMap` | the environment map of the world (equirect) and `environmentParams` (x exposure, y top mip, z 1 when a map is set) |
+| `panda/environment.hlsli` | `PANDA_ENVIRONMENT` + `environmentMap`, `environmentLighting` | the environment map of the world (equirect) and its light: `environmentDiffuse(normal)` — the light of the sky on a matte surface, `environmentSpecular(reflected, roughness)` — the light a surface of that roughness reflects; both black when the world has no map |
+| `panda/ssao.hlsli` | `PANDA_SSAO` + `ssaoMap` | the screen-space ambient occlusion; `sampleScreenOcclusion(pos)` |
 | `panda/wind.hlsli` | `PANDA_WIND` | `sceneWind`: xy direction (XZ), z gust wave travel (m), w flutter phase |
-| `panda/post.hlsli` | `PANDA_POST` | the data of a postprocessing pass |
-| `panda/lighting.hlsli` | — | the umbrella of a lit shader: `view` + `lights` + the shadows and the occlusion the project has; `sunVisibility(pos, normal, T)`, `sceneOcclusion(pos)`, `ambientOcclusion(occlusion)`, `occlusionSurfaceOffset()` |
-| `panda/brdf.hlsli` | — | Cook-Torrance GGX: `shadeLight(...)` |
+| `panda/post.hlsli` | `PANDA_POST` | the data of a postprocessing pass: `resolutionTime`, `cameraNearFar`, `sunScreen`, `tonemapParams` (x — the tonemap curve of the camera, y — its exposure multiplier) |
+| `panda/lighting.hlsli` | — | the umbrella of a lit shader: `view` + `lights` + whatever of shadows, occlusion, ssao and environment the project has; `ambientLight(normal)`, `screenOcclusion(pos)`, `sunVisibility(pos, normal, T)`, `sceneOcclusion(pos)`, `ambientOcclusion(occlusion)`, `occlusionSurfaceOffset()` |
+| `panda/brdf.hlsli` | — | the surface model: `shadeLight(...)` — one light on a Cook-Torrance GGX surface, `shadeAmbient(...)` — the light of the surroundings on it, `environmentBrdf`, `specularOcclusion`, `filterRoughness` |
 
-The system textures (`shadowMap`, `occlusionVolume`, `environmentMap`) are bound by the engine
-and are not material fields.
+The system textures (`shadowMap`, `occlusionVolume`, `environmentMap`, `environmentLighting`,
+`ssaoMap`) are bound by the engine and are not material fields.
+
+## The frame
+
+The engine has one render pipeline, forward: every material shader computes the final color of
+its pixel, with the includes above. There is no second pipeline to choose and no G-buffer to
+write: a project scales by its shader features, not by a pipeline.
+
+1. The shadow cascades of the sun (`shadows`).
+2. The scene into an HDR target (linear light, 16-bit float) with an emissive target next to it.
+   What a lit shader writes may exceed 1.
+3. The camera's look: auto exposure, bloom (from the emissive target), the postprocessing chain
+   of the camera (your passes, linear HDR in and out), then the engine's last two passes — the
+   Tonemap (the exposure and the curve of the camera, sRGB, a dither) and the antialiasing
+   (FXAA). A chain that tonemaps itself (`handlesTonemap`) reads the camera's curve and exposure
+   from `tonemapParams`.
+4. The ambient occlusion (`ssao`) from the depth of this frame — the next frame shades with it.
+
+A camera chooses its look in its component: `tonemap` (`"agx"` — the default, `"aces"`,
+`"neutral"`, `"reinhard"`, `"none"`), `exposure` in stops, `antialiasing`, the bloom and the
+auto exposure. Light is not clamped anywhere before the Tonemap, so set the intensities as they
+are in the world — a sun several times stronger than the sky — and bring the frame to the
+display with `exposure`.
 
 ## Shader features
 
@@ -44,7 +67,7 @@ intensity of the lights) is world data.
 
 ```json
 {
-  "rendering": { "features": ["lights", "shadows", "environment"] }
+  "rendering": { "features": ["lights", "shadows", "environment", "ssao"] }
 }
 ```
 
@@ -53,7 +76,8 @@ intensity of the lights) is world data.
 | `lights` | ambient, the sun, 8 point lights (`PANDA_LIGHTS`) | collecting the lights every frame, the lighting code in every lit shader | the game is unlit: 2D, UI, flat colors |
 | `shadows` | cascaded sun shadows (`PANDA_SHADOWS`, `shadowMap`) | the scene drawn once more per cascade, the atlas, the filtering in every lit pixel | no sun, or shadows do not matter for the look |
 | `occlusion` | the Occlusion Volume: sky visibility and sun transmittance (`PANDA_OCCLUSION`, `occlusionVolume`) | chunk bakes on the CPU, a 3D texture, a sample per lit pixel | the world has no caves, interiors or dense canopy |
-| `environment` | the environment map of the world (`PANDA_ENVIRONMENT`, `environmentMap`) | the map in memory, the reflection samples of PBR, the HDR sky | the sky is a gradient and nothing reflects it |
+| `environment` | the environment map of the world and its light (`PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting`) | the map in memory, one small atlas baked when the map changes, two or three samples per lit pixel, the HDR sky | the sky is a gradient and a flat ambient color is enough |
+| `ssao` | the screen-space ambient occlusion (`PANDA_SSAO`, `ssaoMap`) | two half-resolution passes over the depth every frame, a sample per lit pixel | the game is 2D, or flat ambient light is the look |
 | `wind` | the scene wind (`PANDA_WIND`, the `windStrength` / `windGustiness` fields) | the sway code in the vegetation vertex shaders | nothing sways |
 
 Rules of the set:
@@ -73,22 +97,24 @@ A feature that is off costs nothing: its passes and bakes do not run, its code i
 into any shader of the project (the engine's lit templates included), and the settings and
 components of that feature in a world stay in the file and are ignored. The scene looks as if
 the feature's subject were absent: no `lights` is an unlit scene (albedo), no `shadows` an open
-sun, no `occlusion` an open sky, no `environment` the gradient sky and no reflections, no `wind`
-still vegetation.
+sun, no `occlusion` an open sky, no `environment` the gradient sky and only the flat ambient, no
+`ssao` an ambient light without contact darkening, no `wind` still vegetation.
 
 ### Writing a shader against the set
 
 Every shader of the project — your own and the engine's templates — is compiled with the
 generated `panda/features.hlsli` in front of it: `PANDA_FEATURE_LIGHTS`, `PANDA_FEATURE_SHADOWS`,
-`PANDA_FEATURE_OCCLUSION`, `PANDA_FEATURE_ENVIRONMENT`, `PANDA_FEATURE_WIND`, each defined as `1`
-or `0` from the first line. Do not define them and do not include `panda/features.hlsli`
+`PANDA_FEATURE_OCCLUSION`, `PANDA_FEATURE_ENVIRONMENT`, `PANDA_FEATURE_WIND`, `PANDA_FEATURE_SSAO`,
+each defined as `1` or `0` from the first line. Do not define them and do not include `panda/features.hlsli`
 yourself. An `#include` under `#if` works as in C.
 
 1. A lit shader includes `panda/lighting.hlsli` and nothing else for light. It compiles under
-   every set and degrades on its own: `sunVisibility`, `sceneOcclusion`, `ambientOcclusion` and
+   every set and degrades on its own: `ambientLight` is the flat ambient without `environment`,
+   and `screenOcclusion`, `sunVisibility`, `sceneOcclusion`, `ambientOcclusion` and
    `occlusionSurfaceOffset` return the open values when their feature is off.
 2. Include the block of a feature directly (`panda/shadows.hlsli`, `panda/occlusion.hlsli`,
-   `panda/environment.hlsli`, `panda/wind.hlsli`, `panda/lights.hlsli`) only under its macro:
+   `panda/environment.hlsli`, `panda/ssao.hlsli`, `panda/wind.hlsli`, `panda/lights.hlsli`) only
+   under its macro:
    `#if PANDA_FEATURE_ENVIRONMENT` … `#endif`, around the include and around the code that uses
    it. An unguarded include is a compile error in a project that has the feature off; use that
    on purpose only when the shader is meaningless without the feature.
@@ -102,24 +128,25 @@ yourself. An `#include` under `#if` works as in C.
 
 ```hlsl
 #include "panda/lighting.hlsli"
-#if PANDA_FEATURE_ENVIRONMENT
-#include "panda/environment.hlsli"
-#endif
 
+// A matte surface: the light of the surroundings, dimmed by what hides them, and the sun.
 float3 shade(float3 worldPos, float3 normal, float3 albedo) {
     const float2 occlusion = sceneOcclusion(worldPos + normal * (0.5 * occlusionSurfaceOffset()));
-    float3 color = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo * ambientOcclusion(occlusion);
+    float3 color = ambientLight(normal) * albedo * ambientOcclusion(occlusion) * screenOcclusion(worldPos);
     if (sunDirectionIntensity.w > 0.0) {
         const float3 light = normalize(sunDirectionIntensity.xyz);
         color += sunColor.rgb * sunDirectionIntensity.w * saturate(dot(normal, light)) * albedo *
                  sunVisibility(worldPos, normal, occlusion.y);
     }
-#if PANDA_FEATURE_ENVIRONMENT
-    // environmentMap and environmentParams are available here
-#endif
     return color;
 }
 ```
+
+The two occlusions belong to the ambient light only: the sun and the lamps are hidden by
+shadows, not by them. A surface with highlights takes `panda/brdf.hlsli` as well:
+`shadeLight` for each light, and `shadeAmbient(normal, view, ambientLight(normal),
+flatAmbient + environmentSpecular(reflected, roughness), albedo, metallic, roughness, f0,
+occlusion)` for the surroundings — `default-shaders/default_pbr.frag.hlsl` is the reference.
 
 ### Measuring a feature
 
@@ -129,7 +156,7 @@ Turn the feature off, save the project settings and compare the same view of the
   cost of the feature is the difference;
 - the Profiler panel shows the CPU work by scope: `World::renderShadowCascades` (the shadow
   passes), `World: lighting` (collecting the lights, the cascades, the volume window),
-  `OcclusionVolume: chunk` (the bakes).
+  `OcclusionVolume: chunk` (the bakes), `Ssao::apply`.
 
 ## Material fields
 

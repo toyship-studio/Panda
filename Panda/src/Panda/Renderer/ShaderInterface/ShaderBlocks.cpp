@@ -1,4 +1,7 @@
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
+
+#include <Foundation/GraphicsAPI.hpp>
+#include "Panda/Renderer/EnvironmentLighting.hpp"
 #include "Panda/Base/ColorSpace.hpp"
 
 #include <algorithm>
@@ -55,6 +58,11 @@ ShadowsUbo ShadowsUbo::from(const ShadowData &shadows) {
     ubo.shadowDepthScale =
         glm::vec4(shadows.depthScale[0], shadows.depthScale[1], shadows.depthScale[2], shadows.depthScale[3]);
     ubo.shadowBias = glm::vec4(shadows.normalOffset, shadows.receiverBias, static_cast<float>(shadows.cascadeCount), 0.f);
+    // A caster further than this widens the edge no more: the search for casters around a
+    // point is as wide as the widest edge, and its cost and its noise grow with it.
+    constexpr float WIDEST_PENUMBRA = 0.3f; // m
+    const float softness = std::tan(glm::radians(std::clamp(shadows.softness, 0.f, 10.f)));
+    ubo.shadowSoftness = glm::vec4(softness, WIDEST_PENUMBRA, 0.f, 0.f);
     return ubo;
 }
 
@@ -98,7 +106,25 @@ EnvironmentUbo EnvironmentUbo::from(const EnvironmentData &environment) {
         const Size size = map->getSize();
         maxMip = std::floor(std::log2(std::max(1.f, std::max(size.x, size.y))));
     }
-    ubo.environmentParams = glm::vec4(std::max(environment.intensity, 0.f), maxMip, map ? 1.f : 0.f, 0.f);
+    // The light of the map exists once its atlas is baked: until then (and without a map) the
+    // tiles are zero and the shaders read "no map".
+    const bool lit = map != nullptr && environment.lighting.get() != nullptr;
+    ubo.environmentParams = glm::vec4(std::max(environment.intensity, 0.f), maxMip, lit ? 1.f : 0.f, 0.f);
+    if (lit) {
+        const EnvironmentLighting::Tiles &tiles = EnvironmentLighting::tiles();
+        for (size_t index = 0; index < tiles.size(); ++index) { ubo.environmentTiles[index] = tiles[index]; }
+    }
+    return ubo;
+}
+
+SsaoUbo SsaoUbo::from(const SsaoData &ssao) {
+    SsaoUbo ubo{};
+    SsaoData data = ssao; // isValid() of a Miren handle is non-const
+    ubo.ssaoViewProj = ssao.viewProj;
+    ubo.ssaoParams = glm::vec4(
+        data.map.isValid() ? std::max(ssao.intensity, 0.f) : 0.f,
+        Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft ? 1.f : 0.f, 0.f, 0.f
+    );
     return ubo;
 }
 

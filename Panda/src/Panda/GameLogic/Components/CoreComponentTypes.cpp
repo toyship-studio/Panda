@@ -115,6 +115,9 @@ namespace {
         dto.autoExposureSpeed = camera.autoExposureSpeed;
         dto.autoExposureMin = camera.autoExposureMin;
         dto.autoExposureMax = camera.autoExposureMax;
+        dto.tonemap = tonemapName(camera.tonemap);
+        dto.exposure = camera.exposure;
+        dto.antialiasing = camera.antialiasing;
         encoder.encode("cameraComponent", dto);
     }
     void decodeCamera(Rain::Decoder &decoder, Entity entity) {
@@ -137,6 +140,9 @@ namespace {
         camera.autoExposureSpeed = dto.autoExposureSpeed;
         camera.autoExposureMin = dto.autoExposureMin;
         camera.autoExposureMax = dto.autoExposureMax;
+        camera.tonemap = tonemapFromName(dto.tonemap);
+        camera.exposure = dto.exposure;
+        camera.antialiasing = dto.antialiasing;
     }
 
     void encodeDirectionalLight(Rain::Encoder &encoder, Entity entity) {

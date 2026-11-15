@@ -29,5 +29,6 @@ JSON `{"inputs": [{"name","type","value"}]}`; `type`: 0 float, 1 uint, 2 vec4,
 - Create a new material in the editor (choosing a shader fills in the field template).
 - The material's shader is stored in the registry (the `.pmeta` sidecar), not in the .mat.
 
-After the edits, ask the user to press Reload (Cmd/Ctrl+R): the editor rereads the changed
-files. More details: PandaSDK `docs/assets.md`.
+After the edits, call the `reload` tool of the editor (its MCP server; without it ask the user
+to press Reload, Cmd/Ctrl+R): the editor rereads the changed files. `logs` has the import and
+shader errors, `screenshot` shows the result. More details: PandaSDK `docs/assets.md`.

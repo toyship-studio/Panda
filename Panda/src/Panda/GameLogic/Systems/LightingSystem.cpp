@@ -92,7 +92,13 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
         const WorldLightingSettings &settings = world.getLightingSettings();
         m_data.environment.map = settings.environmentMap.as<TextureAsset>();
         m_data.environment.intensity = settings.environmentIntensity;
+        // The light of the map for the lit shaders: baked when the world gets another map.
+        if (m_data.environment.map) {
+            m_environment.update(m_data.environment.map);
+            m_data.environment.lighting = m_environment.atlas();
+        }
     }
+    if (features.has(ShaderFeature::Ssao)) { m_data.ssao = m_screenOcclusion; }
     m_data.cameraPosition = cameraPosition;
     const DirectionalLightData &sun = m_data.directionalLight;
     // A point at infinity: behind the camera or far outside the frame z = 0, the flares are

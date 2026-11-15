@@ -264,6 +264,7 @@ bool CascadedShadowMap::update(
     m_data.normalOffset = settings.normalOffset;
     m_data.receiverBias = settings.receiverBias;
     m_data.slopeBias = settings.slopeBias;
+    m_data.softness = settings.softness;
     return true;
 }
 
