@@ -12,6 +12,9 @@ cbuffer MATERIAL_FIELDS {
     float alphaCutoff;
     uint doubleSided;
     float emissiveIntensity; // HDR: glow multiplier (may be > 1)
+    // Glass (with alphaMode 2): the share of the light that goes through the surface instead of
+    // being scattered by it. 0 — an ordinary surface, 1 — clear glass: only its reflections are seen.
+    float transmissionFactor;
 };
 
 #include "panda/lighting.hlsli"
@@ -99,6 +102,9 @@ PSOutput main(PSInput input) {
 
     float3 viewDirection = normalize(cameraPosition.xyz - input.worldPos);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
+    // What the surface scatters: glass lets that share of the light through instead.
+    const float transmission = alphaMode == 2u ? saturate(transmissionFactor) : 0.0;
+    const float3 scattered = albedo * (1.0 - transmission);
 
     // point lights shine under a tree as well.
     float3 lighting = float3(0.0, 0.0, 0.0);
@@ -106,30 +112,28 @@ PSOutput main(PSInput input) {
     // the sample is half a cell outward along the normal — a start from the surface: the
     // object's own bark/body does not dim its own upper surfaces.
     const float2 volume = sceneOcclusion(input.worldPos + surfaceNormal * (0.5 * occlusionSurfaceOffset()));
+    // The intensity of a light is what a white matte surface facing it sends back — the
+    // convention of every lit shader of the engine (a sun of 1 lights such a surface to 1). In the
+    // physical model that surface sends back 1 / PI of the light that arrives, so the light that
+    // arrives is PI times the intensity.
     if (sunDirectionIntensity.w > 0.0) {
         float3 lightDirection = normalize(sunDirectionIntensity.xyz);
-        float3 radiance = sunColor.rgb * sunDirectionIntensity.w *
+        float3 radiance = sunColor.rgb * (sunDirectionIntensity.w * PI) *
                           sunVisibility(input.worldPos, input.worldNormal, volume.y);
         lighting += shadeLight(
-            surfaceNormal, viewDirection, lightDirection, radiance, albedo / PI, metallic, roughness, f0
+            surfaceNormal, viewDirection, lightDirection, radiance, scattered / PI, metallic, roughness, f0
         );
     }
 
-    int pointLightCount = (int)lightCounts.x;
+    // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.
+    const int lampCount = localLightCount();
     [loop]
-    for (int i = 0; i < pointLightCount; ++i) {
-        float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
-        float distanceToLight = length(toLight);
-        float radius = pointLightPositionsRange[i].w;
-        if (radius <= 0.0 || distanceToLight >= radius) {
-            continue;
-        }
-        float normalizedDistance = saturate(distanceToLight / radius);
-        float attenuation = 1.0 - normalizedDistance * normalizedDistance;
-        attenuation *= attenuation;
-        float3 radiance = pointLightColorsIntensity[i].rgb * pointLightColorsIntensity[i].w * attenuation;
+    for (int i = 0; i < lampCount; ++i) {
+        float3 lightDirection;
+        const float3 lightRadiance = lampLight(i, input.worldPos, input.worldNormal, lightDirection);
+        float3 radiance = lightRadiance * PI;
         lighting += shadeLight(
-            surfaceNormal, viewDirection, normalize(toLight), radiance, albedo / PI, metallic, roughness, f0
+            surfaceNormal, viewDirection, lightDirection, radiance, scattered / PI, metallic, roughness, f0
         );
     }
 
@@ -145,13 +149,27 @@ PSOutput main(PSInput input) {
     radiance += environmentSpecular(reflect(-viewDirection, surfaceNormal), roughness);
 #endif
     float3 ambient = shadeAmbient(
-        surfaceNormal, viewDirection, irradiance, radiance, albedo, metallic, roughness, f0,
+        surfaceNormal, viewDirection, irradiance, radiance, scattered, metallic, roughness, f0,
         occlusion * ambientOcclusion(volume) * screenOcclusion(input.worldPos)
     );
     float3 color = (ambient + lighting) * input.fragLight + emissive;
 
     // HDR: the output is linear light; the tonemap pass at the end of the frame brings it to the display.
-    const float outAlpha = (alphaMode != 2u) ? 1.0 : alpha;
+    float outAlpha = 1.0;
+    if (alphaMode == 2u) {
+        // A blended surface covers what is behind it by its alpha. Glass covers less: the
+        // transmitted share shows through, except what the surface reflects toward the eye — a
+        // pane seen edge-on is a mirror. The blend is "color × alpha + behind × (1 − alpha)", so
+        // the light of the surface itself is divided by the share that stays: a reflection on
+        // clear glass arrives whole.
+        const float reflectance = max(f0.r, max(f0.g, f0.b));
+        const float fresnel =
+            reflectance + (1.0 - reflectance) * pow(1.0 - saturate(dot(surfaceNormal, viewDirection)), 5.0);
+        const float stays = max(1.0 - transmission * (1.0 - fresnel), 0.02);
+        color /= stays;
+        emissive /= stays;
+        outAlpha = alpha * stays;
+    }
     PSOutput output;
     output.color = float4(color, outAlpha);
     output.emissive = float4(emissive, outAlpha);

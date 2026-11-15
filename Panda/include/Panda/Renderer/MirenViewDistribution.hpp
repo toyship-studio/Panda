@@ -21,6 +21,9 @@ namespace Views {
     // Depth passes of the shadow cascades (World::renderShadowCascades): shadowView(0..MAX-1),
     // ids descend from BEGIN; executed before the scene, which samples the atlas.
     extern Miren::ViewId SHADOW_VIEWS_BEGIN;
+    // Depth passes of the lamp shadow tiles (LampShadowMap): ids descend from BEGIN, one per tile;
+    // executed before the scene.
+    extern Miren::ViewId LAMP_SHADOW_VIEWS_BEGIN;
     extern Miren::ViewId PREVIEW_RENDER_VIEW;
     extern Miren::ViewId PREVIEW_EMISSIVE_VIEW;
     extern Miren::ViewId THUMBNAIL_RENDER_VIEW;
@@ -44,6 +47,9 @@ namespace Views {
     // and the postprocessing of the frame — the NEXT frame shades with the result.
     extern Miren::ViewId SSAO_VIEW;
     extern Miren::ViewId SSAO_BLUR_VIEW;
+    // A copy of what the window shows drawn into a texture (the editor: a screenshot of the whole
+    // window for the MCP server); nothing is submitted into it otherwise.
+    extern Miren::ViewId CAPTURE_VIEW;
     // Finalization of previews/thumbnails (tonemap of the HDR scratch target into the display
     // texture) — after the render views above.
     extern Miren::ViewId PREVIEW_TONEMAP_VIEW;

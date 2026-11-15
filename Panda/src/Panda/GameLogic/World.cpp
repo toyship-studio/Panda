@@ -182,6 +182,8 @@ void World::update(double deltaTime, WorldFrame frame) {
     if (frame.mainCamera) { resolveMainCamera(frame); }
     m_frameProjection = frame.projection;
     m_frameViewProj = frame.viewProj;
+    // The simulation of the frame is over: what the world draws is read once, for every pass.
+    m_meshes.collect(*this);
     m_renderer2d.setViewProj(frame.viewProj);
     m_renderer3d.setViewProj(frame.viewProj);
     renderWorld(frame.viewProj, frame.skyViewProj, frame.cameraPosition);
@@ -231,7 +233,7 @@ void World::renderWorld(glm::mat4 &viewProjMtx, glm::mat4 &skyViewProjMtx, glm::
     for (const WorldSystem &system : GameContext::getExtensions().worldSystems.systems()) {
         if (system.submit != nullptr) { system.submit(*this, m_renderer3d, cameraPosition, viewProjMtx); }
     }
-    RenderSystem::submitMeshes(*this, m_renderer3d, frustum, shadowPass);
+    m_meshes.submit(m_renderer3d, frustum, shadowPass, cameraPosition);
 }
 
 void World::renderShadowCascades(glm::vec3 cameraPosition) {
@@ -250,6 +252,16 @@ void World::renderShadowCascades(glm::vec3 cameraPosition) {
             // the casters disappear.
             Miren::touch(shadowMap.cascadeView(cascade));
         }
+        renderWorld(viewProj, viewProj, cameraPosition);
+        m_renderer3d.end();
+    }
+    // The tiles of the lamps that cast shadows: the same traversal through the eye of the lamp.
+    LampShadowMap &lampShadows = m_lighting.lampShadowMap();
+    for (uint32_t tile = 0; tile < lampShadows.tileCount(); tile++) {
+        m_renderer3d.begin(RenderingMode::SHADOW_DEPTH, lampShadows.tileView(tile));
+        glm::mat4 viewProj = lampShadows.tileViewProj(tile);
+        m_renderer3d.setViewProj(viewProj);
+        if (tile == 0) { Miren::touch(lampShadows.tileView(tile)); } // the clear of the atlas
         renderWorld(viewProj, viewProj, cameraPosition);
         m_renderer3d.end();
     }

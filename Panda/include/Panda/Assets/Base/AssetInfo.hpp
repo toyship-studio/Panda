@@ -59,6 +59,8 @@ struct AssetInfo : public Rain::Codable {
         uint32_t alphaMode = 0;
         float alphaCutoff = 0.5f;
         bool doubleSided = false;
+        float emissiveStrength = 1.f;   // KHR_materials_emissive_strength
+        float transmissionFactor = 0.f; // KHR_materials_transmission: glass
         // Material of the SLOT (slot = import material, primitives share it): a direct id —
         // any project material can go into the slot, the runtime reads it without resolving
         // by paths. 0 — the slot is unbound (the renderer paints with a fallback). Mesh
@@ -81,6 +83,8 @@ struct AssetInfo : public Rain::Codable {
         RAIN_FIELD(alphaMode)
         RAIN_FIELD(alphaCutoff)
         RAIN_FIELD(doubleSided)
+        RAIN_FIELD(emissiveStrength)
+        RAIN_FIELD(transmissionFactor)
         RAIN_FIELD(materialAssetId)
         RAIN_FIELDS_END
     };

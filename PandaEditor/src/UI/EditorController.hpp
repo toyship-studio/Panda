@@ -105,6 +105,9 @@ public:
     CreateActions newEntityActions();
     CreateActions newAssetActions();
     void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
+    // Brings a panel in front by its id ("hierarchy", "contentBrowser", "output", "cmake",
+    // "statistics", "profiler"); false — no such panel.
+    bool showPanel(const std::string &id);
     void showSceneView(); // activates the tab of the active world — Stop
     // The open worlds of the project as tabs of the center dock (EngineBridge::openWorlds). The
     // tabs follow the list, the active world follows the selected tab (not while the game runs),

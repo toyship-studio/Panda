@@ -33,6 +33,7 @@ struct ShaderFeatureTexture final {
 struct ShaderFeatureInfo final {
     ShaderFeature feature;
     const char *name;  // "shadows": the key in the settings, the include `panda/shadows.hlsli`
+    const char *title; // "Shadows": what the editor calls it
     const char *macro; // "PANDA_FEATURE_SHADOWS": 1 or 0 in front of the shader
     const char *cost;  // one line for the editor: what the feature costs while it is on
     std::vector<ShaderFeatureTexture> textures;

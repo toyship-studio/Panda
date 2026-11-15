@@ -1,5 +1,7 @@
 #include "Panda/GameLogic/Systems/RenderSystem.hpp"
 
+#include <algorithm>
+
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Base/ColorSpace.hpp"
 #include "Panda/GameLogic/World.hpp"
@@ -81,82 +83,105 @@ void submitSprites(World &world, Renderer2D &renderer, const Frustum &frustum) {
     }
 }
 
-void submitMeshes(World &world, Renderer3D &renderer, const Frustum &frustum, bool shadowPass) {
-    struct BlendedRuntimeMesh {
-        UUID id;
-        glm::mat4 transform;
-        AssetRef<RuntimeMeshAsset> mesh;
-        AssetRef<MaterialAsset> material;
+void MeshList::collect(World &world) {
+    PANDA_PROFILE_SCOPE_N("World: mesh list");
+    m_items.clear();
+    const auto isBlended = [](const AssetRef<MaterialAsset> &material) {
+        return material && material->getUIntFieldValue("alphaMode", 0u) == 2u;
     };
-    std::vector<BlendedRuntimeMesh> blendedMeshes;
     {
-        PANDA_PROFILE_SCOPE_N("World: runtime meshes");
         auto view = world.getAllEntitiesWith<IdComponent, RuntimeMeshComponent, TransformComponent>();
         for (auto entityHandle : view) {
             if (!world.isValidEntt(entityHandle)) { continue; }
             auto &meshComponent = view.get<RuntimeMeshComponent>(entityHandle);
             if (!meshComponent.runtimeMesh) { continue; }
-            auto &id = view.get<IdComponent>(entityHandle);
-            glm::mat4 transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
-            AssetRef<RuntimeMeshAsset> mesh = meshComponent.runtimeMesh.as<RuntimeMeshAsset>();
-            glm::vec3 boundsMin, boundsMax;
-            if (mesh.get() && mesh->getLocalBounds(boundsMin, boundsMax) &&
-                !frustum.visible(transform, boundsMin, boundsMax)) {
-                continue;
-            }
-            AssetRef<MaterialAsset> material = meshComponent.material.as<MaterialAsset>();
-            if (material && material->getUIntFieldValue("alphaMode", 0u) == 2u) {
-                // Transparent geometry casts no shadow (Renderer3D would skip it itself — it is
-                // not collected).
-                if (!shadowPass) { blendedMeshes.push_back({id.id, transform, mesh, material}); }
-                continue;
-            }
-            renderer.submit(id.id, transform, mesh, material);
+            Item item;
+            item.id = view.get<IdComponent>(entityHandle).id;
+            item.transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
+            item.mesh = meshComponent.runtimeMesh.as<RuntimeMeshAsset>();
+            item.bounded = item.mesh.get() && item.mesh->getLocalBounds(item.boundsMin, item.boundsMax);
+            item.material = meshComponent.material.as<MaterialAsset>();
+            item.blended = isBlended(item.material);
+            m_items.push_back(std::move(item));
         }
         // Greyboxing primitives: a builtin mesh by kind, an empty material = checker.
         auto primitiveView = world.getAllEntitiesWith<IdComponent, PrimitiveMeshComponent, TransformComponent>();
         for (auto entityHandle : primitiveView) {
             if (!world.isValidEntt(entityHandle)) { continue; }
             auto &primitiveComponent = primitiveView.get<PrimitiveMeshComponent>(entityHandle);
-            AssetRef<RuntimeMeshAsset> mesh = StaticResources::primitiveMeshOf(primitiveComponent.kind);
-            if (!mesh) { continue; }
-            auto &id = primitiveView.get<IdComponent>(entityHandle);
-            glm::mat4 transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
-            glm::vec3 boundsMin, boundsMax;
-            if (mesh->getLocalBounds(boundsMin, boundsMax) && !frustum.visible(transform, boundsMin, boundsMax)) {
-                continue;
-            }
-            AssetRef<MaterialAsset> material = primitiveComponent.material.as<MaterialAsset>();
-            if (!material.get()) { material = StaticResources::primitiveMaterial; }
-            renderer.submit(id.id, transform, mesh, material);
+            Item item;
+            item.mesh = StaticResources::primitiveMeshOf(primitiveComponent.kind);
+            if (!item.mesh) { continue; }
+            item.id = primitiveView.get<IdComponent>(entityHandle).id;
+            item.transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
+            item.bounded = item.mesh->getLocalBounds(item.boundsMin, item.boundsMax);
+            item.material = primitiveComponent.material.as<MaterialAsset>();
+            if (!item.material.get()) { item.material = StaticResources::primitiveMaterial; }
+            item.blended = isBlended(item.material);
+            m_items.push_back(std::move(item));
         }
     }
     {
-        PANDA_PROFILE_SCOPE_N("World: imported submeshes");
         auto view = world.getAllEntitiesWith<IdComponent, ImportedSubmeshComponent, TransformComponent>();
         for (auto entityHandle : view) {
             if (!world.isValidEntt(entityHandle)) { continue; }
             auto &meshComponent = view.get<ImportedSubmeshComponent>(entityHandle);
             if (!meshComponent.importedMesh) { continue; }
-            auto &id = view.get<IdComponent>(entityHandle);
-            glm::mat4 transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
-            AssetRef<ImportedMeshAsset> mesh = meshComponent.importedMesh.as<ImportedMeshAsset>();
-            const uint32_t submeshIndex = meshComponent.submeshIndex;
-            const uint32_t primitiveIndex = meshComponent.primitiveIndex;
-            glm::vec3 boundsMin, boundsMax;
-            if (mesh.get() && mesh->getPrimitiveBounds(submeshIndex, primitiveIndex, boundsMin, boundsMax) &&
-                !frustum.visible(transform, boundsMin, boundsMax)) {
-                continue;
-            }
+            Item item;
+            item.id = view.get<IdComponent>(entityHandle).id;
+            item.transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
+            item.imported = meshComponent.importedMesh.as<ImportedMeshAsset>();
+            item.submeshIndex = meshComponent.submeshIndex;
+            item.primitiveIndex = meshComponent.primitiveIndex;
+            item.bounded = item.imported.get() &&
+                           item.imported->getPrimitiveBounds(
+                               item.submeshIndex, item.primitiveIndex, item.boundsMin, item.boundsMax
+                           );
             // Material: the component override, otherwise — the slot layout of the mesh itself.
-            AssetRef<Asset> material = meshComponent.material;
-            if (!material && mesh.get()) { material = mesh->materialForPrimitive(submeshIndex, primitiveIndex); }
-            renderer.submit(id.id, transform, mesh, submeshIndex, primitiveIndex, material.as<MaterialAsset>());
+            AssetRef<Asset> slot = meshComponent.material;
+            if (!slot && item.imported.get()) {
+                slot = item.imported->materialForPrimitive(item.submeshIndex, item.primitiveIndex);
+            }
+            item.material = slot.as<MaterialAsset>();
+            item.blended = isBlended(item.material);
+            m_items.push_back(std::move(item));
         }
     }
-    for (BlendedRuntimeMesh &blended : blendedMeshes) {
-        renderer.submit(blended.id, blended.transform, blended.mesh, blended.material);
+}
+
+void MeshList::submitItem(Renderer3D &renderer, const Item &item) const {
+    glm::mat4 transform = item.transform;
+    if (item.imported) {
+        renderer.submit(item.id, transform, item.imported, item.submeshIndex, item.primitiveIndex, item.material);
+    } else {
+        renderer.submit(item.id, transform, item.mesh, item.material);
     }
+}
+
+void MeshList::submit(
+    Renderer3D &renderer, const Frustum &frustum, bool shadowPass, const glm::vec3 &cameraPosition
+) const {
+    PANDA_PROFILE_SCOPE_N("World: meshes");
+    struct Blended {
+        float distance; // from the camera to the middle of the bounds
+        const Item *item;
+    };
+    std::vector<Blended> blended;
+    for (const Item &item : m_items) {
+        if (item.bounded && !frustum.visible(item.transform, item.boundsMin, item.boundsMax)) { continue; }
+        if (!item.blended) {
+            submitItem(renderer, item);
+            continue;
+        }
+        // A blended surface waits until the opaque scene is drawn; it casts no shadow.
+        if (shadowPass) { continue; }
+        const glm::vec3 middle = item.bounded ? (item.boundsMin + item.boundsMax) * 0.5f : glm::vec3(0.f);
+        blended.push_back({glm::distance(glm::vec3(item.transform * glm::vec4(middle, 1.f)), cameraPosition), &item});
+    }
+    std::stable_sort(blended.begin(), blended.end(), [](const Blended &a, const Blended &b) {
+        return a.distance > b.distance;
+    });
+    for (const Blended &entry : blended) { submitItem(renderer, *entry.item); }
 }
 
 } // namespace Panda::RenderSystem

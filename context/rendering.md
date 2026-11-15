@@ -26,10 +26,33 @@ The engine has ONE render pipeline, forward, and no second one is planned.
   last (`context/lighting.md`); a technique added later (reflections, contact shadows) takes the
   same route or reads the scene after it is drawn.
 
+**The meshes of a frame are read once.** A frame has many passes over the same world — the
+scene, up to four cascades of the sun, up to eight tiles of the lamps, picking — and each used to
+walk the registry and the hierarchy again. `RenderSystem::MeshList` (owned by `World`) is filled
+once, in `World::update` after the simulation: for every runtime mesh, greyboxing primitive and
+primitive of an imported mesh its world transform (the hierarchy is walked here and nowhere
+else), its bounds and its resolved material. Every pass culls against its own frustum and
+submits from the list (`MeshList::submit`). The world systems of the modules (terrain, flora,
+particles) still submit for themselves in every pass.
+
+**Blended surfaces** (a material with `alphaMode` 2). `MeshList::submit` draws the
+opaque meshes first and then every blended one — a runtime mesh, a primitive, a primitive of an
+imported mesh — from the farthest to the nearest by the middle of its bounds. A blended draw is
+tested against the depth and does not write it (`MIREN_STATE_NO_DEPTH_WRITE`, in the three
+backends): what is behind a pane stays in the depth buffer for the next pane and for everything
+that reads the depth of the frame (the ambient occlusion sees through glass). It casts no
+shadow. Glass is the `transmissionFactor` of the PBR material: the share of the light that goes
+through the surface instead of being scattered by it. The surface then covers what is behind it
+by `alpha × (1 − transmission × (1 − fresnel))` — a pane seen edge-on is a mirror — and, as the
+blend of Miren is `color × alpha + behind × (1 − alpha)`, the shader divides its own light by
+the share that stays, so a reflection on clear glass arrives whole. The glTF import reads
+`KHR_materials_transmission` into it (and `KHR_materials_emissive_strength` into
+`emissiveIntensity`).
+
 The order of a frame (Miren executes views by descending id, `MirenViewDistribution`):
 
 1. Bakes that the scene reads: the light atlas of the environment map, impostors.
-2. The shadow cascades.
+2. The shadow tiles of the lamps, the shadow cascades of the sun.
 3. The scene: color (RGBA16F, linear light, not clamped) and emissive (RGBA16F), depth.
 4. `PostprocessingPipeline`: auto exposure → bloom (from the emissive target) → the chain of the
    camera (linear HDR) → the Tonemap → the antialiasing. The last two are the engine's:
@@ -376,12 +399,17 @@ flat. The signal is value noise: a sine reads as machine-made waves, white noise
 
 ## Open items
 
+- A draw is still expensive on the way to the GPU: Renderer3D looks the render traits of a
+  material up by field name for every draw (`alphaMode`, `doubleSided`), and a backend resolves
+  the view inputs by name for every draw. With the mesh list the passes no longer pay for the
+  registry; these two are what is left of the cost of a shadow pass.
 - Antialiasing is FXAA alone: geometry thinner than a pixel still shimmers. MSAA needs
   multisampled targets in the three Miren backends; a temporal resolve would also hide the grain
   of the soft shadows and of the ambient occlusion.
 - The depth buffer is a standard one (near 0 → far 1): reversed depth would keep precision at a
   distance for everything that reads it.
-- Glass: a glTF material with transmission is imported as opaque.
+- Glass does not bend or tint what is behind it (that needs the opaque scene as a texture and
+  a second blend), and two blended surfaces that cross are sorted by their middles only.
 - View inputs are written once per view, but a backend still resolves and sets them for every
   draw of the view; skipping the repeat for consecutive draws of one program is open
   (`context/shader-features.md`).

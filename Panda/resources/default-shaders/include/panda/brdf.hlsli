@@ -2,9 +2,12 @@
 // height-correlated Smith visibility and the Schlick Fresnel (default_pbr, the veg_crown crown,
 // the impostor billboard).
 //   shadeLight   — the light of one source reflected by the surface, already multiplied by N.L.
-//                  diffuseAlbedo is what the source sees as diffuse: PBR passes albedo / PI
-//                  (energy-conserving Lambert), foliage and billboards pass the raw albedo — the
-//                  energy convention of the world (default_lit, terrain, grass use a raw N.L).
+//                  The intensity of a light in the engine is what a white matte surface facing
+//                  it sends back (default_lit, terrain, grass: albedo * intensity * N.L). The
+//                  physical model wants the light that arrives, PI times that: PBR passes
+//                  radiance = color * intensity * PI and diffuseAlbedo = albedo / PI. Foliage and
+//                  billboards pass the intensity and the raw albedo: the same diffuse, a weaker
+//                  highlight, as they were tuned.
 //   shadeAmbient — the light of the surroundings (the flat ambient, the environment map)
 //                  reflected by the surface: diffuse and specular, with the energy of multiple
 //                  scattering kept, so a rough metal does not go dark.

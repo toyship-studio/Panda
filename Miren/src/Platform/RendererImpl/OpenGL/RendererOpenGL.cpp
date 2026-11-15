@@ -234,6 +234,7 @@ void RendererOpenGL::submit(Frame *frame) {
     if (!frame->m_drawCallsCount) {
         selectContext(frame->m_views[0]);
         GL_CALL(glClearColor(0, 0, 0, 1));
+        GL_CALL(glDepthMask(GL_TRUE));
         GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
         m_ctx->swapBuffers();
         return;
@@ -290,6 +291,7 @@ void RendererOpenGL::viewChanged(View &view) {
     // Clears must not inherit clipping or disabled color writes from a previous draw.
     GL_CALL(glDisable(GL_SCISSOR_TEST));
     GL_CALL(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+    GL_CALL(glDepthMask(GL_TRUE)); // a clear of the depth obeys the mask of the last draw
     GLbitfield clearBits = 0;
     if (view.m_clearEnabled) {
         uint32_t rgba = view.m_clearColor;
@@ -330,6 +332,8 @@ void RendererOpenGL::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
     } else {
         GL_CALL(glDisable(GL_DEPTH_TEST));
     }
+    // The state is global: every draw sets it, and the clears reset it.
+    GL_CALL(glDepthMask((draw->m_state & MIREN_STATE_NO_DEPTH_WRITE) ? GL_FALSE : GL_TRUE));
     // Depth-only pass (shadow map): color is not written. The state is global — it must be reset.
     const bool colorWrite = (draw->m_state & MIREN_STATE_NO_COLOR_WRITE) == 0;
     GL_CALL(glColorMask(colorWrite, colorWrite, colorWrite, colorWrite));

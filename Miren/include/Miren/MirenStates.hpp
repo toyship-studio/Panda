@@ -11,5 +11,8 @@ namespace Miren {
 // Cull FRONT faces (together with CULL_FACE) and do not write color (depth-only shadow map pass).
 #define MIREN_STATE_CULL_FRONT BIT(5)
 #define MIREN_STATE_NO_COLOR_WRITE BIT(6)
+// With DEPTH_TEST: the draw is tested against the depth and does not write it (blended
+// surfaces: what is behind a pane of glass stays what the depth buffer holds).
+#define MIREN_STATE_NO_DEPTH_WRITE BIT(7)
 
 } // namespace Miren

@@ -11,4 +11,6 @@ cbuffer PANDA_LIGHTS {
     uint4 lightCounts;
     float4 pointLightPositionsRange[8];
     float4 pointLightColorsIntensity[8];
+    float4 pointLightDirections[8];
+    float4 pointLightCones[8];
 };

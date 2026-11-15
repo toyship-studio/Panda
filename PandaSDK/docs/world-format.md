@@ -26,7 +26,8 @@ in meters; the defaults are as in the example). A section and every field in it 
 what is missing takes the engine defaults. The field names are the C++ field names of the
 settings structs: `graphics.shadows` — `enabled`, `cascadeCount`, `tileSize`, `distance`,
 `strength`, `softness` (the angular radius of the sun in degrees: the edge of a shadow widens with
-the distance from its caster; 0 — a fixed filter), `slopeBias`, `normalOffset`, `receiverBias`;
+the distance from its caster; 0 — a fixed filter), `lampTileSize` (the side of a tile of the lamp
+shadow atlas in texels, 512), `slopeBias`, `normalOffset`, `receiverBias`;
 `graphics.occlusion` — `enabled`, `aoStrength`, `sunStrengthNear`, `sunStrengthFar`, `cellSize`,
 `windowChunks`, `extinction`, `surfaceOffset`, `contrast`; `graphics.ssao` — `enabled`, `radius`
 (m), `intensity` (`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
@@ -101,6 +102,15 @@ script or in the editor moves the bodies under it. A collider on an entity WITHO
 joins the body of the nearest entity above it that has one (a compound body: a cabinet is one
 `rigidbody3dComponent` on the cabinet entity and a `boxCollider3dComponent` on each board under
 it); such an entity carries no joint.
+
+`pointLightComponent` is a lamp: `color`, `intensity` (its light at 1 m; it falls with the square
+of the distance), `radius` (where it reaches zero), `isEnabled`, and for a spot `coneAngle` (the
+full angle of the cone in degrees; 0 — the lamp shines all around) with `coneSoftness` (0..1, the
+share of the cone that fades to its edge), and `castShadows` (false by default: a spot that casts
+costs one more pass over the world every frame, a point light six; eight such passes per frame at
+most, the lamps nearest to the camera first). A spot shines along the −Z of its entity, like a
+`directionalLightComponent` (`color`, `intensity` — what a white surface facing the sun sends
+back, `isEnabled`, `castShadows`).
 
 `cameraComponent` also holds the look of its frame: `bloomEnabled` / `bloomIntensity` /
 `bloomRadius`, `autoExposureEnabled` with its `autoExposureKey` / `Speed` / `Min` / `Max`,

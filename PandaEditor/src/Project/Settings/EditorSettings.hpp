@@ -104,12 +104,14 @@ struct DockLayoutState final : public Rain::Codable {
 
 /// "viewport": the viewport display options. Extensible: wireframe, grid, etc.
 struct EditorViewportSettings final : public Rain::Codable {
+    bool showGrid = true;           // the grid of the plane y = 0
     bool showHelperIcons = true;    // icons of light sources/cameras in the scene
     bool showPostprocessing = true; // postprocessing chain of the main camera (WYSIWYG)
     float cameraSpeed = 20.f;       // fly speed of the viewport camera (m/s)
     bool wireframe = false;         // debug wireframe of the scene
 
     RAIN_FIELDS_BEGIN(EditorViewportSettings)
+    RAIN_FIELD(showGrid)
     RAIN_FIELD(showHelperIcons)
     RAIN_FIELD(showPostprocessing)
     RAIN_FIELD(cameraSpeed)

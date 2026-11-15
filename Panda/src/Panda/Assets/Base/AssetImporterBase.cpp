@@ -484,6 +484,12 @@ AssetInfo::MeshSettings AssetImporterBase::loadGltfMeshMeta(const path_t &gltfPa
         materialMeta.alphaMode = static_cast<uint32_t>(material->alpha_mode);
         materialMeta.alphaCutoff = material->alpha_cutoff;
         materialMeta.doubleSided = material->double_sided;
+        if (material->has_emissive_strength) { materialMeta.emissiveStrength = material->emissive_strength.emissive_strength; }
+        if (material->has_transmission) {
+            materialMeta.transmissionFactor = material->transmission.transmission_factor;
+            // Glass is drawn with the blended surfaces: what is behind it shows through.
+            if (materialMeta.transmissionFactor > 0.f) { materialMeta.alphaMode = 2; }
+        }
     }
 
     for (size_t meshIndex = 0; meshIndex < data->meshes_count; ++meshIndex) {

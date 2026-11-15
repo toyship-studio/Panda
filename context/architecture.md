@@ -338,6 +338,10 @@ Unity's Scene and Game views:
 
 - **Scene** — the editor's view of the active world through the editor camera: selection and its
   outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
+  The grid marks the plane y = 0 and is drawn a little under it (two thousandths of the camera
+  height: a floor modelled at y = 0 covers it instead of flickering through it); the grid, the
+  helper icons, the postprocessing and the wireframe are display options of the viewport
+  (`EditorViewportSettings`, the `viewport` section of the editor settings).
   It is the viewport in the tab of the active world ("The document model" above). In EDIT it
   shows the editing world; in PLAY the playing copy, as it runs (what a separate Simulate mode
   used to do: Simulate is gone, the Scene during Play is it).
@@ -865,7 +869,10 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `restart`, `quit`. A
+  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `restart`,
+  `quit`. `show` brings a panel, a settings tab, the tab of an asset or the inspector of an entity
+  in front — a click, not an edit: with the `window` screenshot it is how an agent looks at the
+  editor's own UI. A
   tool acts as the user does, through the same functions of `EditorLayer` (`reloadFromDisk`,
   `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
 - Nobody is at the screen while a tool runs. `SystemTools::Unattended` is a scope in which a
@@ -881,7 +888,10 @@ second way to do what a text file already does. The user-facing page is
   viewport comes forward (one viewport renders per frame), a few frames pass, `Miren::readTexture`
   reads the texture back, and the picture is scaled down by area averaging and packed as PNG
   (miniz). The buffer is owned by the render command too, so a dropped connection frees nothing
-  early.
+  early. The `window` view is the editor itself: the chrome as it was last drawn is submitted
+  once more (`EditorUI::renderTo`) into `Views::CAPTURE_VIEW`, a texture of the size of the
+  window — the window is drawn as always, the system menu bar and title are not part of the
+  picture. An agent that changes the editor sees its panels this way.
 - `logs` answers from `Foundation::LogHistory`: the last lines of both logs (`LOG_*` of the
   console and `LOG_*_EDITOR` of the Output panel) kept in memory with sequence numbers. The
   editor enables it at the first line of `main`; a game leaves it off.

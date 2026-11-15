@@ -176,7 +176,8 @@ namespace StaticResources {
             MaterialField("alphaCutoff", MaterialFieldType::FLOAT, 0.5f),
             MaterialField("doubleSided", MaterialFieldType::UINT, 0u),
             // New fields go only AT THE END: MATERIAL_FIELDS is packed in field order (std140).
-            MaterialField("emissiveIntensity", MaterialFieldType::FLOAT, 1.f)
+            MaterialField("emissiveIntensity", MaterialFieldType::FLOAT, 1.f),
+            MaterialField("transmissionFactor", MaterialFieldType::FLOAT, 0.f)
         };
         defaultLitMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, litMaterialData, defaultLitShader);
         /// ----------------------------------------

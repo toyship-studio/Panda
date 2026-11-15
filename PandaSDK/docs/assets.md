@@ -48,6 +48,14 @@ id of a built-in or project shader). The set and the ORDER of the fields are the
 contract: create a new material in the editor (choosing a shader fills in the correct field
 template) and edit the values as text. Writing a shader of your own: [Shaders](shaders.md).
 
+The fields of a material on the built-in PBR shader: `baseColorTexture` / `baseColorFactor`,
+`metallicRoughnessTexture` (g — roughness, b — metallic) / `metallicFactor` / `roughnessFactor`,
+`normalTexture` / `normalScale`, `occlusionTexture` / `occlusionStrength`, `emissiveTexture` /
+`emissiveFactor` / `emissiveIntensity`, `alphaMode` (0 opaque, 1 cut out by `alphaCutoff`,
+2 blended), `doubleSided`, `transmissionFactor` (glass, with `alphaMode` 2: 1 — clear, only the
+reflections are seen; the roughness frosts it). A blended surface casts no shadow and is drawn
+after the opaque ones, far to near.
+
 ## Reload
 
 One command: **File → Reload** (Cmd/Ctrl+R or the toolbar button) rereads from disk everything

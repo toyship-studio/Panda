@@ -69,7 +69,9 @@ namespace {
             MaterialField("emissiveFactor", MaterialFieldType::COLOR, linearToSrgb(materialMeta.emissiveFactor)),
             MaterialField("alphaMode", MaterialFieldType::UINT, materialMeta.alphaMode),
             MaterialField("alphaCutoff", MaterialFieldType::FLOAT, materialMeta.alphaCutoff),
-            MaterialField("doubleSided", MaterialFieldType::UINT, materialMeta.doubleSided ? 1u : 0u)
+            MaterialField("doubleSided", MaterialFieldType::UINT, materialMeta.doubleSided ? 1u : 0u),
+            MaterialField("emissiveIntensity", MaterialFieldType::FLOAT, materialMeta.emissiveStrength),
+            MaterialField("transmissionFactor", MaterialFieldType::FLOAT, materialMeta.transmissionFactor)
         };
         return materialData;
     }

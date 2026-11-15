@@ -30,7 +30,7 @@ files stay the way to change the project; the tools are for what a file cannot d
 | --- | --- |
 | `status` | the project, Edit or Play, the open worlds, unsaved documents, the viewports, the frame statistics |
 | `reload` | the editor takes what changed on disk: worlds, assets, shaders, settings, the script build |
-| `screenshot` | a picture of the `scene` view (the editor camera) or of the `game` view (the main camera, the game UI) |
+| `screenshot` | a picture of the `scene` view (the editor camera), of the `game` view (the main camera, the game UI) or of the whole editor `window` |
 | `logs` | the log of the editor: shader, import and script errors |
 | `play`, `stop` | runs the game inside the editor, returns to editing |
 | `camera` | places the editor camera of the `scene` view |

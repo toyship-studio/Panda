@@ -18,14 +18,14 @@ contract fixed for every version of the engine: a block only grows at its end, n
 | `panda/draw.hlsli` | `PANDA_DRAW` | `projViewMtx`, `modelMtx` of the draw (every vertex shader) |
 | `panda/frame.hlsli` | `PANDA_FRAME` | `frameTime.x` — seconds since the application started (every material draw, postprocessing included) |
 | `panda/view.hlsli` | `PANDA_VIEW` | `cameraPosition.xyz` — the camera (the scene pass, not postprocessing) |
-| `panda/lights.hlsli` | `PANDA_LIGHTS` | `ambientColorIntensity`, the sun (`sunDirectionIntensity` — xyz toward the light, w intensity; `sunColor`), `lightCounts.x` point lights in `pointLightPositionsRange[8]` / `pointLightColorsIntensity[8]`; colors are linear |
-| `panda/shadows.hlsli` | `PANDA_SHADOWS` + `shadowMap` | the cascaded sun shadows with a soft edge; `sampleShadow(pos, normal, out csmWeight)` |
+| `panda/lights.hlsli` | `PANDA_LIGHTS` | `ambientColorIntensity`, the sun (`sunDirectionIntensity` — xyz toward the light, w intensity; `sunColor`), and the lamps (point lights and spots): `localLightCount()` and `localLight(index, worldPos, out direction)` — the light of a lamp that reaches a point, with its falloff and its cone; colors are linear |
+| `panda/shadows.hlsli` | `PANDA_SHADOWS` + `shadowMap`, `lampShadowMap` | the cascaded sun shadows with a soft edge, `sampleShadow(pos, normal, out csmWeight)`; the shadows of the lamps that cast them, `sampleLampShadow(index, pos, normal)` |
 | `panda/occlusion.hlsli` | `PANDA_OCCLUSION` + `occlusionVolume` | the Occlusion Volume; `volumeOcclusion(pos)` → (sky visibility, sun transmittance) |
 | `panda/environment.hlsli` | `PANDA_ENVIRONMENT` + `environmentMap`, `environmentLighting` | the environment map of the world (equirect) and its light: `environmentDiffuse(normal)` — the light of the sky on a matte surface, `environmentSpecular(reflected, roughness)` — the light a surface of that roughness reflects; both black when the world has no map |
 | `panda/ssao.hlsli` | `PANDA_SSAO` + `ssaoMap` | the screen-space ambient occlusion; `sampleScreenOcclusion(pos)` |
 | `panda/wind.hlsli` | `PANDA_WIND` | `sceneWind`: xy direction (XZ), z gust wave travel (m), w flutter phase |
 | `panda/post.hlsli` | `PANDA_POST` | the data of a postprocessing pass: `resolutionTime`, `cameraNearFar`, `sunScreen`, `tonemapParams` (x — the tonemap curve of the camera, y — its exposure multiplier) |
-| `panda/lighting.hlsli` | — | the umbrella of a lit shader: `view` + `lights` + whatever of shadows, occlusion, ssao and environment the project has; `ambientLight(normal)`, `screenOcclusion(pos)`, `sunVisibility(pos, normal, T)`, `sceneOcclusion(pos)`, `ambientOcclusion(occlusion)`, `occlusionSurfaceOffset()` |
+| `panda/lighting.hlsli` | — | the umbrella of a lit shader: `view` + `lights` + whatever of shadows, occlusion, ssao and environment the project has; `ambientLight(normal)`, `screenOcclusion(pos)`, `sunVisibility(pos, normal, T)`, `lampLight(index, pos, normal, out direction)` — a lamp with its shadow, `sceneOcclusion(pos)`, `ambientOcclusion(occlusion)`, `occlusionSurfaceOffset()` |
 | `panda/brdf.hlsli` | — | the surface model: `shadeLight(...)` — one light on a Cook-Torrance GGX surface, `shadeAmbient(...)` — the light of the surroundings on it, `environmentBrdf`, `specularOcclusion`, `filterRoughness` |
 
 The system textures (`shadowMap`, `occlusionVolume`, `environmentMap`, `environmentLighting`,
@@ -53,6 +53,12 @@ auto exposure. Light is not clamped anywhere before the Tonemap, so set the inte
 are in the world — a sun several times stronger than the sky — and bring the frame to the
 display with `exposure`.
 
+The intensity of a light is what a white matte surface facing it sends back: a sun of 1 lights
+such a surface to 1, and the ambient and the light of the sky are in the same unit. A shader with
+a physical surface model multiplies the intensity by π before `shadeLight` and passes
+`albedo / PI` as the diffuse albedo (`default_pbr` does). A world without an environment map is
+lit by the built-in gradient sky it shows.
+
 ## Shader features
 
 A shader feature is a part of the renderer a project either has or does not have. The set is the
@@ -73,8 +79,8 @@ intensity of the lights) is world data.
 
 | Feature | Gives the shaders | Costs while on | Leave it out when |
 |---|---|---|---|
-| `lights` | ambient, the sun, 8 point lights (`PANDA_LIGHTS`) | collecting the lights every frame, the lighting code in every lit shader | the game is unlit: 2D, UI, flat colors |
-| `shadows` | cascaded sun shadows (`PANDA_SHADOWS`, `shadowMap`) | the scene drawn once more per cascade, the atlas, the filtering in every lit pixel | no sun, or shadows do not matter for the look |
+| `lights` | ambient, the sun, 8 lamps — point lights and spots (`PANDA_LIGHTS`) | collecting the lights every frame, the lighting code in every lit shader | the game is unlit: 2D, UI, flat colors |
+| `shadows` | cascaded sun shadows and the shadows of the lamps that cast them (`PANDA_SHADOWS`, `shadowMap`, `lampShadowMap`) | the scene drawn once more per cascade (and per spot, six times per point light that casts), the atlases, the filtering in every lit pixel | no sun and no lamp casts, or shadows do not matter for the look |
 | `occlusion` | the Occlusion Volume: sky visibility and sun transmittance (`PANDA_OCCLUSION`, `occlusionVolume`) | chunk bakes on the CPU, a 3D texture, a sample per lit pixel | the world has no caves, interiors or dense canopy |
 | `environment` | the environment map of the world and its light (`PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting`) | the map in memory, one small atlas baked when the map changes, two or three samples per lit pixel, the HDR sky | the sky is a gradient and a flat ambient color is enough |
 | `ssao` | the screen-space ambient occlusion (`PANDA_SSAO`, `ssaoMap`) | two half-resolution passes over the depth every frame, a sample per lit pixel | the game is 2D, or flat ambient light is the look |
@@ -137,6 +143,11 @@ float3 shade(float3 worldPos, float3 normal, float3 albedo) {
         const float3 light = normalize(sunDirectionIntensity.xyz);
         color += sunColor.rgb * sunDirectionIntensity.w * saturate(dot(normal, light)) * albedo *
                  sunVisibility(worldPos, normal, occlusion.y);
+    }
+    for (int i = 0; i < localLightCount(); ++i) {
+        float3 toLamp;
+        const float3 light = lampLight(i, worldPos, normal, toLamp); // the lamp, with its shadow
+        color += light * saturate(dot(normal, toLamp)) * albedo;
     }
     return color;
 }

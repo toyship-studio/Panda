@@ -171,6 +171,9 @@ namespace {
         dto.intensity = light.intensity;
         dto.radius = light.radius;
         dto.isEnabled = light.isEnabled;
+        dto.coneAngle = light.coneAngle;
+        dto.coneSoftness = light.coneSoftness;
+        dto.castShadows = light.castShadows;
         encoder.encode("pointLightComponent", dto);
     }
     void decodePointLight(Rain::Decoder &decoder, Entity entity) {
@@ -181,6 +184,9 @@ namespace {
         light.intensity = dto.intensity;
         light.radius = dto.radius;
         light.isEnabled = dto.isEnabled;
+        light.coneAngle = dto.coneAngle;
+        light.coneSoftness = dto.coneSoftness;
+        light.castShadows = dto.castShadows;
     }
 
     void encodeSprite(Rain::Encoder &encoder, Entity entity) {

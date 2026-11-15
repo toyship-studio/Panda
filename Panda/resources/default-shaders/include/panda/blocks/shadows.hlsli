@@ -12,6 +12,11 @@ cbuffer PANDA_SHADOWS {
     float4 shadowDepthScale;
     float4 shadowBias;
     float4 shadowSoftness;
+    float4x4 lampShadowMatrices[8];
+    float4 lampShadowLamps[8];
+    float4 lampShadowParams;
 };
 Texture2D shadowMap;
 SamplerComparisonState shadowMapSampler;
+Texture2D lampShadowMap;
+SamplerComparisonState lampShadowMapSampler;

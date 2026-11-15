@@ -91,6 +91,11 @@ namespace {
             data->shadows.softness = value;
             emit();
         });
+        // Side of a tile of the lamp shadow atlas (texels): a spot has one tile, a point light six.
+        addNumberRow(section, "Lamp Map Size", 128.f, 2048.f, static_cast<float>(data->shadows.lampTileSize), [data, emit](float value) {
+            data->shadows.lampTileSize = static_cast<uint32_t>(std::max(0.f, value));
+            emit();
+        });
         // Biases against acne: slope — the rasterizer of the depth pass; normal offset and receiver
         // bias — in cascade texels (independent of the scene scale).
         addNumberRow(section, "Slope Bias", 0.f, 16.f, data->shadows.slopeBias, [data, emit](float value) {
@@ -204,6 +209,10 @@ namespace {
     void buildViewport(CollapsibleSection &section, Panda::TypeContext &store) {
         auto data = std::make_shared<Panda::EditorViewportSettings>(store.get<Panda::EditorViewportSettings>());
         auto emit = [data] { commitSettings<Panda::EditorViewportSettings>(SettingsScope::Editor, *data); };
+        addToggleRow(section, "Grid", data->showGrid, [data, emit](bool on) {
+            data->showGrid = on;
+            emit();
+        });
         addToggleRow(section, "Helper Icons", data->showHelperIcons, [data, emit](bool on) {
             data->showHelperIcons = on;
             emit();
@@ -410,9 +419,7 @@ namespace {
         const Panda::ShaderFeatureSet current = Panda::ShaderFeatureSet::fromNames(data->features);
         for (const Panda::ShaderFeatureInfo &info : Panda::ShaderFeatures::catalog()) {
             const Panda::ShaderFeature feature = info.feature;
-            std::string title = info.name;
-            title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
-            addToggleRow(section, title.c_str(), current.has(feature), [data, emit, feature](bool on) {
+            addToggleRow(section, info.title, current.has(feature), [data, emit, feature](bool on) {
                 // The dependencies come along: shadows and occlusion read the sun of the lights
                 // (the rows of the dependent features catch up when the section is rebuilt).
                 Panda::ShaderFeatureSet set = Panda::ShaderFeatureSet::fromNames(data->features);

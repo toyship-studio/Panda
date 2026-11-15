@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Panda/Assets/MaterialAsset.hpp>
+#include <Panda/Renderer/EnvironmentLighting.hpp>
 #include <Panda/Renderer/Renderer3D.hpp>
 #include <Panda/Renderer/PostprocessingPipeline.hpp>
 #include <Panda/Renderer/Vertex.hpp>
@@ -58,6 +59,7 @@ private:
     uint32_t m_indicesCount = 0;
     glm::mat4 m_viewProj;
     WorldLightingData m_lighting;
+    EnvironmentLighting m_environment; // the light of the built-in sky: a metal has something to reflect
 };
 
 } // namespace Panda

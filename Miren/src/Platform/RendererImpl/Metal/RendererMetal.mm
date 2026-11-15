@@ -46,6 +46,7 @@ RendererMetal::RendererMetal(Fern::GraphicsContext *ctx)
     , m_frameSlot(0)
     , m_frameSemaphore(nullptr)
     , m_depthStateTest(nullptr)
+    , m_depthStateTestOnly(nullptr)
     , m_depthStateNone(nullptr) {
     PND_ASSERT(m_device != nullptr, "Metal renderer requires a Metal drawing context");
     m_frameSemaphore = (void *)dispatch_semaphore_create(METAL_FRAMES_IN_FLIGHT);
@@ -58,6 +59,7 @@ RendererMetal::~RendererMetal() {
         if (m_uniformArenas[i]) { [(id)m_uniformArenas[i] release]; }
     }
     if (m_depthStateTest) { [(id)m_depthStateTest release]; }
+    if (m_depthStateTestOnly) { [(id)m_depthStateTestOnly release]; }
     if (m_depthStateNone) { [(id)m_depthStateNone release]; }
     if (m_frameSemaphore) { [(id)m_frameSemaphore release]; }
 }
@@ -245,13 +247,13 @@ void RendererMetal::readTexture(TextureHandle handle, void *data) {
     }
 }
 
-void *RendererMetal::depthStencilState(bool depthTest) {
-    void *&cached = depthTest ? m_depthStateTest : m_depthStateNone;
+void *RendererMetal::depthStencilState(bool depthTest, bool depthWrite) {
+    void *&cached = !depthTest ? m_depthStateNone : (depthWrite ? m_depthStateTest : m_depthStateTestOnly);
     if (cached) { return cached; }
     MTLDepthStencilDescriptor *descriptor = [[MTLDepthStencilDescriptor alloc] init];
     // Mirror of D3D11: DepthEnable turns off both the test and the write.
     descriptor.depthCompareFunction = depthTest ? MTLCompareFunctionLess : MTLCompareFunctionAlways;
-    descriptor.depthWriteEnabled = depthTest ? YES : NO;
+    descriptor.depthWriteEnabled = depthTest && depthWrite ? YES : NO;
     cached = (void *)[(id<MTLDevice>)m_device newDepthStencilStateWithDescriptor:descriptor];
     [descriptor release];
     return cached;
@@ -574,7 +576,8 @@ void RendererMetal::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
     [encoder setCullMode:cull ? (cullFront ? MTLCullModeFront : MTLCullModeBack) : MTLCullModeNone];
     const bool depthTest =
         (draw->m_state & MIREN_STATE_DEPTH_TEST) != 0 && m_currentDepthFormat != MTLPixelFormatInvalid;
-    [encoder setDepthStencilState:(id<MTLDepthStencilState>)depthStencilState(depthTest)];
+    const bool depthWrite = (draw->m_state & MIREN_STATE_NO_DEPTH_WRITE) == 0;
+    [encoder setDepthStencilState:(id<MTLDepthStencilState>)depthStencilState(depthTest, depthWrite)];
     // Depth bias (shadow pass): constant — in units of the depth buffer step, slope — by the slope.
     [encoder setDepthBias:draw->m_depthBiasConstant slopeScale:draw->m_depthBiasSlope clamp:0.f];
     const bool wireframe = (draw->m_state & MIREN_STATE_WIREFRAME) != 0;

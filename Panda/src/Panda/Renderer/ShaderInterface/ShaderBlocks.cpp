@@ -30,6 +30,8 @@ LightsUbo LightsUbo::from(const WorldLightingData &lighting) {
     ubo.sunColor = glm::vec4(sunLinear.x, sunLinear.y, sunLinear.z, sunLinear.w);
     ubo.lightCounts = glm::uvec4(lighting.pointLightCount, 0u, 0u, 0u);
     for (uint32_t i = 0; i < RENDERER_MAX_POINT_LIGHTS; ++i) {
+        ubo.pointLightDirections[i] = glm::vec4(0.f, 0.f, -1.f, 0.f);
+        ubo.pointLightCones[i] = glm::vec4(-2.f, 1.f, 0.f, 0.f); // no cone
         if (i >= lighting.pointLightCount) {
             ubo.pointLightPositionsRange[i] = glm::vec4(0.f);
             ubo.pointLightColorsIntensity[i] = glm::vec4(0.f);
@@ -39,11 +41,20 @@ LightsUbo LightsUbo::from(const WorldLightingData &lighting) {
         const Color colorLinear = srgbToLinear(light.color);
         ubo.pointLightPositionsRange[i] = glm::vec4(light.position, light.radius);
         ubo.pointLightColorsIntensity[i] = glm::vec4(colorLinear.x, colorLinear.y, colorLinear.z, light.intensity);
+        if (light.coneAngle > 0.f && light.coneAngle < 360.f) {
+            const float half = glm::radians(std::min(light.coneAngle, 179.f) * 0.5f);
+            const float edge = std::cos(half);
+            // The fade begins inside the cone by the share of the softness (never at the edge
+            // itself: the division below needs a width).
+            const float inner = std::cos(half * (1.f - std::clamp(light.coneSoftness, 0.02f, 1.f)));
+            ubo.pointLightDirections[i] = glm::vec4(glm::normalize(light.direction), 0.f);
+            ubo.pointLightCones[i] = glm::vec4(edge, 1.f / std::max(inner - edge, 1.e-4f), 0.f, 0.f);
+        }
     }
     return ubo;
 }
 
-ShadowsUbo ShadowsUbo::from(const ShadowData &shadows) {
+ShadowsUbo ShadowsUbo::from(const ShadowData &shadows, const LampShadowData &lampShadows) {
     // The matrices "world → (u, v, depth) of the tile", the slice boundaries, the atlas/bias
     // parameters. cascadeCount 0 — there are no shadows (shadowParams.w = 0).
     ShadowsUbo ubo{};
@@ -63,6 +74,15 @@ ShadowsUbo ShadowsUbo::from(const ShadowData &shadows) {
     constexpr float WIDEST_PENUMBRA = 0.3f; // m
     const float softness = std::tan(glm::radians(std::clamp(shadows.softness, 0.f, 10.f)));
     ubo.shadowSoftness = glm::vec4(softness, WIDEST_PENUMBRA, 0.f, 0.f);
+    // The lamps: without an atlas every lamp has no tiles.
+    if (lampShadows.tileCount > 0 && lampShadows.atlas.get() != nullptr) {
+        for (uint32_t i = 0; i < LAMP_SHADOW_MAX_TILES; ++i) { ubo.lampShadowMatrices[i] = lampShadows.textureMatrices[i]; }
+        for (uint32_t i = 0; i < RENDERER_MAX_POINT_LIGHTS; ++i) { ubo.lampShadowLamps[i] = lampShadows.lamps[i]; }
+        const float tile = static_cast<float>(std::max(1u, lampShadows.tileSize));
+        ubo.lampShadowParams = glm::vec4(
+            1.f / (tile * LAMP_SHADOW_MAX_TILES), 1.f / tile, lampShadows.normalOffset, lampShadows.receiverBias
+        );
+    }
     return ubo;
 }
 
@@ -106,9 +126,10 @@ EnvironmentUbo EnvironmentUbo::from(const EnvironmentData &environment) {
         const Size size = map->getSize();
         maxMip = std::floor(std::log2(std::max(1.f, std::max(size.x, size.y))));
     }
-    // The light of the map exists once its atlas is baked: until then (and without a map) the
-    // tiles are zero and the shaders read "no map".
-    const bool lit = map != nullptr && environment.lighting.get() != nullptr;
+    // The light of the sky exists once its atlas is baked (from the map of the world, or from the
+    // built-in gradient when the world has none): until then the tiles are zero and the shaders
+    // read "no light of the sky".
+    const bool lit = environment.lighting.get() != nullptr;
     ubo.environmentParams = glm::vec4(std::max(environment.intensity, 0.f), maxMip, lit ? 1.f : 0.f, 0.f);
     if (lit) {
         const EnvironmentLighting::Tiles &tiles = EnvironmentLighting::tiles();

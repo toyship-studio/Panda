@@ -10,7 +10,8 @@
 //                         prefiltered with the GGX lobe of roughness 0.2, 0.4 … 1,
 //                         environmentTiles[5] — the irradiance over pi.
 // environmentParams: x — exposure of the map (the sky and its light together), y — the highest mip
-// of the map, z — 1 when the world has a map, else 0: the functions below then return black.
+// of the map, z — 1 when the light is baked (a world without a map of its own is lit by the
+// built-in gradient), else 0: the functions below then return black.
 //
 // A lit shader does not read the atlas itself:
 //   environmentDiffuse(normal)               — the light of the sky on a matte surface; multiply
@@ -31,14 +32,14 @@ float3 environmentTile(int tile, float2 uv) {
 }
 
 // The light of the environment on a matte surface with this normal (the irradiance over pi, with
-// the exposure of the map): multiply by the diffuse albedo. Black without a map.
+// the exposure of the map): multiply by the diffuse albedo.
 float3 environmentDiffuse(float3 normal) {
     return environmentTile(5, environmentUv(normal)) * environmentParams.x;
 }
 
 // The light of the environment a surface of this roughness reflects along `reflected` (the
 // radiance of the map prefiltered with the GGX lobe, with the exposure of the map): multiply by
-// the reflectance of the surface. Black without a map.
+// the reflectance of the surface.
 float3 environmentSpecular(float3 reflected, float roughness) {
     const float2 uv = environmentUv(reflected);
     // The mip of the map a mirror needs: by the angle a pixel covers (the derivatives of uv break

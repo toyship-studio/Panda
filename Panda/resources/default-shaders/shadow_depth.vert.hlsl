@@ -21,7 +21,9 @@ VSOutput main(VSInput input) {
     VSOutput output;
     float4 worldPos = mul(modelMtx, float4(input.position, 1.0));
     output.position = mul(projViewMtx, worldPos);
-    output.position.z = max(output.position.z, 0.0);
+    // The pancake is for the orthographic eye of the sun (w is exactly 1 there): the eye of a
+    // lamp is a perspective, and a caster behind it must be clipped, not pressed to the plane.
+    if (output.position.w == 1.0) { output.position.z = max(output.position.z, 0.0); }
     output.fragTexCoord = input.texCoord;
     return output;
 }

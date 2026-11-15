@@ -1,4 +1,5 @@
-// PANDA_SHADOWS — cascaded sun shadows (shader feature `shadows`, context/lighting.md): the
+// PANDA_SHADOWS — the shadows of the sun and of the lamps (shader feature `shadows`,
+// context/lighting.md). The lamps: sampleLampShadow and the atlas lampShadowMap, below. The sun: the
 // cascades lie as tiles along U of the single depth atlas shadowMap (comparison sampler); a
 // cascade is a slice by distance from the camera + the "world → (u, v, depth)" matrix of its tile.
 // sampleShadow is the sun illumination 0..1 over the cascades, with a crossfade of adjacent
@@ -136,6 +137,54 @@ float sampleCascade(int cascade, float3 worldPos, float3 normal, float sinTheta,
     return lit / 16.0;
 }
 #endif
+
+// The shadow of a lamp at a point of a surface (1 — lit). `index` — the lamp of PANDA_LIGHTS,
+// `normal` — the unit geometric normal. A lamp that casts shadows has tiles in the atlas
+// lampShadowMap: a spot one, a point light six — the faces of a cube around it, picked by the axis
+// the point lies along. The receiver steps off its surface by a texel of the lamp at its
+// distance (a lamp is a perspective: its texel grows with the distance), and four compare taps
+// around the point, each 2×2 by the hardware, make a small tent. 1 for a lamp without tiles.
+float sampleLampShadow(int index, float3 worldPos, float3 normal) {
+    const float4 lamp = lampShadowLamps[index];
+    if (lamp.y < 0.5) { return 1.0; }
+    const float3 lampPosition = pointLightPositionsRange[index].xyz;
+    const float3 fromLamp = worldPos - lampPosition;
+    const float distanceToLamp = max(length(fromLamp), 1.0e-4);
+    const float texel = lamp.z * distanceToLamp;
+    const float cosTheta = saturate(dot(normal, -fromLamp / distanceToLamp));
+    const float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    const float3 offsetPos = worldPos + normal * (lampShadowParams.z * texel * (0.5 + sinTheta));
+    int tile = int(lamp.x);
+    if (lamp.y > 1.5) {
+        const float3 along = offsetPos - lampPosition;
+        const float3 size = abs(along);
+        if (size.x >= size.y && size.x >= size.z) {
+            tile += along.x >= 0.0 ? 0 : 1;
+        } else if (size.y >= size.z) {
+            tile += along.y >= 0.0 ? 2 : 3;
+        } else {
+            tile += along.z >= 0.0 ? 4 : 5;
+        }
+    }
+    const float4 clip = mul(lampShadowMatrices[tile], float4(offsetPos, 1.0));
+    if (clip.w <= lamp.w) { return 1.0; }
+    const float3 coord = clip.xyz / clip.w;
+    // The depth of a perspective is not linear: a meter is far * near / ((far - near) * z^2) of
+    // it at the distance z along the axis of the tile.
+    const float farPlane = pointLightPositionsRange[index].w;
+    const float depthPerMeter = farPlane * lamp.w / ((farPlane - lamp.w) * clip.w * clip.w);
+    const float ref = coord.z - lampShadowParams.w * texel * depthPerMeter;
+    // The taps stay inside the tile: the neighbor in the atlas is another lamp.
+    const float2 low = float2(float(tile) / 8.0, 0.0) + 1.5 * lampShadowParams.xy;
+    const float2 high = float2(float(tile + 1) / 8.0, 1.0) - 1.5 * lampShadowParams.xy;
+    const float2 step = 0.75 * lampShadowParams.xy;
+    float lit = 0.0;
+    lit += lampShadowMap.SampleCmpLevelZero(lampShadowMapSampler, clamp(coord.xy + float2(-step.x, -step.y), low, high), ref);
+    lit += lampShadowMap.SampleCmpLevelZero(lampShadowMapSampler, clamp(coord.xy + float2(step.x, -step.y), low, high), ref);
+    lit += lampShadowMap.SampleCmpLevelZero(lampShadowMapSampler, clamp(coord.xy + float2(-step.x, step.y), low, high), ref);
+    lit += lampShadowMap.SampleCmpLevelZero(lampShadowMapSampler, clamp(coord.xy + float2(step.x, step.y), low, high), ref);
+    return lit * 0.25;
+}
 
 // Sun illumination 0..1 (1 — in light). worldNormal is the geometric normal (normal offset
 // against acne). The cascade is the first one by distance from the camera whose border is beyond

@@ -162,12 +162,18 @@ struct PointLightComponentDto : public Rain::Codable {
     float intensity = 1.f;
     float radius = 10.f;
     bool isEnabled = true;
+    float coneAngle = 0.f;      // degrees; 0 — shines all around, otherwise a spot along -Z of the entity
+    float coneSoftness = 0.25f; // 0..1
+    bool castShadows = false;
 
     RAIN_FIELDS_BEGIN(PointLightComponentDto)
     RAIN_FIELD(color)
     RAIN_FIELD(intensity)
     RAIN_FIELD(radius)
     RAIN_FIELD(isEnabled)
+    RAIN_FIELD(coneAngle)
+    RAIN_FIELD(coneSoftness)
+    RAIN_FIELD(castShadows)
     RAIN_FIELDS_END
 };
 

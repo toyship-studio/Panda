@@ -8,6 +8,7 @@
 #include "Panda/GameLogic/Entity.hpp"
 #include "Panda/GameLogic/WorldSettings.hpp"
 #include "Panda/GameLogic/Systems/LightingSystem.hpp"
+#include "Panda/GameLogic/Systems/RenderSystem.hpp"
 #include "Panda/Renderer/Renderer2D.hpp"
 #include "Panda/Renderer/Renderer3D.hpp"
 #include "Panda/Renderer/SceneWind.hpp"
@@ -306,6 +307,8 @@ private:
     Renderer2D m_renderer2d;
     Renderer3D m_renderer3d;
     LightingSystem m_lighting; // frame lighting: lights, shadow cascades, occlusion volume
+    // The meshes of the frame, read from the registry once in update: every pass draws from it.
+    RenderSystem::MeshList m_meshes;
     glm::mat4 m_frameProjection = glm::mat4(1.f);
     glm::mat4 m_frameViewProj = glm::mat4(1.f);
 

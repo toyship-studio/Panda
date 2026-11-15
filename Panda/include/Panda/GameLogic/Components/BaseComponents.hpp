@@ -178,11 +178,19 @@ struct DirectionalLightComponent final {
     bool castShadows = true; // cascaded shadows from this sun (the first enabled directional)
 };
 
+// A lamp: a light at a point. intensity — what a white matte surface 1 m away, facing it, sends
+// back; the light falls with the square of the distance and reaches zero at the radius. With a
+// cone it is a spot: it shines along the -Z of its entity, like the sun.
 struct PointLightComponent final {
     Color color = Color(1.f, 1.f, 1.f, 1.f);
     float intensity = 1.f;
     float radius = 10.f;
     bool isEnabled = true;
+    float coneAngle = 0.f;      // the full angle of the cone, degrees; 0 — no cone: the lamp shines all around
+    float coneSoftness = 0.25f; // the share of the cone over which the light fades to its edge, 0..1
+    // The lamp casts shadows (the `shadows` feature): a spot costs one more pass over the world
+    // every frame, a point light six. Off by default.
+    bool castShadows = false;
 };
 
 struct ScriptListComponent final {

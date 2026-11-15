@@ -43,11 +43,14 @@ MaterialPreviewRenderer::MaterialPreviewRenderer() {
                                      ? glm::perspective(glm::radians(38.f), 1.f, 0.1f, 10.f)
                                      : glm::perspectiveZO(glm::radians(38.f), 1.f, 0.1f, 10.f);
     m_viewProj = projection * glm::lookAt(cameraPosition, glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
+    // The studio: the built-in sky lights the sphere and is reflected by it (baked on the first
+    // preview), a little flat fill, a key light from the upper right.
     m_lighting.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
-    m_lighting.ambientIntensity = 0.35f;
+    m_lighting.ambientIntensity = 0.1f;
     m_lighting.directionalLight.direction = glm::normalize(glm::vec3(0.45f, 0.55f, 1.f)); // toward the light
     m_lighting.directionalLight.color = Color(1.f, 1.f, 1.f, 1.f);
-    m_lighting.directionalLight.intensity = 2.2f;
+    m_lighting.directionalLight.intensity = 1.6f;
+    m_lighting.environment.intensity = 1.f;
     m_lighting.cameraPosition = cameraPosition;
 }
 
@@ -142,6 +145,10 @@ bool MaterialPreviewRenderer::render(AssetRef<MaterialAsset> material, Miren::Fr
 void MaterialPreviewRenderer::finalizeToView(Miren::TextureHandle hdrColor, uint32_t size, Miren::ViewId viewId) {
     PostprocessingFrameInputs inputs;
     inputs.color = hdrColor;
+    // One pass, the Tonemap, straight into the view of the caller: the views of the chain passes
+    // belong to the viewport of the frame, and a second pass here (the antialiasing) would have
+    // to go through one of them.
+    inputs.tonemap.antialiasing = false;
     m_finalizer.applyToView(AssetRef<PostprocessingAsset>(), inputs, size, size, 0.f, viewId);
 }
 
@@ -165,6 +172,8 @@ bool MaterialPreviewRenderer::renderToView(AssetRef<MaterialAsset> material, Mir
     // The scene blocks of the preview lighting; the system texture slots get placeholders (a
     // preview without shadows: the shader never gets to the sample, but a declared slot must be
     // filled).
+    m_environment.update(StaticResources::defaultSkyTexture);
+    m_lighting.environment.lighting = m_environment.atlas();
     SceneBlocks scene;
     scene.assemble(m_lighting);
     scene.bind(viewId);

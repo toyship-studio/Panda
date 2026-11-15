@@ -25,7 +25,7 @@ The catalog is `Panda/Renderer/ShaderFeatures.hpp` (a closed enum with a static 
 | Feature | Block, texture | Contents | Work while on | Needs |
 |---|---|---|---|---|
 | `lights` | `PANDA_LIGHTS` | ambient, the sun, point lights | collecting them every frame | |
-| `shadows` | `PANDA_SHADOWS`, `shadowMap` | the cascades | the cascade depth passes, the atlas | `lights` |
+| `shadows` | `PANDA_SHADOWS`, `shadowMap`, `lampShadowMap` | the cascades of the sun, the tiles of the lamps that cast shadows | the cascade depth passes and the atlas; a depth pass per spot and six per point light that casts | `lights` |
 | `occlusion` | `PANDA_OCCLUSION`, `occlusionVolume` | the volume window | the chunk bakes, the 3D texture | `lights` |
 | `environment` | `PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting` | exposure, top mip, presence, the tiles of the light atlas | the map of the world, the bake of its light when it changes | |
 | `wind` | `PANDA_WIND` | direction, gust travel, flutter phase | the phases, the `windStrength` / `windGustiness` system fields | |

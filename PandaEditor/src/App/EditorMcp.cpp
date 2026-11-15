@@ -2,14 +2,17 @@
 
 #include "App/EditorLayer.hpp"
 #include "App/SystemStats.hpp"
+#include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "UI/EditorController.hpp"
 
+#include <Fern/Window/Window.hpp>
 #include <Foundation/GraphicsAPI.hpp>
 #include <Foundation/Logger.hpp>
 #include <Miren/Miren.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Base/Version.hpp>
+#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Renderer/ShaderFeatures.hpp>
 #include <miniz.h>
 #include <rapidjson/stringbuffer.h>
@@ -119,6 +122,7 @@ namespace {
 // frames, its output texture is read back from the GPU (two more frames), then the picture is
 // scaled and packed.
 struct EditorMcp::Screenshot {
+    bool window = false; // the whole window of the editor, not a viewport
     ViewportKind view = ViewportKind::Scene;
     ViewportKind shownBefore = ViewportKind::Scene; // the viewport that rendered when the shot was asked for
     bool switched = false;                          // another tab was brought forward for the shot: it goes back
@@ -143,7 +147,12 @@ EditorMcp::EditorMcp(EditorLayer &editor)
     registerTools();
 }
 
-EditorMcp::~EditorMcp() = default;
+EditorMcp::~EditorMcp() {
+    if (m_windowCapture.isValid()) {
+        Miren::deleteFrameBuffer(m_windowCaptureBuffer);
+        Miren::deleteTexture(m_windowCapture);
+    }
+}
 
 void EditorMcp::update() {
     syncServer();
@@ -239,12 +248,14 @@ void EditorMcp::registerTools() {
     });
     m_server.addTool({
         "screenshot",
-        "A picture of a viewport as the editor shows it. `scene`: the world through the editor camera, with the "
-        "grid, the selection outline and the helper icons (place the camera with `camera`). `game`: the frame of "
-        "the game through the main camera of the world, with the game UI — the running game in Play, a still "
-        "frame in Edit. The tab of the viewport comes forward for the shot. Takes a few frames.",
+        "A picture of a viewport as the editor shows it, or of the whole editor window. `scene`: the world "
+        "through the editor camera, with the grid, the selection outline and the helper icons (place the camera "
+        "with `camera`). `game`: the frame of the game through the main camera of the world, with the game UI — "
+        "the running game in Play, a still frame in Edit. The tab of the viewport comes forward for the shot. "
+        "`window`: the editor itself — its panels, tabs and dialogs with the viewport inside (the menu bar and the "
+        "title of the system are not part of it). Takes a few frames.",
         R"({"type":"object","properties":{)"
-        R"("view":{"type":"string","enum":["scene","game"],"description":"Default: game while playing, scene while editing."},)"
+        R"("view":{"type":"string","enum":["scene","game","window"],"description":"Default: game while playing, scene while editing."},)"
         R"("width":{"type":"integer","description":"The picture is scaled down to this width in pixels when the viewport is wider. Default 1280."},)"
         R"("wait":{"type":"number","description":"Seconds to wait before the shot: assets still loading, a moment of the game to reach. Default 0, at most 30."},)"
         R"("file":{"type":"string","description":"Also write the PNG to this file: an absolute path, or one relative to the project folder."},)"
@@ -300,6 +311,19 @@ void EditorMcp::registerTools() {
         R"("path":{"type":"string","description":"The .world file: relative to the project folder (Assets/world.world) or absolute."}},)"
         R"("required":["path"]})",
         [this](const rapidjson::Value &arguments) { return openWorld(arguments); },
+    });
+    m_server.addTool({
+        "show",
+        "Brings a part of the editor in front, as a click of the user would, so that a `screenshot` of the "
+        "`window` shows it. One of: `panel` — a panel by its id; `settings` — a settings tab; `asset` — selects "
+        "an asset: its tab opens (a material with its preview, a texture, a mesh); `entity` — selects an entity "
+        "of the active world by its name: its inspector tab opens.",
+        R"({"type":"object","properties":{)"
+        R"("panel":{"type":"string","enum":["hierarchy","contentBrowser","output","cmake","statistics","profiler"]},)"
+        R"("settings":{"type":"string","enum":["world","project","editor"]},)"
+        R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
+        R"("entity":{"type":"string","description":"The name of the entity."}}})",
+        [this](const rapidjson::Value &arguments) { return show(arguments); },
     });
     m_server.addTool({
         "restart",
@@ -493,8 +517,10 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         shot->view = ViewportKind::Scene;
     } else if (view == "game") {
         shot->view = ViewportKind::Game;
+    } else if (view == "window") {
+        shot->window = true;
     } else {
-        return Mcp::ready(Mcp::ToolResult::error("view is \"scene\" or \"game\""));
+        return Mcp::ready(Mcp::ToolResult::error("view is \"scene\", \"game\" or \"window\""));
     }
     shot->maxWidth = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "width", SCREENSHOT_DEFAULT_WIDTH), 64.0, 8192.0));
     shot->returnImage = Mcp::boolArgument(arguments, "image", true);
@@ -521,6 +547,13 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
     if (shot.reading) {
         if (Miren::getFrameNumber() < shot.readyFrame) { return std::nullopt; }
         return finishScreenshot(shot);
+    }
+    if (shot.window) {
+        // The window as it is: nothing comes forward for it. A frame passes first, so that what
+        // an earlier call changed is on screen.
+        if (++shot.frames < 2 || nowSeconds() < shot.notBefore) { return std::nullopt; }
+        if (!captureWindow(shot)) { return fail("The window of the editor has no size"); }
+        return std::nullopt;
     }
     const EditorViewports &viewports = m_editor.m_viewports;
     const ViewportSurface &surface = viewports.surface(shot.view);
@@ -559,6 +592,49 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
     );
     shot.reading = true;
     return std::nullopt;
+}
+
+bool EditorMcp::captureWindow(Screenshot &shot) {
+    const Fern::Size size = m_editor.m_window->getSize();
+    const Fern::Size dpi = m_editor.m_window->getDpi();
+    const uint32_t width = static_cast<uint32_t>(size.width * dpi.width);
+    const uint32_t height = static_cast<uint32_t>(size.height * dpi.height);
+    if (width == 0 || height == 0) { return false; }
+    if (!m_windowCapture.isValid() || width != m_windowCaptureWidth || height != m_windowCaptureHeight) {
+        if (m_windowCapture.isValid()) {
+            Miren::deleteFrameBuffer(m_windowCaptureBuffer);
+            Miren::deleteTexture(m_windowCapture);
+        }
+        Miren::TextureCreate create;
+        create.m_width = width;
+        create.m_height = height;
+        create.m_format = Miren::TextureFormat::RGBA8;
+        create.m_minFiltering = Miren::NEAREST;
+        create.m_magFiltering = Miren::NEAREST;
+        create.m_wrap = Miren::CLAMP;
+        m_windowCapture = Miren::createTexture(create);
+        Miren::FrameBufferAttachment attachments[] = {m_windowCapture};
+        m_windowCaptureBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
+        m_windowCaptureWidth = width;
+        m_windowCaptureHeight = height;
+    }
+    // The chrome is drawn once more, into the texture: the window itself is drawn as always.
+    Miren::setViewport(Views::CAPTURE_VIEW, Miren::Rect(0, 0, width, height));
+    Miren::setViewClear(Views::CAPTURE_VIEW, 0x000000ff);
+    Miren::setViewFrameBuffer(Views::CAPTURE_VIEW, m_windowCaptureBuffer);
+    m_editor.m_editorUI.renderTo(Views::CAPTURE_VIEW);
+
+    shot.width = width;
+    shot.height = height;
+    shot.pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(width) * height * 4);
+    auto *keep = new std::shared_ptr<std::vector<uint8_t>>(shot.pixels);
+    shot.readyFrame = Miren::readTexture(
+        m_windowCapture, Foundation::Memory(shot.pixels->data(), keep, [](void *, void *userData) {
+            delete static_cast<std::shared_ptr<std::vector<uint8_t>> *>(userData);
+        })
+    );
+    shot.reading = true;
+    return true;
 }
 
 Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
@@ -618,7 +694,7 @@ Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
     JsonWriter writer(buffer);
     writer.StartObject();
     writer.Key("view");
-    writer.String(viewName(shot.view));
+    writer.String(shot.window ? "window" : viewName(shot.view));
     writer.Key("width");
     writer.Uint64(outWidth);
     writer.Key("height");
@@ -731,6 +807,54 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     }
     if (m_editor.m_editorController) { m_editor.m_editorController->showSceneView(); }
     return Mcp::ready(textResult("Opened " + file.filename().string() + ".\n" + logSince(from)));
+}
+
+Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
+    if (!hasProject() || !m_editor.m_editorController) {
+        return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor"));
+    }
+    Editor::EditorController &controller = *m_editor.m_editorController;
+    SystemTools::Unattended unattended;
+    const std::string panel = Mcp::stringArgument(arguments, "panel");
+    const std::string settings = Mcp::stringArgument(arguments, "settings");
+    const std::string asset = Mcp::stringArgument(arguments, "asset");
+    const std::string entity = Mcp::stringArgument(arguments, "entity");
+    if (!panel.empty()) {
+        if (!controller.showPanel(panel)) { return Mcp::ready(Mcp::ToolResult::error("No such panel: " + panel)); }
+        return Mcp::ready(textResult("The panel is in front."));
+    }
+    if (!settings.empty()) {
+        if (settings == "world") {
+            controller.openSettings(SettingsScope::World);
+        } else if (settings == "project") {
+            controller.openSettings(SettingsScope::Project);
+        } else if (settings == "editor") {
+            controller.openSettings(SettingsScope::Editor);
+        } else {
+            return Mcp::ready(Mcp::ToolResult::error("settings is \"world\", \"project\" or \"editor\""));
+        }
+        return Mcp::ready(textResult("The settings are in front."));
+    }
+    if (!asset.empty()) {
+        auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+        path_t file(asset);
+        if (file.is_relative()) { file = m_editor.m_loader.getOpenedProjectPath() / file; }
+        const AssetId id = handler != nullptr ? handler->getAssetId(file.lexically_normal()) : AssetId(0);
+        if (!id) {
+            return Mcp::ready(Mcp::ToolResult::error(
+                "Not an asset of the project: " + file.string() + " (a new file becomes one after `reload`)"
+            ));
+        }
+        controller.selectAsset(id);
+        return Mcp::ready(textResult("The asset is selected: its tab is open."));
+    }
+    if (!entity.empty()) {
+        Entity found = m_editor.m_currentWorld->findByTag(entity.c_str());
+        if (!found.isValid()) { return Mcp::ready(Mcp::ToolResult::error("No entity is named " + entity)); }
+        controller.selectEntity(found.getId());
+        return Mcp::ready(textResult("The entity is selected: its tab is open."));
+    }
+    return Mcp::ready(Mcp::ToolResult::error("Say what to show: panel, settings, asset or entity"));
 }
 
 Mcp::PendingResult EditorMcp::exit(Exit kind, const rapidjson::Value &arguments) {

@@ -51,6 +51,10 @@ void EditorUI::update(double deltaTime) {
     m_renderer.render(m_context.getDrawList(), m_viewId);
 }
 
+void EditorUI::renderTo(Miren::ViewId viewId) {
+    if (m_initialized) { m_renderer.render(m_context.getDrawList(), viewId); }
+}
+
 bool EditorUI::handleEvent(Fern::Event *event) {
     if (!m_initialized) { return false; }
     return m_platform.handleEvent(event);

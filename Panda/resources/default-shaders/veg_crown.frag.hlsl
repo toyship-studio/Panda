@@ -227,21 +227,15 @@ PSOutput main(PSInput input) {
                         (translucency * backLit * (0.3 + 0.7 * lobe) * sunLit);
         }
     }
-    const int pointLightCount = (int)lightCounts.x;
+    // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.
+    const int lampCount = localLightCount();
     [loop]
-    for (int i = 0; i < pointLightCount; ++i) {
-        const float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
-        const float distanceToLight = length(toLight);
-        const float radius = pointLightPositionsRange[i].w;
-        if (radius <= 0.0 || distanceToLight >= radius) {
-            continue;
-        }
-        const float normalizedDistance = saturate(distanceToLight / radius);
-        float attenuation = 1.0 - normalizedDistance * normalizedDistance;
-        attenuation *= attenuation;
+    for (int i = 0; i < lampCount; ++i) {
+        float3 lightDirection;
+        const float3 lightRadiance = localLight(i, input.worldPos, lightDirection);
         lighting += shadeLight(
-            leafNormal, viewDirection, normalize(toLight),
-            pointLightColorsIntensity[i].rgb * pointLightColorsIntensity[i].w * attenuation,
+            leafNormal, viewDirection, lightDirection,
+            lightRadiance,
             albedo, metallic, roughness, f0
         );
     }

@@ -40,6 +40,9 @@ public:
     void setRootView(std::shared_ptr<PandaUI::View> view);
     void update(double deltaTime);        // runs layout/animation + submits the draw-list to Miren (every frame)
     bool handleEvent(Fern::Event *event); // Fern → Context
+    // The chrome as it was last drawn, once more into another view (a screenshot of the window:
+    // the view draws into a texture of the size of the window in pixels).
+    void renderTo(Miren::ViewId viewId);
 
     // The fonts of the chrome. uiFamily / monoFamily: a family installed on this machine (Fern::Fonts)
     // that plays the Sans / Mono role; empty — the bundled Inter Display / JetBrains Mono. uiSize: the

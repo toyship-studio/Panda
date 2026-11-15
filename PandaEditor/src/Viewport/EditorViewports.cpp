@@ -96,7 +96,7 @@ void EditorViewports::finishFrame(World &world, const EditorViewportSettings &se
 void EditorViewports::renderScenePasses(World &world, const EditorViewportSettings &settings) {
     EditorWorldPasses::renderSelectionOverlay(world, m_sceneViewProj);
     EditorWorldPasses::renderPicking(world, m_frame);
-    m_grid.update(m_sceneViewProj);
+    if (settings.showGrid) { m_grid.update(m_sceneViewProj); }
     if (settings.showHelperIcons) { m_helpers.render(&world, m_sceneViewProj, m_editorCamera.getViewportSize()); }
 }
 

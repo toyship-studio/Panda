@@ -12,6 +12,76 @@ forward pipeline, HDR, the tonemap — is in `context/rendering.md`.
 The user's material and shader are fully replaceable: everything below is a contract of data
 blocks and system textures, not of particular shaders.
 
+## The unit of light
+
+The intensity of a light is what a white matte surface facing it sends back: a sun of 1 lights
+such a surface to 1, and the ambient and the light of the environment map are in the same unit
+(a sky of radiance 1 lights a white surface to 1). Every lit shader follows it — `default_lit`,
+the terrain and the vegetation multiply the albedo by the intensity and N·L. The physical model
+of `default_pbr` wants the light that ARRIVES, of which a matte surface sends back 1/π: it
+multiplies the intensity by π (`radiance = color × intensity × π`, diffuse `albedo / π`), so the
+same sun lights a PBR mesh and the terrain under it alike. Nothing is clamped before the
+tonemap: a sun a few times stronger than the sky is the usual daylight, and the camera's
+`exposure` brings the frame to the display.
+
+## Lamps
+
+A lamp is a light at a point (`PointLightComponent`); with a cone it is a spot. There is one
+component and one path through the frame for both — a spot is not a second kind of light.
+
+- `intensity` is the light at 1 m (in the unit above: what a white matte surface there sends
+  back). It falls with the square of the distance — not closer than 10 cm, a lamp has a size —
+  and a window `(1 − (d / radius)⁴)²` brings it smoothly to zero at `radius`: the radius bounds
+  the cost, it does not shape the light.
+- `coneAngle` (the full angle, degrees; 0 — the lamp shines all around) and `coneSoftness` (the
+  share of the cone over which the light fades to its edge) make a spot. It shines along the −Z
+  of its entity, as the sun does.
+- The frame takes the `RENDERER_MAX_POINT_LIGHTS` (8) lamps nearest to the camera, counted from
+  their reach (`LightingSystem`, `collectLights`); `PANDA_LIGHTS` carries them:
+  `pointLightPositionsRange`, `pointLightColorsIntensity`, `pointLightDirections`,
+  `pointLightCones` (x — the cosine of the half-angle, −2 without a cone; y — the reciprocal of
+  the width of the fade).
+- A shader does not read the arrays: `localLightCount()` and `localLight(index, worldPos, out
+  direction)` of `panda/lights.hlsli` are the lamps of the frame with their falloff and cones
+  (`panda/lighting.hlsli` gives the same names without the feature: no lamps). The seven lit
+  shaders of the engine and of the terrain module loop over them and differ only in what a
+  surface does with the light.
+
+### Lamp shadows
+
+A lamp casts shadows when its `castShadows` is on (off by default: a spot costs one more pass
+over the world every frame, a point light six) and the project has the `shadows` feature.
+`Panda/Renderer/LampShadowMap`, owned by `LightingSystem`.
+
+- One depth atlas for all lamps, `lampShadowMap` (DEPTH32F with compare, like the atlas of the
+  sun): `LAMP_SHADOW_MAX_TILES` (8) square tiles in a row, `graphics.shadows.lampTileSize` (512)
+  texels each. A spot takes one tile — its cone, with a margin, seen from the lamp; a point light
+  six — the faces of a cube around it, 96° wide so that the filter of a point on the edge of a
+  face stays inside the tile. The lamps come nearest to the camera first; a lamp whose tiles do
+  not fit casts no shadow this frame. With no such lamp the atlas is released.
+- The depth passes are the passes of the sun's cascades: `World::renderShadowCascades` walks the
+  tiles after the cascades, views `LAMP_SHADOW_VIEWS_BEGIN` downward, the same depth shaders. The
+  pancake of those shaders (casters before the near plane pressed onto it) is for the
+  orthographic eye of the sun only — `w == 1` there; through the perspective of a lamp a caster
+  behind the lamp must be clipped, and the test keeps it so.
+- `PANDA_SHADOWS` carries `lampShadowMatrices[8]` (world → (u, v, depth)·w of the atlas),
+  `lampShadowLamps[8]` — per lamp of `PANDA_LIGHTS`: its first tile, the number of its tiles (0 —
+  no shadow), the size of a texel per meter of distance, the near plane — and `lampShadowParams`
+  (the texel of the atlas, the normal offset and the depth bias in texels — the world's shadow
+  biases).
+- `sampleLampShadow(index, worldPos, normal)` of `panda/shadows.hlsli`: the face of a point light
+  by the axis the point lies along; the receiver steps off its surface by a texel of the lamp AT
+  ITS DISTANCE (a lamp is a perspective: its texel grows with the distance); the depth bias is in
+  the units of the perspective depth there (`far · near / ((far − near) · z²)` per meter); four
+  compare taps around the point, each 2×2 by the hardware — a small tent without noise.
+- A lit shader calls `lampLight(index, worldPos, normal, out direction)` of
+  `panda/lighting.hlsli`: `localLight` times the shadow, 1 without the feature. `default_pbr`,
+  `default_lit` and the terrain shaders do; grass and foliage take `localLight` — no lamp shadows
+  on vegetation.
+- Limits: the edge of a lamp shadow has a fixed width in texels (no contact hardening); blended
+  surfaces and the flora billboards cast none; eight tiles are one point light and two spots, or
+  eight spots.
+
 ## Sun shadows (CSM)
 
 Contact cascaded shadows near the camera. Beyond the shadow distance the light and shade of a
@@ -22,12 +92,13 @@ forest comes from the Occlusion Volume.
 - Light data: `Panda/Renderer/WorldLighting.hpp` (`WorldLightingData` and nested types) is the
   CPU side. The shaders see the scene blocks of the shader features (`context/shader-features.md`,
   `ShaderBlocks.hpp`): `PANDA_LIGHTS` (ambient, the sun `sunDirectionIntensity` / `sunColor`,
-  `lightCounts`, the point lights), `PANDA_SHADOWS` (`shadowMatrices[4]`, `shadowSplits`,
+  `lightCounts`, the lamps), `PANDA_SHADOWS` (`shadowMatrices[4]`, `shadowSplits`,
   `shadowParams`, `shadowTexelWorld`, `shadowDepthScale`, `shadowBias`), `PANDA_OCCLUSION`,
   `PANDA_ENVIRONMENT`; the camera is `PANDA_VIEW`. A block grows at its end only; the names are
   the contract of every project shader.
-- System textures of the features: `shadowMap` (comparison, depth), `occlusionVolume` (Texture3D)
-  and `environmentMap`, declared by the generated block includes. `SceneBlocks::bind(view)` gives the
+- System textures of the features: `shadowMap` and `lampShadowMap` (comparison, depth),
+  `occlusionVolume` (Texture3D), `environmentMap` and `environmentLighting`, `ssaoMap`, declared
+  by the generated block includes. `SceneBlocks::bind(view)` gives the
   blocks and textures of every feature to the view of the pass, for every draw into it (the scene
   view, previews, impostor baking) — there are no per-shader flags, a backend ignores a name the program
   does not declare. Without an atlas the fallbacks `shadowFallbackTexture` (depth: the MSL slot is
@@ -365,9 +436,11 @@ occlusion volume.
   bound by `SceneBlocks::bind()`. They do not belong to the material
   (`ShaderReflectionDataMapper` skips the system textures of the features).
 - Without a map the map slot holds `StaticResources::defaultSkyTexture`: a 64×32
-  equirectangular gradient (zenith → horizon → ground) baked by code; the atlas slot holds a
-  black texture, `environmentParams.z = 0` and the tiles are zero: the functions of the include
-  return black, the scene is lit by the flat ambient alone.
+  equirectangular gradient (zenith → horizon → ground) baked by code, and its light is baked
+  like the light of a map: the sky a world shows is the sky that lights it. Until the atlas is
+  baked (and with the feature off) the atlas slot holds a black texture, `environmentParams.z =
+  0` and the tiles are zero: the functions of the include return black, the scene is lit by the
+  flat ambient alone.
 
 ### The light of the map
 
@@ -392,6 +465,8 @@ the same equirectangular layout, one under another.
   mip follows the angle a pixel covers (the derivatives of uv break at the seam of atan2) and
   grows with roughness to meet the blur of the first tile. Both are multiplied by the exposure
   of the map.
+- The material preview of the editor (`MaterialPreviewRenderer`) owns an atlas of the built-in
+  sky: a metal in a thumbnail has something to reflect.
 - The reflectance is `panda/brdf.hlsli`: `environmentBrdf` (the analytic fit of the split-sum
   integral, no lookup texture) inside `shadeAmbient`, which keeps the energy of multiple
   scattering (a rough metal does not go dark) and occludes the specular part by
@@ -434,6 +509,9 @@ Shadows:
 - Shadows beyond the CSM distance (a far map or a static cascade) are NOT planned: the sun moves
   all the time in the projects.
 
+Lamp shadows: a per-lamp tile size, more tiles (an atlas with rows), the soft edge of the sun
+for lamps.
+
 Soft shadows:
 
 - The raw depth of the atlas is read with `Load` next to the comparison sampler. Verified on
@@ -452,11 +530,11 @@ Screen-space ambient occlusion:
 Environment map:
 
 - Rotation of the map by azimuth; the sun of the map is not turned into the directional light
-  of the world (`FeatureTest/Tools/hdri_sun.py` finds it for a generated world).
+  of the world (the author aims a directional light at it).
 - The terrain, vegetation and module shaders take the flat ambient only (`ambientLight` is
   there for them).
-- The editor's material previews have no map: no image based light in a thumbnail.
-- A world without a map has no light of the sky: the built-in gradient is not baked.
+- A world whose sky is a custom sky material is still lit by its environment map (or by the
+  built-in gradient): the light does not follow a sky shader.
 
 Occlusion Volume: static meshes as occluders. To be done with the first scene that has buildings
 or rocks. The tag `IsStaticComponent` already exists (an empty entt component set with

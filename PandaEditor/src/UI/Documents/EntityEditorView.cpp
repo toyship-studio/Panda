@@ -557,6 +557,18 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildPointLightSection(con
               [](PL &c) { return c.intensity; });
     numberRow("Radius", data->radius, 0.f, 1000.f, [data, emit](float v) { data->radius = v; emit(); },
               [](PL &c) { return c.radius; });
+    // A cone makes the lamp a spot that shines along the -Z of the entity; 0 — all around.
+    numberRow("Cone Angle", data->coneAngle, 0.f, 179.f, [data, emit](float v) { data->coneAngle = v; emit(); },
+              [](PL &c) { return c.coneAngle; });
+    numberRow("Cone Softness", data->coneSoftness, 0.f, 1.f, [data, emit](float v) { data->coneSoftness = v; emit(); },
+              [](PL &c) { return c.coneSoftness; });
+
+    auto shadows = std::make_shared<Toggle>();
+    shadows->setOn(data->castShadows);
+    shadows->setOnValueChanged([data, emit](Toggle &t) { data->castShadows = t.isOn(); emit(); });
+    auto shadowsR = std::make_shared<PropertyRow>("Cast Shadows", shadows, false);
+    shadowsR->setMixed(typedFieldMixed<PL>(m_entities, [](PL &c) { return c.castShadows; }));
+    section->addContent(shadowsR);
 
     auto enabled = std::make_shared<Toggle>();
     enabled->setOn(data->isEnabled);

@@ -2,6 +2,7 @@
 
 #include "Panda/Renderer/CascadedShadowMap.hpp"
 #include "Panda/Renderer/EnvironmentLighting.hpp"
+#include "Panda/Renderer/LampShadowMap.hpp"
 #include "Panda/Renderer/OcclusionVolume.hpp"
 #include "Panda/Renderer/WorldLighting.hpp"
 
@@ -28,6 +29,9 @@ public:
     CascadedShadowMap &shadowMap() {
         return m_shadowMap;
     }
+    LampShadowMap &lampShadowMap() {
+        return m_lampShadowMap;
+    }
     // The ambient occlusion the frame that was just drawn left (SsaoRenderer): the next update
     // puts it into the lighting of its frame.
     void setScreenOcclusion(const SsaoData &occlusion) {
@@ -40,6 +44,7 @@ public:
 
 private:
     CascadedShadowMap m_shadowMap;
+    LampShadowMap m_lampShadowMap;
     OcclusionVolume m_occlusion;
     EnvironmentLighting m_environment;
     WorldLightingData m_data;

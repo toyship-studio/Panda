@@ -66,6 +66,10 @@ private:
 //   depthTexture    — the scene depth,
 //   PANDA_POST      — the PostUbo block (`#include "panda/post.hlsli"`).
 // The pass vertex shader gets the quad as position/uv as is (see the postprocess.vert template).
+// The views of the passes are one set per frame (MirenViewDistribution): ONE pipeline per frame
+// may run a chain of several passes — the viewport of the frame. Any other pipeline of the same
+// frame (a preview, a thumbnail) must end in a single pass submitted to its own view: an empty
+// chain, no antialiasing.
 class PostprocessingPipeline final {
 public:
     static constexpr int MAX_PASSES = 8; // user passes; +1 Tonemap slot (view id layout)

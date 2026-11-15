@@ -22,6 +22,16 @@ static const float4 pointLightColorsIntensity[8] = {
     float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0),
     float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0), float4(0.0, 0.0, 0.0, 0.0)
 };
+
+// No lamps without the feature.
+int localLightCount() {
+    return 0;
+}
+
+float3 localLight(int index, float3 worldPos, out float3 direction) {
+    direction = float3(0.0, 1.0, 0.0);
+    return float3(0.0, 0.0, 0.0);
+}
 #endif
 #if PANDA_FEATURE_SHADOWS
 #include "panda/shadows.hlsli"
@@ -86,6 +96,20 @@ float screenOcclusion(float3 worldPos) {
 #else
     return 1.0;
 #endif
+}
+
+// The light of a lamp that reaches a point of a surface with this geometric normal, its shadow
+// included: localLight (panda/lights.hlsli), hidden by what stands between the lamp and the
+// point when the lamp casts shadows and the project has the `shadows` feature. `direction` — from
+// the point toward the lamp. Black beyond the reach of the lamp, outside its cone and without the
+// `lights` feature.
+float3 lampLight(int index, float3 worldPos, float3 normal, out float3 direction) {
+    float3 light = localLight(index, worldPos, direction);
+#if PANDA_FEATURE_SHADOWS && PANDA_FEATURE_LIGHTS
+    [branch]
+    if (light.r + light.g + light.b > 0.0) { light *= sampleLampShadow(index, worldPos, normalize(normal)); }
+#endif
+    return light;
 }
 
 // The cascade shadow 0..1 of the sun at a point (1 — lit) and the CSM share csmWeight (1 in the

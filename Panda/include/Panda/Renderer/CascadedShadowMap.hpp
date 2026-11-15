@@ -32,6 +32,9 @@ public:
         // meter between the caster and the receiver — sharp at the contact, soft far from it.
         // 0 — the fixed filter of a few texels.
         float softness = 1.5f;
+        // The side of a tile of the lamp shadow atlas (texels): a spot has one tile, a point
+        // light six.
+        uint32_t lampTileSize = 512;
 
         RAIN_FIELDS_BEGIN(Settings)
         RAIN_FIELD(enabled)
@@ -43,6 +46,7 @@ public:
         RAIN_FIELD(normalOffset)
         RAIN_FIELD(receiverBias)
         RAIN_FIELD(softness)
+        RAIN_FIELD(lampTileSize)
         RAIN_FIELDS_END
     };
 

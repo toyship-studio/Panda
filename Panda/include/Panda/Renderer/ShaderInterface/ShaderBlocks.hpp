@@ -78,6 +78,10 @@ struct LightsUbo final {
     glm::uvec4 lightCounts;          // x — number of point lights
     glm::vec4 pointLightPositionsRange[RENDERER_MAX_POINT_LIGHTS]; // xyz — position, w — radius
     glm::vec4 pointLightColorsIntensity[RENDERER_MAX_POINT_LIGHTS]; // rgb — linear color, w — intensity
+    glm::vec4 pointLightDirections[RENDERER_MAX_POINT_LIGHTS];      // xyz — where a spot shines (world, unit)
+    // The cone of a spot: x — the cosine of its half-angle (-2 — no cone, the lamp shines all
+    // around), y — 1 / (the cosine where the fade to the edge begins - x).
+    glm::vec4 pointLightCones[RENDERER_MAX_POINT_LIGHTS];
 
     RAIN_FIELDS_BEGIN(LightsUbo)
     RAIN_FIELD(ambientColorIntensity)
@@ -86,6 +90,8 @@ struct LightsUbo final {
     RAIN_FIELD(lightCounts)
     RAIN_FIELD(pointLightPositionsRange)
     RAIN_FIELD(pointLightColorsIntensity)
+    RAIN_FIELD(pointLightDirections)
+    RAIN_FIELD(pointLightCones)
     RAIN_FIELDS_END
 
     static LightsUbo from(const WorldLightingData &lighting);
@@ -106,6 +112,13 @@ struct ShadowsUbo final {
     // The soft edge: x — tan of the angular radius of the sun (the penumbra radius per meter
     // between the caster and the receiver; 0 — the fixed filter), y — the widest penumbra radius (m).
     glm::vec4 shadowSoftness;
+    // The shadows of the lamps (LampShadowMap): the tiles of lampShadowMap lie in a row along U.
+    glm::mat4 lampShadowMatrices[LAMP_SHADOW_MAX_TILES]; // world → (u, v, depth)·w of the atlas
+    // Per lamp, in the order of PANDA_LIGHTS: x — its first tile, y — the number of its tiles (0 —
+    // no shadow, 1 — a spot, 6 — a point light), z — the size of a texel per meter of distance, w
+    // — the near plane.
+    glm::vec4 lampShadowLamps[RENDERER_MAX_POINT_LIGHTS];
+    glm::vec4 lampShadowParams; // xy — 1/atlas size (a texel), z — normal offset (texels), w — depth bias (texels)
 
     RAIN_FIELDS_BEGIN(ShadowsUbo)
     RAIN_FIELD(shadowMatrices)
@@ -115,9 +128,12 @@ struct ShadowsUbo final {
     RAIN_FIELD(shadowDepthScale)
     RAIN_FIELD(shadowBias)
     RAIN_FIELD(shadowSoftness)
+    RAIN_FIELD(lampShadowMatrices)
+    RAIN_FIELD(lampShadowLamps)
+    RAIN_FIELD(lampShadowParams)
     RAIN_FIELDS_END
 
-    static ShadowsUbo from(const ShadowData &shadows);
+    static ShadowsUbo from(const ShadowData &shadows, const LampShadowData &lampShadows);
 };
 
 // Feature occlusion — the Occlusion Volume (context/lighting.md): a grid of chunks anchored to
@@ -149,7 +165,7 @@ struct OcclusionUbo final {
 struct EnvironmentUbo final {
     static constexpr const char *NAME = "PANDA_ENVIRONMENT";
 
-    glm::vec4 environmentParams; // x — exposure, y — highest mip of the map, z — 1 if the map is set (else no light of the map), w — 0
+    glm::vec4 environmentParams; // x — exposure, y — highest mip of the map, z — 1 when the light of the sky is baked (else none), w — 0
     // The tiles of the environmentLighting atlas (EnvironmentLighting): uv rect of a tile, xy —
     // offset, zw — size. 0..4 — the radiance prefiltered for roughness 0.2, 0.4 … 1; 5 — the
     // irradiance over π. All zero without a map.

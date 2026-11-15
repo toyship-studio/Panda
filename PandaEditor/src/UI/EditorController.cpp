@@ -350,6 +350,17 @@ void EditorController::openGameView() {
     m_dockManager->showPanel(GAME_TAB_ID);                       // the focus: the keys go to the game
 }
 
+bool EditorController::showPanel(const std::string &id) {
+    if (!m_dockManager) { return false; }
+    for (const char *known : {"hierarchy", "contentBrowser", "output", "cmake", "statistics", "profiler"}) {
+        if (id == known) {
+            m_dockManager->showPanel(id);
+            return true;
+        }
+    }
+    return false;
+}
+
 void EditorController::showSceneView() {
     if (m_dockManager && m_bridge) { m_dockManager->showPanel(worldTabId(m_bridge->activeWorldId())); }
 }

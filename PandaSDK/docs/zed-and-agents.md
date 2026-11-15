@@ -164,12 +164,13 @@ asset — a text file does that already; it has only what a file cannot do:
 | --- | --- |
 | `status` | the project, Edit or Play, the open worlds, the unsaved documents, the viewports, the editor camera, the frame statistics, the shader features, the number of errors in the log |
 | `reload` | Reload: the editor takes what changed on disk. Answers with what the editor logged |
-| `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
+| `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI; or `window` — the whole editor window with its panels. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
 | `logs` | the log of the editor and the engine: what the Output panel shows and the engine console. `since` returns only the new lines, `level` filters |
 | `play`, `stop` | Play and Stop |
 | `camera` | where the editor camera of the Scene is; `position` moves it, `target` turns it to a point |
 | `save` | Save All: what the user changed in the editor reaches the files |
 | `open_world` | opens a world file in a tab and makes it the active world |
+| `show` | brings a part of the editor in front, for a `screenshot` of the `window`: a `panel`, a `settings` tab, the tab of an `asset`, the inspector of an `entity` |
 | `restart`, `quit` | starts the editor again with the same project (a module switched off in `project.json`, a rebuilt editor), closes it |
 
 A tool acts as the user would, with the same functions behind it. Nobody is at the screen while

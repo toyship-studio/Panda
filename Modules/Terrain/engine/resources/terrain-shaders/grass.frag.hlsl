@@ -61,20 +61,14 @@ PSOutput main(PSInput input) {
                     sunVisibility(input.rootPos, float3(0.0, 1.0, 0.0), volume.y);
     }
 
-    int pointLightCount = (int)lightCounts.x;
+    // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.
+    const int lampCount = localLightCount();
     [loop]
-    for (int i = 0; i < pointLightCount; ++i) {
-        float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
-        float distanceToLight = length(toLight);
-        float radius = pointLightPositionsRange[i].w;
-        if (radius <= 0.0 || distanceToLight >= radius) {
-            continue;
-        }
-        float normalizedDistance = saturate(distanceToLight / radius);
-        float attenuation = 1.0 - normalizedDistance * normalizedDistance;
-        attenuation *= attenuation;
-        float diffuse = saturate(dot(surfaceNormal, normalize(toLight)) * 0.5 + 0.5);
-        lighting += pointLightColorsIntensity[i].rgb * pointLightColorsIntensity[i].w * attenuation *
+    for (int i = 0; i < lampCount; ++i) {
+        float3 lightDirection;
+        const float3 lightRadiance = localLight(i, input.worldPos, lightDirection);
+        float diffuse = saturate(dot(surfaceNormal, lightDirection) * 0.5 + 0.5);
+        lighting += lightRadiance *
                     diffuse;
     }
 

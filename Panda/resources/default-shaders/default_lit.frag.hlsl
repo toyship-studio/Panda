@@ -107,21 +107,13 @@ PSOutput main(PSInput input) {
         lighting += radiance * specular;
     }
 
-    int pointLightCount = (int)lightCounts.x;
+    // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.
+    const int lampCount = localLightCount();
     [loop]
-    for (int i = 0; i < pointLightCount; ++i) {
-        float3 toLight = pointLightPositionsRange[i].xyz - input.worldPos;
-        float distanceToLight = length(toLight);
-        float radius = pointLightPositionsRange[i].w;
-        if (radius <= 0.0 || distanceToLight >= radius) {
-            continue;
-        }
-
-        float3 lightDirection = normalize(toLight);
-        float normalizedDistance = saturate(distanceToLight / radius);
-        float attenuation = 1.0 - normalizedDistance * normalizedDistance;
-        attenuation *= attenuation;
-        float3 radiance = pointLightColorsIntensity[i].rgb * pointLightColorsIntensity[i].w * attenuation;
+    for (int i = 0; i < lampCount; ++i) {
+        float3 lightDirection;
+        const float3 lightRadiance = lampLight(i, input.worldPos, input.worldNormal, lightDirection);
+        float3 radiance = lightRadiance;
         float diffuse = saturate(dot(surfaceNormal, lightDirection));
         float specular = computeSpecular(surfaceNormal, lightDirection, roughness, metallic);
         float localFill = 0.2;

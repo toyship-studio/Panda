@@ -36,6 +36,7 @@ private:
     SsaoUbo m_ssao{};
     Miren::TextureHandle m_ssaoMap = MIREN_INVALID_HANDLE;
     AssetRef<TextureAsset> m_shadowAtlas;
+    AssetRef<TextureAsset> m_lampShadowAtlas;
     AssetRef<TextureAsset> m_occlusionVolume;
     AssetRef<TextureAsset> m_environmentMap;
     AssetRef<TextureAsset> m_environmentLighting;

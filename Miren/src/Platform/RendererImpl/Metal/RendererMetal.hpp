@@ -70,7 +70,7 @@ private:
     // Waits for ALL frames in flight to complete (in-place resource mutations, shutdown).
     void drainInFlightFrames();
     // id<MTLDepthStencilState>: less+write or always+no-write (no DSV → as in D3D11, nothing)
-    void *depthStencilState(bool depthTest);
+    void *depthStencilState(bool depthTest, bool depthWrite);
     // A piece of the frame's uniform arena (for UBOs larger than the 4KB setBytes limit)
     void *allocUniformArena(const void *data, size_t size, size_t &outOffset);
     void readPixelsFromTexture(MetalTexture &texture, int x, int y, int width, int height, void *data);
@@ -98,8 +98,9 @@ private:
     size_t m_arenaOffsets[METAL_FRAMES_IN_FLIGHT];
     uint32_t m_frameSlot;
     void *m_frameSemaphore;  // dispatch_semaphore_t
-    void *m_depthStateTest; // id<MTLDepthStencilState>
-    void *m_depthStateNone; // id<MTLDepthStencilState>
+    void *m_depthStateTest;     // id<MTLDepthStencilState>: test and write
+    void *m_depthStateTestOnly; // test, no write
+    void *m_depthStateNone;     // neither
 
     MetalFrameBuffer m_frameBuffers[MAX_FRAME_BUFFERS];
     MetalShader m_shaders[MAX_SHADERS];

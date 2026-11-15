@@ -1,6 +1,15 @@
 #pragma once
 
+#include "Panda/Assets/Base/AssetRef.hpp"
+#include "Panda/Assets/ImportedMeshAsset.hpp"
+#include "Panda/Assets/MaterialAsset.hpp"
+#include "Panda/Assets/RuntimeMeshAsset.hpp"
+#include "Panda/Base/Base.hpp"
+
 #include <glm/glm.hpp>
+
+#include <cstdint>
+#include <vector>
 
 namespace Panda {
 
@@ -28,10 +37,40 @@ namespace RenderSystem {
     void submitSky(World &world, Renderer3D &renderer, const glm::mat4 &skyViewProj);
     // Sprites (they cast no shadow — not called in the depth pass).
     void submitSprites(World &world, Renderer2D &renderer, const Frustum &frustum);
-    // Meshes: runtime, greyboxing primitives, imported submeshes. Transparent ones (alphaMode = 2)
-    // are drawn after all opaque ones — otherwise their depth hides the geometry behind; they cast
-    // no shadow (not accumulated in the depth pass).
-    void submitMeshes(World &world, Renderer3D &renderer, const Frustum &frustum, bool shadowPass);
+    // The meshes a world draws in a frame — runtime meshes, greyboxing primitives, the primitives
+    // of imported meshes — read from its registry ONCE (collect): the world transform of each
+    // (the hierarchy is walked here and nowhere else), its bounds and its material. Every pass of
+    // the frame — the scene, each shadow cascade and lamp tile, picking — culls and submits from
+    // the list. A frame has many passes and a world many entities: walking the registry and the
+    // hierarchy for each pass was the cost of a shadow.
+    class MeshList final {
+    public:
+        void collect(World &world);
+        // Opaque meshes first, then the blended ones (alphaMode 2 of the material) from the
+        // farthest to the nearest to the camera, so that each is drawn over what is behind it.
+        // Blended meshes cast no shadow: the depth pass skips them.
+        void submit(
+            Renderer3D &renderer, const Frustum &frustum, bool shadowPass, const glm::vec3 &cameraPosition
+        ) const;
+
+    private:
+        struct Item {
+            UUID id;
+            glm::mat4 transform;
+            glm::vec3 boundsMin = glm::vec3(0.f);
+            glm::vec3 boundsMax = glm::vec3(0.f);
+            bool bounded = false; // no bounds — never culled
+            bool blended = false;
+            AssetRef<MaterialAsset> material;
+            AssetRef<RuntimeMeshAsset> mesh;      // a runtime mesh or a primitive,
+            AssetRef<ImportedMeshAsset> imported; // or a primitive of an imported mesh
+            uint32_t submeshIndex = 0;
+            uint32_t primitiveIndex = 0;
+        };
+        void submitItem(Renderer3D &renderer, const Item &item) const;
+
+        std::vector<Item> m_items;
+    };
 
 } // namespace RenderSystem
 

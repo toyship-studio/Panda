@@ -20,7 +20,8 @@ class EditorLayer;
 // the agent edits worlds, materials, shaders, settings and scripts as text, with its own tools.
 // What it cannot do with files is the editor's part, and only that is here — to look (a
 // screenshot of a viewport), to read what the editor said (the log), to make the editor take the
-// files (Reload, Save), to run the game (Play, Stop), to place the editor camera, to restart.
+// files (Reload, Save), to run the game (Play, Stop), to place the editor camera, to restart. The
+// screenshot of the whole window shows the agent the editor itself, when the editor is its work.
 // There are no tools that edit a world or an asset: that would be a second way to do what a text
 // file already does.
 //
@@ -57,12 +58,15 @@ private:
     Mcp::PendingResult stop();
     Mcp::PendingResult camera(const rapidjson::Value &arguments);
     Mcp::PendingResult openWorld(const rapidjson::Value &arguments);
+    Mcp::PendingResult show(const rapidjson::Value &arguments);
     Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.
     std::optional<Mcp::ToolResult> stepScreenshot(Screenshot &shot);
     Mcp::ToolResult finishScreenshot(Screenshot &shot);
     void showViewport(ViewportKind view);
+    // Draws the window into the capture target and asks for its pixels; false — the window has no size.
+    bool captureWindow(Screenshot &shot);
 
     bool hasProject() const;
     std::string cameraJson() const;
@@ -70,6 +74,11 @@ private:
 
     EditorLayer &m_editor;
     Mcp::Server m_server;
+    // The target of a screenshot of the whole window: the chrome is drawn into it once more.
+    Miren::TextureHandle m_windowCapture;
+    Miren::FrameBufferHandle m_windowCaptureBuffer;
+    uint32_t m_windowCaptureWidth = 0;
+    uint32_t m_windowCaptureHeight = 0;
     int m_port = 0; // the port the server was last asked to listen on; 0 — off
     Exit m_exit = Exit::None;
     int m_exitFrames = 0; // frames since the answer to "restart" / "quit" has left

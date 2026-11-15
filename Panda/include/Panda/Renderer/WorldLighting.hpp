@@ -32,6 +32,28 @@ struct PointLightData final {
     float radius = 10.f;
     Color color = Color(1.f, 1.f, 1.f, 1.f);
     float intensity = 1.f;
+    glm::vec3 direction = glm::vec3(0.f, 0.f, -1.f); // where a spot shines (world)
+    float coneAngle = 0.f;                            // the full angle of its cone, degrees; 0 — all around
+    float coneSoftness = 0.25f;                       // the share of the cone that fades to its edge
+    bool castShadows = false;                         // the lamp casts shadows (does not go into the UBO)
+};
+
+// Shadows of the lamps (LampShadowMap): the tiles lie in a row along U of one depth atlas
+// (comparison sampler). A spot has one tile, a point light six (the faces of a cube: the axis a
+// point lies along, + before -). tileCount 0 — no lamp casts shadows.
+static constexpr uint32_t LAMP_SHADOW_MAX_TILES = 8;
+
+struct LampShadowData final {
+    AssetRef<TextureAsset> atlas; // DEPTH32F, COMPARE_LESS_EQUAL; LAMP_SHADOW_MAX_TILES × tileSize wide
+    uint32_t tileCount = 0;
+    uint32_t tileSize = 0;
+    std::array<glm::mat4, LAMP_SHADOW_MAX_TILES> textureMatrices{}; // world → (u, v, depth)·w of the atlas
+    // Per lamp of the frame (the order of pointLights): x — its first tile, y — the number of its
+    // tiles (0 — no shadow), z — the size of a texel per meter of distance from the lamp, w — the
+    // near plane of its projection.
+    std::array<glm::vec4, RENDERER_MAX_POINT_LIGHTS> lamps{};
+    float normalOffset = 0.f; // receiver offset along the normal, in texels
+    float receiverBias = 0.f; // receiver depth offset, in texels
 };
 
 
@@ -101,9 +123,10 @@ struct OcclusionVolumeData final {
 struct EnvironmentData final {
     AssetRef<TextureAsset> map;
     float intensity = 1.f; // exposure of the map: sky and reflections together
-    // The light of the map baked for the lit shaders (EnvironmentLighting): the atlas of the
-    // irradiance and the prefiltered radiance, the system input environmentLighting. Empty — the
-    // world has no map: no image based light, only the flat ambient.
+    // The light of the sky baked for the lit shaders (EnvironmentLighting): the atlas of the
+    // irradiance and the prefiltered radiance, the system input environmentLighting — of the map,
+    // or of the built-in gradient when the world has no map. Empty — no image based light, only
+    // the flat ambient (the feature is off, or nothing is baked yet).
     AssetRef<TextureAsset> lighting;
 };
 
@@ -124,6 +147,7 @@ struct WorldLightingData final {
     uint32_t pointLightCount = 0;
     glm::vec3 cameraPosition = glm::vec3(0.f); // camera world position (view direction for PBR)
     ShadowData shadows; // sun shadows of this frame (assembled by World)
+    LampShadowData lampShadows; // the shadows of the lamps of this frame
     OcclusionVolumeData occlusion;  // occlusion volume (assembled by World from flora scattering)
     EnvironmentData environment;    // environment map of the world (the world's lighting settings)
     SsaoData ssao;                  // the ambient occlusion the last frame left (World::setScreenOcclusion)

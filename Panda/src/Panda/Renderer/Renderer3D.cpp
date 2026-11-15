@@ -14,7 +14,12 @@ namespace {
     uint32_t buildDefaultRenderState(AssetRef<MaterialAsset> material) {
         uint32_t state = MIREN_STATE_DEPTH_TEST;
         if (!material || material->getUIntFieldValue("doubleSided", 0u) == 0u) { state |= MIREN_STATE_CULL_FACE; }
-        if (material && material->getUIntFieldValue("alphaMode", 0u) == 2u) { state |= MIREN_STATE_BLEND; }
+        // A blended surface is tested against the depth of the opaque scene and leaves it as it
+        // is: what lies behind a pane of glass is still there for the next pane and for whatever
+        // reads the depth of the frame.
+        if (material && material->getUIntFieldValue("alphaMode", 0u) == 2u) {
+            state |= MIREN_STATE_BLEND | MIREN_STATE_NO_DEPTH_WRITE;
+        }
         return state;
     }
 

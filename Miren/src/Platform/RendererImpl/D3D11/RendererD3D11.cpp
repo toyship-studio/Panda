@@ -300,12 +300,13 @@ void RendererD3D11::applyRenderStates(const RenderPass *draw, bool scissorEnable
     }
     m_deviceContext->RSSetState(rasterizer);
 
-    const uint32_t depthKey = depth ? 1u : 0u;
+    const bool depthWrite = (state & MIREN_STATE_NO_DEPTH_WRITE) == 0;
+    const uint32_t depthKey = (depth ? 1u : 0u) | (depthWrite ? 0u : 2u);
     ID3D11DepthStencilState *&depthState = m_depthStencilStates[depthKey];
     if (!depthState) {
         D3D11_DEPTH_STENCIL_DESC desc = {};
         desc.DepthEnable = depth ? TRUE : FALSE;
-        desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        desc.DepthWriteMask = depthWrite ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
         desc.DepthFunc = D3D11_COMPARISON_LESS;
         m_device->CreateDepthStencilState(&desc, &depthState);
     }
