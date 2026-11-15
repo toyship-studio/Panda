@@ -105,6 +105,7 @@ protected:
         }
         m_additiveClick = event.isSuperDown || event.isControlDown;
         m_rangeClick = event.isShiftDown;
+        m_doubleClick = event.button == PointerButton::Left && event.clickCount >= 2;
         return Control::pointerDown(event);
     }
     bool prepareDrag(DragPayload &payload, Point) override {
@@ -115,7 +116,13 @@ protected:
         return true;
     }
     void performPrimaryAction() override {
-        m_tree->handleRowClicked(m_item, m_additiveClick, m_rangeClick);
+        // Copies: the callbacks may rebuild the tree, and this row with it.
+        TreeView *tree = m_tree;
+        const TreeItem item = m_item;
+        const bool activate = m_doubleClick && !m_additiveClick && !m_rangeClick;
+        m_doubleClick = false;
+        tree->handleRowClicked(item, m_additiveClick, m_rangeClick);
+        if (activate && tree->m_onItemActivated) { tree->m_onItemActivated(*tree, item); }
     }
     void controlStateChanged(ControlState, ControlState) override {
         applyStyle();
@@ -180,6 +187,7 @@ private:
     bool m_dropHighlight = false;
     bool m_additiveClick = false;
     bool m_rangeClick = false;
+    bool m_doubleClick = false; // the press that started this click was the second of a double click
 };
 
 /* ------------------------------ TreeView ------------------------------ */
@@ -275,6 +283,10 @@ bool TreeView::showsSelected(TreeItem item) const {
 void TreeView::setOnSelectionChanged(SelectionChangedCallback callback) {
     m_onSelectionChanged = std::move(callback);
 }
+void TreeView::setOnItemActivated(std::function<void(TreeView &, TreeItem)> callback) {
+    m_onItemActivated = std::move(callback);
+}
+
 void TreeView::setOnContextMenu(ContextMenuCallback callback) {
     m_onContextMenu = std::move(callback);
 }

@@ -40,6 +40,11 @@ public:
     void setRootView(std::shared_ptr<PandaUI::View> view);
     void update(double deltaTime);        // runs layout/animation + submits the draw-list to Miren (every frame)
     bool handleEvent(Fern::Event *event); // Fern → Context
+    // A gesture made in place of the user is in flight (EditorMcp: `pointer`): the real mouse is
+    // not heard until it ends, so a hand that happens to move does not tear the gesture.
+    void setPointerOverridden(bool overridden) {
+        m_pointerOverridden = overridden;
+    }
     // The chrome as it was last drawn, once more into another view (a screenshot of the window:
     // the view draws into a texture of the size of the window in pixels).
     void renderTo(Miren::ViewId viewId);
@@ -105,6 +110,7 @@ private:
     PandaUI::Context m_context;
     Miren::ViewId m_viewId = 0;
     bool m_initialized = false;
+    bool m_pointerOverridden = false;
 
     // The font atlases are kept alive as long as the Context is alive: the bundled faces of a role and,
     // when a setting names an installed family, its faces (by weight: Regular, Medium, Bold).

@@ -8,6 +8,7 @@ cbuffer SSAO_PASS {
     float4 projection;
     float4 params; // x — radius (m), y — intensity, z — 1 / near, w — 1 / far
     float4 size;   // xy — the size of the depth in pixels, zw — of the target
+    float4 budget; // of ssao.frag
 };
 
 Texture2D inputTexture;

@@ -1,19 +1,23 @@
 #include "UI/Documents/EntityEditorView.hpp"
 
 #include "UI/EditorDialogs.hpp"
+#include <PandaEditorKit/ComponentCommands.hpp>
+#include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Icons.hpp>
+#include <PandaEditorKit/Widgets/Picker.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 #include "Project/Loader/AssetHandlerEditor.hpp"
-#include <PandaEditorKit/Widgets/AssetWell.hpp>
 
 #include <Panda/Assets/Base/AssetRef.hpp>
+#include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/Components/TransformComponent.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/World.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -29,6 +33,8 @@ using namespace PandaUI;
 
 namespace {
 
+    constexpr float FORM_INDENT = 14.f; // a row that belongs to the toggle above it
+
     // Whether the field values differ among the selected entities → the row is "mixed".
     template <class Getter>
     bool anyDiffers(std::vector<Panda::Entity> &items, Getter get) {
@@ -36,21 +42,6 @@ namespace {
         auto first = get(items.front());
         for (std::size_t i = 1; i < items.size(); ++i) {
             if (!(get(items[i]) == first)) { return true; }
-        }
-        return false;
-    }
-
-    // The same for a field of the engine component T among the selected entities that have T.
-    template<typename EngineComp, typename Get>
-    bool typedFieldMixed(std::vector<Panda::Entity> &entities, Get get) {
-        bool found = false;
-        decltype(get(std::declval<EngineComp &>())) first{};
-        for (Panda::Entity &e : entities) {
-            if (e.hasComponent<EngineComp>()) {
-                EngineComp &c = e.getComponent<EngineComp>();
-                if (!found) { first = get(c); found = true; }
-                else if (!(get(c) == first)) { return true; }
-            }
         }
         return false;
     }
@@ -74,6 +65,24 @@ namespace {
         divider->layout().setHeight(Length::points(1.f));
         divider->setBackgroundColor(ThemeColor::borderFaint);
         return divider;
+    }
+
+    // The engine type of a core component (the registry of the engine), by which its text form
+    // is written and read; nullptr — the section has none (a script).
+    const Panda::ComponentType *engineTypeOf(ComponentType type) {
+        const Panda::ComponentTypeRegistry &types = Panda::GameContext::getExtensions().components;
+        switch (type) {
+            case ComponentType::Camera: return types.find(entt::type_hash<Panda::CameraComponent>::value());
+            case ComponentType::DirectionalLight: return types.find(entt::type_hash<Panda::DirectionalLightComponent>::value());
+            case ComponentType::PointLight: return types.find(entt::type_hash<Panda::PointLightComponent>::value());
+            case ComponentType::SpriteRenderer: return types.find(entt::type_hash<Panda::SpriteRendererComponent>::value());
+            case ComponentType::PrimitiveMesh: return types.find(entt::type_hash<Panda::PrimitiveMeshComponent>::value());
+            case ComponentType::ImportedSubmesh: return types.find(entt::type_hash<Panda::ImportedSubmeshComponent>::value());
+            case ComponentType::Sky: return types.find(entt::type_hash<Panda::SkyComponent>::value());
+            case ComponentType::RuntimeMesh:
+            case ComponentType::Script: return nullptr;
+        }
+        return nullptr;
     }
 
     bool entityHasComponent(Panda::Entity &e, ComponentType type) {
@@ -151,6 +160,7 @@ void EntityEditorView::addSubviews() {
     m_rotationRow = std::make_shared<PropertyRow>("Rotation", m_rotation);
     transform->addContent(m_rotationRow);
     m_scale = std::make_shared<Vector3Field>();
+    m_scale->setResetValue(1.f);
     m_scaleRow = std::make_shared<PropertyRow>("Scale", m_scale);
     transform->addContent(m_scaleRow);
     m_body->addContentSubview(transform);
@@ -161,8 +171,9 @@ void EntityEditorView::addSubviews() {
     m_componentsContainer->layout().setGap(0.f);
     m_body->addContentSubview(m_componentsContainer);
 
-    m_addComponent = std::make_shared<MenuButton>("Add Component");
+    m_addComponent = std::make_shared<Button>("Add Component");
     m_addComponent->setStyle(ButtonStyle::AccentOutline);
+    m_addComponent->setOnClick([this](Button &) { openAddComponent(); });
     m_addComponent->layout().setAlignSelf(Align::Center);
     m_addComponent->layout().setMargin(Edge::Top, 8.f);
     m_body->addContentSubview(m_addComponent);
@@ -239,15 +250,6 @@ void EntityEditorView::setScriptClassProvider(std::function<std::vector<std::str
     m_scriptClassProvider = std::move(provider);
 }
 
-std::string EntityEditorView::assetNameFor(uint32_t id) const {
-    if (id == 0) { return {}; }
-    auto *handler = static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    if (!handler) { return {}; }
-    const auto &registry = handler->getRegistry();
-    auto it = registry.find(Panda::AssetId(id));
-    return it != registry.end() ? handler->getAssetName(it->first) : std::string();
-}
-
 void EntityEditorView::bindEntities(const std::vector<Panda::Entity> &entities) {
     m_entities = entities;
     Panda::Entity primary = entities.front();
@@ -293,24 +295,46 @@ void EntityEditorView::rebuildComponents(Panda::Entity primary) {
         for (int i = 0; i < static_cast<int>(slc.scripts.size()); ++i) { add(buildScriptSection(slc.scripts[i], i)); }
     }
 
-    m_addComponent->clearItems();
+    // What Add Component offers: the components the primary target does not have yet.
+    m_addable.clear();
     for (ComponentType type : addableComponentTypes()) {
         if (type != ComponentType::Script && entityHasComponent(primary, type)) { continue; }
         if (type == ComponentType::Script) {
-            m_addComponent->addItem(componentTypeName(type), [this] {
+            m_addable.push_back({{componentTypeName(type), {}, componentTypeIcon(type)}, [this] {
                 openScriptPicker(m_addComponent.get(), [this](const std::string &name) { m_output->entityDidAddScript(name); });
-            });
+            }});
         } else {
-            m_addComponent->addItem(componentTypeName(type), [this, type] { m_output->entityDidAddComponent(type); });
+            m_addable.push_back({{componentTypeName(type), {}, componentTypeIcon(type)}, [this, type] {
+                m_output->entityDidAddComponent(type);
+            }});
         }
     }
     for (const ComponentInspector &inspector : inspectors.inspectors()) {
         if (inspectors.has(inspector, primary)) { continue; }
         const std::string component = inspector.component;
-        m_addComponent->addItem(inspector.displayName, [this, component] {
-            m_output->entityDidAddExtensionComponent(component);
-        });
+        m_addable.push_back({{inspector.displayName, inspector.group, inspector.icon.empty() ? Ic::EntityCube : inspector.icon},
+                             [this, component] { m_output->entityDidAddExtensionComponent(component); }});
     }
+}
+
+void EntityEditorView::openAddComponent() {
+    Context *context = getContext();
+    if (context == nullptr) { return; }
+    std::vector<PickerItem> items;
+    items.reserve(m_addable.size());
+    for (const Addable &addable : m_addable) { items.push_back(addable.item); }
+    const Rect frame = m_addComponent->getWorldFrame();
+    // The picker is as wide as itself: centered under the button.
+    showPicker(
+        context, Point(frame.origin.x + frame.size.width * 0.5f - 170.f, frame.origin.y + frame.size.height + 4.f),
+        "Add component…", std::move(items),
+        [this](int index) {
+            if (index < 0 || index >= static_cast<int>(m_addable.size())) { return; }
+            // A copy: adding rebuilds the form and the list with it.
+            const std::function<void()> run = m_addable[static_cast<size_t>(index)].run;
+            if (run) { run(); }
+        }
+    );
 }
 
 std::shared_ptr<CollapsibleSection>
@@ -320,7 +344,10 @@ EntityEditorView::buildExtensionSection(const ComponentInspector &inspector, Pan
     auto section = std::make_shared<CollapsibleSection>(title);
     styleComponentSection(*section);
     const std::string component = inspector.component;
-    addComponentHeaderMenu(*section, [this, component] { m_output->entityDidRemoveExtensionComponent(component); });
+    addComponentHeaderMenu(
+        *section, [this, component] { m_output->entityDidRemoveExtensionComponent(component); },
+        Panda::GameContext::getExtensions().components.find(component)
+    );
     Panda::World *world = primary.getWorld();
     if (world != nullptr && inspector.build != nullptr) {
         const ComponentInspectorContext context{*world, m_entities};
@@ -341,13 +368,39 @@ void EntityEditorView::openScriptPicker(View *anchor, std::function<void(const s
     showScriptPicker(context, at, classes, std::move(onPick));
 }
 
-void EntityEditorView::addComponentHeaderMenu(CollapsibleSection &section, std::function<void()> onRemove) {
+void EntityEditorView::addComponentHeaderMenu(
+    CollapsibleSection &section, std::function<void()> onRemove, const Panda::ComponentType *type
+) {
     auto more = std::make_shared<IconButton>(Ic::More, Ic::HeaderSize, 23.f);
     more->setCornerRadius(Radius::sm);
     more->setTooltip("Component Actions");
     IconButton *morePtr = more.get();
-    more->setOnClick([this, morePtr, onRemove] {
+    more->setOnClick([this, morePtr, onRemove, type] {
         auto menu = std::make_shared<Menu>();
+        // The values of a component travel as text — the fragment of a world file that holds
+        // it: between entities, worlds and projects, and out of a playing world into the one
+        // being edited (the copy survives Stop on the clipboard).
+        if (type != nullptr && type->encode != nullptr && !m_entities.empty()) {
+            menu->addItem("Copy Values", [this, type] {
+                if (!m_entities.empty() && m_entities.front().isValid()) {
+                    setClipboardText(componentText(m_entities.front(), *type));
+                }
+            });
+            menu->addItem("Paste Values", [this, type] {
+                Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
+                if (world == nullptr) { return; }
+                if (!commitComponentText(*world, m_entities, *type, getClipboardText())) {
+                    editorHost().log(HostLogLevel::Warning, "Paste Values: the clipboard does not hold the values of this component");
+                    return;
+                }
+                editorHost().refreshFromWorld();
+            });
+            menu->addItem("Reset", [this, type] {
+                Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
+                if (world != nullptr && resetComponent(*world, m_entities, *type)) { editorHost().refreshFromWorld(); }
+            });
+            menu->addSeparator();
+        }
         menu->addItem("Remove Component", [onRemove] { if (onRemove) { onRemove(); } });
         const Rect f = morePtr->getWorldFrame();
         auto popup = std::make_shared<Popup>(menu, Rect(f.origin.x, f.origin.y + f.size.height, 0.f, 0.f));
@@ -357,272 +410,229 @@ void EntityEditorView::addComponentHeaderMenu(CollapsibleSection &section, std::
     section.setHeaderAccessory(more);
 }
 
-void EntityEditorView::addAssetRow(CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
-                                     std::function<void(uint32_t)> set) {
-    auto well = std::make_shared<AssetWell>(
-        value, kind, [this](uint32_t id) { return assetNameFor(id); }, std::move(set),
-        [this](uint32_t id) { m_output->entityDidSelectAsset(Panda::AssetId(id)); }
-    );
-    section.addContent(std::make_shared<PropertyRow>(title, well));
+// The sections of the core components. Each edits a copy of its component and sends it whole;
+// the rows are the kit's (FormWidgets): a number is typed or scrubbed by its label, a row that
+// does not apply now is out of the form, the tooltip of a label says what the field is.
+
+std::shared_ptr<CollapsibleSection> EntityEditorView::makeComponentSection(ComponentType type) {
+    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(type));
+    styleComponentSection(*section);
+    addComponentHeaderMenu(*section, [this, type] { m_output->entityDidRemoveComponent(type); }, engineTypeOf(type));
+    return section;
 }
 
 std::shared_ptr<CollapsibleSection> EntityEditorView::buildCameraSection(const Panda::CameraComponent &component) {
     using Cam = Panda::CameraComponent;
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::Camera));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::Camera); });
-    auto data = std::make_shared<Panda::CameraComponent>(component);
+    using Projection = Panda::WorldCamera::ProjectionType;
+    auto section = makeComponentSection(ComponentType::Camera);
+    auto data = std::make_shared<Cam>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
-
-    auto primary = std::make_shared<Toggle>();
-    primary->setOn(data->isPrimary);
-    primary->setOnValueChanged([data, emit](Toggle &t) { data->isPrimary = t.isOn(); emit(); });
-    auto primaryRow = std::make_shared<PropertyRow>("Primary", primary, false);
-    primaryRow->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.isPrimary; }));
-    section->addContent(primaryRow);
-
-    auto projection = std::make_shared<Combobox>();
-    projection->setItems({"Perspective", "Orthographic"});
-    projection->setSelectedIndex(static_cast<int>(data->camera.getProjectionType()));
-    projection->setOnSelectionChanged([data, emit](Combobox &c) {
-        data->camera.setProjectionType(static_cast<Panda::WorldCamera::ProjectionType>(c.selectedIndex()));
+    auto mixed = [this](auto get) { return componentFieldMixed<Cam>(m_entities, get); };
+    // The rows that depend on another field are shown by this, set once they all exist. The
+    // rows are held by the section, the callbacks by the rows: raw pointers, no cycle.
+    auto refresh = std::make_shared<std::function<void()>>();
+    auto changed = [emit, refresh] {
         emit();
-    });
-    auto projectionRow = std::make_shared<PropertyRow>("Projection", projection);
-    projectionRow->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return static_cast<int>(c.camera.getProjectionType()); }));
-    section->addContent(projectionRow);
-
-    auto numberRow = [&](const char *title, float value, float mn, float mx, std::function<void(float)> set,
-                         std::function<float(Cam &)> get) {
-        auto widget = std::make_shared<NumberField>();
-        widget->setFont(Typo::Value);
-        widget->setRange(mn, mx);
-        widget->setValue(value);
-        widget->setMixed(typedFieldMixed<Cam>(m_entities, get));
-        widget->setOnValueChanged([set](NumberField &f) { set(f.getValue()); });
-        section->addContent(std::make_shared<PropertyRow>(title, widget));
+        if (*refresh) { (*refresh)(); }
     };
-    numberRow(
-        "Field of View", data->camera.getFieldOfView(), 1.f, 179.f,
-        [data, emit](float v) { data->camera.setFieldOfView(v); emit(); }, [](Cam &c) { return c.camera.getFieldOfView(); }
-    );
-    numberRow(
-        "Ortho Size", data->camera.getOrthoSize(), 0.f, 1000.f,
-        [data, emit](float v) { data->camera.setOrthoSize(v); emit(); }, [](Cam &c) { return c.camera.getOrthoSize(); }
-    );
-    addAssetRow(*section, "Postprocessing", "postfx", static_cast<uint32_t>(data->postprocessing.getId()),
-                [data, emit](uint32_t id) { data->postprocessing = assetRefOf(id); emit(); });
-    auto postfxEnabled = std::make_shared<Toggle>();
-    postfxEnabled->setOn(data->postprocessingEnabled);
-    postfxEnabled->setOnValueChanged([data, emit](Toggle &t) { data->postprocessingEnabled = t.isOn(); emit(); });
-    auto postfxEnabledR = std::make_shared<PropertyRow>("Postfx Enabled", postfxEnabled, false);
-    postfxEnabledR->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.postprocessingEnabled; }));
-    section->addContent(postfxEnabledR);
 
-    // Built-in camera bloom (a pyramid in the engine; the glow source is the emissive of materials).
-    auto bloom = std::make_shared<Toggle>();
-    bloom->setOn(data->bloomEnabled);
-    bloom->setOnValueChanged([data, emit](Toggle &t) { data->bloomEnabled = t.isOn(); emit(); });
-    auto bloomR = std::make_shared<PropertyRow>("Bloom", bloom, false);
-    bloomR->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.bloomEnabled; }));
-    section->addContent(bloomR);
-    numberRow(
-        "Bloom Intensity", data->bloomIntensity, 0.f, 100.f,
-        [data, emit](float v) { data->bloomIntensity = v; emit(); }, [](Cam &c) { return c.bloomIntensity; }
+    addToggleRow(*section, "Primary", data->isPrimary, [data, emit](bool on) { data->isPrimary = on; emit(); },
+                 mixed([](Cam &c) { return c.isPrimary; }))
+        ->setHelp("The camera the game looks through");
+    addComboRow(
+        *section, "Projection", {"Perspective", "Orthographic"}, static_cast<int>(data->camera.getProjectionType()),
+        [data, changed](int index) {
+            data->camera.setProjectionType(static_cast<Projection>(index));
+            changed();
+        },
+        mixed([](Cam &c) { return static_cast<int>(c.camera.getProjectionType()); })
     );
-    numberRow(
-        "Bloom Radius", data->bloomRadius, 0.f, 4.f,
-        [data, emit](float v) { data->bloomRadius = v; emit(); }, [](Cam &c) { return c.bloomRadius; }
-    );
-    // Auto exposure (eye adaptation; an engine step before bloom).
-    auto autoExposure = std::make_shared<Toggle>();
-    autoExposure->setOn(data->autoExposureEnabled);
-    autoExposure->setOnValueChanged([data, emit](Toggle &t) { data->autoExposureEnabled = t.isOn(); emit(); });
-    auto autoExposureR = std::make_shared<PropertyRow>("Auto Exposure", autoExposure, false);
-    autoExposureR->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.autoExposureEnabled; }));
-    section->addContent(autoExposureR);
-    numberRow(
-        "Exposure Key", data->autoExposureKey, 0.01f, 1.f,
-        [data, emit](float v) { data->autoExposureKey = v; emit(); }, [](Cam &c) { return c.autoExposureKey; }
-    );
-    numberRow(
-        "Exposure Speed", data->autoExposureSpeed, 0.1f, 20.f,
-        [data, emit](float v) { data->autoExposureSpeed = v; emit(); }, [](Cam &c) { return c.autoExposureSpeed; }
-    );
-    numberRow(
-        "Exposure Min", data->autoExposureMin, 0.01f, 4.f,
-        [data, emit](float v) { data->autoExposureMin = v; emit(); }, [](Cam &c) { return c.autoExposureMin; }
-    );
-    numberRow(
-        "Exposure Max", data->autoExposureMax, 0.25f, 16.f,
-        [data, emit](float v) { data->autoExposureMax = v; emit(); }, [](Cam &c) { return c.autoExposureMax; }
-    );
-    // How the frame reaches the display: the exposure compensation in stops and the curve.
-    numberRow(
-        "Exposure", data->exposure, -8.f, 8.f,
-        [data, emit](float v) { data->exposure = v; emit(); }, [](Cam &c) { return c.exposure; }
-    );
+    PropertyRow *fieldOfView = addNumberRow(
+        *section, "Field of View", 1.f, 179.f, data->camera.getFieldOfView(),
+        [data, emit](float v) { data->camera.setFieldOfView(v); emit(); },
+        mixed([](Cam &c) { return c.camera.getFieldOfView(); })
+    ).get();
+    fieldOfView->setHelp("The vertical angle of the view, degrees");
+    PropertyRow *orthoSize = addNumberRow(
+        *section, "Size", 0.f, 1000.f, data->camera.getOrthoSize(),
+        [data, emit](float v) { data->camera.setOrthoSize(v); emit(); },
+        mixed([](Cam &c) { return c.camera.getOrthoSize(); })
+    ).get();
+    orthoSize->setHelp("The height of the view, world units");
+
+    // How the frame reaches the display: the exposure, the curve, the glow, the smoothing.
+    addNumberRow(*section, "Exposure", -8.f, 8.f, data->exposure, [data, emit](float v) { data->exposure = v; emit(); },
+                 mixed([](Cam &c) { return c.exposure; }))
+        ->setHelp("Exposure compensation in stops: +1 is twice as bright. With auto exposure — a correction on top of it");
+    addToggleRow(*section, "Auto Exposure", data->autoExposureEnabled,
+                 [data, changed](bool on) { data->autoExposureEnabled = on; changed(); },
+                 mixed([](Cam &c) { return c.autoExposureEnabled; }))
+        ->setHelp("The exposure follows the brightness of the frame, as an eye adapts");
+    PropertyRow *exposureKey = addNumberRow(
+        *section, "Key", 0.01f, 1.f, data->autoExposureKey, [data, emit](float v) { data->autoExposureKey = v; emit(); },
+        mixed([](Cam &c) { return c.autoExposureKey; })
+    ).get();
+    exposureKey->setHelp("The average brightness the frame is brought to (0.18 — a gray card)");
+    PropertyRow *exposureSpeed = addNumberRow(
+        *section, "Speed", 0.1f, 20.f, data->autoExposureSpeed, [data, emit](float v) { data->autoExposureSpeed = v; emit(); },
+        mixed([](Cam &c) { return c.autoExposureSpeed; })
+    ).get();
+    exposureSpeed->setHelp("How fast the exposure adapts, 1/s");
+    PropertyRow *exposureMin = addNumberRow(
+        *section, "Min", 0.01f, 4.f, data->autoExposureMin, [data, emit](float v) { data->autoExposureMin = v; emit(); },
+        mixed([](Cam &c) { return c.autoExposureMin; })
+    ).get();
+    exposureMin->setHelp("The lowest exposure the adaptation may reach");
+    PropertyRow *exposureMax = addNumberRow(
+        *section, "Max", 0.25f, 16.f, data->autoExposureMax, [data, emit](float v) { data->autoExposureMax = v; emit(); },
+        mixed([](Cam &c) { return c.autoExposureMax; })
+    ).get();
+    exposureMax->setHelp("The highest exposure the adaptation may reach");
     addComboRow(
         *section, "Tonemap", {"AgX", "ACES", "Neutral", "Reinhard", "None"}, static_cast<int>(data->tonemap),
         [data, emit](int index) {
             data->tonemap = static_cast<Panda::Tonemap>(index);
             emit();
+        },
+        mixed([](Cam &c) { return static_cast<int>(c.tonemap); })
+    )->setHelp("The curve that brings the light of the scene into the range of a display");
+    // Built-in camera bloom (a pyramid in the engine; the glow source is the emissive of materials).
+    addToggleRow(*section, "Bloom", data->bloomEnabled, [data, changed](bool on) { data->bloomEnabled = on; changed(); },
+                 mixed([](Cam &c) { return c.bloomEnabled; }))
+        ->setHelp("The glow around what emits light (the emissive of materials)");
+    PropertyRow *bloomIntensity = addNumberRow(
+        *section, "Intensity", 0.f, 100.f, data->bloomIntensity, [data, emit](float v) { data->bloomIntensity = v; emit(); },
+        mixed([](Cam &c) { return c.bloomIntensity; })
+    ).get();
+    PropertyRow *bloomRadius = addNumberRow(
+        *section, "Radius", 0.f, 4.f, data->bloomRadius, [data, emit](float v) { data->bloomRadius = v; emit(); },
+        mixed([](Cam &c) { return c.bloomRadius; })
+    ).get();
+    bloomRadius->setHelp("How far the glow spreads (0.5..2)");
+    addToggleRow(*section, "Antialiasing", data->antialiasing, [data, emit](bool on) { data->antialiasing = on; emit(); },
+                 mixed([](Cam &c) { return c.antialiasing; }))
+        ->setHelp("Smooths the edges of the finished frame (FXAA)");
+
+    addAssetRow(*section, "Postprocessing", "postfx", static_cast<uint32_t>(data->postprocessing.getId()),
+                [data, changed](uint32_t id) { data->postprocessing = assetRefOf(id); changed(); });
+    PropertyRow *postfxEnabled = addToggleRow(
+        *section, "Postprocessing Enabled", data->postprocessingEnabled,
+        [data, emit](bool on) { data->postprocessingEnabled = on; emit(); },
+        mixed([](Cam &c) { return c.postprocessingEnabled; })
+    ).get();
+    postfxEnabled->setHelp("The passes of the postprocessing asset run; a script turns them on and off");
+
+    for (PropertyRow *row : {exposureKey, exposureSpeed, exposureMin, exposureMax, bloomIntensity, bloomRadius}) {
+        row->setIndent(FORM_INDENT);
+    }
+    *refresh = [=] {
+        const bool perspective = data->camera.getProjectionType() == Projection::PERSPECTIVE;
+        fieldOfView->setVisible(perspective);
+        orthoSize->setVisible(!perspective);
+        for (PropertyRow *row : {exposureKey, exposureSpeed, exposureMin, exposureMax}) {
+            row->setVisible(data->autoExposureEnabled);
         }
-    );
-    auto antialiasing = std::make_shared<Toggle>();
-    antialiasing->setOn(data->antialiasing);
-    antialiasing->setOnValueChanged([data, emit](Toggle &t) { data->antialiasing = t.isOn(); emit(); });
-    auto antialiasingR = std::make_shared<PropertyRow>("Antialiasing", antialiasing, false);
-    antialiasingR->setMixed(typedFieldMixed<Cam>(m_entities, [](Cam &c) { return c.antialiasing; }));
-    section->addContent(antialiasingR);
+        bloomIntensity->setVisible(data->bloomEnabled);
+        bloomRadius->setVisible(data->bloomEnabled);
+        postfxEnabled->setVisible(static_cast<bool>(data->postprocessing.getId()));
+    };
+    (*refresh)();
     return section;
 }
 
 std::shared_ptr<CollapsibleSection>
 EntityEditorView::buildDirectionalLightSection(const Panda::DirectionalLightComponent &component) {
     using DL = Panda::DirectionalLightComponent;
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::DirectionalLight));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::DirectionalLight); });
-    auto data = std::make_shared<Panda::DirectionalLightComponent>(component);
+    auto section = makeComponentSection(ComponentType::DirectionalLight);
+    auto data = std::make_shared<DL>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
+    auto mixed = [this](auto get) { return componentFieldMixed<DL>(m_entities, get); };
 
-    auto color = std::make_shared<ColorWell>(Color(data->color.r, data->color.g, data->color.b, data->color.a));
-    color->setOnColorChanged([data, emit](ColorWell &w) {
-        const Color c = w.getColor();
-        data->color = Panda::Color(c.r, c.g, c.b, c.a);
-        emit();
-    });
-    auto colorR = std::make_shared<PropertyRow>("Color", color, false);
-    colorR->setMixed(typedFieldMixed<DL>(m_entities, [](DL &c) { return c.color; }));
-    section->addContent(colorR);
-
-    auto intensity = std::make_shared<NumberField>();
-    intensity->setFont(Typo::Value);
-    intensity->setRange(0.f, 100.f);
-    intensity->setValue(data->intensity);
-    intensity->setMixed(typedFieldMixed<DL>(m_entities, [](DL &c) { return c.intensity; }));
-    intensity->setOnValueChanged([data, emit](NumberField &f) { data->intensity = f.getValue(); emit(); });
-    section->addContent(std::make_shared<PropertyRow>("Intensity", intensity));
-
-    auto enabled = std::make_shared<Toggle>();
-    enabled->setOn(data->isEnabled);
-    enabled->setOnValueChanged([data, emit](Toggle &t) { data->isEnabled = t.isOn(); emit(); });
-    auto enabledR = std::make_shared<PropertyRow>("Enabled", enabled, false);
-    enabledR->setMixed(typedFieldMixed<DL>(m_entities, [](DL &c) { return c.isEnabled; }));
-    section->addContent(enabledR);
-
+    addColorRow(*section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
+                mixed([](DL &c) { return c.color; }));
+    addNumberRow(*section, "Intensity", 0.f, 100.f, data->intensity, [data, emit](float v) { data->intensity = v; emit(); },
+                 mixed([](DL &c) { return c.intensity; }))
+        ->setHelp("What a white matte surface facing the sun sends back");
     // Cascaded shadows from this sun (shadow settings are in Settings → Shadows).
-    auto castShadows = std::make_shared<Toggle>();
-    castShadows->setOn(data->castShadows);
-    castShadows->setOnValueChanged([data, emit](Toggle &t) {
-        data->castShadows = t.isOn();
-        emit();
-    });
-    auto castShadowsR = std::make_shared<PropertyRow>("Cast Shadows", castShadows, false);
-    castShadowsR->setMixed(typedFieldMixed<DL>(m_entities, [](DL &c) { return c.castShadows; }));
-    section->addContent(castShadowsR);
+    addToggleRow(*section, "Cast Shadows", data->castShadows, [data, emit](bool on) { data->castShadows = on; emit(); },
+                 mixed([](DL &c) { return c.castShadows; }))
+        ->setHelp("The first enabled sun of a world casts the cascaded shadows (World Settings → Shadows)");
+    addToggleRow(*section, "Enabled", data->isEnabled, [data, emit](bool on) { data->isEnabled = on; emit(); },
+                 mixed([](DL &c) { return c.isEnabled; }));
     return section;
 }
 
 std::shared_ptr<CollapsibleSection> EntityEditorView::buildPointLightSection(const Panda::PointLightComponent &component) {
     using PL = Panda::PointLightComponent;
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::PointLight));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::PointLight); });
-    auto data = std::make_shared<Panda::PointLightComponent>(component);
+    auto section = makeComponentSection(ComponentType::PointLight);
+    auto data = std::make_shared<PL>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
+    auto mixed = [this](auto get) { return componentFieldMixed<PL>(m_entities, get); };
+    auto refresh = std::make_shared<std::function<void()>>();
 
-    auto color = std::make_shared<ColorWell>(Color(data->color.r, data->color.g, data->color.b, data->color.a));
-    color->setOnColorChanged([data, emit](ColorWell &w) {
-        const Color c = w.getColor();
-        data->color = Panda::Color(c.r, c.g, c.b, c.a);
-        emit();
-    });
-    auto colorR = std::make_shared<PropertyRow>("Color", color, false);
-    colorR->setMixed(typedFieldMixed<PL>(m_entities, [](PL &c) { return c.color; }));
-    section->addContent(colorR);
-
-    auto numberRow = [&](const char *title, float value, float mn, float mx, std::function<void(float)> set,
-                         std::function<float(PL &)> get) {
-        auto widget = std::make_shared<NumberField>();
-        widget->setFont(Typo::Value);
-        widget->setRange(mn, mx);
-        widget->setValue(value);
-        widget->setMixed(typedFieldMixed<PL>(m_entities, get));
-        widget->setOnValueChanged([set](NumberField &f) { set(f.getValue()); });
-        section->addContent(std::make_shared<PropertyRow>(title, widget));
-    };
-    numberRow("Intensity", data->intensity, 0.f, 100.f, [data, emit](float v) { data->intensity = v; emit(); },
-              [](PL &c) { return c.intensity; });
-    numberRow("Radius", data->radius, 0.f, 1000.f, [data, emit](float v) { data->radius = v; emit(); },
-              [](PL &c) { return c.radius; });
+    addColorRow(*section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
+                mixed([](PL &c) { return c.color; }));
+    addNumberRow(*section, "Intensity", 0.f, 100.f, data->intensity, [data, emit](float v) { data->intensity = v; emit(); },
+                 mixed([](PL &c) { return c.intensity; }))
+        ->setHelp("What a white matte surface 1 m away, facing the lamp, sends back");
+    addNumberRow(*section, "Radius", 0.f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
+                 mixed([](PL &c) { return c.radius; }))
+        ->setHelp("Where the light ends, m: it falls with the square of the distance and reaches zero here");
     // A cone makes the lamp a spot that shines along the -Z of the entity; 0 — all around.
-    numberRow("Cone Angle", data->coneAngle, 0.f, 179.f, [data, emit](float v) { data->coneAngle = v; emit(); },
-              [](PL &c) { return c.coneAngle; });
-    numberRow("Cone Softness", data->coneSoftness, 0.f, 1.f, [data, emit](float v) { data->coneSoftness = v; emit(); },
-              [](PL &c) { return c.coneSoftness; });
+    addNumberRow(*section, "Cone Angle", 0.f, 179.f, data->coneAngle,
+                 [data, emit, refresh](float v) {
+                     data->coneAngle = v;
+                     emit();
+                     if (*refresh) { (*refresh)(); }
+                 },
+                 mixed([](PL &c) { return c.coneAngle; }))
+        ->setHelp("0 — the lamp shines all around. Above — a spot along the -Z of the entity; the full angle of its cone, degrees");
+    PropertyRow *softness = addNumberRow(
+        *section, "Softness", 0.f, 1.f, data->coneSoftness, [data, emit](float v) { data->coneSoftness = v; emit(); },
+        mixed([](PL &c) { return c.coneSoftness; })
+    ).get();
+    softness->setHelp("The share of the cone over which the light fades to its edge");
+    softness->setIndent(FORM_INDENT);
+    addToggleRow(*section, "Cast Shadows", data->castShadows, [data, emit](bool on) { data->castShadows = on; emit(); },
+                 mixed([](PL &c) { return c.castShadows; }))
+        ->setHelp("A spot costs one more pass over the world every frame, a lamp that shines all around — six");
+    addToggleRow(*section, "Enabled", data->isEnabled, [data, emit](bool on) { data->isEnabled = on; emit(); },
+                 mixed([](PL &c) { return c.isEnabled; }));
 
-    auto shadows = std::make_shared<Toggle>();
-    shadows->setOn(data->castShadows);
-    shadows->setOnValueChanged([data, emit](Toggle &t) { data->castShadows = t.isOn(); emit(); });
-    auto shadowsR = std::make_shared<PropertyRow>("Cast Shadows", shadows, false);
-    shadowsR->setMixed(typedFieldMixed<PL>(m_entities, [](PL &c) { return c.castShadows; }));
-    section->addContent(shadowsR);
-
-    auto enabled = std::make_shared<Toggle>();
-    enabled->setOn(data->isEnabled);
-    enabled->setOnValueChanged([data, emit](Toggle &t) { data->isEnabled = t.isOn(); emit(); });
-    auto enabledR = std::make_shared<PropertyRow>("Enabled", enabled, false);
-    enabledR->setMixed(typedFieldMixed<PL>(m_entities, [](PL &c) { return c.isEnabled; }));
-    section->addContent(enabledR);
+    *refresh = [data, softness] { softness->setVisible(data->coneAngle > 0.f); };
+    (*refresh)();
     return section;
 }
 
 std::shared_ptr<CollapsibleSection>
 EntityEditorView::buildSpriteRendererSection(const Panda::SpriteRendererComponent &component) {
     using SR = Panda::SpriteRendererComponent;
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::SpriteRenderer));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::SpriteRenderer); });
-    auto data = std::make_shared<Panda::SpriteRendererComponent>(component);
+    auto section = makeComponentSection(ComponentType::SpriteRenderer);
+    auto data = std::make_shared<SR>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
+    auto mixed = [this](auto get) { return componentFieldMixed<SR>(m_entities, get); };
 
-    auto color = std::make_shared<ColorWell>(Color(data->color.r, data->color.g, data->color.b, data->color.a));
-    color->setOnColorChanged([data, emit](ColorWell &w) {
-        const Color c = w.getColor();
-        data->color = Panda::Color(c.r, c.g, c.b, c.a);
-        emit();
-    });
-    auto colorR = std::make_shared<PropertyRow>("Color", color, false);
-    colorR->setMixed(typedFieldMixed<SR>(m_entities, [](SR &c) { return c.color; }));
-    section->addContent(colorR);
-
-    auto intRow = [&](const char *title, int value, float mn, float mx, std::function<void(int)> set,
-                      std::function<int(SR &)> get) {
-        auto widget = std::make_shared<NumberField>();
-        widget->setFont(Typo::Value);
-        widget->setRange(mn, mx);
-        widget->setValue(static_cast<float>(value));
-        widget->setMixed(typedFieldMixed<SR>(m_entities, get));
-        widget->setOnValueChanged([set](NumberField &f) { set(static_cast<int>(f.getValue())); });
-        section->addContent(std::make_shared<PropertyRow>(title, widget));
-    };
-    intRow("Columns", data->cols, 1.f, 30.f, [data, emit](int v) { data->cols = v; emit(); }, [](SR &c) { return c.cols; });
-    intRow("Rows", data->rows, 1.f, 30.f, [data, emit](int v) { data->rows = v; emit(); }, [](SR &c) { return c.rows; });
-    intRow("Index", data->index, 0.f, 900.f, [data, emit](int v) { data->index = v; emit(); }, [](SR &c) { return c.index; });
-
-    addAssetRow(*section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
-                [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+    addColorRow(*section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
+                mixed([](SR &c) { return c.color; }), /*alpha*/ true);
     addAssetRow(*section, "Texture", "texture", static_cast<uint32_t>(data->texture.getId()),
                 [data, emit](uint32_t id) { data->texture = assetRefOf(id); emit(); });
+    // A sprite sheet: the texture is a grid of frames and the sprite shows one of them.
+    addIntegerRow(*section, "Columns", 1, 30, data->cols, [data, emit](int v) { data->cols = v; emit(); },
+                  mixed([](SR &c) { return c.cols; }))
+        ->setHelp("The frames of the sprite sheet in a row of the texture");
+    addIntegerRow(*section, "Rows", 1, 30, data->rows, [data, emit](int v) { data->rows = v; emit(); },
+                  mixed([](SR &c) { return c.rows; }))
+        ->setHelp("The rows of frames in the texture");
+    addIntegerRow(*section, "Index", 0, 900, data->index, [data, emit](int v) { data->index = v; emit(); },
+                  mixed([](SR &c) { return c.index; }))
+        ->setHelp("The frame shown, counted from 0 along the rows");
+    addAssetRow(*section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
+                [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
     return section;
 }
 
 std::shared_ptr<CollapsibleSection> EntityEditorView::buildRuntimeMeshSection(const Panda::RuntimeMeshComponent &component) {
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::RuntimeMesh));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::RuntimeMesh); });
+    auto section = makeComponentSection(ComponentType::RuntimeMesh);
     auto data = std::make_shared<Panda::RuntimeMeshComponent>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
     addAssetRow(*section, "Mesh", "mesh", static_cast<uint32_t>(data->runtimeMesh.getId()),
@@ -634,21 +644,18 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildRuntimeMeshSection(co
 
 std::shared_ptr<CollapsibleSection>
 EntityEditorView::buildPrimitiveMeshSection(const Panda::PrimitiveMeshComponent &component) {
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::PrimitiveMesh));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::PrimitiveMesh); });
-    auto data = std::make_shared<Panda::PrimitiveMeshComponent>(component);
+    using PM = Panda::PrimitiveMeshComponent;
+    auto section = makeComponentSection(ComponentType::PrimitiveMesh);
+    auto data = std::make_shared<PM>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
-
-    auto kindCombobox = std::make_shared<Combobox>();
-    kindCombobox->setItems({"Cube", "Sphere", "Capsule", "Plane", "Cylinder"});
-    kindCombobox->setSelectedIndex(static_cast<int>(data->kind));
-    kindCombobox->setOnSelectionChanged([data, emit](Combobox &c) {
-        data->kind = static_cast<Panda::PrimitiveMeshKind>(c.selectedIndex());
-        emit();
-    });
-    section->addContent(std::make_shared<PropertyRow>("Kind", kindCombobox));
-
+    addComboRow(
+        *section, "Shape", {"Cube", "Sphere", "Capsule", "Plane", "Cylinder"}, static_cast<int>(data->kind),
+        [data, emit](int index) {
+            data->kind = static_cast<Panda::PrimitiveMeshKind>(index);
+            emit();
+        },
+        componentFieldMixed<PM>(m_entities, [](PM &c) { return static_cast<int>(c.kind); })
+    );
     // An empty material = the built-in checker (the sky pattern: empty means the engine material).
     addAssetRow(*section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
                 [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
@@ -657,26 +664,24 @@ EntityEditorView::buildPrimitiveMeshSection(const Panda::PrimitiveMeshComponent 
 
 std::shared_ptr<CollapsibleSection>
 EntityEditorView::buildImportedSubmeshSection(const Panda::ImportedSubmeshComponent &component) {
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::ImportedSubmesh));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::ImportedSubmesh); });
+    auto section = makeComponentSection(ComponentType::ImportedSubmesh);
     auto data = std::make_shared<Panda::ImportedSubmeshComponent>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
     addAssetRow(*section, "Mesh", "mesh", static_cast<uint32_t>(data->importedMesh.getId()),
                 [data, emit](uint32_t id) { data->importedMesh = assetRefOf(id); emit(); });
-    addAssetRow(*section, "Override", "material", static_cast<uint32_t>(data->material.getId()),
+    addAssetRow(*section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
                 [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+    section->addContent(makeFormHint("Empty — the material the model was imported with."));
     return section;
 }
 
 std::shared_ptr<CollapsibleSection> EntityEditorView::buildSkySection(const Panda::SkyComponent &component) {
-    auto section = std::make_shared<CollapsibleSection>(componentTypeTitle(ComponentType::Sky));
-    styleComponentSection(*section);
-    addComponentHeaderMenu(*section, [this] { m_output->entityDidRemoveComponent(ComponentType::Sky); });
+    auto section = makeComponentSection(ComponentType::Sky);
     auto data = std::make_shared<Panda::SkyComponent>(component);
     auto emit = [this, data] { m_output->entityDidEditComponent(ComponentEdit{*data}); };
     addAssetRow(*section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
                 [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+    section->addContent(makeFormHint("Empty — the default sky: the environment map of the world, or the built-in gradient."));
     return section;
 }
 
@@ -684,27 +689,36 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
     auto section = std::make_shared<CollapsibleSection>(script.getName().empty() ? "SCRIPT" : script.getName());
     styleComponentSection(*section);
     addComponentHeaderMenu(*section, [this, scriptIndex] { m_output->entityDidRemoveScript(scriptIndex); });
+    Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
     for (Panda::ScriptField &field : script.getFields()) {
         const std::string name = field.name;
+        // The label is the name of the C++ field made readable; the name itself is the tooltip.
+        const std::string title = humanizeIdentifier(name);
+        auto set = [this, scriptIndex, name](Panda::ScriptFieldValue value) {
+            m_output->entityDidEditScriptField(scriptIndex, name, std::move(value));
+        };
+        std::shared_ptr<PropertyRow> row;
         switch (field.type) {
             case Panda::ScriptFieldType::INTEGER: {
+                // A field of a script has no range of its own.
                 auto widget = std::make_shared<NumberField>();
                 widget->setFont(Typo::Value);
+                widget->setStep(1.f);
                 widget->setValue(static_cast<float>(std::get<int32_t>(field.value)));
-                widget->setOnValueChanged([this, scriptIndex, name](NumberField &f) {
-                    m_output->entityDidEditScriptField(scriptIndex, name, Panda::ScriptFieldValue(static_cast<int32_t>(f.getValue())));
+                widget->setOnValueChanged([set](NumberField &f) {
+                    set(Panda::ScriptFieldValue(static_cast<int32_t>(std::lround(f.getValue()))));
                 });
-                section->addContent(std::make_shared<PropertyRow>(name, widget));
+                row = std::make_shared<PropertyRow>(title, widget);
+                section->addContent(row);
                 break;
             }
             case Panda::ScriptFieldType::FLOAT: {
                 auto widget = std::make_shared<NumberField>();
                 widget->setFont(Typo::Value);
                 widget->setValue(std::get<float>(field.value));
-                widget->setOnValueChanged([this, scriptIndex, name](NumberField &f) {
-                    m_output->entityDidEditScriptField(scriptIndex, name, Panda::ScriptFieldValue(f.getValue()));
-                });
-                section->addContent(std::make_shared<PropertyRow>(name, widget));
+                widget->setOnValueChanged([set](NumberField &f) { set(Panda::ScriptFieldValue(f.getValue())); });
+                row = std::make_shared<PropertyRow>(title, widget);
+                section->addContent(row);
                 break;
             }
             case Panda::ScriptFieldType::TEXTURE:
@@ -715,22 +729,19 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
                                  : field.type == Panda::ScriptFieldType::MATERIAL ? "material"
                                  : field.type == Panda::ScriptFieldType::FONT     ? "font"
                                                                                   : "scene";
-                addAssetRow(*section, name.c_str(), kind, static_cast<uint32_t>(std::get<Panda::UUID>(field.value)),
-                            [this, scriptIndex, name](uint32_t id) {
-                                m_output->entityDidEditScriptField(scriptIndex, name, Panda::ScriptFieldValue(Panda::UUID(id)));
-                            });
+                row = addAssetRow(*section, title.c_str(), kind, static_cast<uint32_t>(std::get<Panda::UUID>(field.value)),
+                                  [set](uint32_t id) { set(Panda::ScriptFieldValue(Panda::UUID(id))); });
                 break;
             }
             case Panda::ScriptFieldType::ENTITY: {
-                const uint32_t ref = static_cast<uint32_t>(std::get<Panda::UUID>(field.value));
-                auto value = std::make_shared<Label>(ref ? ("Entity #" + std::to_string(ref)) : "None");
-                value->setFont(Typo::Value);
-                value->setTextRole(TextRole::Muted);
-                section->addContent(std::make_shared<PropertyRow>(name, value));
+                if (world == nullptr) { break; }
+                row = addEntityRow(*section, title.c_str(), *world, std::get<Panda::UUID>(field.value),
+                                   [set](Panda::UUID id) { set(Panda::ScriptFieldValue(id)); });
                 break;
             }
             default: break; // UNKNOWN
         }
+        if (row) { row->setHelp(name); }
     }
     return section;
 }

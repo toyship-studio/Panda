@@ -391,14 +391,29 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
   its view depth, stored in the g channel of the map (the tolerance grows with the slope of the
   depth on screen), and stays open for one frame. Any shader gets the occlusion with one call
   and nothing has a depth variant.
-- **The integral** is GTAO (Jimenez et al.) at half resolution: 3 slices through the view
-  direction, 4 steps each way along the screen for the highest horizon, the visible arc
+- **The integral** is GTAO (Jimenez et al.): slices through the view direction, in each the
+  depth buffer walked both ways along the screen for the highest horizon, the visible arc
   integrated with the cosine of the normal. The normal comes from the depth (the neighbor on the
   same surface on each axis). `ssao_blur.frag` averages 5×5 with a weight by how far a neighbor
   is from the depth the slope of the surface predicts, and applies the intensity.
+- **The budget belongs to the world.** There is one algorithm and three numbers that say what it
+  may cost (`SsaoSettings`): `slices` (directions around a pixel, 1–8, default 3), `steps` (depth
+  samples along a direction each way, 1–12, default 4) and `fullResolution` (the resolution of
+  the frame instead of half of it). A pixel reads the depth `2 × slices × steps + 5` times; the
+  shader takes the numbers from its block, so a change costs no recompile. The editor names four
+  sets of them — Low 2×3 half, Medium 3×4 half, High 3×4 full, Ultra 6×6 full — as a Quality
+  list over the same fields; the file holds the numbers, not the name. A second occlusion
+  algorithm next to this one would be a second way to do the same thing: the other source of
+  occlusion the engine has is of another kind (the occlusion volume, a baked field).
+- **Bright surfaces bounce light into their creases.** `shadeAmbient` (`panda/brdf.hlsli`)
+  lightens the occlusion of the diffuse light by the albedo — the multi-bounce fit of the GTAO
+  paper (`occlusionWithBounces`): a white corner is lighter than the bare visibility says, a
+  dark one is not. It applies to the whole occlusion of a point (the map of the material, the
+  volume, the screen), since the bounce does not care where the number came from.
 - **Three details that decide the quality:**
-  - A pixel of the pass covers 2×2 texels of the depth and its center lies on their corner: the
-    point is the first of the four, addressed by its center (`floor(position) * 2 + 0.5`).
+  - At half resolution a pixel of the pass covers 2×2 texels of the depth and its center lies on
+    their corner: the point is the first of the four, addressed by its center
+    (`floor(position) * scale + 0.5`).
     Reading at the corner let rounding choose the texel, and the neighbor one texel aside was
     sometimes the same texel — a zero-length edge, a broken normal, bands across the frame.
   - The distance of a point comes from the depth as `1 / ((1 − d) / near + d / far)`: a sum of
@@ -407,7 +422,8 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
   - The slices and the steps are turned by a pattern that takes each of 25 values once in every
     5×5 block, so the 5×5 blur cancels it exactly on a flat surface.
 - Settings: `WorldGraphicsSettings::ssao` (`SsaoSettings`: `enabled`, `radius` 0.6 m,
-  `intensity`), Settings → AMBIENT OCCLUSION; `graphics.ssao` in `.world`.
+  `intensity`, `slices`, `steps`, `fullResolution`), Settings → AMBIENT OCCLUSION;
+  `graphics.ssao` in `.world`.
 - Limits: perspective cameras only (an orthographic frame gets none); what is off screen does
   not occlude; the normal is geometric, so a low-poly curved mesh shows its facets in the
   occlusion; transparent surfaces take the occlusion of what is behind them.

@@ -53,7 +53,7 @@ namespace {
 
         void build(View &container) override {
             const Panda::AssetId id = m_context.asset;
-            auto section = std::make_shared<CollapsibleSection>("Texture Import");
+            auto section = makeFormSection("IMPORT");
             Panda::AssetInfo::TextureSettings textureMeta;
             if (Panda::AssetHandlerEditor *handler = assetHandler()) {
                 const auto &registry = handler->getRegistry();
@@ -63,56 +63,44 @@ namespace {
                 }
             }
             // The meta changes the GPU texture under the same id — the thumbnail cache drops the
-            // old one.
-            const auto applyFiltering = [id](int minIndex, int magIndex) {
+            // old one. The two filters are written together: each row reads the other from here.
+            auto filters = std::make_shared<std::pair<int, int>>(
+                textureMeta.minFiltering == Miren::NEAREST ? 0 : textureMeta.minFiltering == Miren::LINEAR ? 1 : 2,
+                textureMeta.magFiltering == Miren::NEAREST ? 0 : 1
+            );
+            const auto applyFiltering = [id, filters] {
                 Panda::AssetHandlerEditor *handler = assetHandler();
                 if (!handler) { return; }
                 const Miren::TextureFiltering minModes[] = {Miren::NEAREST, Miren::LINEAR, Miren::LINEAR_MIPMAP_LINEAR};
                 const Miren::TextureFiltering magModes[] = {Miren::NEAREST, Miren::LINEAR};
-                handler->import().setTextureFiltering(id, minModes[minIndex], magModes[magIndex]);
+                handler->import().setTextureFiltering(id, minModes[filters->first], magModes[filters->second]);
                 invalidateThumbnail(id);
             };
-            auto minFilter = std::make_shared<Combobox>();
-            minFilter->setItems({"Nearest", "Linear", "Linear Mipmap"});
-            minFilter->setSelectedIndex(
-                textureMeta.minFiltering == Miren::NEAREST  ? 0
-                : textureMeta.minFiltering == Miren::LINEAR ? 1
-                                                            : 2
-            );
-            section->addContent(std::make_shared<PropertyRow>("Min Filter", minFilter));
-            auto magFilter = std::make_shared<Combobox>();
-            magFilter->setItems({"Nearest", "Linear"});
-            magFilter->setSelectedIndex(textureMeta.magFiltering == Miren::NEAREST ? 0 : 1);
-            section->addContent(std::make_shared<PropertyRow>("Mag Filter", magFilter));
-            Combobox *minFilterPtr = minFilter.get();
-            Combobox *magFilterPtr = magFilter.get();
-            minFilter->setOnSelectionChanged([applyFiltering, minFilterPtr, magFilterPtr](Combobox &) {
-                applyFiltering(minFilterPtr->selectedIndex(), magFilterPtr->selectedIndex());
-            });
-            magFilter->setOnSelectionChanged([applyFiltering, minFilterPtr, magFilterPtr](Combobox &) {
-                applyFiltering(minFilterPtr->selectedIndex(), magFilterPtr->selectedIndex());
-            });
-            auto mips = std::make_shared<Toggle>();
-            mips->setOn(textureMeta.numMips > 0);
-            mips->setOnValueChanged([id](Toggle &toggle) {
+            addComboRow(*section, "Minification", {"Nearest", "Linear", "Linear, between mips"}, filters->first,
+                        [filters, applyFiltering](int index) {
+                            if (index < 0 || index > 2) { return; }
+                            filters->first = index;
+                            applyFiltering();
+                        })
+                ->setHelp("How the texture is read where it is drawn smaller than it is. Between mips — smooth at any distance (needs Generate Mips)");
+            addComboRow(*section, "Magnification", {"Nearest", "Linear"}, filters->second,
+                        [filters, applyFiltering](int index) {
+                            if (index < 0 || index > 1) { return; }
+                            filters->second = index;
+                            applyFiltering();
+                        })
+                ->setHelp("How the texture is read where it is drawn larger than it is. Nearest keeps the pixels of pixel art sharp");
+            addToggleRow(*section, "Generate Mips", textureMeta.numMips > 0, [id](bool on) {
                 // 16 is a full pyramid (backends clamp it to the actual size).
-                if (Panda::AssetHandlerEditor *handler = assetHandler()) {
-                    handler->import().setTextureMips(id, toggle.isOn() ? 16 : 0);
-                }
+                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureMips(id, on ? 16 : 0); }
                 invalidateThumbnail(id);
-            });
-            section->addContent(std::make_shared<PropertyRow>("Generate Mips", mips, false));
+            })->setHelp("Smaller copies of the texture for where it is far away: no shimmer, a third more memory");
             // sRGB: color textures are decoded to linear on sampling, data textures (normals,
             // masks) must stay linear.
-            auto srgb = std::make_shared<Toggle>();
-            srgb->setOn(textureMeta.srgb);
-            srgb->setOnValueChanged([id](Toggle &toggle) {
-                if (Panda::AssetHandlerEditor *handler = assetHandler()) {
-                    handler->import().setTextureSrgb(id, toggle.isOn());
-                }
+            addToggleRow(*section, "Color (sRGB)", textureMeta.srgb, [id](bool on) {
+                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureSrgb(id, on); }
                 invalidateThumbnail(id);
-            });
-            section->addContent(std::make_shared<PropertyRow>("sRGB (Color Texture)", srgb, false));
+            })->setHelp("On for a picture of colors (base color, emissive, UI). Off for data: normals, roughness, metallic, occlusion, masks");
             container.addSubview(section);
         }
 
@@ -176,6 +164,13 @@ namespace {
             // with the shader reflection.
             Panda::AssetRef<Panda::MaterialAsset> material{id};
             if (material) {
+                // The alpha mode of the material, when its shader has one: Cutout and Blend have
+                // fields of their own.
+                uint32_t alphaMode = 0;
+                if (material->getInputs().hasField("alphaMode")) {
+                    const Panda::MaterialFieldValue &mode = material->getInputs().getField("alphaMode").value;
+                    if (const uint32_t *value = std::get_if<uint32_t>(&mode)) { alphaMode = *value; }
+                }
                 for (const Panda::MaterialField &field : material->getInputs().inputs) {
                     if (field.runtime) { continue; } // fed by the system every frame — not shown to the author
                     const std::string fieldName = field.name;
@@ -211,24 +206,63 @@ namespace {
                         // An empty title holds the label column — the explanation sits under the widget.
                         section->addContent(std::make_shared<PropertyRow>("", row, false));
                     };
+                    // The label is the name made readable; the name itself — what the .mat file
+                    // and the shader say — is the tooltip.
+                    const std::string title = humanizeIdentifier(fieldName);
+                    std::shared_ptr<PropertyRow> row;
                     switch (field.type) {
                         case Panda::MaterialFieldType::FLOAT: {
                             auto widget = std::make_shared<NumberField>();
                             widget->setFont(Typo::Value);
                             widget->setValue(std::get<float>(shownValue));
                             widget->setOnValueChanged([emitField](NumberField &f) { emitField(f.getValue()); });
-                            section->addContent(std::make_shared<PropertyRow>(fieldName, widget));
+                            row = std::make_shared<PropertyRow>(title, widget);
+                            section->addContent(row);
                             markSystem(widget);
                             break;
                         }
                         case Panda::MaterialFieldType::UINT: {
+                            const uint32_t value = std::get<uint32_t>(shownValue);
+                            // The fields the renderer reads by name (the render traits of a
+                            // material) are shown as what they mean, not as numbers.
+                            if (fieldName == "alphaMode") {
+                                auto widget = std::make_shared<Combobox>();
+                                widget->setItems({"Opaque", "Cutout", "Blend"});
+                                widget->setSelectedIndex(static_cast<int>(std::min(value, 2u)));
+                                widget->setOnSelectionChanged([this, emitField](Combobox &box) {
+                                    emitField(static_cast<uint32_t>(std::max(0, box.selectedIndex())));
+                                    // The fields of the other modes leave the form.
+                                    if (m_context.rebuild) { m_context.rebuild(); }
+                                });
+                                row = std::make_shared<PropertyRow>(title, widget);
+                                row->setHelp(fieldName + ": Opaque; Cutout — a pixel below Alpha Cutoff is not drawn; "
+                                                         "Blend — drawn over what is behind it, after the opaque surfaces");
+                                section->addContent(row);
+                                markSystem(widget);
+                                continue;
+                            }
+                            if (fieldName == "doubleSided") {
+                                auto widget = std::make_shared<Toggle>();
+                                widget->setOn(value != 0);
+                                widget->setOnValueChanged([emitField](Toggle &toggle) {
+                                    emitField(static_cast<uint32_t>(toggle.isOn() ? 1 : 0));
+                                });
+                                row = std::make_shared<PropertyRow>(title, widget, false);
+                                row->setHelp(fieldName + ": both faces of the surface are drawn");
+                                section->addContent(row);
+                                markSystem(widget);
+                                continue;
+                            }
                             auto widget = std::make_shared<NumberField>();
                             widget->setFont(Typo::Value);
-                            widget->setValue(static_cast<float>(std::get<uint32_t>(shownValue)));
+                            widget->setStep(1.f);
+                            widget->setRange(0.f, 4294967040.f); // the largest uint32 a float holds
+                            widget->setValue(static_cast<float>(value));
                             widget->setOnValueChanged([emitField](NumberField &f) {
                                 emitField(static_cast<uint32_t>(std::max(0.f, f.getValue())));
                             });
-                            section->addContent(std::make_shared<PropertyRow>(fieldName, widget));
+                            row = std::make_shared<PropertyRow>(title, widget);
+                            section->addContent(row);
                             markSystem(widget);
                             break;
                         }
@@ -238,23 +272,33 @@ namespace {
                         case Panda::MaterialFieldType::VEC4: {
                             const Panda::Vec4 v = std::get<Panda::Vec4>(shownValue);
                             auto widget = std::make_shared<ColorWell>(Color(v.x, v.y, v.z, v.w));
+                            // The fourth component of a color field is its to keep and to edit:
+                            // the opacity of a base color, a factor a shader reads from the alpha.
+                            widget->setAlphaEditable(true);
                             widget->setOnColorChanged([emitField](ColorWell &w) {
                                 const Color c = w.getColor();
                                 emitField(Panda::Vec4(c.r, c.g, c.b, c.a));
                             });
-                            section->addContent(std::make_shared<PropertyRow>(fieldName, widget, false));
+                            row = std::make_shared<PropertyRow>(title, widget, false);
+                            section->addContent(row);
                             markSystem(widget);
                             break;
                         }
                         case Panda::MaterialFieldType::TEXTURE: {
                             const uint32_t textureId =
                                 static_cast<uint32_t>(std::get<Panda::AssetRef<Panda::Asset>>(field.value).getId());
-                            addAssetRow(*section, fieldName.c_str(), "texture", textureId, [emitField](uint32_t tid) {
+                            row = addAssetRow(*section, title.c_str(), "texture", textureId, [emitField](uint32_t tid) {
                                 emitField(assetRefOf(tid));
                             });
                             break;
                         }
                         default: break;
+                    }
+                    if (row) {
+                        row->setHelp(fieldName);
+                        // A field of another alpha mode does nothing now.
+                        if (fieldName == "alphaCutoff") { row->setVisible(alphaMode == 1); }
+                        if (fieldName == "transmissionFactor") { row->setVisible(alphaMode == 2); }
                     }
                 }
             }

@@ -39,6 +39,13 @@ function(panda_package)
     file(READ ${CMAKE_CURRENT_SOURCE_DIR}/module.json _PANDA_PACKAGE_MANIFEST)
     string(JSON _PANDA_PACKAGE_ID GET "${_PANDA_PACKAGE_MANIFEST}" id)
     string(JSON _PANDA_PACKAGE_VERSION GET "${_PANDA_PACKAGE_MANIFEST}" version)
+    # The name a person reads (the settings of a project list the modules by it); the id when the
+    # manifest has none.
+    string(JSON _PANDA_PACKAGE_NAME ERROR_VARIABLE _PANDA_PACKAGE_JSON_ERROR GET "${_PANDA_PACKAGE_MANIFEST}" name)
+    if (_PANDA_PACKAGE_JSON_ERROR OR NOT _PANDA_PACKAGE_NAME)
+        set(_PANDA_PACKAGE_NAME "${_PANDA_PACKAGE_ID}")
+    endif ()
+    string(REGEX REPLACE "[\\\";]" "" _PANDA_PACKAGE_NAME "${_PANDA_PACKAGE_NAME}")
     string(MAKE_C_IDENTIFIER "${_PANDA_PACKAGE_ID}" _PANDA_PACKAGE_C_ID)
 
     string(JSON _PANDA_PACKAGE_PARTS_COUNT LENGTH "${_PANDA_PACKAGE_MANIFEST}" parts)
@@ -111,6 +118,7 @@ function(panda_package)
     set_property(GLOBAL APPEND PROPERTY PANDA_STATIC_MODULE_ENTRIES pandaPackageEngine_${_PANDA_PACKAGE_C_ID})
     set_property(GLOBAL APPEND PROPERTY PANDA_STATIC_MODULE_IDS ${_PANDA_PACKAGE_ID})
     set_property(GLOBAL APPEND PROPERTY PANDA_STATIC_MODULE_VERSIONS ${_PANDA_PACKAGE_VERSION})
+    set_property(GLOBAL APPEND PROPERTY PANDA_STATIC_MODULE_NAMES "${_PANDA_PACKAGE_NAME}")
     set_property(GLOBAL APPEND PROPERTY PANDA_STATIC_MODULE_DEPENDENCIES ${_PANDA_PACKAGE_DEPENDENCIES})
 
     # ---- Editor part: only where the editor exists (the engine tree) ----

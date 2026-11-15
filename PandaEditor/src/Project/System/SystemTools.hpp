@@ -79,6 +79,10 @@ public:
     // `--project <path>`: the instance opens this project instead of the one of the last session
     // (a restart of the editor, an agent or a script that starts the editor for a project).
     static constexpr const char *PROJECT_ARGUMENT = "--project";
+    // `--mcp <port>`: the MCP server of the editor (App/EditorMcp) listens on this port from the
+    // start, whatever is open — the start screen included. For work on the editor itself; a
+    // project turns its own server on in its settings.
+    static constexpr const char *MCP_ARGUMENT = "--mcp";
     // Starts a program without waiting for it or wiring its pipes (the update helper, the new
     // editor after an update).
     static bool startDetached(const path_t &executable, const std::vector<std::string> &args);

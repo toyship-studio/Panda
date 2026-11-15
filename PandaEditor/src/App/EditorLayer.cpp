@@ -218,7 +218,6 @@ void EditorLayer::onAttach() {
     m_pluginStore.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
     m_mcp = std::make_unique<EditorMcp>(*this); // listens once a project with the "mcp" section on is open
 
-    LOG_INFO_EDITOR("EDITOR INITIALIZED");
 }
 
 void EditorLayer::onDetach() {
@@ -613,6 +612,19 @@ void EditorLayer::reloadFile(FileDocument &file) {
     if (!file.reload()) { LOG_ERROR_EDITOR("Reload: %s could not be read from disk", file.title().c_str()); }
 }
 
+int EditorLayer::revertUnsaved() {
+    if (m_sceneState != SceneState::EDIT) { stop(); }
+    int reverted = 0;
+    const FileDocumentList files = m_documents.list();
+    for (FileDocument *file : files.all) {
+        if (!file->isDirty() || file->path().empty()) { continue; } // a new world has nothing to go back to
+        LOG_INFO_EDITOR("Reverted %s.", file->title().c_str());
+        reloadFile(*file);
+        ++reverted;
+    }
+    return reverted;
+}
+
 EditorLayer::FileResolution EditorLayer::takeDiskVersion(FileDocument &file) {
     if (file.isDirty()) { return resolveFileConflict(file); }
     reloadFile(file);
@@ -680,6 +692,22 @@ void EditorLayer::reloadFromDisk() {
     } else {
         LOG_INFO_EDITOR("Reload: %s", reloaded.c_str());
     }
+}
+
+std::vector<Editor::EngineBridge::MenuCommand> EditorLayer::menuCommands() {
+    std::vector<Editor::EngineBridge::MenuCommand> result;
+    for (MenuCommandInfo &command : m_menuBar.commands()) {
+        result.push_back({std::move(command.menu), std::move(command.title), std::move(command.shortcut), command.id});
+    }
+    return result;
+}
+
+void EditorLayer::runMenuCommand(uint32_t id) {
+    m_menuBar.run(id);
+}
+
+void EditorLayer::exportGame() {
+    cookRuntimeData();
 }
 
 bool EditorLayer::reopenProjectForModules() {
@@ -1137,7 +1165,9 @@ void EditorLayer::syncStartScreenModel() {
     for (const RecentProject &project : recentProjects) {
         std::string name = project.name.empty() ? path_t(project.path).filename().string() : project.name;
         if (name.empty()) { name = project.path; }
-        projects.push_back({std::move(name), project.path});
+        std::error_code errorCode;
+        const bool missing = !std::filesystem::exists(project.path, errorCode);
+        projects.push_back({std::move(name), project.path, missing});
     }
     m_startScreenController->setRecentProjects(std::move(projects));
 }
@@ -1794,7 +1824,7 @@ bool EditorLayer::cookRuntimeData() {
 
     if (!validationErrors.empty()) {
         for (const auto &error : validationErrors) {
-            LOG_ERROR_EDITOR("EXPORT VALIDATION: %s", error.c_str());
+            LOG_ERROR_EDITOR("Export: %s", error.c_str());
         }
         LOG_ERROR_EDITOR("Export validation failed. Fix the errors above before exporting.");
         return false;
@@ -1823,7 +1853,7 @@ bool EditorLayer::cookRuntimeData() {
         LOG_INFO_EDITOR("Export project: %s", exportProjectDir.string().c_str());
         LOG_INFO_EDITOR("========================================");
         for (const auto &warning : result.warnings) {
-            LOG_WARN_EDITOR("EXPORT WARNING: %s", warning.c_str());
+            LOG_WARN_EDITOR("Export: %s", warning.c_str());
         }
         return true;
     } else {
@@ -1933,6 +1963,10 @@ void EditorLayer::restartEditor() {
         std::vector<std::string> arguments;
         if (m_loader.hasOpenedProject()) {
             arguments = {SystemTools::PROJECT_ARGUMENT, m_loader.getOpenedProjectPath().string()};
+        }
+        if (m_launch.mcpPort > 0) { // the agent that restarted the editor finds it on the same port
+            arguments.push_back(SystemTools::MCP_ARGUMENT);
+            arguments.push_back(std::to_string(m_launch.mcpPort));
         }
         SystemTools::setRelaunchOnExit(true, std::move(arguments));
         closeApp();

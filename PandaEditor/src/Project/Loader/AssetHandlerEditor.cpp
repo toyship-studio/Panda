@@ -134,13 +134,14 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
                 create.m_format = Miren::TextureFormat::RGBA8_SRGB;
             }
             asset = F_NEW(m_allocator, TextureAsset)(create);
-            LOG_INFO("CREATED TEXTURE %u AT PATH %s", id, relativePath.string().c_str());
-            LOG_INFO_EDITOR("CREATED TEXTURE %u AT PATH %s", id, relativePath.string().c_str());
+            LOG_TRACE("Loaded texture %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
         } else {
             asset = F_NEW(m_allocator, FallbackTextureAsset)();
-            LOG_ERROR("TEXTURE ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
-            LOG_ERROR_EDITOR("TEXTURE ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
+            LOG_ERROR_EDITOR(
+                "Texture %s could not be loaded: the file is missing or cannot be read (asset %u).",
+                relativePath.string().c_str(), id
+            );
             markMissingFiles(id);
         }
     } else if (loadedType == AssetType::SHADER) {
@@ -149,17 +150,8 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             path_t vertPath = m_projectPath / relativePath;
             path_t fragPath = m_projectPath / fragmentRelative;
             asset = F_NEW(m_allocator, EditorShaderAsset)(vertPath, fragPath, m_projectPath);
-            LOG_INFO(
-                "CREATED SHADER %u. VERT: %s, FRAG: %s",
-                id,
-                relativePath.string().c_str(),
-                fragmentRelative.string().c_str()
-            );
-            LOG_INFO_EDITOR(
-                "CREATED SHADER %u. VERT: %s, FRAG: %s",
-                id,
-                relativePath.string().c_str(),
-                fragmentRelative.string().c_str()
+            LOG_TRACE(
+                "Loaded shader %s + %s (asset %u)", relativePath.string().c_str(), fragmentRelative.string().c_str(), id
             );
             removeMissingFiles(id);
         } else {
@@ -182,14 +174,16 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
                 if (shaderAsset && shaderAsset->getType() == AssetType::SHADER) {
                     shader = shaderAsset.as<ShaderAsset>();
                 } else {
-                    LOG_WARN_EDITOR("MATERIAL %u SHADER %u MISSING, FALLING BACK TO LIT", id, meta.shader);
+                    LOG_WARN_EDITOR(
+                        "Material %s: its shader (asset %u) is missing, the Lit shader is used instead.",
+                        relativePath.string().c_str(), meta.shader
+                    );
                 }
             }
             MaterialData data;
             AssetsMapper::toData(data, dataDto);
             MaterialAsset *material = F_NEW(m_allocator, MaterialAsset)(data, shader);
-            LOG_INFO("CREATED MATERIAL %u AT PATH %s", id, relativePath.string().c_str());
-            LOG_INFO_EDITOR("CREATED MATERIAL %u AT PATH %s", id, relativePath.string().c_str());
+            LOG_TRACE("Loaded material %s (asset %u)", relativePath.string().c_str(), id);
             // Updating fields is only for editor. In runtime no shader reflection used, only
             // loading material data
             material->updateFields();
@@ -201,8 +195,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             asset = material;
             removeMissingFiles(id);
         } else {
-            LOG_ERROR("MATERIAL %u FILE %s NOT FOUND", id, relativePath.string().c_str());
-            LOG_ERROR_EDITOR("MATERIAL %u FILE %s NOT FOUND", id, relativePath.string().c_str());
+            LOG_ERROR_EDITOR("Material %s could not be loaded: the file is missing (asset %u).", relativePath.string().c_str(), id);
             asset = F_NEW(m_allocator, FallbackMaterialAsset);
             markMissingFiles(id);
         }
@@ -225,25 +218,21 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             }
             mesh->setupMaterials(std::move(slots), std::move(primitiveSlots));
             asset = mesh;
-            LOG_INFO("CREATED MESH %u AT PATH %s", id, relativePath.string().c_str());
-            LOG_INFO_EDITOR("CREATED MESH %u AT PATH %s", id, relativePath.string().c_str());
+            LOG_TRACE("Loaded mesh %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
         } else {
             asset = F_NEW(m_allocator, FallbackImportedMeshAsset)();
-            LOG_ERROR("MESH ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
-            LOG_ERROR_EDITOR("MESH ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
+            LOG_ERROR_EDITOR("Mesh %s could not be loaded: the file is missing (asset %u).", relativePath.string().c_str(), id);
             markMissingFiles(id);
         }
     } else if (loadedType == AssetType::WORLD) {
         path_t path = m_projectPath / relativePath;
         asset = F_NEW(m_allocator, WorldAsset)(relativePath);
         if (std::filesystem::exists(path)) {
-            LOG_INFO("CREATED WORLD ASSET %u AT PATH %s", id, relativePath.string().c_str());
-            LOG_INFO_EDITOR("CREATED WORLD ASSET %u AT PATH %s", id, relativePath.string().c_str());
+            LOG_TRACE("Loaded world %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
         } else {
-            LOG_ERROR("WORLD ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
-            LOG_ERROR_EDITOR("WORLD ASSET %u NOT FOUND AT PATH %s: ", id, relativePath.string().c_str());
+            LOG_ERROR_EDITOR("World %s: the file is missing (asset %u).", relativePath.string().c_str(), id);
             markMissingFiles(id);
         }
     } else if (loadedType == AssetType::POSTPROCESSING) {
@@ -265,12 +254,12 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
                 F_NEW(m_allocator, PostprocessingAsset)(std::move(passes));
             postprocessing->setHandlesTonemap(dataDto.handlesTonemap);
             asset = postprocessing;
-            LOG_INFO("CREATED POSTPROCESSING %u AT PATH %s", id, relativePath.string().c_str());
-            LOG_INFO_EDITOR("CREATED POSTPROCESSING %u AT PATH %s", id, relativePath.string().c_str());
+            LOG_TRACE("Loaded postprocessing %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
         } else {
-            LOG_ERROR("POSTPROCESSING %u FILE %s NOT FOUND", id, relativePath.string().c_str());
-            LOG_ERROR_EDITOR("POSTPROCESSING %u FILE %s NOT FOUND", id, relativePath.string().c_str());
+            LOG_ERROR_EDITOR(
+                "Postprocessing %s could not be loaded: the file is missing (asset %u).", relativePath.string().c_str(), id
+            );
             asset = F_NEW(m_allocator, PostprocessingAsset)();
             markMissingFiles(id);
         }
@@ -280,12 +269,13 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             // File-based kind from the registry (plugins): one format for the editor and the runtime.
             asset = kind->load(m_allocator, m_projectPath / relativePath);
             if (asset != nullptr) {
-                LOG_INFO("CREATED %s %u AT PATH %s", kind->displayName.c_str(), id, relativePath.string().c_str());
-                LOG_INFO_EDITOR("CREATED %s %u AT PATH %s", kind->displayName.c_str(), id, relativePath.string().c_str());
+                LOG_TRACE("Loaded %s %s (asset %u)", kind->displayName.c_str(), relativePath.string().c_str(), id);
                 removeMissingFiles(id);
             } else {
-                LOG_ERROR("%s %u FILE %s NOT FOUND", kind->displayName.c_str(), id, relativePath.string().c_str());
-                LOG_ERROR_EDITOR("%s %u FILE %s NOT FOUND", kind->displayName.c_str(), id, relativePath.string().c_str());
+                LOG_ERROR_EDITOR(
+                    "%s %s could not be loaded: the file is missing or cannot be read (asset %u).",
+                    kind->displayName.c_str(), relativePath.string().c_str(), id
+                );
                 asset = kind->placeholder(m_allocator);
                 markMissingFiles(id);
             }
@@ -346,6 +336,15 @@ std::vector<AssetId> AssetHandlerEditor::loadedProjectAssets() const {
 
 void AssetHandlerEditor::setAssetOpenedInTab(AssetId id, bool opened) {
     m_editorMeta[id].openedInTab = opened;
+    // The tab is a holder of its asset. The editor frees every asset nobody references at the
+    // end of a frame (EditorLayer: cleanup), and an asset no entity uses — a material that was
+    // just created — had no holder: it was read from its file again for every frame of its own
+    // preview, and an edit made in the tab was gone with the frame it was made in.
+    if (opened) {
+        m_tabReferences.try_emplace(id, AssetRef<Asset>(id));
+    } else {
+        m_tabReferences.erase(id);
+    }
 }
 
 bool AssetHandlerEditor::ensureShaderSourceFilesExist(AssetId id, const path_t &vertexRelPath, bool logErrors) {
@@ -359,12 +358,10 @@ bool AssetHandlerEditor::ensureShaderSourceFilesExist(AssetId id, const path_t &
     if (vertexExists && fragmentExists) { return true; }
     if (logErrors) {
         if (!vertexExists) {
-            LOG_ERROR("SHADER ASSET %u NOT FOUND AT PATH: %s", id, vertexRelPath.string().c_str());
-            LOG_ERROR_EDITOR("SHADER ASSET %u NOT FOUND AT PATH: %s", id, vertexRelPath.string().c_str());
+            LOG_ERROR_EDITOR("Shader: the file %s is missing (asset %u).", vertexRelPath.string().c_str(), id);
         }
         if (!fragmentExists) {
-            LOG_ERROR("SHADER ASSET %u NOT FOUND AT PATH: %s", id, fragmentRelPath.string().c_str());
-            LOG_ERROR_EDITOR("SHADER ASSET %u NOT FOUND AT PATH: %s", id, fragmentRelPath.string().c_str());
+            LOG_ERROR_EDITOR("Shader: the file %s is missing (asset %u).", fragmentRelPath.string().c_str(), id);
         }
     }
     markMissingFiles(id);
@@ -374,7 +371,7 @@ bool AssetHandlerEditor::ensureShaderSourceFilesExist(AssetId id, const path_t &
 
 void AssetHandlerEditor::registerAsset(const path_t &path) {
     if (!canImport(path)) {
-        LOG_ERROR_EDITOR("EXTENSION %s IMPORT NOT SUPPORTED YET", path.extension().c_str());
+        LOG_ERROR_EDITOR("%s: files of this type cannot be imported.", path.filename().string().c_str());
         return;
     }
     m_import.registerAsset(path);
@@ -549,7 +546,7 @@ void AssetHandlerEditor::scanProject() {
         std::filesystem::rename(orphans[i], AssetPmeta::sidecarPathFor(newFiles[newIndex]), moveError);
         if (moveError) { continue; }
         LOG_INFO_EDITOR(
-            "ASSET MOVED: %s — id preserved",
+            "Asset moved to %s: it keeps its id, the references to it hold.",
             std::filesystem::relative(newFiles[newIndex], m_projectPath).string().c_str()
         );
         adoptPmeta(newFiles[newIndex]);
@@ -574,7 +571,7 @@ void AssetHandlerEditor::adoptPmeta(const path_t &dataPath) {
     AssetInfo info;
     if (!AssetPmeta::read(AssetPmeta::sidecarPathFor(dataPath), info)) {
         // The sidecar is missing or broken — a full import rewrites it.
-        LOG_ERROR_EDITOR("BROKEN PMETA AT %s, REIMPORTING", dataPath.string().c_str());
+        LOG_WARN_EDITOR("The sidecar of %s is missing or broken: the asset is imported again.", relative.string().c_str());
         registerAsset(dataPath);
         return;
     }
@@ -582,7 +579,7 @@ void AssetHandlerEditor::adoptPmeta(const path_t &dataPath) {
         // A copy of the pair (file + sidecar) or a broken id: the copy is a new asset with a fresh id.
         // Done before the per-type checks: missing files and the registry are tied to the final id.
         info.id = freshAssetId();
-        LOG_INFO_EDITOR("DUPLICATE ASSET AT %s — ASSIGNED NEW ID %u", relative.string().c_str(), (uint32_t)info.id);
+        LOG_INFO_EDITOR("%s is a copy of an asset: it got an id of its own (%u).", relative.string().c_str(), (uint32_t)info.id);
         m_registry[info.id] = info;
         registerPath(info.id, relative);
         savePmeta(info.id);
@@ -612,7 +609,7 @@ void AssetHandlerEditor::savePmeta(AssetId id) {
     const path_t mainPath = assetPath(id);
     if (mainPath.empty()) { return; }
     if (!AssetPmeta::write(AssetPmeta::sidecarPathFor(m_projectPath / mainPath), m_registry.at(id))) {
-        LOG_ERROR_EDITOR("PMETA SAVING ERROR: %s", mainPath.string().c_str());
+        LOG_ERROR_EDITOR("The sidecar of %s could not be written.", mainPath.string().c_str());
     }
 }
 
@@ -628,6 +625,7 @@ void AssetHandlerEditor::closeProject() {
     // assets be freed. Then assets without live references are freed; the ids of a new project may
     // coincide with the old ones — ref caches are reset (cleanup bumps the generation).
     m_documents.clearAllUndoStacks();
+    m_tabReferences.clear(); // the tabs of the project are gone with it
     cleanup();
     m_editorMeta.clear();
     m_registry.clear();
@@ -688,8 +686,7 @@ bool AssetHandlerEditor::readTexturePixelsRGBA8(
     const bool copied = copyTexturePixelsRGBA8(create, width, height, pixels);
     create.m_data.release();
     if (!copied) {
-        LOG_ERROR("TEXTURE ASSET %u IS NOT READABLE RGBA8", id);
-        LOG_ERROR_EDITOR("TEXTURE ASSET %u IS NOT READABLE RGBA8", id);
+        LOG_ERROR_EDITOR("Texture %s has no RGBA8 pixels to read (asset %u).", sourcePath.string().c_str(), id);
     }
     return copied;
 }

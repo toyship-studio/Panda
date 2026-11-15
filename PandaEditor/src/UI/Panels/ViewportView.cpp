@@ -181,11 +181,16 @@ bool ViewportView::keyDown(KeyEvent &event) {
         case Key::Key1: m_output->viewportViewDidRequestGizmoMode(0); return true;
         case Key::Key2: m_output->viewportViewDidRequestGizmoMode(1); return true;
         case Key::Key3: m_output->viewportViewDidRequestGizmoMode(2); return true;
-        // The flight keys are recorded, not consumed: a shortcut on the same key still fires.
-        case Key::W: m_heldForward = true; return false;
-        case Key::S: m_heldBackward = true; return false;
-        case Key::A: m_heldLeft = true; return false;
-        case Key::D: m_heldRight = true; return false;
+        // The flight keys are recorded, not consumed: a shortcut on the same key still fires. With
+        // a command modifier the key IS a shortcut (⌘D duplicates, ⌘A selects all): the camera
+        // stays where it is.
+        case Key::W:
+        case Key::S:
+        case Key::A:
+        case Key::D:
+            if (event.isSuperDown || event.isControlDown || event.isAltDown) { return false; }
+            (event.key == Key::W ? m_heldForward : event.key == Key::S ? m_heldBackward : event.key == Key::A ? m_heldLeft : m_heldRight) = true;
+            return false;
         default: return false; // the rest → shortcuts
     }
 }

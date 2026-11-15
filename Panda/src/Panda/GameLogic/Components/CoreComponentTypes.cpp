@@ -277,9 +277,14 @@ void registerCoreComponentTypes(ComponentTypeRegistry &registry) {
         "relationshipComponent", encodeRelationship, decodeRelationship
     );
     relationship.duplicated = false;
+    relationship.builtin = true;
     registry.add(relationship);
-    registry.add(componentType<TagComponent>("tagComponent", encodeTag, decodeTag));
-    registry.add(componentType<TransformComponent>("transformComponent", encodeTransform, decodeTransform));
+    auto builtin = [](ComponentType type) {
+        type.builtin = true;
+        return type;
+    };
+    registry.add(builtin(componentType<TagComponent>("tagComponent", encodeTag, decodeTag)));
+    registry.add(builtin(componentType<TransformComponent>("transformComponent", encodeTransform, decodeTransform)));
     registry.add(componentType<CameraComponent>("cameraComponent", encodeCamera, decodeCamera));
     registry.add(componentType<DirectionalLightComponent>(
         "directionalLightComponent", encodeDirectionalLight, decodeDirectionalLight
@@ -291,7 +296,7 @@ void registerCoreComponentTypes(ComponentTypeRegistry &registry) {
     ));
     registry.add(componentType<SkyComponent>("cubeMapComponent", encodeSky, decodeSky));
     registry.add(componentType<PrimitiveMeshComponent>("primitiveMeshComponent", encodePrimitiveMesh, decodePrimitiveMesh));
-    registry.add(componentType<ScriptListComponent>("scriptListComponent", encodeScripts, decodeScripts));
+    registry.add(builtin(componentType<ScriptListComponent>("scriptListComponent", encodeScripts, decodeScripts)));
     registry.add(componentType<IsStaticComponent>("isStatic", encodeStatic, decodeStatic));
     // Not written: the runtime mesh (lives only in memory), the undo tombstone, the blobs of
     // foreign plugins (the mapper writes them by their own keys).

@@ -102,10 +102,14 @@ public:
     Color getBackgroundColor() const {
         return m_surface.backgroundColor();
     }
+    // Not drawn and not hit, the place in the layout is kept.
     void setHidden(bool hidden);
     bool isHidden() const {
         return m_isHidden;
     }
+    // Hidden and out of the layout: the view takes no place until it is brought back (a row of a
+    // form that does not apply now, a banner with nothing to say).
+    void setCollapsed(bool collapsed);
     void setEnabled(bool enabled);
     bool isEnabled() const {
         return m_isEnabled;

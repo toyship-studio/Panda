@@ -62,6 +62,19 @@ public:
     void setUnhandledKeyDownHandler(std::function<bool(const KeyEvent &)> handler);
 
     void setFocusedView(View *view);
+    // The view the pointer is over (nullptr — none) and where the pointer was last seen.
+    View *getHoveredView() const {
+        return m_hoveredView;
+    }
+    Point getMousePosition() const {
+        return m_mousePosition;
+    }
+    // The next press starts a click of its own: it is not the second click of a double click,
+    // however soon after the last one it comes (input made by a program, not by a hand).
+    void forgetLastClick() {
+        m_lastClickTime = -100.0;
+        m_clickCount = 0;
+    }
     View *getFocusedView() const {
         return m_focusedView;
     }

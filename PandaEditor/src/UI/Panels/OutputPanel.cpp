@@ -142,6 +142,23 @@ OutputPanelView::OutputPanelView() {
     addSubviews();
     setupLayout();
     setupStyle();
+    // What the editor said before the panel existed is in the log history: a project given on
+    // the command line (or the last one) opens before the chrome is built, and what its opening
+    // reported — scripts that are not built, an asset that is missing — is the first thing to show.
+    for (const Foundation::LogRecord &record :
+         Foundation::LogHistory::read(0, Foundation::Logger::MessageType::_INFO, 4096)) {
+        if (!record.editor) { continue; }
+        const LogLevel level = record.type == Foundation::Logger::MessageType::_ERROR     ? LogLevel::Error
+                               : record.type == Foundation::Logger::MessageType::_WARNING ? LogLevel::Warning
+                                                                                          : LogLevel::Info;
+        m_entries.push_back({level, record.text, record.time});
+    }
+    if (!m_entries.empty()) {
+        rebuildVisible();
+        updateCounts();
+        m_rowLayout->invalidate();
+        m_list->reloadData();
+    }
 }
 
 OutputPanelView::~OutputPanelView() {

@@ -5,6 +5,7 @@
 
 #include <PandaEditorKit/EditorExtensions.hpp> // Editor::ComponentInspector (module component sections)
 #include <PandaEditorKit/Widgets/EditorView.hpp>
+#include <PandaEditorKit/Widgets/Picker.hpp>
 #include <PandaEditorKit/Widgets/Vector3Field.hpp>
 
 #include <Panda/Assets/Base/Asset.hpp>                   // Panda::AssetId
@@ -19,6 +20,10 @@
 #include <string>
 #include <variant>
 #include <vector>
+
+namespace Panda {
+struct ComponentType;
+}
 
 namespace Editor {
 
@@ -51,8 +56,6 @@ public:
     virtual void entityDidRemoveScript(int scriptIndex) = 0;
     virtual void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) = 0;
     virtual void entityDidClickBackground() = 0; // click on the background → clear selection
-    // A click on an AssetWell value: select the asset in the editor (its editor tab opens).
-    virtual void entityDidSelectAsset(Panda::AssetId assetId) = 0;
     virtual void entityDidRequestMaximize() = 0; // zoom overlay of the dock of the tab
 };
 
@@ -107,14 +110,16 @@ private:
     buildExtensionSection(const ComponentInspector &inspector, Panda::Entity primary);
     std::shared_ptr<PandaUI::CollapsibleSection> buildScriptSection(Panda::ExternalScript &script, int scriptIndex);
 
-    // An AssetRef slot: drop of an asset of the given kind + click to clear; the name is resolved
-    // from the project registry.
-    void addAssetRow(PandaUI::CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
-                     std::function<void(uint32_t)> set);
-    // "..." in the section header → the "Remove Component" menu (onRemove defines what to remove).
-    void addComponentHeaderMenu(PandaUI::CollapsibleSection &section, std::function<void()> onRemove);
+    // The section of a core component: the caps title and the header menu that removes it.
+    std::shared_ptr<PandaUI::CollapsibleSection> makeComponentSection(ComponentType type);
+    // "..." in the section header → the menu of the component: Copy Values, Paste Values and Reset
+    // for a component with a text form (type — its entry in the registry of the engine; nullptr —
+    // none), and Remove Component (onRemove defines what to remove).
+    void addComponentHeaderMenu(
+        PandaUI::CollapsibleSection &section, std::function<void()> onRemove, const Panda::ComponentType *type = nullptr
+    );
     void openScriptPicker(PandaUI::View *anchor, std::function<void(const std::string &)> onPick);
-    std::string assetNameFor(uint32_t id) const; // id → asset name from the registry (or empty)
+    void openAddComponent(); // the picker of the components the targets can get
 
     EntityEditorOutput *m_output;
     bool m_binding = false; // widget edits during binding do not go to output
@@ -134,7 +139,13 @@ private:
     std::shared_ptr<PandaUI::PropertyRow> m_rotationRow;
     std::shared_ptr<PandaUI::PropertyRow> m_scaleRow;
     std::shared_ptr<PandaUI::Panel> m_componentsContainer;
-    std::shared_ptr<PandaUI::MenuButton> m_addComponent;
+    std::shared_ptr<PandaUI::Button> m_addComponent;
+    // What Add Component offers the current targets: a row of its picker and what choosing it does.
+    struct Addable {
+        PickerItem item;
+        std::function<void()> run;
+    };
+    std::vector<Addable> m_addable;
 
     // Empty state.
     std::shared_ptr<PandaUI::Panel> m_placeholder;

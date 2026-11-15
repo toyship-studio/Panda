@@ -30,6 +30,17 @@ ColorWell::ColorWell(Color color)
     apply();
 }
 
+// A well that goes while its picker is open (the form was rebuilt under it) takes the picker
+// along: nothing of the well is called afterwards.
+ColorWell::~ColorWell() {
+    if (m_picker == nullptr) { return; }
+    Popup *picker = m_picker;
+    m_picker = nullptr;
+    if (Context *context = picker->getContext()) { context->removeFocusScope(picker); }
+    picker->setOnDismiss(nullptr);
+    picker->dismiss();
+}
+
 void ColorWell::setColor(Color color) {
     m_color = color;
     apply();
@@ -53,7 +64,8 @@ void ColorWell::themeChanged() {
 
 void ColorWell::apply() {
     const Theme &t = Theme::current();
-    setBackgroundColor(m_color);
+    // The well shows the color itself: a translucent fill over the dark form reads as a darker color.
+    setBackgroundColor(Color(m_color.r, m_color.g, m_color.b, 1.f));
     if (hasControlState(ControlState::Focused)) {
         surface().setBorderColor(t.focusRing);
     } else if (hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted)) {
@@ -73,8 +85,13 @@ void ColorWell::openPicker() {
     card->layout().setPadding(Spacing::lg);
 
     auto picker = std::make_shared<ColorPicker>();
+    picker->setAlphaEditable(m_alphaEditable);
     picker->setColor(m_color);
-    picker->setOnColorChanged([this](ColorPicker &sender) {
+    // The picker may outlive the well by a frame (the overlay goes after the frame): a pick that
+    // arrives then finds no well.
+    std::weak_ptr<View> alive = weak_from_this();
+    picker->setOnColorChanged([this, alive](ColorPicker &sender) {
+        if (alive.expired()) { return; }
         m_color = sender.getColor();
         apply();
         if (m_onColorChanged) { m_onColorChanged(*this); }

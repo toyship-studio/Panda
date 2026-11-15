@@ -94,9 +94,10 @@ namespace {
             setBackgroundColor(Color(0x00000000));
             layout().setFlexDirection(FlexDirection::Column);
             layout().setAlignItems(Align::Center);
-            layout().setJustifyContent(Justify::Center);
-            layout().setGap(6.f);
+            layout().setJustifyContent(Justify::Start); // the previews of a row stand on one line
+            layout().setGap(5.f);
             layout().setPadding(Edge::Horizontal, 4.f);
+            layout().setPadding(Edge::Top, 4.f);
 
             m_preview = std::make_shared<Panel>();
             m_preview->layout().setSize({PREVIEW_SIDE, PREVIEW_SIDE}); // square: thumbnails are letterboxed
@@ -114,6 +115,7 @@ namespace {
             m_label->setFont(Typo::Item);
             m_label->setTextRole(TextRole::Secondary);
             m_label->setTextAlignment(TextAlignment::Center);
+            m_label->setNumberOfLines(2);
             m_label->setClipsToBounds(true);
             m_label->layout().setWidth(Length::percent(100.f));
             addSubview(m_label);
@@ -232,7 +234,8 @@ void ContentBrowserView::addSubviews() {
     });
 
     // --- Grid: subfolders + files of the current folder (data/thumbnails from ContentBrowserDataSource) ---
-    m_grid = std::make_shared<CollectionView>(std::make_shared<GridCollectionLayout>(Size(96.f, 88.f), 12.f, 8.f));
+    // A cell holds the preview and two lines of the name: a file name is rarely one short word.
+    m_grid = std::make_shared<CollectionView>(std::make_shared<GridCollectionLayout>(Size(100.f, 108.f), 10.f, 6.f));
     m_grid->setSelectionMode(CollectionSelectionMode::Multiple);
     m_grid->layout().setFlexGrow(1.f);
     CollectionViewDataSource gridSource;
@@ -423,7 +426,7 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
                 menu->addItem("Rename", [this, renameId, stem, position] {
                     showNameDialog(getContext(), position, "Rename", stem, [this, renameId](const std::string &newName) {
                         if (m_output) { m_output->contentDidRequestRename(renameId, newName); }
-                    });
+                    }, "Rename");
                 });
             }
             if (assetTypeOf(file->assetId) == "mesh") { // mesh: an instance into the current world

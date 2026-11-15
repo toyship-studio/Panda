@@ -3,6 +3,10 @@
 #include "UI/EditorDialogs.hpp"
 
 #include "Project/Loader/AssetHandlerEditor.hpp"
+#include <PandaEditorKit/Widgets/ObjectIcons.hpp>
+
+#include <PandaEditorKit/Widgets/Icons.hpp>
+#include <PandaEditorKit/Widgets/Picker.hpp>
 
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Base/Version.hpp>
@@ -47,7 +51,7 @@ namespace {
 
 void showNameDialog(
     Context *context, Point at, const std::string &title, const std::string &initialText,
-    std::function<void(const std::string &)> onSubmit
+    std::function<void(const std::string &)> onSubmit, const std::string &action
 ) {
     if (!context) { return; }
 
@@ -64,7 +68,7 @@ void showNameDialog(
     card->addSubview(field);
 
     auto cancel = std::make_shared<Button>("Cancel");
-    auto create = std::make_shared<Button>("Create");
+    auto create = std::make_shared<Button>(action);
     create->setStyle(ButtonStyle::Accent);
     card->addSubview(makeButtonRow(cancel, create));
 
@@ -120,145 +124,58 @@ void showScriptPicker(
     Context *context, Point at, const std::vector<std::string> &scripts,
     std::function<void(const std::string &)> onPick
 ) {
-    if (!context) { return; }
-
-    // Case-insensitive search: query as a substring inside the class name.
-    auto matches = [](const std::string &name, const std::string &query) {
-        if (query.empty()) { return true; }
-        auto it = std::search(
-            name.begin(), name.end(), query.begin(), query.end(),
-            [](char a, char b) { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); }
-        );
-        return it != name.end();
-    };
-
-    auto card = makeCard();
-
-    auto title = std::make_shared<Label>("Select Script");
-    title->setFont(Typo::DialogTitle);
-    title->setFont(title->getFont().withWeight(FontWeight::Bold));
-    card->addSubview(title);
-
-    auto search = std::make_shared<TextField>();
-    search->setPlaceholder("Search scripts...");
-    search->layout().setWidth(Length::percent(100.f));
-    card->addSubview(search);
-
-    auto list = std::make_shared<ListView>();
-    list->setSelectionMode(ListSelectionMode::Single);
-    list->layout().setWidth(Length::percent(100.f));
-    list->layout().setHeight(Length::points(240.f)); // fixed height → the list scrolls
-    card->addSubview(list);
-
-    auto popup = std::make_shared<Popup>(card, Rect(at.x, at.y, 0.f, 0.f));
-    Popup *p = popup.get();
-    ListView *listPtr = list.get(); // RAW: list lives in card→popup; the list→onSelChanged→list cycle is avoided
-
-    // The current filtered set (row index → class name). Shared between rebuild and the selection.
-    auto filtered = std::make_shared<std::vector<std::string>>();
-    auto rebuild = [listPtr, scripts, filtered, matches](const std::string &query) {
-        listPtr->clearItems();
-        filtered->clear();
-        for (const std::string &name : scripts) {
-            if (matches(name, query)) {
-                listPtr->addItem(name);
-                filtered->push_back(name);
-            }
-        }
-    };
-    rebuild("");
-
-    list->setOnSelectionChanged([listPtr, filtered, onPick, p](ListView &) {
-        const int index = listPtr->selectedIndex();
-        if (index < 0 || index >= static_cast<int>(filtered->size())) { return; }
-        if (onPick) { onPick((*filtered)[index]); } // run BEFORE dismiss (the overlay is removed deferred)
-        p->dismiss();
+    std::vector<PickerItem> items;
+    items.reserve(scripts.size());
+    for (const std::string &name : scripts) { items.push_back({name, {}, Ic::Script}); }
+    showPicker(context, at, "Search scripts…", std::move(items), [scripts, onPick](int index) {
+        if (onPick) { onPick(scripts[static_cast<size_t>(index)]); }
     });
-    search->setOnTextChanged([rebuild](TextField &f) { rebuild(f.getText()); });
-
-    context->addOverlay(popup);
-    context->setFocusedView(search.get()); // focus on the search — filtering is possible right away
 }
 
 void showAssetPicker(
     Context *context, Point at, const std::string &kind, std::function<void(uint32_t)> onPick
 ) {
-    if (!context) { return; }
-
-    // The project registry directly (the panels' style): assets of the kind given by kind, sorted by name.
-    struct Item {
+    // The project registry directly (the panels' style): assets of the kind given by kind, sorted
+    // by name; the folder of an asset tells two of one name apart.
+    struct Found {
         uint32_t id;
         std::string name;
+        std::string folder;
     };
-    auto items = std::make_shared<std::vector<Item>>();
+    std::vector<Found> found;
     auto *handler = static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
+    Panda::AssetType type = Panda::AssetType::NONE;
     if (handler) {
         // The kind tag (assetTypeString): built-in kinds have historical ones, kinds from the registry —
         // their name.
-        const Panda::AssetType type = [&kind] {
-            if (kind == "scene") { return Panda::AssetType::WORLD; }
-            const Panda::AssetKind *registered = Panda::GameContext::getExtensions().assetKinds.find(kind);
-            return registered != nullptr ? registered->type : Panda::AssetType::NONE;
-        }();
+        if (kind == "scene") {
+            type = Panda::AssetType::WORLD;
+        } else if (const Panda::AssetKind *registered = Panda::GameContext::getExtensions().assetKinds.find(kind)) {
+            type = registered->type;
+        }
         for (const auto &[id, info] : handler->getRegistry()) {
             if (info.type != type) { continue; }
-            items->push_back({static_cast<uint32_t>(id), handler->getAssetName(id)});
+            found.push_back({static_cast<uint32_t>(id), handler->getAssetName(id),
+                             handler->assetPath(id).parent_path().lexically_relative(handler->getProjectPath()).generic_string()});
         }
-        std::sort(items->begin(), items->end(), [](const Item &a, const Item &b) {
-            return a.name < b.name;
+        std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
+            return a.name != b.name ? a.name < b.name : a.folder < b.folder;
         });
     }
-
-    auto matches = [](const std::string &name, const std::string &query) {
-        if (query.empty()) { return true; }
-        auto it = std::search(
-            name.begin(), name.end(), query.begin(), query.end(),
-            [](char a, char b) { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); }
-        );
-        return it != name.end();
-    };
-
-    auto card = makeCard();
-
-    auto search = std::make_shared<TextField>();
-    search->setPlaceholder("Search " + kind + "...");
-    search->layout().setWidth(Length::percent(100.f));
-    card->addSubview(search);
-
-    auto list = std::make_shared<ListView>();
-    list->setSelectionMode(ListSelectionMode::Single);
-    list->layout().setWidth(Length::percent(100.f));
-    list->layout().setHeight(Length::points(240.f)); // fixed height → the list scrolls
-    card->addSubview(list);
-
-    auto popup = std::make_shared<Popup>(card, Rect(at.x, at.y, 0.f, 0.f));
-    Popup *p = popup.get();
-    ListView *listPtr = list.get(); // raw: the list lives in card→popup (see showScriptPicker)
-
-    // The current filtered set (row index → asset id).
-    auto filtered = std::make_shared<std::vector<uint32_t>>();
-    auto rebuild = [listPtr, items, filtered, matches](const std::string &query) {
-        listPtr->clearItems();
-        filtered->clear();
-        for (const Item &item : *items) {
-            if (matches(item.name, query)) {
-                listPtr->addItem(item.name);
-                filtered->push_back(item.id);
-            }
-        }
-    };
-    rebuild("");
-
-    list->setOnSelectionChanged([listPtr, filtered, onPick, p](ListView &) {
-        const int index = listPtr->selectedIndex();
-        if (index < 0 || index >= static_cast<int>(filtered->size())) { return; }
-        if (onPick) { onPick((*filtered)[index]); } // run BEFORE dismiss (the overlay is removed deferred)
-        p->dismiss();
+    std::vector<PickerItem> items;
+    std::vector<uint32_t> ids;
+    items.reserve(found.size());
+    ids.reserve(found.size());
+    const char *icon = assetIconName(type);
+    for (Found &asset : found) {
+        // A path outside the project (an engine asset) has no folder to show.
+        if (asset.folder == "." || asset.folder.rfind("..", 0) == 0) { asset.folder.clear(); }
+        items.push_back({std::move(asset.name), std::move(asset.folder), icon});
+        ids.push_back(asset.id);
+    }
+    showPicker(context, at, "Search " + kind + "…", std::move(items), [ids, onPick](int index) {
+        if (onPick) { onPick(ids[static_cast<size_t>(index)]); }
     });
-    search->setOnTextChanged([rebuild](TextField &f) { rebuild(f.getText()); });
-
-    context->addOverlay(popup);
-    context->setFocusedView(search.get()); // focus on the search — filtering is possible right away
 }
 
 void showAboutDialog(Context *context, const AboutInfo &info) {

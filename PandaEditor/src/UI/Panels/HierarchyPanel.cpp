@@ -1,7 +1,7 @@
 #include "UI/Panels/HierarchyPanel.hpp"
 
 #include <PandaEditorKit/Widgets/Icons.hpp>
-#include "UI/Widgets/ObjectIcons.hpp"
+#include <PandaEditorKit/Widgets/ObjectIcons.hpp>
 
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -9,9 +9,12 @@
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/World.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Editor {
@@ -77,13 +80,29 @@ HierarchyPanelView::HierarchyPanelView(HierarchyPanelOutput *output)
 }
 
 void HierarchyPanelView::addSubviews() {
+    // The search: typing shows the entities whose name has the text as a flat list; an empty
+    // field is the tree again.
+    m_searchField = std::make_shared<TextField>();
+    m_searchField->setPlaceholder("Search entities…");
+    m_searchField->layout().setMargin(Edge::Horizontal, 8.f);
+    m_searchField->layout().setMargin(Edge::Top, 6.f);
+    m_searchField->layout().setMargin(Edge::Bottom, 4.f);
+    m_searchField->setOnTextChanged([this](TextField &field) {
+        std::string text = field.getText();
+        for (char &c : text) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        if (text == m_search) { return; }
+        m_search = std::move(text);
+        reload();
+    });
+    addSubview(m_searchField);
+
     m_tree = std::make_shared<TreeView>();
     m_tree->setBackgroundColor(Color(0x00000000));
     m_tree->layout().setFlexGrow(1.f);
     addSubview(m_tree);
     configureTree();
 
-    m_status = std::make_shared<Label>("Selected: -");
+    m_status = std::make_shared<Label>("");
     m_status->setFont(Typo::Caption);
     m_status->setTextRole(TextRole::Muted);
     m_status->layout().setPadding(Edge::Horizontal, 12.f);
@@ -100,6 +119,7 @@ void HierarchyPanelView::configureTree() {
         if (!m_world) { return 0; }
         const std::uint32_t uuid = toUuid(item);
         if (uuid == 0) { return static_cast<int>(m_rootChildren.size()); }
+        if (!m_search.empty()) { return 0; } // the matches are a flat list
         Panda::Entity entity = m_world->getById(Panda::UUID(uuid));
         return entity.isValid() ? static_cast<int>(entity.getChildEntities().size()) : 0;
     };
@@ -156,6 +176,9 @@ void HierarchyPanelView::configureTree() {
     m_tree->setOnContextMenu([this](TreeView &tree, TreeItem item, Point position) {
         showContextMenu(tree, Panda::UUID(toUuid(item)), position);
     });
+    m_tree->setOnItemActivated([this](TreeView &, TreeItem item) {
+        if (const std::uint32_t uuid = toUuid(item)) { m_output->hierarchyDidActivateEntity(Panda::UUID(uuid)); }
+    });
 }
 
 void HierarchyPanelView::showContextMenu(TreeView &tree, Panda::UUID entityId, Point position) {
@@ -173,6 +196,7 @@ void HierarchyPanelView::showContextMenu(TreeView &tree, Panda::UUID entityId, P
     };
     if (entityId != Panda::UUID(0)) {
         menu->addSubmenu("Add Child", makeCreateMenu());
+        menu->addItem("Rename", [this, entityId] { m_output->hierarchyDidRequestRename(entityId); });
         menu->addItem("Duplicate", [this, entityId] { m_output->hierarchyDidRequestDuplicate({entityId}); });
         menu->addItem("Copy", [this, entityId] {
             // The whole selection when the clicked row is a part of it, else the row alone.
@@ -201,37 +225,26 @@ bool HierarchyPanelView::pointerDown(PointerEvent &) {
     return true;
 }
 
+// The keys of the entities (Delete, Duplicate, Copy, Cut, Paste, Rename) are commands of the
+// editor (EditorController::registerShortcuts): they act on the selection with the keyboard in
+// the Hierarchy or in the viewport alike. A key the tree does not use goes on to them.
 bool HierarchyPanelView::keyDown(KeyEvent &event) {
-    std::vector<Panda::UUID> selected;
-    for (TreeItem item : m_tree->selectedItems()) {
-        const std::uint32_t uuid = toUuid(item);
-        if (uuid != 0) { selected.push_back(Panda::UUID(uuid)); }
-    }
-    const bool command = event.isSuperDown || event.isControlDown;
-    if (event.key == Key::V && command) { // a paste needs no selection
-        m_output->hierarchyDidRequestPaste();
-        return true;
-    }
-    if (selected.empty()) { return false; }
-    if (event.key == Key::C && command) {
-        m_output->hierarchyDidRequestCopy(selected);
-        return true;
-    }
-    if (event.key == Key::X && command) { // cut: the text goes to the clipboard, the entities go
-        m_output->hierarchyDidRequestCopy(selected);
-        m_output->hierarchyDidRequestDelete(selected);
-        return true;
-    }
-
-    if (event.key == Key::Delete || event.key == Key::Backspace) {
-        m_output->hierarchyDidRequestDelete(selected);
-        return true;
-    }
-    if (event.key == Key::D && (event.isSuperDown || event.isControlDown)) {
-        m_output->hierarchyDidRequestDuplicate(selected);
+    // Escape in the search field empties it and hands the keyboard back to the tree.
+    if (event.key == Key::Escape && m_searchField->isFocused()) {
+        m_searchField->setText("");
+        m_search.clear();
+        reload();
+        if (Context *context = getContext()) { context->setFocusedView(m_tree.get()); }
         return true;
     }
     return false;
+}
+
+void HierarchyPanelView::focusSearch() {
+    Context *context = getContext();
+    if (context == nullptr) { return; }
+    context->setFocusedView(m_searchField.get());
+    m_searchField->selectAll();
 }
 
 void HierarchyPanelView::setWorld(Panda::World *world) {
@@ -249,10 +262,20 @@ void HierarchyPanelView::setRootTitle(std::string title) {
 void HierarchyPanelView::reload() {
     m_rootChildren.clear();
     if (m_world && !m_world->isEmpty()) {
-        m_world->getAllEntitiesWith<Panda::IdComponent>().each([this](Panda::IdComponent &idc) {
+        std::vector<std::pair<std::string, std::uint32_t>> matches; // the search: lowercase name → id
+        m_world->getAllEntitiesWith<Panda::IdComponent>().each([&](Panda::IdComponent &idc) {
             Panda::Entity entity = m_world->getById(idc.id);
-            if (entity.isValid() && !entity.getParent()) { m_rootChildren.push_back(static_cast<std::uint32_t>(idc.id)); }
+            if (!entity.isValid()) { return; }
+            if (m_search.empty()) {
+                if (!entity.getParent()) { m_rootChildren.push_back(static_cast<std::uint32_t>(idc.id)); }
+                return;
+            }
+            std::string name = entity.getName();
+            for (char &c : name) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+            if (name.find(m_search) != std::string::npos) { matches.emplace_back(std::move(name), static_cast<std::uint32_t>(idc.id)); }
         });
+        std::sort(matches.begin(), matches.end());
+        for (const auto &match : matches) { m_rootChildren.push_back(match.second); }
     }
     m_tree->reloadData();
 }

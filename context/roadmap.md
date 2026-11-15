@@ -66,8 +66,8 @@ Large directions that are still ahead. Finished work is one line with a pointer 
     hierarchy debugger for game UI in the editor (Play → Pause → snapshot of all UI windows →
     tree, properties and a frozen preview) is planned but not started.
 12. **Editor scene UX, next steps**: better hierarchy, prefab workflow, scene operations.
-    A command palette as in Zed and VS Code: editor commands and theme selection go there instead
-    of growing the menus. Copy
+    The command palette exists (⇧⌘P: the commands of the editor and the items of the menus);
+    theme selection and "go to an asset or an entity" are its next lists. Copy
     and paste of components in the inspector — also the way to carry values tuned in Play over
     to the world being edited (Play edits are discarded on Stop, and Save in Play does not save
     them). Undecided: auto save on a timeout (the doubt is terrain, whose `.terrain` file is

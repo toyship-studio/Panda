@@ -26,7 +26,8 @@ enum class ComponentType {
 
 const char *componentTypeName(ComponentType type);  // "Camera", "Point Light", ... (menu items)
 const char *componentTypeTitle(ComponentType type); // UPPERCASE — inspector section titles
-std::vector<ComponentType> addableComponentTypes(); // types for the "Add Component" menu
+const char *componentTypeIcon(ComponentType type);  // the icon next to its name (Ic::…)
+std::vector<ComponentType> addableComponentTypes(); // types "Add Component" offers
 
 // Built-in engine shaders for materials (StaticResources), from simple to complex.
 // The id is persisted in the .mat → the material survives a restart (static IDs are stable).

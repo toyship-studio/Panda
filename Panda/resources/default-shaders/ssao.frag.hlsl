@@ -3,14 +3,16 @@
 // "Practical Real-Time Strategies for Accurate Indirect Occlusion"): the hemisphere is cut into
 // slices through the view direction; in a slice the depth buffer is walked both ways from the
 // point for the highest horizon, and the visible arc between the two horizons is integrated with
-// the cosine of the normal. A few slices and steps per pixel, turned from pixel to pixel; the
-// blur pass (ssao_blur.frag) removes the grain. Runs at half resolution.
+// the cosine of the normal. A few slices and steps per pixel (the budget of the world,
+// SsaoSettings), turned from pixel to pixel; the blur pass (ssao_blur.frag) removes the grain.
+// Runs at half resolution or at the full one.
 // Output: r — the visible share 0..1, g — the view depth of the point (m).
 
 cbuffer SSAO_PASS {
     float4 projection; // x, y — the scale of the projection, z — 1: depth is -1..1, w — 1: rows go bottom-up
     float4 params;     // x — radius (m), y — intensity, z — 1 / near, w — 1 / far
     float4 size;       // xy — the size of the depth in pixels, zw — of the target
+    float4 budget;     // x — slices, y — steps along a slice each way, z — depth texels per pixel of the target
 };
 
 Texture2D depthTexture;
@@ -23,8 +25,6 @@ struct PSInput {
 
 static const float PI = 3.14159265359;
 static const float HALF_PI = 1.57079632679;
-static const int SLICES = 3;
-static const int STEPS = 4;
 
 // The point of the frame at a uv, in view space (x right, y up, -z forward). w — 0 for the sky.
 // The depth is read at a texel, so the point is the one at the center of that texel: taken at
@@ -52,11 +52,13 @@ float blockNoise(float2 pixel, float shift) {
 }
 
 float4 main(PSInput input) : SV_Target0 {
-    // The pixel of this pass covers 2×2 texels of the depth and its center lies on their common
-    // corner: which of the four a read there takes is a matter of rounding, and so would be
-    // whether the neighbor one texel aside is another texel at all. The point is the first of
-    // the four, addressed by its center.
-    const float2 uv = (floor(input.position.xy) * 2.0 + 0.5) / size.xy;
+    // At half resolution the pixel of this pass covers 2×2 texels of the depth and its center
+    // lies on their common corner: which of the four a read there takes is a matter of rounding,
+    // and so would be whether the neighbor one texel aside is another texel at all. The point is
+    // the first of the texels the pixel covers, addressed by its center.
+    const float2 uv = (floor(input.position.xy) * budget.z + 0.5) / size.xy;
+    const int slices = int(budget.x + 0.5);
+    const int steps = int(budget.y + 0.5);
     const float4 center = viewPoint(uv);
     if (center.w < 0.5) { return float4(1.0, 1.0e4, 0.0, 1.0); }
     const float3 position = center.xyz;
@@ -87,8 +89,8 @@ float4 main(PSInput input) : SV_Target0 {
     const float noiseSlice = blockNoise(input.position.xy, 0.0);
     const float noiseStep = blockNoise(input.position.xy.yx, 9.0);
     float visibility = 0.0;
-    for (int slice = 0; slice < SLICES; ++slice) {
-        const float phi = (float(slice) + noiseSlice) / float(SLICES) * PI;
+    for (int slice = 0; slice < slices; ++slice) {
+        const float phi = (float(slice) + noiseSlice) / float(slices) * PI;
         const float2 omega = float2(cos(phi), sin(phi));
         const float3 direction = float3(omega, 0.0);
         const float3 orthoDirection = direction - dot(direction, viewDirection) * viewDirection;
@@ -103,8 +105,8 @@ float4 main(PSInput input) : SV_Target0 {
         const float lowHorizon1 = cos(n - HALF_PI);
         float horizon0 = lowHorizon0;
         float horizon1 = lowHorizon1;
-        for (int step = 0; step < STEPS; ++step) {
-            float s = (float(step) + noiseStep) / float(STEPS);
+        for (int step = 0; step < steps; ++step) {
+            float s = (float(step) + noiseStep) / float(steps);
             s = s * s; // denser near the point: the contact matters most
             const float2 offset = max(s, 1.5 / (uvRadius.x * size.x)) * uvRadius * float2(omega.x, omega.y * rowSign);
 
@@ -130,6 +132,6 @@ float4 main(PSInput input) : SV_Target0 {
         const float arc1 = (cosNormal + 2.0 * h1 * sin(n) - cos(2.0 * h1 - n)) * 0.25;
         visibility += projectedLength * (arc0 + arc1);
     }
-    visibility = saturate(visibility / float(SLICES));
+    visibility = saturate(visibility / float(slices));
     return float4(visibility, viewDepth, 0.0, 1.0);
 }

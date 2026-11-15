@@ -18,6 +18,7 @@ namespace {
         glm::vec4 projection; // x, y — the scale of the projection (P00, P11), z — 1: depth is -1..1, w — 1: rows go bottom-up
         glm::vec4 params;     // x — radius (m), y — intensity, z — 1 / near, w — 1 / far
         glm::vec4 size;       // xy — the size of the depth in pixels, zw — of the target
+        glm::vec4 budget;     // x — slices, y — steps along a slice each way, z — depth texels per pixel of the target
     };
 
 } // namespace
@@ -76,8 +77,9 @@ SsaoData SsaoRenderer::apply(
             AssetImporterBase::loadShaderProgram("default-shaders/postprocess.vert", "default-shaders/ssao_blur.frag")
         );
     }
-    const uint32_t targetWidth = std::max(1u, width / 2);
-    const uint32_t targetHeight = std::max(1u, height / 2);
+    const uint32_t scale = settings.fullResolution ? 1 : 2;
+    const uint32_t targetWidth = std::max(1u, width / scale);
+    const uint32_t targetHeight = std::max(1u, height / scale);
     ensureTargets(targetWidth, targetHeight);
 
     // The clip planes from the projection, in doubles: the shader turns a depth into a distance
@@ -99,6 +101,10 @@ SsaoData SsaoRenderer::apply(
     block.size = glm::vec4(
         static_cast<float>(width), static_cast<float>(height), static_cast<float>(targetWidth),
         static_cast<float>(targetHeight)
+    );
+    block.budget = glm::vec4(
+        static_cast<float>(std::clamp(settings.slices, 1, SsaoSettings::MAX_SLICES)),
+        static_cast<float>(std::clamp(settings.steps, 1, SsaoSettings::MAX_STEPS)), static_cast<float>(scale), 0.f
     );
 
     const Miren::Rect viewport(0, 0, targetWidth, targetHeight);

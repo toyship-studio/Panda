@@ -45,6 +45,17 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   The editor's viewport helper lines (collider outlines, tool halos) are such a view: only what is
   in view, detail by the size on screen, and the overlay fills the list at most to a half,
   dropping the tail of the lines, which come ordered by importance.
+- Forms: `PropertyRow` is a label and an editor. A filling editor (a field) starts at a fixed
+  label column, so the fields of neighboring rows align; an editor that keeps its own size is
+  placed by what it is — a `Toggle` goes to the right edge and the label takes the rest of the
+  row (`PropertyRowPlacement::Trailing`), anything else stays at the start of the field column.
+  A row may carry a description under its title and a tooltip over it. A row whose editor is a
+  `NumberField` scrubs it: the label is a drag handle (`NumberField::beginScrub` / `scrub` /
+  `endScrub`; a pixel is a hundredth of the value, never more than a hundredth of the range,
+  and the value lands on round numbers). `NumberField::setStep(1)` makes a field of whole numbers.
+- `View::setHidden` keeps the place of a view in the layout; `setCollapsed` takes it out.
+- `ListView` tells a row that was chosen (`setOnItemActivated`: a click, `activateSelected`)
+  from a selection that only moved (the arrows): a palette picks on the first.
 - Several contexts and windows are supported; the single-window path stays simple.
 - Large data: `CollectionView` and `TreeView` are virtualized (only visible cells exist);
   `ListView` is a simple non-virtualized list.

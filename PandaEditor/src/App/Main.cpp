@@ -12,6 +12,7 @@
 #include <Fern/Fern.hpp>
 #include <Panda.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <string_view>
 
@@ -34,6 +35,7 @@ int main(int argc, const char **argv) {
     // The command line. `--new-window`: a second window is a second instance, it starts on the
     // start screen — the project of the last session belongs to the first one. `--project <path>`:
     // the instance opens this project (a restart, an agent or a script that starts the editor).
+    // `--mcp <port>`: the MCP server listens from the start, with or without a project.
     Panda::EditorLaunch launch;
     for (int i = 1; i < argc; i++) {
         const std::string_view argument(argv[i]);
@@ -41,6 +43,8 @@ int main(int argc, const char **argv) {
             launch.openLastProject = false;
         } else if (argument == Panda::SystemTools::PROJECT_ARGUMENT && i + 1 < argc) {
             launch.project = std::filesystem::absolute(Panda::path_t(argv[++i])).lexically_normal();
+        } else if (argument == Panda::SystemTools::MCP_ARGUMENT && i + 1 < argc) {
+            launch.mcpPort = std::atoi(argv[++i]);
         }
     }
     application->pushLayer(new Panda::EditorLayer(window, std::move(launch)));

@@ -2,6 +2,8 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include "UI/EditorModelHelper.hpp"
 
+#include <PandaEditorKit/Widgets/Icons.hpp>
+
 namespace Editor {
 
 // Built-in material shaders in the order of template registration (the core, then contributions).
@@ -41,6 +43,21 @@ const char *componentTypeTitle(ComponentType type) {
         case ComponentType::Script: return "SCRIPT";
     }
     return "COMPONENT";
+}
+
+const char *componentTypeIcon(ComponentType type) {
+    switch (type) {
+        case ComponentType::Camera: return Ic::Camera;
+        case ComponentType::DirectionalLight: return Ic::LightSun;
+        case ComponentType::PointLight: return Ic::LightPoint;
+        case ComponentType::SpriteRenderer: return Ic::Sprite;
+        case ComponentType::RuntimeMesh:
+        case ComponentType::PrimitiveMesh:
+        case ComponentType::ImportedSubmesh: return Ic::Mesh;
+        case ComponentType::Sky: return Ic::Globe;
+        case ComponentType::Script: return Ic::Script;
+    }
+    return Ic::EntityCube;
 }
 
 std::vector<ComponentType> addableComponentTypes() {

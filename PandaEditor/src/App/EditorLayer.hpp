@@ -33,6 +33,7 @@ class EditorMcp; // the MCP server of the editor (App/EditorMcp.hpp)
 struct EditorLaunch final {
     bool openLastProject = true; // false — a second window: the start screen, not the project of the last session
     path_t project;              // --project <path>: this project instead of the one of the last session
+    int mcpPort = 0;             // --mcp <port>: the MCP server listens on it whatever is open; 0 — the project decides
 };
 
 class EditorLayer : public Layer,
@@ -106,6 +107,9 @@ private:
     FileResolution resolveFileConflict(FileDocument &file);
     FileResolution takeDiskVersion(FileDocument &file); // file → memory, with the question when dirty
     void reloadFile(FileDocument &file);                // file → memory, the tabs follow
+    // The unsaved edits of every document that has a file are dropped: the memory is what the
+    // disk holds again. Returns the number of documents read.
+    int revertUnsaved();
     bool saveFile(FileDocument &file); // memory → file; false — cancelled or failed
     bool saveAll();                    // every dirty file document; false — cancelled or failed
     // The gate of everything that drops what is in memory: Save / Don't Save / Cancel.
@@ -135,6 +139,9 @@ private:
     void reloadWorldAsset(uint32_t worldAssetId) override;
     void setSceneState(Editor::SceneState state) override;
     void reloadFromDisk() override;
+    std::vector<Editor::EngineBridge::MenuCommand> menuCommands() override;
+    void runMenuCommand(uint32_t id) override;
+    void exportGame() override;
     void restartEditor() override;
     void updateIndicatorAction() override;
     void updateIndicatorDismiss() override;

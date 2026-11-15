@@ -147,9 +147,13 @@ void AssetWell::openPicker() {
     Context *context = getContext();
     if (!context) { return; }
     const Rect frame = m_main->getWorldFrame();
+    // The form may be rebuilt while the picker is open (an undo): the choice then finds no field.
+    std::weak_ptr<View> alive = weak_from_this();
     editorHost().pickAsset(
         context, Point(frame.origin.x, frame.origin.y + frame.size.height), m_kind,
-        [this](uint32_t id) { setValue(id); }
+        [this, alive](uint32_t id) {
+            if (!alive.expired()) { setValue(id); }
+        }
     );
 }
 

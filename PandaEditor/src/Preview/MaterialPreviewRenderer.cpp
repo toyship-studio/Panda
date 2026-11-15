@@ -86,12 +86,16 @@ void MaterialPreviewRenderer::createSphereMesh() {
         for (int sector = 0; sector < sectors; ++sector) {
             const uint32_t a = ring * (sectors + 1) + sector;
             const uint32_t b = a + sectors + 1;
+            // The winding of the engine's own sphere (PrimitiveMeshes): the outside is the front
+            // face. A double-sided material turns the normal of a back face around, so a sphere
+            // wound the other way was lit from the inside — every imported material is
+            // double-sided when its glTF says so.
             indices.push_back(a);
-            indices.push_back(b);
-            indices.push_back(a + 1);
             indices.push_back(a + 1);
             indices.push_back(b);
+            indices.push_back(a + 1);
             indices.push_back(b + 1);
+            indices.push_back(b);
         }
     }
     m_indicesCount = (uint32_t)indices.size();

@@ -67,11 +67,25 @@ public:
     virtual void menuBarOpenGameView() = 0;
 };
 
+// An item of the menu bar as the command palette lists it.
+struct MenuCommandInfo final {
+    std::string menu;     // "File"
+    std::string title;    // "Save"; an item of a submenu — "Settings: Open Settings"
+    std::string shortcut; // "⌘S"; empty — none
+    uint32_t id = 0;      // what EditorMenuBar::run takes
+};
+
 class EditorMenuBar final {
 public:
     EditorMenuBar(Fern::Window *window, EditorMenuBarOutput *output);
 
     void rebuild();
+    // The enabled command items of the menus as they were last built, flattened: the command
+    // palette shows the menus by name. run does what choosing the item does.
+    std::vector<MenuCommandInfo> commands() const;
+    void run(uint32_t commandId) {
+        processCommand(commandId);
+    }
     // modalPresented: an editor modal is open (Context::modals()) — menu commands are muted,
     // like all input under it: the dialog form is built from the state at the moment of opening, Undo/Save
     // under it would desynchronize it. Quitting the application remains available.
@@ -82,6 +96,7 @@ private:
 
     Fern::Window *m_window;
     EditorMenuBarOutput *m_output;
+    Fern::MenuBar m_menuBar; // as last built
 };
 
 } // namespace Panda

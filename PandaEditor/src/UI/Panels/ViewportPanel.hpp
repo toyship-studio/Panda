@@ -83,6 +83,14 @@ public:
     // brush): an accent border around the whole panel + a banner with a caption and a Stop button.
     // The owner of the state is the coordinator; the panel only draws.
     void setEditingSession(bool active, const std::string &title);
+    // The keyboard is on the Scene surface itself — not in the settings sidebar next to it.
+    bool sceneHasFocus() const {
+        return m_scene && m_scene->isFocused();
+    }
+    // The tool of the gizmo: 0 — Move, 1 — Rotate, 2 — Scale. As a press of its toolbar button.
+    void setGizmoMode(int mode) {
+        applyGizmoMode(mode);
+    }
     // Helper lines (collider outlines etc.), recomputed by the engine once per frame; a redraw happens
     // only when the set actually changes (the comparison is inside). The order is the importance:
     // the overlay draws the head of the list that fits into its share of the UI draw list.
@@ -104,7 +112,7 @@ private:
     void viewportViewDidRequestGizmoMode(int mode) override;
 
     void selectGizmo(int mode);      // highlight the active tool in the group (radio)
-    void applyGizmoMode(int mode);   // highlight + outward intent (toolbar buttons and W/E/R keys)
+    void applyGizmoMode(int mode);   // highlight + outward intent (the toolbar buttons, the commands)
     void setDropActive(bool active); // canvas highlight on drag-over of a compatible asset
     void applyBorder(); // single point for the panel border (drag-over and the edit mode)
 

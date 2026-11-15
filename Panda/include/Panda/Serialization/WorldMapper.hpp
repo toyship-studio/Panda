@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panda/Extensions/ComponentTypes.hpp"
 #include "Panda/GameLogic/World.hpp"
 
 #include <Rain/Rain.hpp>
@@ -33,6 +34,14 @@ public:
     static bool loadEntities(
         World &world, Rain::Decoder &decoder, std::istream &stream, std::vector<Entity> &added
     );
+    // One component of an entity in the form the world file holds it — an object with the name
+    // of the type as its key: `{"pointLightComponent": {...}}`. The text form of a component:
+    // the clipboard of the inspector, a snippet an agent writes.
+    static void saveComponent(Entity entity, const ComponentType &type, Rain::Encoder &encoder, std::ostream &stream);
+    // The value of the component from such a text into the entity: the component it has is
+    // replaced, one it does not have is added. false — the stream was not parsed or does not
+    // hold this component; the entity is untouched then.
+    static bool loadComponent(Entity entity, const ComponentType &type, Rain::Decoder &decoder, std::istream &stream);
 };
 
 } // namespace Panda

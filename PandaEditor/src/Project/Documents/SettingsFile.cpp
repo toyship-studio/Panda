@@ -21,11 +21,11 @@ void SettingsFile::open(const path_t &path) {
     if (m_path.empty()) { return; }
     std::ifstream file(m_path);
     if (!file.is_open()) {
-        LOG_INFO("SETTINGS FILE NOT FOUND, THE DEFAULTS ARE USED: %s", m_path.string().c_str());
+        LOG_TRACE("Settings file %s does not exist: the defaults are used", m_path.string().c_str());
     } else {
         Rain::JsonDecoder decoder;
         if (!SettingsMapper::load(m_scope, m_settings, decoder, file)) {
-            LOG_ERROR_EDITOR("SETTINGS FILE IS BROKEN: %s", m_path.string().c_str());
+            LOG_ERROR_EDITOR("The settings file %s is not valid JSON: the defaults are used.", m_path.string().c_str());
         }
     }
     m_stamp.sync(m_path);
@@ -72,7 +72,7 @@ bool SettingsFile::reload() {
     if (file.is_open()) {
         Rain::JsonDecoder decoder;
         if (!SettingsMapper::load(m_scope, scratch, decoder, file)) {
-            LOG_ERROR_EDITOR("SETTINGS FILE IS BROKEN: %s", m_path.string().c_str());
+            LOG_ERROR_EDITOR("The settings file %s is not valid JSON: the settings in memory are kept.", m_path.string().c_str());
             return false;
         }
     }

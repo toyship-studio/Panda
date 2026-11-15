@@ -42,7 +42,7 @@ public:
     void setCanUndo(bool canUndo);
     void setCanRedo(bool canRedo);
     void setCanNavigate(bool back, bool forward); // selection history buttons
-    void setCanPlay(bool canPlay);            // Play (Edit mode AND scripting is loaded)
+    void setCanPlay(bool canPlay);            // Play (Edit mode)
     void setCanStop(bool canStop);            // Stop (the world is running)
     void setCanReloadScripts(bool canReload); // Reload is available only in Edit
 

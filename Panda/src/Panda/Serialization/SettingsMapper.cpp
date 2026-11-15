@@ -97,7 +97,9 @@ void SettingsMapper::decode(
         }
         std::string json; // a section of a module that is not loaded — as is
         if (decoder.decodeRawJson(name.c_str(), json)) {
-            LOG_WARN("%s settings \"%s\": no module provides them, kept as they are", scopeName(scope), name.c_str());
+            // Nothing is lost and nothing is wrong: the editor reads its settings before a
+            // project brings its modules, and a project may have a module switched off.
+            LOG_TRACE("%s settings \"%s\": no module provides them, kept as they are", scopeName(scope), name.c_str());
             store.get<ForeignSettings>().items.push_back({name, std::move(json)});
         } else {
             LOG_WARN("%s settings \"%s\": no module provides them, dropped", scopeName(scope), name.c_str());

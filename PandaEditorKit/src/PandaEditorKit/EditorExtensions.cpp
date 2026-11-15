@@ -8,6 +8,7 @@
 namespace Editor {
 
 void ComponentInspectorRegistry::add(ComponentInspector inspector) {
+    if (inspector.group.empty()) { inspector.group = m_group; }
     m_inspectors.push_back(std::move(inspector));
 }
 

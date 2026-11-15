@@ -14,9 +14,10 @@ namespace Editor {
 struct StartScreenRecentProject {
     std::string name;
     std::string path;
+    bool missing = false; // the folder is not there any more: the row says so instead of failing on a click
 
     bool operator==(const StartScreenRecentProject &other) const {
-        return name == other.name && path == other.path;
+        return name == other.name && path == other.path && missing == other.missing;
     }
 };
 

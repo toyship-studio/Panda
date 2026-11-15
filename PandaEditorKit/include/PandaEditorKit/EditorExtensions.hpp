@@ -44,6 +44,9 @@ struct ComponentInspector final {
     std::string component;   // type name in the engine registry ("terrain2dComponent"): presence on an entity — by it
     std::string displayName; // "Terrain 2D": the Add Component item; the section title — in caps
     std::string icon;        // icon of an entity with this component (Hierarchy, tabs); empty — the regular one
+    // Where the component comes from, shown next to its name in Add Component: the name of the
+    // module. Filled in by the registry (setGroup) when it is empty.
+    std::string group;
     // Add/remove the component on entities with one undo command (Kit: toggleComponentPresence<T>).
     void (*setPresence)(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) = nullptr;
     // Section content: edits a copy of the component and writes it to all targets
@@ -54,6 +57,11 @@ struct ComponentInspector final {
 class ComponentInspectorRegistry final {
 public:
     void add(ComponentInspector inspector);
+    // The group of the inspectors added from now on: the editor names the module whose editor
+    // part it is about to register, and clears it afterwards.
+    void setGroup(std::string group) {
+        m_group = std::move(group);
+    }
     const std::vector<ComponentInspector> &inspectors() const {
         return m_inspectors;
     }
@@ -64,6 +72,7 @@ public:
 
 private:
     std::vector<ComponentInspector> m_inspectors;
+    std::string m_group;
 };
 
 // ---- Asset kind in the editor: icon, color, form tab ----

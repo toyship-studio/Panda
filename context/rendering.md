@@ -419,3 +419,55 @@ flat. The signal is value noise: a sine reads as machine-made waves, white noise
   planned consumers are a 3D LUT of the tonemap and fog froxels.
 - The shaders of the example projects have not been moved to the includes; they declare the
   shared blocks by a prefix.
+
+## What a complete frame still lacks
+
+The audit of November 2026: what a game expects of a renderer and this one does not have, in
+the order it should come. The frame itself is whole — an HDR forward pass with a physically
+based material, the light of the sky, soft shadows of the sun and of the lamps, screen-space
+occlusion, glass, bloom, exposure, a tonemap; what is listed is what stands next to it.
+
+Before anything else (each changes what every scene looks like or costs):
+
+1. **Skinned meshes and animation.** There is no skeleton: a character cannot move. Import of
+   skins and clips from glTF, a pose at run time, skinning in the vertex stage of the scene and
+   of the depth passes (`context/roadmap.md`, item 10). The largest hole, and not a rendering
+   one alone.
+2. **Compressed textures.** `Miren::TextureFormat` has no block-compressed format: every color
+   texture is RGBA8 in video memory (a scene of five scanned props takes 0.9 GB). BC7/BC5 on
+   desktop and ASTC on Apple and mobile GPUs, encoded at cook time, with the mips in the file.
+3. **Anisotropic filtering.** A floor seen at a low angle blurs a few meters away; it is a
+   sampler state in the three backends and a number in the texture settings.
+4. **Antialiasing of geometry.** FXAA smooths edges that exist; a wire or a far railing thinner
+   than a pixel still crawls. Either MSAA (multisampled targets and a resolve in the three
+   backends; the forward pass makes it natural) or a temporal resolve (motion vectors, a history
+   buffer, a jitter), which would also take the grain of the soft shadows and of the occlusion
+   and let both run with a smaller budget. One of the two, not both.
+5. **Fog and the air.** The distance has no haze, so a large world ends in a hard line against
+   the sky. `context/atmosphere.md` plans one model for the color of the sun, the light of the
+   sky and the haze; the first step that pays alone is a height fog in the lit shaders that
+   takes its color from the environment light.
+
+Then (each widens what kind of scene works):
+
+6. **Local reflections and local ambient.** A room reflects the sky of the world and is lit by
+   it: there is one environment for the whole world. Reflection probes (a box-projected cube per
+   room, baked with the pass that bakes the environment atlas) give both the reflection and the
+   ambient of a place; screen-space reflections add what is in view on top.
+7. **More than eight lamps.** The lamps of a frame are the eight nearest to the camera, the same
+   for every pixel. A grid of light lists in view space (clustered forward) lifts the limit
+   without a second pipeline; it is a new system texture of the `lights` feature.
+8. **Color grading.** The look of a game is set after the tonemap curve: white balance,
+   contrast, saturation, a lookup table. It belongs to the Tonemap pass as fields of the camera
+   (3D textures exist and wait for it).
+9. **The cost of a draw.** Opaque surfaces are drawn in registry order: no front-to-back order
+   for the depth test to reject hidden pixels, no grouping by material. A sort key per draw
+   (program, material, depth) in `MeshList` is cheap and removes both.
+10. **Decals** (a bullet hole, a puddle, a road marking): projected boxes over the opaque scene.
+11. **Levels of detail and culling by occlusion** for meshes: a world of many props draws all
+    of them at full detail whenever they are in the frustum.
+
+Later, and only on demand: refraction and tint of what is behind glass, contact shadows, soft
+shadows of lamps, depth of field and motion blur, volumetric light (`context/atmosphere.md`),
+water, lit and soft particles, a render scale apart from the window, an HDR display output,
+reversed depth, debug views of the frame (albedo, normals, occlusion, cascades, overdraw).

@@ -78,6 +78,17 @@ float specularOcclusion(float nDotV, float occlusion, float roughness) {
 // surroundings the surface sees (1 — open). The specular part keeps the energy the single
 // scattering model loses on rough surfaces (Fdez-Aguera, "A Multiple-Scattering Microfacet Model
 // for Real-Time Image-based Lighting").
+// The occlusion of a surface of this albedo with the light that bounces between it and what
+// occludes it: a bright crease is lighter than the bare visibility says, a dark one is not
+// (Jimenez et al., "Practical Real-Time Strategies for Accurate Indirect Occlusion", the fit of
+// the multiple bounces).
+float3 occlusionWithBounces(float occlusion, float3 albedo) {
+    const float3 a = 2.0404 * albedo - 0.3324;
+    const float3 b = -4.7951 * albedo + 0.6417;
+    const float3 c = 2.7552 * albedo + 0.6903;
+    return max(float3(occlusion, occlusion, occlusion), ((occlusion * a + b) * occlusion + c) * occlusion);
+}
+
 float3 shadeAmbient(
     float3 normal, float3 viewDirection, float3 irradiance, float3 radiance,
     float3 albedo, float metallic, float roughness, float3 f0, float occlusion
@@ -90,9 +101,10 @@ float3 shadeAmbient(
     const float lost = 1.0 - (scaleBias.x + scaleBias.y);
     const float3 average = f0 + (1.0 - f0) / 21.0;
     const float3 multiple = lost * single * average / (1.0 - average * lost);
-    const float3 diffuse = albedo * (1.0 - metallic) * (1.0 - single - multiple);
+    const float3 diffuseAlbedo = albedo * (1.0 - metallic);
+    const float3 diffuse = diffuseAlbedo * (1.0 - single - multiple);
     return single * radiance * specularOcclusion(nDotV, occlusion, roughness) +
-           (multiple + diffuse) * irradiance * occlusion;
+           (multiple * occlusion + diffuse * occlusionWithBounces(occlusion, diffuseAlbedo)) * irradiance;
 }
 
 // The roughness of a pixel whose normal turns across it: a curved or normal-mapped surface

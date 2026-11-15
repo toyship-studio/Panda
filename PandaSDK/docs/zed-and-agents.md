@@ -171,13 +171,15 @@ asset — a text file does that already; it has only what a file cannot do:
 | `save` | Save All: what the user changed in the editor reaches the files |
 | `open_world` | opens a world file in a tab and makes it the active world |
 | `show` | brings a part of the editor in front, for a `screenshot` of the `window`: a `panel`, a `settings` tab, the tab of an `asset`, the inspector of an `entity` |
+| `pointer`, `key` | the mouse and the keyboard in the editor window, where the user's would go: a click, a double click, a drag, the wheel at a point of a `window` screenshot; text and keys into the view in focus. For testing the editor's own UI — a button, a menu, a field. The answer names what is under the pointer. The gizmo and the camera of the viewport read the real mouse and do not follow |
 | `restart`, `quit` | starts the editor again with the same project (a module switched off in `project.json`, a rebuilt editor), closes it |
 
 A tool acts as the user would, with the same functions behind it. Nobody is at the screen while
 it runs, so the editor shows no dialog: where it would ask — a file changed on disk that also
 has unsaved edits, unsaved documents before a restart — the tool fails and says what the
-question was. `reload` takes `discard: true` (the disk wins), `save` takes `overwrite: true`
-(the editor wins), `restart` and `quit` take `discard: true`.
+question was. `reload` takes `discard: true` (the disk wins: every unsaved edit made in the
+editor is dropped, whether its file has changed or not), `save` takes `overwrite: true` (the
+editor wins), `restart` and `quit` take `discard: true`.
 
 The server belongs to the project. The `"mcp"` section of `.Panda/project.json` switches it and
 names the port (Project Settings → MCP Server):
@@ -185,6 +187,9 @@ names the port (Project Settings → MCP Server):
 ```json
 "mcp": { "enabled": true, "port": 7717 }
 ```
+
+(An editor started with `--mcp <port>` listens on that port from its first frame whatever is
+open, the start screen included — for work on the editor itself.)
 
 The editor listens while a project with the section on is open, at
 `http://127.0.0.1:<port>/mcp`, for programs of this computer only: it answers the loopback

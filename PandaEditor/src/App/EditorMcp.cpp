@@ -23,6 +23,11 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <typeinfo>
+
+#if defined(__GNUC__) || defined(__clang__)
+#    include <cxxabi.h>
+#endif
 
 namespace Panda {
 
@@ -141,6 +146,22 @@ struct EditorMcp::Screenshot {
     std::shared_ptr<std::vector<uint8_t>> pixels;
 };
 
+// One frame of input made in place of the user.
+struct EditorMcp::InputStep {
+    enum class Kind { Move, Down, Up, Scroll, KeyDown, KeyUp, Text, Idle };
+    Kind kind = Kind::Idle;
+    PandaUI::Point position;                                    // Move, Down, Up, Scroll (window points)
+    PandaUI::Point delta;                                       // Scroll
+    PandaUI::PointerButton button = PandaUI::PointerButton::Left; // Down, Up
+    PandaUI::Key key = PandaUI::Key::Unknown;                   // KeyDown, KeyUp
+    uint32_t codepoint = 0;                                     // Text
+    bool shift = false;
+    bool control = false;
+    bool alt = false;
+    bool super = false;
+    bool newClick = false; // Down: not the second click of a double click
+};
+
 EditorMcp::EditorMcp(EditorLayer &editor)
     : m_editor(editor)
     , m_server("panda-editor", "Panda Editor", ENGINE_VERSION, INSTRUCTIONS) {
@@ -162,7 +183,11 @@ void EditorMcp::update() {
 
 void EditorMcp::syncServer() {
     int port = 0;
-    if (hasProject()) {
+    if (m_editor.m_launch.mcpPort > 0 && m_editor.m_launch.mcpPort < 65536) {
+        // Asked for on the command line: the server is there whatever is open (the start screen
+        // too) — work on the editor itself.
+        port = m_editor.m_launch.mcpPort;
+    } else if (hasProject()) {
         const ProjectMcpSettings &settings = m_editor.m_documents.projectSettings().get<ProjectMcpSettings>();
         if (settings.enabled && settings.port > 0 && settings.port < 65536) { port = settings.port; }
     }
@@ -269,7 +294,7 @@ void EditorMcp::registerTools() {
         "document with unsaved edits in the editor that was also changed on disk is a conflict: the tool fails "
         "and names it. Answers with what the editor logged.",
         R"({"type":"object","properties":{)"
-        R"("discard":{"type":"boolean","description":"In a conflict the version on disk wins and the unsaved edits of the editor are lost. Default false."}}})",
+        R"("discard":{"type":"boolean","description":"The disk wins: every unsaved edit made in the editor is dropped and its document is read again from its file, changed on disk or not. Default false."}}})",
         [this](const rapidjson::Value &arguments) { return reload(arguments); },
     });
     m_server.addTool({
@@ -324,6 +349,37 @@ void EditorMcp::registerTools() {
         R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
         R"("entity":{"type":"string","description":"The name of the entity."}}})",
         [this](const rapidjson::Value &arguments) { return show(arguments); },
+    });
+    m_server.addTool({
+        "pointer",
+        "A gesture of the mouse in the editor window, made where the user would make it: for the editor itself as "
+        "the thing to test — a button, a menu, a field, a drag. The coordinates are those of a `window` screenshot "
+        "(of the default width; pass `of` when the screenshot was asked with another `width`). `click` presses and "
+        "releases; `drag` presses at x, y, moves to toX, toY over a few frames and releases; `down`, `move`, `up` "
+        "make a gesture in parts, with a screenshot in between; `scroll` turns the wheel by dx, dy. Answers with "
+        "what is under the pointer afterwards: the views from the innermost out, the cursor, the view in focus. "
+        "The viewport's own tools (the gizmo, the camera) read the real mouse and do not follow.",
+        R"({"type":"object","properties":{)"
+        R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll"],"description":"Default: click."},)"
+        R"("x":{"type":"number"},"y":{"type":"number"},)"
+        R"("toX":{"type":"number","description":"drag: where it ends."},"toY":{"type":"number"},)"
+        R"("dx":{"type":"number","description":"scroll: the wheel, in lines; dy > 0 scrolls the content down."},"dy":{"type":"number"},)"
+        R"("steps":{"type":"integer","description":"drag: the frames of the movement. Default 8."},)"
+        R"("of":{"type":"number","description":"The width of the screenshot the coordinates were read from. Default 1280."},)"
+        R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}},)"
+        R"("required":["x","y"]})",
+        [this](const rapidjson::Value &arguments) { return pointer(arguments); },
+    });
+    m_server.addTool({
+        "key",
+        "Keys and text into the editor window, to the view in focus (click a field with `pointer` first): `text` "
+        "is typed character by character, `key` is pressed and released — a letter or a digit, or Enter, Escape, "
+        "Tab, Backspace, Delete, Space, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1..F12. With both, the "
+        "text goes first. Answers like `pointer`.",
+        R"({"type":"object","properties":{)"
+        R"("key":{"type":"string"},"text":{"type":"string"},)"
+        R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
+        [this](const rapidjson::Value &arguments) { return key(arguments); },
     });
     m_server.addTool({
         "restart",
@@ -508,9 +564,12 @@ void EditorMcp::showViewport(ViewportKind view) {
 }
 
 Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
-    if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     auto shot = std::make_shared<Screenshot>();
     const std::string view = Mcp::stringArgument(arguments, "view");
+    // The window is there without a project (the start screen); a viewport is not.
+    if (!hasProject() && view != "window") {
+        return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor: only the `window` view can be shot"));
+    }
     if (view.empty()) {
         shot->view = m_editor.m_sceneState == SceneState::PLAY ? ViewportKind::Game : ViewportKind::Scene;
     } else if (view == "scene") {
@@ -527,14 +586,17 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
     const std::string file = Mcp::stringArgument(arguments, "file");
     if (!file.empty()) {
         shot->file = path_t(file);
-        if (shot->file.is_relative()) { shot->file = m_editor.m_loader.getOpenedProjectPath() / shot->file; }
+        if (shot->file.is_relative()) {
+            if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("file is an absolute path when no project is open")); }
+            shot->file = m_editor.m_loader.getOpenedProjectPath() / shot->file;
+        }
         shot->file = shot->file.lexically_normal();
         if (shot->file.extension() != ".png") { return Mcp::ready(Mcp::ToolResult::error("file is a .png file")); }
     } else if (!shot->returnImage) {
         return Mcp::ready(Mcp::ToolResult::error("Nothing to answer with: image is false and there is no file"));
     }
     shot->notBefore = nowSeconds() + std::clamp(Mcp::numberArgument(arguments, "wait", 0.0), 0.0, 30.0);
-    shot->shownBefore = m_editor.m_viewports.live();
+    if (hasProject()) { shot->shownBefore = m_editor.m_viewports.live(); }
     return [this, shot]() { return stepScreenshot(*shot); };
 }
 
@@ -543,7 +605,7 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
         if (shot.switched && hasProject()) { showViewport(shot.shownBefore); }
         return Mcp::ToolResult::error(std::move(message));
     };
-    if (!hasProject()) { return fail("The project was closed"); }
+    if (!hasProject() && !shot.window) { return fail("The project was closed"); }
     if (shot.reading) {
         if (Miren::getFrameNumber() < shot.readyFrame) { return std::nullopt; }
         return finishScreenshot(shot);
@@ -717,6 +779,9 @@ Mcp::PendingResult EditorMcp::reload(const rapidjson::Value &arguments) {
     const uint64_t from = LogHistory::nextSequence();
     // Don't Save of the question about a conflict is "take the version on disk".
     SystemTools::Unattended unattended(discard ? SaveChangesChoice::DontSave : SaveChangesChoice::Cancel);
+    // With `discard` the disk wins everywhere: a document with unsaved edits is read again even
+    // when its file has not changed.
+    if (discard) { m_editor.revertUnsaved(); }
     m_editor.reloadFromDisk();
     Mcp::ToolResult result;
     if (!discard && !unattended.questions().empty()) {
@@ -807,6 +872,314 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     }
     if (m_editor.m_editorController) { m_editor.m_editorController->showSceneView(); }
     return Mcp::ready(textResult("Opened " + file.filename().string() + ".\n" + logSince(from)));
+}
+
+namespace {
+
+    // The class of a view, for the answer of an input tool: "PandaUI::Toggle".
+    std::string viewClassName(const PandaUI::View &view) {
+        const char *raw = typeid(view).name();
+#if defined(__GNUC__) || defined(__clang__)
+        int status = 0;
+        char *demangled = abi::__cxa_demangle(raw, nullptr, nullptr, &status);
+        std::string name = status == 0 && demangled != nullptr ? demangled : raw;
+        std::free(demangled);
+        return name;
+#else
+        return raw;
+#endif
+    }
+
+    const char *cursorName(PandaUI::Cursor cursor) {
+        switch (cursor) {
+            case PandaUI::Cursor::IBeam: return "text";
+            case PandaUI::Cursor::Crosshair: return "crosshair";
+            case PandaUI::Cursor::PointingHand: return "hand";
+            case PandaUI::Cursor::ResizeEW: return "resize-horizontal";
+            case PandaUI::Cursor::ResizeNS: return "resize-vertical";
+            case PandaUI::Cursor::ResizeNESW: return "resize-nesw";
+            case PandaUI::Cursor::ResizeNWSE: return "resize-nwse";
+            case PandaUI::Cursor::ResizeAll: return "move";
+            case PandaUI::Cursor::NotAllowed: return "not-allowed";
+            case PandaUI::Cursor::Inherit:
+            case PandaUI::Cursor::Arrow: return "arrow";
+        }
+        return "arrow";
+    }
+
+    PandaUI::Key keyFromName(const std::string &name) {
+        using PandaUI::Key;
+        if (name.size() == 1) {
+            const char c = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) { return static_cast<Key>(c); }
+            switch (c) {
+                case ' ': return Key::Space;
+                case ',': return Key::Comma;
+                case '-': return Key::Minus;
+                case '.': return Key::Period;
+                case '/': return Key::Slash;
+                case '=': return Key::Equal;
+                default: return Key::Unknown;
+            }
+        }
+        std::string lower = name;
+        for (char &c : lower) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        static const std::pair<const char *, Key> NAMES[] = {
+            {"enter", Key::Enter}, {"return", Key::Enter}, {"escape", Key::Escape}, {"esc", Key::Escape},
+            {"tab", Key::Tab}, {"backspace", Key::Backspace}, {"delete", Key::Delete}, {"space", Key::Space},
+            {"up", Key::Up}, {"down", Key::Down}, {"left", Key::Left}, {"right", Key::Right},
+            {"home", Key::Home}, {"end", Key::End}, {"pageup", Key::PageUp}, {"pagedown", Key::PageDown},
+        };
+        for (const auto &[text, key] : NAMES) {
+            if (lower == text) { return key; }
+        }
+        if (lower.size() >= 2 && lower[0] == 'f') {
+            const int number = std::atoi(lower.c_str() + 1);
+            if (number >= 1 && number <= 12) { return static_cast<Key>(static_cast<int>(Key::F1) + number - 1); }
+        }
+        return Key::Unknown;
+    }
+
+    // The code points of a UTF-8 text.
+    std::vector<uint32_t> codepointsOf(const std::string &text) {
+        std::vector<uint32_t> result;
+        for (size_t i = 0; i < text.size();) {
+            const unsigned char lead = static_cast<unsigned char>(text[i]);
+            int length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : (lead >> 3) == 0x1E ? 4 : 0;
+            if (length == 0 || i + static_cast<size_t>(length) > text.size()) { break; }
+            uint32_t codepoint = length == 1 ? lead : lead & (0xFFu >> (length + 1));
+            for (int k = 1; k < length; ++k) { codepoint = (codepoint << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3Fu); }
+            result.push_back(codepoint);
+            i += static_cast<size_t>(length);
+        }
+        return result;
+    }
+
+} // namespace
+
+std::string EditorMcp::pointerJson() const {
+    PandaUI::Context &context = m_editor.m_editorUI.context();
+    rapidjson::StringBuffer buffer;
+    JsonWriter writer(buffer);
+    writer.StartObject();
+    // The views under the pointer, from the innermost out: what a click there reaches.
+    writer.Key("under");
+    writer.StartArray();
+    int depth = 0;
+    for (PandaUI::View *view = context.getHoveredView(); view != nullptr && depth < 6; view = view->getSuperview(), ++depth) {
+        writeText(writer, viewClassName(*view));
+    }
+    writer.EndArray();
+    writer.Key("cursor");
+    writer.String(cursorName(context.getCurrentCursor()));
+    writer.Key("focus");
+    if (PandaUI::View *focused = context.getFocusedView()) {
+        writeText(writer, viewClassName(*focused));
+    } else {
+        writer.Null();
+    }
+    writer.EndObject();
+    return takeText(buffer);
+}
+
+Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
+    auto queue = std::make_shared<std::vector<InputStep>>(std::move(steps));
+    auto next = std::make_shared<size_t>(0);
+    // The real mouse steps aside for the gesture and comes back when the call is over — however
+    // it ends: a client that went away mid-gesture drops the pending answer, and the guard with it.
+    m_editor.m_editorUI.setPointerOverridden(true);
+    EditorUI *ui = &m_editor.m_editorUI;
+    std::shared_ptr<void> release(nullptr, [ui](void *) { ui->setPointerOverridden(false); });
+    return [this, queue, next, release]() -> std::optional<Mcp::ToolResult> {
+        PandaUI::Context &context = m_editor.m_editorUI.context();
+        if (*next >= queue->size()) {
+            m_editor.m_editorUI.setPointerOverridden(false);
+            Mcp::ToolResult result;
+            result.text = pointerJson();
+            return result;
+        }
+        const InputStep &step = (*queue)[(*next)++];
+        // Nobody is at the screen: what the input sets off asks no native dialog.
+        SystemTools::Unattended unattended;
+        auto pointerEvent = [&step] {
+            PandaUI::PointerEvent event;
+            event.type = PandaUI::PointerType::Mouse;
+            event.position = step.position;
+            event.isShiftDown = step.shift;
+            event.isControlDown = step.control;
+            event.isAltDown = step.alt;
+            event.isSuperDown = step.super;
+            return event;
+        };
+        switch (step.kind) {
+            case InputStep::Kind::Move: {
+                PandaUI::PointerEvent event = pointerEvent();
+                const PandaUI::Point last = context.getMousePosition();
+                event.delta = PandaUI::Point(step.position.x - last.x, step.position.y - last.y);
+                context.handlePointerMove(event);
+                break;
+            }
+            case InputStep::Kind::Down: {
+                if (step.newClick) { context.forgetLastClick(); }
+                PandaUI::PointerEvent event = pointerEvent();
+                event.button = step.button;
+                context.handlePointerDown(event);
+                break;
+            }
+            case InputStep::Kind::Up: {
+                PandaUI::PointerEvent event = pointerEvent();
+                event.button = step.button;
+                context.handlePointerUp(event);
+                break;
+            }
+            case InputStep::Kind::Scroll: {
+                PandaUI::ScrollEvent event;
+                event.position = step.position;
+                event.delta = step.delta;
+                context.handleScroll(event);
+                break;
+            }
+            case InputStep::Kind::KeyDown:
+            case InputStep::Kind::KeyUp: {
+                PandaUI::KeyEvent event;
+                event.key = step.key;
+                event.isShiftDown = step.shift;
+                event.isControlDown = step.control;
+                event.isAltDown = step.alt;
+                event.isSuperDown = step.super;
+                if (step.kind == InputStep::Kind::KeyDown) {
+                    context.handleKeyDown(event);
+                } else {
+                    context.handleKeyUp(event);
+                }
+                break;
+            }
+            case InputStep::Kind::Text: {
+                PandaUI::TextInputEvent event;
+                event.codepoint = step.codepoint;
+                context.handleTextInput(event);
+                break;
+            }
+            case InputStep::Kind::Idle: break;
+        }
+        return std::nullopt;
+    };
+}
+
+Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
+    if (m_editor.m_window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
+    const Fern::Size size = m_editor.m_window->getSize();
+    const Fern::Size dpi = m_editor.m_window->getDpi();
+    if (size.width <= 0.f || size.height <= 0.f) { return Mcp::ready(Mcp::ToolResult::error("The window of the editor has no size")); }
+    // The coordinates are those of a screenshot of the window: its pixels, scaled down to `of`
+    // when the window is wider.
+    const double of = std::max(Mcp::numberArgument(arguments, "of", SCREENSHOT_DEFAULT_WIDTH), 1.0);
+    const double imageWidth = std::min(of, static_cast<double>(size.width) * dpi.width);
+    const double scale = static_cast<double>(size.width) / imageWidth;
+    auto toWindow = [scale](double x, double y) {
+        return PandaUI::Point(static_cast<float>(x * scale), static_cast<float>(y * scale));
+    };
+    const std::string action = Mcp::stringArgument(arguments, "action", "click");
+    const PandaUI::Point at = toWindow(Mcp::numberArgument(arguments, "x", 0.0), Mcp::numberArgument(arguments, "y", 0.0));
+
+    InputStep base;
+    base.position = at;
+    base.shift = Mcp::boolArgument(arguments, "shift", false);
+    base.alt = Mcp::boolArgument(arguments, "alt", false);
+    base.control = Mcp::boolArgument(arguments, "ctrl", false);
+    base.super = Mcp::boolArgument(arguments, "super", false);
+    auto step = [&base](InputStep::Kind kind) {
+        InputStep result = base;
+        result.kind = kind;
+        return result;
+    };
+    std::vector<InputStep> steps;
+    auto press = [&](PandaUI::PointerButton button, bool newClick) {
+        InputStep down = step(InputStep::Kind::Down);
+        down.button = button;
+        down.newClick = newClick;
+        steps.push_back(down);
+        InputStep up = step(InputStep::Kind::Up);
+        up.button = button;
+        steps.push_back(up);
+    };
+    // The pointer arrives first: the hover of a frame is what the press of the next one meets.
+    steps.push_back(step(InputStep::Kind::Move));
+    if (action == "click") {
+        press(PandaUI::PointerButton::Left, true);
+    } else if (action == "doubleClick") {
+        press(PandaUI::PointerButton::Left, true);
+        press(PandaUI::PointerButton::Left, false);
+    } else if (action == "rightClick") {
+        press(PandaUI::PointerButton::Right, true);
+    } else if (action == "move") {
+        // The move alone.
+    } else if (action == "down") {
+        InputStep down = step(InputStep::Kind::Down);
+        down.newClick = true;
+        steps.push_back(down);
+    } else if (action == "up") {
+        steps.push_back(step(InputStep::Kind::Up));
+    } else if (action == "drag") {
+        const PandaUI::Point to =
+            toWindow(Mcp::numberArgument(arguments, "toX", 0.0), Mcp::numberArgument(arguments, "toY", 0.0));
+        const int count = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 8.0), 1.0, 240.0));
+        InputStep down = step(InputStep::Kind::Down);
+        down.newClick = true;
+        steps.push_back(down);
+        for (int i = 1; i <= count; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(count);
+            InputStep move = step(InputStep::Kind::Move);
+            move.position = PandaUI::Point(at.x + (to.x - at.x) * t, at.y + (to.y - at.y) * t);
+            steps.push_back(move);
+        }
+        InputStep up = step(InputStep::Kind::Up);
+        up.position = to;
+        steps.push_back(up);
+    } else if (action == "scroll") {
+        InputStep scroll = step(InputStep::Kind::Scroll);
+        scroll.delta = PandaUI::Point(
+            static_cast<float>(Mcp::numberArgument(arguments, "dx", 0.0)),
+            static_cast<float>(-Mcp::numberArgument(arguments, "dy", 0.0))
+        );
+        steps.push_back(scroll);
+    } else {
+        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag or scroll"));
+    }
+    // What the gesture set off (a popover, a rebuilt form) is laid out and drawn before the answer.
+    steps.push_back(step(InputStep::Kind::Idle));
+    steps.push_back(step(InputStep::Kind::Idle));
+    return playInput(std::move(steps));
+}
+
+Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
+    const std::string text = Mcp::stringArgument(arguments, "text");
+    const std::string keyName = Mcp::stringArgument(arguments, "key");
+    if (text.empty() && keyName.empty()) { return Mcp::ready(Mcp::ToolResult::error("Pass `key`, `text` or both")); }
+    std::vector<InputStep> steps;
+    for (uint32_t codepoint : codepointsOf(text)) {
+        InputStep step;
+        step.kind = InputStep::Kind::Text;
+        step.codepoint = codepoint;
+        steps.push_back(step);
+    }
+    if (!keyName.empty()) {
+        const PandaUI::Key key = keyFromName(keyName);
+        if (key == PandaUI::Key::Unknown) { return Mcp::ready(Mcp::ToolResult::error("Unknown key: " + keyName)); }
+        InputStep step;
+        step.key = key;
+        step.shift = Mcp::boolArgument(arguments, "shift", false);
+        step.alt = Mcp::boolArgument(arguments, "alt", false);
+        step.control = Mcp::boolArgument(arguments, "ctrl", false);
+        step.super = Mcp::boolArgument(arguments, "super", false);
+        step.kind = InputStep::Kind::KeyDown;
+        steps.push_back(step);
+        step.kind = InputStep::Kind::KeyUp;
+        steps.push_back(step);
+    }
+    steps.push_back(InputStep{});
+    steps.push_back(InputStep{});
+    return playInput(std::move(steps));
 }
 
 Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {

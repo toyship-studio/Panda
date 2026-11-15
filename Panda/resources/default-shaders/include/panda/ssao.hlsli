@@ -21,9 +21,9 @@ float sampleScreenOcclusion(float3 worldPos) {
     float2 uv = ndc * 0.5 + 0.5;
     if (ssaoParams.y < 0.5) { uv.y = 1.0 - uv.y; }
     const float2 occlusion = ssaoMap.SampleLevel(ssaoMapSampler, uv, 0.0).rg;
-    // clip.w of a perspective projection is the view depth. The map is half the resolution of the
-    // frame and filtered: on a surface seen at a low angle its depth runs a few pixels of slope
-    // away from the point's, so the tolerance grows with the slope of the depth on screen.
+    // clip.w of a perspective projection is the view depth. The map is filtered and may be half
+    // the resolution of the frame: on a surface seen at a low angle its depth runs a few pixels
+    // of slope away from the point's, so the tolerance grows with the slope of the depth on screen.
     const float tolerance = 0.03 * clip.w + 0.02 + 4.0 * fwidth(clip.w);
     const float same = saturate(2.0 - abs(occlusion.g - clip.w) / tolerance);
     return lerp(1.0, occlusion.r, same);

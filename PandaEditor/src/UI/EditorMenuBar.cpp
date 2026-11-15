@@ -1,5 +1,7 @@
 #include "EditorMenuBar.hpp"
 
+#include "UI/Shortcuts.hpp"
+
 #include <Foundation/PlatformDetection.hpp>
 #include <Fern/Events/Event.hpp>
 #include <Fern/Events/MenuEvents.hpp>
@@ -182,6 +184,43 @@ void EditorMenuBar::rebuild() {
     helpMenu.addItem("About", EditorMenuCommand::About);
 
     m_window->setMenuBar(menuBar);
+    m_menuBar = std::move(menuBar);
+}
+
+namespace {
+
+    // The keys of a menu item the way the palette writes the keys of every command.
+    std::string shortcutText(Fern::MenuShortcut shortcut) {
+        if (!shortcut.isValid()) { return {}; }
+        const bool primary = (shortcut.modifiers & Fern::MenuShortcut::Primary) != 0;
+        Editor::KeyChord chord = primary ? Editor::KeyChord::primary(static_cast<PandaUI::Key>(static_cast<int>(shortcut.key)))
+                                         : Editor::KeyChord::plain(static_cast<PandaUI::Key>(static_cast<int>(shortcut.key)));
+        chord.shift = (shortcut.modifiers & Fern::MenuShortcut::Shift) != 0;
+        chord.alt = (shortcut.modifiers & Fern::MenuShortcut::Alt) != 0;
+        if ((shortcut.modifiers & Fern::MenuShortcut::Control) != 0) { chord.ctrl = true; }
+        if ((shortcut.modifiers & Fern::MenuShortcut::Super) != 0) { chord.super = true; }
+        return chord.text();
+    }
+
+    void collectCommands(
+        const Fern::MenuItem &item, const std::string &menu, const std::string &prefix, std::vector<MenuCommandInfo> &out
+    ) {
+        for (const Fern::MenuItem &child : item.getChildren()) {
+            if (!child.isEnabled()) { continue; }
+            if (child.getType() == Fern::MenuItemType::Submenu) {
+                collectCommands(child, menu, prefix + child.getTitle() + ": ", out);
+            } else if (child.getType() == Fern::MenuItemType::Command) {
+                out.push_back({menu, prefix + child.getTitle(), shortcutText(child.getShortcut()), child.getCommandId()});
+            }
+        }
+    }
+
+} // namespace
+
+std::vector<MenuCommandInfo> EditorMenuBar::commands() const {
+    std::vector<MenuCommandInfo> result;
+    for (const Fern::MenuItem &menu : m_menuBar.getMenus()) { collectCommands(menu, menu.getTitle(), {}, result); }
+    return result;
 }
 
 bool EditorMenuBar::handleEvent(Fern::Event *event, bool modalPresented) {

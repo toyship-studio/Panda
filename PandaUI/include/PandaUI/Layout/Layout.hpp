@@ -105,6 +105,7 @@ public:
 
     void setFlexGrow(float flexGrow);
     void setFlexBasis(float basis); // base size before free space is distributed (points)
+    void setFlexBasisAuto();        // back to the size of the content (the default)
     float computedPadding(Edge edge) const; // computed padding after layout (specific edges only)
     void setFlexShrink(float flexShrink);
 

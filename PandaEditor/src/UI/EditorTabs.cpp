@@ -4,7 +4,7 @@
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "UI/Documents/AssetEditorView.hpp"
-#include "UI/Widgets/ObjectIcons.hpp"
+#include <PandaEditorKit/Widgets/ObjectIcons.hpp>
 
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/Widgets/Icons.hpp>
@@ -142,9 +142,6 @@ public:
     }
     void entityDidClickBackground() override {
         out().entityDidClickBackground(); // globally: clear the selection
-    }
-    void entityDidSelectAsset(Panda::AssetId assetId) override {
-        out().entityDidSelectAsset(assetId); // global selection → the asset tab
     }
     void entityDidRequestMaximize() override {
         m_tabs->requestMaximize(m_tabId); // zoom of the dock of EXACTLY this tab
@@ -601,8 +598,12 @@ void EditorTabs::showSelection(
             m_docks->renameTransientPanel(m_previewId, id);
             entry->id = id;
             if (entry->proxy) { entry->proxy->setTabId(id); }
+            // The tab leaves one asset and takes another: the host hears both, as it does when
+            // a tab closes and another opens (the asset of a tab is held loaded while it is open).
+            if (entry->assetIds.size() == 1) { m_host->tabsAssetTabClosed(entry->assetIds.front()); }
             entry->entityIds = std::move(entityIds);
             entry->assetIds = assets;
+            if (entry->assetIds.size() == 1) { m_host->tabsAssetTabOpened(entry->assetIds.front()); }
             bindEntry(*entry);
             m_docks->updateTransientPanel(id, titleFor(*entry), iconFor(*entry), entry->document->view());
             m_docks->activateTransientPanel(id);
@@ -657,6 +658,12 @@ void EditorTabs::setRuntimeMode(bool runtime) {
 void EditorTabs::refreshTransforms() {
     for (TabEntry &entry : m_entries) {
         if (auto *entity = dynamic_cast<EntityDocument *>(entry.document.get())) { entity->form().refreshTransform(); }
+    }
+}
+
+void EditorTabs::refreshEntityForms() {
+    for (TabEntry &entry : m_entries) {
+        if (dynamic_cast<EntityDocument *>(entry.document.get()) != nullptr) { bindEntry(entry); }
     }
 }
 

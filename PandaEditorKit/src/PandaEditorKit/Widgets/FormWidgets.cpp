@@ -6,6 +6,8 @@
 #include "PandaEditorKit/Widgets/Typography.hpp"
 #include "PandaEditorKit/Widgets/Vector3Field.hpp"
 
+#include <cctype>
+#include <cmath>
 #include <utility>
 
 namespace Editor {
@@ -53,6 +55,30 @@ std::shared_ptr<Panel> makeFormButtonRow(std::initializer_list<std::shared_ptr<B
     return row;
 }
 
+std::string humanizeIdentifier(const std::string &name) {
+    std::string result;
+    result.reserve(name.size() + 8);
+    bool startOfWord = true;
+    for (size_t i = 0; i < name.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(name[i]);
+        if (c == '_' || c == '-' || c == ' ') {
+            startOfWord = true;
+            continue;
+        }
+        const unsigned char previous = i > 0 ? static_cast<unsigned char>(name[i - 1]) : 0;
+        const unsigned char next = i + 1 < name.size() ? static_cast<unsigned char>(name[i + 1]) : 0;
+        // A word starts at a capital after a small letter ("baseColor"), at the last capital of
+        // a run before a small letter ("HDRColor" → "HDR Color") and where digits begin.
+        const bool capitalStart =
+            std::isupper(c) && (std::islower(previous) || std::isdigit(previous) || (std::isupper(previous) && std::islower(next)));
+        const bool digitStart = std::isdigit(c) && std::isalpha(previous);
+        if (!result.empty() && (startOfWord || capitalStart || digitStart)) { result += ' '; }
+        result += static_cast<char>(startOfWord || result.empty() || result.back() == ' ' ? std::toupper(c) : c);
+        startOfWord = false;
+    }
+    return result;
+}
+
 std::shared_ptr<Label> makeFormHint(const std::string &text) {
     auto hint = std::make_shared<Label>(text);
     hint->setFont(Typo::Caption);
@@ -63,7 +89,7 @@ std::shared_ptr<Label> makeFormHint(const std::string &text) {
     return hint;
 }
 
-void addAssetRow(
+std::shared_ptr<PropertyRow> addAssetRow(
     CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
     std::function<void(uint32_t)> set
 ) {
@@ -71,7 +97,9 @@ void addAssetRow(
         value, kind, [](uint32_t id) { return editorHost().assetTitle(Panda::AssetId(id)); }, std::move(set),
         [](uint32_t id) { editorHost().selectAsset(Panda::AssetId(id)); }
     );
-    section.addContent(std::make_shared<PropertyRow>(title, well));
+    auto row = std::make_shared<PropertyRow>(title, well);
+    section.addContent(row);
+    return row;
 }
 
 std::shared_ptr<PropertyRow> addNumberRow(
@@ -84,6 +112,25 @@ std::shared_ptr<PropertyRow> addNumberRow(
     field->setValue(value);
     field->setMixed(mixed);
     field->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) { onChange(f.getValue()); });
+    auto row = std::make_shared<PropertyRow>(title, field);
+    row->setMixed(mixed);
+    section.addContent(row);
+    return row;
+}
+
+std::shared_ptr<PropertyRow> addIntegerRow(
+    CollapsibleSection &section, const char *title, int min, int max, int value, std::function<void(int)> onChange,
+    bool mixed
+) {
+    auto field = std::make_shared<NumberField>();
+    field->setFont(Typo::Value);
+    field->setStep(1.f);
+    field->setRange(static_cast<float>(min), static_cast<float>(max));
+    field->setValue(static_cast<float>(value));
+    field->setMixed(mixed);
+    field->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) {
+        onChange(static_cast<int>(std::lround(f.getValue())));
+    });
     auto row = std::make_shared<PropertyRow>(title, field);
     row->setMixed(mixed);
     section.addContent(row);
@@ -103,9 +150,10 @@ addToggleRow(CollapsibleSection &section, const char *title, bool value, std::fu
 
 std::shared_ptr<PropertyRow> addColorRow(
     CollapsibleSection &section, const char *title, const Panda::Color &value,
-    std::function<void(const Panda::Color &)> onChange, bool mixed
+    std::function<void(const Panda::Color &)> onChange, bool mixed, bool alpha
 ) {
     auto well = std::make_shared<ColorWell>(Color(value.r, value.g, value.b, value.a));
+    well->setAlphaEditable(alpha);
     well->setOnColorChanged([onChange = std::move(onChange)](ColorWell &w) {
         const Color c = w.getColor();
         onChange(Panda::Color(c.r, c.g, c.b, c.a));

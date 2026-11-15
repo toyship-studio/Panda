@@ -2,6 +2,7 @@
 
 #include <PandaEditorKit/Widgets/Icons.hpp>
 
+#include <Fern/Events/Event.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Fonts/FontCatalog.hpp>
 #include <Foundation/Logger.hpp>
@@ -57,6 +58,17 @@ void EditorUI::renderTo(Miren::ViewId viewId) {
 
 bool EditorUI::handleEvent(Fern::Event *event) {
     if (!m_initialized) { return false; }
+    if (m_pointerOverridden && event != nullptr) {
+        switch (event->type) {
+            case Fern::EventType::MouseMoved:
+            case Fern::EventType::MouseButtonPressed:
+            case Fern::EventType::MouseButtonReleased:
+            case Fern::EventType::MouseScrolled:
+                return true;
+            default:
+                break;
+        }
+    }
     return m_platform.handleEvent(event);
 }
 

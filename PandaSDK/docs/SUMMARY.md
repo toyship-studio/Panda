@@ -2,6 +2,7 @@
 
 [PandaSDK overview](sdk-overview.md)
 
+- [The editor](editor.md)
 - [Scripting](scripting.md)
 - [Networking from scripts](net.md)
 - [The UI of a game](ui.md)

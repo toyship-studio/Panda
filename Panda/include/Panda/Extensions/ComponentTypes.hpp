@@ -22,6 +22,10 @@ struct ComponentType final {
     entt::id_type typeId = 0; // entt::type_hash<T>::value(): component pool in the world registry
     bool serialized = true;   // written to .world (the DeletedComponent tombstone is not)
     bool duplicated = true;   // copied into an entity duplicate (Id and Relationship are special)
+    // Every entity has it from its creation (the name, the transform, the place in the
+    // hierarchy, the scripts): decode writes into the one that is there. Any other component is
+    // ADDED by its decode — it must not be on the entity yet.
+    bool builtin = false;
     void (*prepare)(entt::registry &) = nullptr; // create the pool: a typeless copy target must have it
     // The value under name: encode is called when the entity HAS the component; decode — when the
     // stream HAS the key (add the component or update the one created by default).

@@ -16,10 +16,10 @@ namespace Editor {
 //     the UI until answered. Forms of the modules' subject domains live in their editor parts
 //     (PandaUI::Dialog directly, no registry is needed).
 
-// Name input popover: a field (prefill, selected) + Cancel/Create; onSubmit(text) on a non-empty name.
+// Name input popover: a field (prefill, selected) + Cancel/<action>; onSubmit(text) on a non-empty name.
 void showNameDialog(
     PandaUI::Context *context, PandaUI::Point at, const std::string &title, const std::string &initialText,
-    std::function<void(const std::string &)> onSubmit
+    std::function<void(const std::string &)> onSubmit, const std::string &action = "Create"
 );
 // Modal confirmation: title + explanation + Cancel/<confirmTitle>; destructive —
 // a dangerous action (deletion): the button has the danger color. onConfirm() on confirmation.
@@ -34,14 +34,13 @@ void showApplyToChildrenDialog(
     PandaUI::Context *context, const std::string &title, const std::string &message,
     std::function<void(bool includeChildren)> onApply, std::function<void()> onDismiss
 );
-// Script class selection (PickScript): search field + list of classes; onPick(name) when a row is selected.
+// Script class selection: a picker (PandaEditorKit/Widgets/Picker.hpp) of the classes; onPick(name).
 void showScriptPicker(
     PandaUI::Context *context, PandaUI::Point at, const std::vector<std::string> &scripts,
     std::function<void(const std::string &)> onPick
 );
-// Asset Picker (palette): search + project assets of the kind given by kind
-// ("texture"/"material"/"mesh"/"postfx"/…) from the registry; onPick(assetId) when a row is selected.
-// Closed by a click outside/Escape.
+// Asset Picker: a picker of the project assets of the kind given by kind
+// ("texture"/"material"/"mesh"/"postfx"/…) from the registry, each with its folder; onPick(assetId).
 void showAssetPicker(
     PandaUI::Context *context, PandaUI::Point at, const std::string &kind,
     std::function<void(uint32_t)> onPick

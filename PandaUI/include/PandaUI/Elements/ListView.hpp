@@ -38,6 +38,7 @@ public:
     static constexpr float kRowHeight = 30.f; // the row height of the default appearance
 
     using SelectionChangedCallback = std::function<void(ListView &)>;
+    using ItemActivatedCallback = std::function<void(ListView &, int index)>;
 
     ListView();
     ~ListView() override;
@@ -69,6 +70,14 @@ public:
     bool isSelected(int index) const;
 
     void setOnSelectionChanged(SelectionChangedCallback callback);
+    // A row was chosen, not just walked over: a click on it (also on the selected one) or
+    // activateSelected. A palette picks on this and lets the arrows move the selection freely.
+    void setOnItemActivated(ItemActivatedCallback callback);
+    // Activates the selected row (Enter of a palette); false — nothing is selected.
+    bool activateSelected();
+    // The selection moved as the arrow keys move it: for a field that owns the keyboard next to
+    // the list.
+    void moveSelection(int delta);
 
     // Commit the selection on PRESS, not on release. For lists inside popovers that close
     // (Combobox dropdown): the anchor's blur on pointerDown starts tearing the popover down, and the
@@ -90,13 +99,13 @@ private:
     int addRowInternal(std::shared_ptr<View> content, std::shared_ptr<class Label> label);
     void handleRowClicked(int index, bool additive);
     void applySelectionStyles();
-    void moveSelection(int delta);       // move the selection by delta rows (keyboard)
 
     ListViewAppearance m_appearance;
     std::vector<ListRow *> m_rows; // ownership is in contentView; non-owning pointers here
     std::vector<int> m_selection;
     ListSelectionMode m_selectionMode;
     SelectionChangedCallback m_onSelectionChanged;
+    ItemActivatedCallback m_onItemActivated;
     bool m_commitsOnPointerDown = false; // see setCommitsSelectionOnPointerDown
 };
 

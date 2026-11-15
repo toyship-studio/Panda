@@ -539,6 +539,12 @@ std::shared_ptr<View> DockManager::makeDockTrailing(Dock dock) {
 /* ------------------------------ layout ------------------------------ */
 
 void DockManager::rebuild() {
+    // The tabs are taken out and put back: the view that has the keyboard leaves the tree for a
+    // moment and would lose it. It is kept — a tab that opens next to the Hierarchy must not take
+    // the keys away from the entity that was just clicked there.
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    View *keepFocus = context ? context->getFocusedView() : nullptr;
+    std::shared_ptr<View> keepAlive = keepFocus ? keepFocus->shared_from_this() : nullptr;
     m_inRebuild = true; // setSelectedIndex below must not trigger refreshStrip for every dock
     // Remember the active tab of each dock so that changing one does not reset the selection in others.
     const Dock docks[] = {Dock::Left, Dock::Right, Dock::Bottom, Dock::Center};
@@ -572,6 +578,8 @@ void DockManager::rebuild() {
     applyDockVisibility(Dock::Bottom);
     m_inRebuild = false;
     refreshStrip();
+    // Back to the view that had the keyboard, when it is still shown (its tab was not closed).
+    if (context && keepFocus && keepFocus->getContext() == context) { context->setFocusedView(keepFocus); }
 }
 
 void DockManager::applyDockVisibility(Dock dock) {

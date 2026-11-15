@@ -315,7 +315,8 @@ void ViewportPanelView::viewportViewDidRequestGizmoMode(int mode) {
 
 bool ViewportPanelView::canAcceptDrop(const DragInfo &drag) {
     const std::string &t = drag.payload.type;
-    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.prefab" || t == "asset.scene");
+    // What a drop here means something for: a model becomes entities, a world opens.
+    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.scene");
 }
 
 void ViewportPanelView::dragEntered(const DragInfo &) {

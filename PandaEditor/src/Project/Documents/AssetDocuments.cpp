@@ -53,11 +53,10 @@ bool AssetDocuments::saveAsset(AssetId id) {
     if (kind == nullptr || !kind->fileBased()) { return false; }
     const path_t assetPath = m_handler.assetPath(id);
     if (!kind->save(*asset, m_handler.m_projectPath / assetPath)) {
-        LOG_ERROR_EDITOR("%s %u FILE %s SAVING ERROR", kind->displayName.c_str(), id, assetPath.string().c_str());
+        LOG_ERROR_EDITOR("%s could not be saved: the file cannot be written.", assetPath.string().c_str());
         return false;
     }
     m_handler.noteAssetDiskSync(id);
-    LOG_INFO_EDITOR("SAVED %s %u AT PATH %s", kind->displayName.c_str(), id, assetPath.string().c_str());
     asset->setChanged(false);
     return true;
 }
@@ -113,12 +112,9 @@ bool AssetDocuments::saveMaterial(const AssetInfo &info, const MaterialData &mat
         encoder->encode(file, dataDto);
         file.close();
         m_handler.noteAssetDiskSync(info.id);
-        LOG_INFO("SAVED MATERIAL %u AT PATH %s", info.id, materialPath.string().c_str());
-        LOG_INFO_EDITOR("SAVED MATERIAL %u AT PATH %s", info.id, materialPath.string().c_str());
         return true;
     } else {
-        LOG_ERROR("MATERIAL %u FILE %s SAVING ERROR", info.id, materialPath.string().c_str());
-        LOG_ERROR_EDITOR("MATERIAL %u FILE %s SAVING ERROR", info.id, materialPath.string().c_str());
+        LOG_ERROR_EDITOR("%s could not be saved: the file cannot be written.", materialPath.string().c_str());
         return false;
     }
 }
@@ -136,14 +132,13 @@ bool AssetDocuments::savePostprocessing(const AssetInfo &info, PostprocessingAss
     }
     std::ofstream file(m_handler.m_projectPath / dataPath);
     if (!file.is_open()) {
-        LOG_ERROR_EDITOR("POSTPROCESSING %u FILE %s SAVING ERROR", info.id, dataPath.string().c_str());
+        LOG_ERROR_EDITOR("%s could not be saved: the file cannot be written.", dataPath.string().c_str());
         return false;
     }
     Rain::Encoder *encoder = &m_jsonEncoder;
     encoder->encode(file, dataDto);
     file.close();
     m_handler.noteAssetDiskSync(info.id);
-    LOG_INFO_EDITOR("SAVED POSTPROCESSING %u AT PATH %s", info.id, dataPath.string().c_str());
     return true;
 }
 
@@ -178,7 +173,7 @@ AssetId AssetDocuments::createMaterialAsset(const path_t &directory, AssetId sha
         }
         saveMaterial(info, material->getInputs()); // a new file is complete right away
     }
-    LOG_INFO_EDITOR("CREATED MATERIAL %u AT PATH %s", id, path.string().c_str());
+    LOG_INFO_EDITOR("Created %s.", path.filename().string().c_str());
     return id;
 }
 
@@ -205,7 +200,7 @@ AssetId AssetDocuments::registerCreatedAsset(const path_t &path) {
     m_handler.registerAsset(path);
     const AssetId id = m_handler.getAssetId(path);
     if (!id) { return 0; }
-    LOG_INFO_EDITOR("CREATED ASSET %u AT PATH %s", id, path.string().c_str());
+    LOG_INFO_EDITOR("Created %s.", path.filename().string().c_str());
     return id;
 }
 
@@ -232,7 +227,7 @@ bool AssetDocuments::createPostprocessShader(const path_t &directory) {
         data.memory.release();
     }
     m_handler.registerAsset(vertPath(base)); // registers the pair by the NAME.vert/frag.hlsl convention
-    LOG_INFO_EDITOR("CREATED POSTPROCESS SHADER %s", base.c_str());
+    LOG_INFO_EDITOR("Created the postprocessing shader %s.", base.c_str());
     return true;
 }
 

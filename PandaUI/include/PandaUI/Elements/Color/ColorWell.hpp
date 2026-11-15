@@ -16,6 +16,11 @@ public:
 
     ColorWell();
     explicit ColorWell(Color color);
+    ~ColorWell() override;
+    // The picker of the well gets an Opacity slider (ColorPicker::setAlphaEditable).
+    void setAlphaEditable(bool editable) {
+        m_alphaEditable = editable;
+    }
 
     void setColor(Color color);
     Color getColor() const {
@@ -32,6 +37,7 @@ private:
     void openPicker();
 
     Color m_color;
+    bool m_alphaEditable = false;
     ColorChangedCallback m_onColorChanged;
     Popup *m_picker = nullptr; // the open picker (or null) — to avoid opening duplicates in a stack
 };

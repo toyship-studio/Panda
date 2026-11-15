@@ -67,6 +67,10 @@ public:
 
     void setRuntimeMode(bool runtime);   // the PLAY banner on all entity tabs
     void refreshTransforms();            // gizmo drag: a light refresh of the Transform fields
+    // The world changed under the forms (undo, redo, a pasted or reset component): every entity
+    // tab reads its targets again. An edit made in a form does not come here — the form already
+    // shows it, and a rebuild would take the field out from under the caret.
+    void refreshEntityForms();
     void syncLifetimes();                // per frame: targets died → the tab is closed/narrowed
     void closeAllEntityTabs();           // world change: entity tabs point into the old world
     // The document of a tab (nullptr — not a tab of EditorTabs: the viewport and the panels).

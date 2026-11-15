@@ -106,7 +106,10 @@ int ProjectModules::loadEditorParts(const ProjectModuleSettings &settings) {
     int loaded = 0;
     for (const BuiltinModule *module : resolve(settings)) {
         if (module->editor == nullptr || s_registered.count(module->id) > 0) { continue; }
-        module->editor(Editor::editorExtensions());
+        Editor::EditorExtensions &extensions = Editor::editorExtensions();
+        extensions.componentInspectors.setGroup(module->name); // what its components are filed under
+        module->editor(extensions);
+        extensions.componentInspectors.setGroup({});
         s_registered.insert(module->id);
         loaded++;
     }

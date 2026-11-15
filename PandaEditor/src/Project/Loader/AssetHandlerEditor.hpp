@@ -10,6 +10,7 @@
 #include "Project/Import/AssetImportPipeline.hpp"
 
 #include <Panda/Assets/Base/AssetHandler.hpp>
+#include <Panda/Assets/Base/AssetRef.hpp>
 #include <Panda/Renderer/MaterialData.hpp>
 #include <cstdint>
 #include <map>
@@ -58,6 +59,8 @@ public:
     // project). Their file documents are made by FileDocuments; an asset nobody loaded is read
     // fresh on its next use and has nothing in memory to save or reload.
     std::vector<AssetId> loadedProjectAssets() const;
+    // An asset tab opened or closed. While its tab is open the asset stays loaded, used by the
+    // world or not: what the tab edits lives in memory until Save.
     void setAssetOpenedInTab(AssetId id, bool opened);
     const path_t &getProjectPath();
     const std::map<AssetId, AssetInfo> &getRegistry();
@@ -129,6 +132,8 @@ private:
     Rain::JsonDecoder m_jsonDecoder;
     std::map<AssetId, AssetInfo> m_registry;
     std::unordered_map<AssetId, AssetEditorMeta> m_editorMeta;
+    // The assets open in tabs, held: see setAssetOpenedInTab.
+    std::unordered_map<AssetId, AssetRef<Asset>> m_tabReferences;
     std::unordered_map<AssetId, AssetFileReference> m_assetSources; // id → source (the path is relative)
     // Lookup of an assetId by path. Needed for the getAssetId function
     std::unordered_map<path_t, AssetId> m_registeredAssets;

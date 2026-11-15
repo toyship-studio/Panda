@@ -68,9 +68,66 @@ void NumberField::setDecimals(int decimals) {
     syncText();
 }
 
+void NumberField::setStep(float step) {
+    m_step = std::max(step, 0.f);
+    m_value = clampValue(m_value);
+    syncText();
+}
+
 float NumberField::clampValue(float value) const {
+    if (m_step > 0.f) { value = std::round(value / m_step) * m_step; }
     if (m_maximum <= m_minimum) { return value; }
     return std::clamp(value, m_minimum, m_maximum);
+}
+
+void NumberField::beginScrub() {
+    m_scrubbing = true;
+    m_scrubValue = m_value;
+    // What a pixel is worth: a hundredth of the value, so a number of any size is tuned in a
+    // short drag; never more than a hundredth of the range — a field of 0..1 is not crossed in
+    // a few pixels; a field of whole numbers takes a step every few pixels at least.
+    double unit = std::max(std::fabs(static_cast<double>(m_value)), 1.0) * 0.01;
+    if (m_maximum > m_minimum) {
+        const double range = static_cast<double>(m_maximum) - static_cast<double>(m_minimum);
+        if (std::isfinite(range)) { unit = std::min(unit, range * 0.01); }
+    }
+    if (m_step > 0.f) { unit = std::max(unit, static_cast<double>(m_step) / 8.0); }
+    m_scrubUnit = unit;
+}
+
+void NumberField::scrub(float pixels, bool coarse, bool fine) {
+    if (!m_scrubbing) { beginScrub(); }
+    const double unit = m_scrubUnit * (coarse ? 10.0 : fine ? 0.1 : 1.0);
+    m_scrubValue += static_cast<double>(pixels) * unit;
+    if (m_maximum > m_minimum) {
+        m_scrubValue = std::clamp(m_scrubValue, static_cast<double>(m_minimum), static_cast<double>(m_maximum));
+    }
+    // The value lands on round numbers of the size of a pixel's worth: 3.54, not 3.5349998.
+    const double quantum = std::pow(10.0, std::floor(std::log10(unit) + 1.0e-9));
+    const float value = clampValue(static_cast<float>(std::round(m_scrubValue / quantum) * quantum));
+    const bool wasMixed = m_mixed;
+    m_mixed = false;
+    if (value == m_value && !wasMixed) { return; }
+    m_value = value;
+    syncText();
+    if (m_onValueChanged) { m_onValueChanged(*this); }
+}
+
+void NumberField::endScrub() {
+    m_scrubbing = false;
+}
+
+bool NumberField::keyDown(KeyEvent &event) {
+    // The text field of a single line leaves the vertical arrows to its parent: a press is a
+    // short scrub of ten pixels, so the keys and the drag move the value by the same rules.
+    if (event.key != Key::Up && event.key != Key::Down) { return Panel::keyDown(event); }
+    if (!isEnabled()) { return false; }
+    const bool wasScrubbing = m_scrubbing;
+    beginScrub();
+    if (m_step > 0.f) { m_scrubUnit = m_step / 10.0; } // a press is exactly one step
+    scrub(event.key == Key::Up ? 10.f : -10.f, event.isShiftDown, event.isAltDown);
+    m_scrubbing = wasScrubbing;
+    return true;
 }
 
 void NumberField::handleTextChanged() {

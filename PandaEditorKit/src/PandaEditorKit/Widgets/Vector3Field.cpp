@@ -41,17 +41,20 @@ namespace {
         );
     }
 
-    // Colored axis button inside the field: an overlay on the left, absolutely positioned on top of
+    // Colored axis handle inside the field: an overlay on the left, absolutely positioned on top of
     // NumberField, a tinted plate in the color of the axis with the letter on it. The plate runs from
     // the very left edge: the field clips its children by its rounded shape, so the plate takes the
-    // corners of the field. A click resets the component to 0.
+    // corners of the field. A horizontal drag scrubs the component (NumberField::scrub), a double
+    // click resets it.
     class AxisLabel final : public Control {
     public:
-        AxisLabel(const std::string &letter, Color color)
+        AxisLabel(const std::string &letter, Color color, NumberField *field)
             : m_color(color)
+            , m_field(field)
             , m_label(std::make_shared<Label>(letter)) {
-            setCursor(Cursor::PointingHand);
-            setFocusable(false); // a click target for reset, not a tab stop; does not steal focus from the field
+            setCursor(Cursor::ResizeEW);
+            setTooltip("Drag to change, double-click to reset");
+            setFocusable(false); // a handle, not a tab stop; does not steal focus from the field
             layout().setPositionType(PositionType::Absolute);
             layout().setPosition(Edge::Left, Length::points(0.f));
             layout().setPosition(Edge::Top, Length::points(0.f));
@@ -75,8 +78,37 @@ namespace {
         }
 
     private:
-        void performPrimaryAction() override {
-            if (m_onReset) { m_onReset(); }
+        bool pointerDown(PointerEvent &event) override {
+            if (event.button != PointerButton::Left || !isEnabled()) { return false; }
+            if (event.clickCount >= 2) {
+                if (m_onReset) { m_onReset(); }
+                return true;
+            }
+            m_scrubbing = true;
+            m_scrubX = event.position.x;
+            m_field->beginScrub();
+            setHighlighted(true);
+            return true;
+        }
+        bool pointerMove(PointerEvent &event) override {
+            if (!m_scrubbing) { return Control::pointerMove(event); }
+            const float pixels = event.position.x - m_scrubX;
+            m_scrubX = event.position.x;
+            if (pixels != 0.f) { m_field->scrub(pixels, event.isShiftDown, event.isAltDown); }
+            return true;
+        }
+        bool pointerUp(PointerEvent &) override {
+            endScrub();
+            return true;
+        }
+        void interactionCancelled() override {
+            endScrub();
+            Control::interactionCancelled();
+        }
+        void endScrub() {
+            if (m_scrubbing) { m_field->endScrub(); }
+            m_scrubbing = false;
+            setHighlighted(false);
         }
         void controlStateChanged(ControlState, ControlState) override {
             applyStyle();
@@ -96,8 +128,11 @@ namespace {
         }
 
         Color m_color;
+        NumberField *m_field; // the field this handle sits in (its superview)
         std::shared_ptr<Label> m_label;
         std::function<void()> m_onReset;
+        float m_scrubX = 0.f;
+        bool m_scrubbing = false;
     };
 
 } // namespace
@@ -131,9 +166,10 @@ Vector3Field::Vector3Field()
         });
 
         // The axis letter is an overlay inside the field (on top of the inner TextField).
-        auto axis = std::make_shared<AxisLabel>(AXIS_LETTERS[i], axisColors[i]);
+        auto axis = std::make_shared<AxisLabel>(AXIS_LETTERS[i], axisColors[i], field.get());
         axis->setOnReset([this, i]() {
-            m_fields[i]->setValue(0.f);
+            if (m_fields[i]->getValue() == m_resetValue && !m_fields[i]->isMixed()) { return; }
+            m_fields[i]->setValue(m_resetValue);
             if (m_onValueChanged) { m_onValueChanged(*this); }
         });
         field->addSubview(axis);
@@ -147,6 +183,10 @@ void Vector3Field::setValue(float x, float y, float z) {
     m_fields[0]->setValue(x);
     m_fields[1]->setValue(y);
     m_fields[2]->setValue(z);
+}
+
+void Vector3Field::setResetValue(float value) {
+    m_resetValue = value;
 }
 
 void Vector3Field::setMixed(bool x, bool y, bool z) {

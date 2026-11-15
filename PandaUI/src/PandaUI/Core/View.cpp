@@ -290,6 +290,11 @@ void View::setHidden(bool hidden) {
     setNeedsDisplay();
 }
 
+void View::setCollapsed(bool collapsed) {
+    setHidden(collapsed);
+    m_layout.setDisplay(collapsed ? Display::None : Display::Flex);
+}
+
 void View::setFocusable(bool focusable) {
     if (m_isFocusable == focusable) { return; }
     m_isFocusable = focusable;

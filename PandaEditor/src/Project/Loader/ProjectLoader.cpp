@@ -268,6 +268,20 @@ bool ProjectLoader::isScriptsChangedOnDisk() {
 
 void ProjectLoader::reloadScriptsDll() {
     const ScriptEngineConfig config = makeScriptsConfig();
+    {
+        // A project whose scripts were never built is not broken: there is nothing to load yet.
+        // One line says what to do; the engine is not asked for a library that is not there.
+        std::error_code errorCode;
+        if (!std::filesystem::exists(ScriptEngine::libraryFilePath(config), errorCode)) {
+            if (!m_scriptEngine.isLoaded()) {
+                LOG_WARN_EDITOR(
+                    "The scripts of the project are not built yet, so the game cannot play. Build them in the CMake "
+                    "panel (Scripts, Build): the editor loads them when the build is done."
+                );
+            }
+            return;
+        }
+    }
     m_scriptEngine.reload(config);
     {
         // Even on failure: do not hammer the same broken library with every Reload.
@@ -282,9 +296,9 @@ void ProjectLoader::reloadScriptsDll() {
             projectPath() / ".Panda" / "scripts-manifest.json", m_scriptEngine.getManifest(),
             m_jsonEncoder
         );
-        LOG_INFO_EDITOR("SUCCESSFULLY LOADED SCRIPTING ASSEMBLY");
+        LOG_INFO_EDITOR("Scripts loaded.");
     } else {
-        LOG_ERROR_EDITOR("ERROR LOADING SCRIPTING ASSEMBLY");
+        LOG_ERROR_EDITOR("The scripts could not be loaded: build them in the CMake panel and reload.");
     }
 }
 
@@ -380,7 +394,7 @@ bool ProjectLoader::applyShaderFeatures() {
     std::string unknown;
     const ShaderFeatureSet features = ShaderFeatureSet::fromNames(rendering.features, &unknown);
     if (!unknown.empty()) {
-        LOG_WARN_EDITOR("PROJECT SETTINGS: unknown shader features are ignored: %s", unknown.c_str());
+        LOG_WARN_EDITOR("Project settings: unknown shader features are ignored: %s", unknown.c_str());
     }
     const bool changed = features != ShaderFeatures::enabled();
     ShaderFeatures::setEnabled(features);

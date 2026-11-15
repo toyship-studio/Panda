@@ -646,8 +646,7 @@ std::vector<ImportedMeshData> AssetImporterBase::loadGltfMesh(const path_t &path
         }
     }
     cgltf_free(data);
-    LOG_INFO("MESH DATA %s LOADED. TOTAL %d SUBMESHES", path.filename().string().c_str(), result.size());
-    LOG_INFO_EDITOR("MESH DATA %s LOADED. TOTAL %d SUBMESHES", path.filename().string().c_str(), result.size());
+    LOG_TRACE("Loaded mesh data %s: %d submeshes", path.filename().string().c_str(), static_cast<int>(result.size()));
     return result;
 }
 

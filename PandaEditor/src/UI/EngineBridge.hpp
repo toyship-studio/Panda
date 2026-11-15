@@ -72,7 +72,19 @@ public:
     virtual void setGizmoSpace(bool worldSpace) = 0;  // world / local
     virtual void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) = 0; // seam #2
     virtual void resetCamera() = 0;    // camera → origin
-    virtual void focusSelection() = 0; // camera → center of the selected entities (Z)
+    virtual void focusSelection() = 0; // camera → center of the selected entities (F, Z)
+    // The items of the menu bar for the command palette (the menus by name), and what choosing
+    // one does.
+    struct MenuCommand final {
+        std::string menu;     // "File"
+        std::string title;    // "Save"
+        std::string shortcut; // "⌘S"; empty — none
+        uint32_t id = 0;
+    };
+    virtual std::vector<MenuCommand> menuCommands() = 0;
+    virtual void runMenuCommand(uint32_t id) = 0;
+    // File → Export Game → Cook Runtime Data: the data of the game is cooked into the Export project.
+    virtual void exportGame() = 0;
     // Project build (the CMake panel): an asynchronous cmake for the script project or the Export project;
     // the output/result return to the panel through Layer → Controller (appendCMakeOutput /
     // cmakeBuildFinished) once per frame.

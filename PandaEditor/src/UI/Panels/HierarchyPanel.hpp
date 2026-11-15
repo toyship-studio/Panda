@@ -30,6 +30,8 @@ public:
     // File → New.
     virtual CreateActions hierarchyCreateActions(Panda::UUID parentId) = 0;
     virtual void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &entityIds) = 0;
+    virtual void hierarchyDidRequestRename(Panda::UUID entityId) = 0; // asks the new name and sets it
+    virtual void hierarchyDidActivateEntity(Panda::UUID entityId) = 0; // a double click: the camera goes to it
     // The clipboard of entities is text — a fragment of a world file: Copy writes the entities
     // with everything under them, Paste adds what the clipboard holds as new roots.
     virtual void hierarchyDidRequestCopy(const std::vector<Panda::UUID> &entityIds) = 0;
@@ -56,6 +58,8 @@ public:
     // it is outside the window (an entity picked in the viewport is found in the hierarchy).
     void revealEntity(Panda::UUID entityId);
     void flashEntity(Panda::UUID entityId); // reveal + a blink of the row, the selection stays
+    // The search field takes the keyboard (the Find command of the editor).
+    void focusSearch();
 
 private:
     void addSubviews() override;
@@ -63,7 +67,7 @@ private:
     void setupStyle() override;
 
     bool pointerDown(PandaUI::PointerEvent &event) override; // click on the background → clear the selection
-    bool keyDown(PandaUI::KeyEvent &event) override;         // Delete — remove, Cmd/Ctrl+D — duplicate
+    bool keyDown(PandaUI::KeyEvent &event) override;         // Escape leaves the search; the rest goes to the commands
 
     void configureTree();
     void showContextMenu(PandaUI::TreeView &tree, Panda::UUID entityId, PandaUI::Point position);
@@ -71,7 +75,11 @@ private:
     HierarchyPanelOutput *m_output;
     Panda::World *m_world = nullptr;
     std::string m_rootTitle = "World";
-    std::vector<std::uint32_t> m_rootChildren; // root entities (without a parent), recomputed in reload()
+    // The rows under the root of the tree, recomputed in reload(): the root entities, or — while
+    // the search has text — every entity whose name has it, as a flat list by name.
+    std::vector<std::uint32_t> m_rootChildren;
+    std::string m_search; // lowercase; empty — the tree as it is
+    std::shared_ptr<PandaUI::TextField> m_searchField;
     std::shared_ptr<PandaUI::TreeView> m_tree;
     std::shared_ptr<PandaUI::Label> m_status;
 };

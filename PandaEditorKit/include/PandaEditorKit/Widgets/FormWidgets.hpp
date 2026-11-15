@@ -37,13 +37,18 @@ makeFormButton(const std::string &title, PandaUI::ButtonStyle style, std::functi
 // A row of form buttons across the full section width (the buttons split it equally).
 std::shared_ptr<PandaUI::Panel> makeFormButtonRow(std::initializer_list<std::shared_ptr<PandaUI::Button>> buttons);
 
+// The name of a field of code as a form shows it: "baseColorFactor" and "base_color_factor" →
+// "Base Color Factor". The fields of a shader and of a script are named by their authors in
+// code; the file keeps that name, the label of the row is this (the tooltip says the name).
+std::string humanizeIdentifier(const std::string &name);
+
 // Muted form hint (wraps to the section width).
 std::shared_ptr<PandaUI::Label> makeFormHint(const std::string &text);
 
 // A row referencing an asset of kind kind (AssetKind::name): AssetWell with drop, a picker and
 // clearing; the asset name and selection — through the editor host (EditorHost). set(id) — the new
 // value (0 — reset).
-void addAssetRow(
+std::shared_ptr<PandaUI::PropertyRow> addAssetRow(
     PandaUI::CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
     std::function<void(uint32_t)> set
 );
@@ -52,18 +57,30 @@ void addAssetRow(
 // a reference to an entity of the world. The callback fires on every change (module sections
 // write a copy of the component and commit it with a command). mixed — the targets of the form
 // differ in this field: the row says so and the widget shows "—" instead of the value (the
-// primary target's) until the user sets one. The row comes back for further tuning.
+// primary target's) until the user sets one. The row comes back for further tuning: setHelp (a
+// tooltip over the label), setDescription (a line under it), setVisible (a field that does not
+// apply now leaves the form).
+//
+// A number is typed into its field or scrubbed by dragging the label of the row (PropertyRow).
+// A toggle sits at the right edge of the row and its label takes the rest of the width.
 std::shared_ptr<PandaUI::PropertyRow> addNumberRow(
     PandaUI::CollapsibleSection &section, const char *title, float min, float max, float value,
     std::function<void(float)> onChange, bool mixed = false
+);
+// A whole number: counts, sizes in texels, ports.
+std::shared_ptr<PandaUI::PropertyRow> addIntegerRow(
+    PandaUI::CollapsibleSection &section, const char *title, int min, int max, int value,
+    std::function<void(int)> onChange, bool mixed = false
 );
 std::shared_ptr<PandaUI::PropertyRow> addToggleRow(
     PandaUI::CollapsibleSection &section, const char *title, bool value, std::function<void(bool)> onChange,
     bool mixed = false
 );
+// alpha — the opacity of the color means something (a sprite, the base color of a material): the
+// picker gets a slider for it. Without it the alpha is carried through unchanged.
 std::shared_ptr<PandaUI::PropertyRow> addColorRow(
     PandaUI::CollapsibleSection &section, const char *title, const Panda::Color &value,
-    std::function<void(const Panda::Color &)> onChange, bool mixed = false
+    std::function<void(const Panda::Color &)> onChange, bool mixed = false, bool alpha = false
 );
 std::shared_ptr<PandaUI::PropertyRow> addComboRow(
     PandaUI::CollapsibleSection &section, const char *title, std::vector<std::string> items, int selected,
@@ -74,7 +91,8 @@ std::shared_ptr<PandaUI::PropertyRow> addVector3Row(
     PandaUI::CollapsibleSection &section, const char *title, glm::vec3 value, std::function<void(glm::vec3)> onChange,
     glm::bvec3 mixed = glm::bvec3(false)
 );
-// A reference to an entity of the world (EntityWell: drop from the Hierarchy, a click clears).
+// A reference to an entity of the world (EntityWell: a picker, a drop from the Hierarchy, a
+// clear button).
 std::shared_ptr<PandaUI::PropertyRow> addEntityRow(
     PandaUI::CollapsibleSection &section, const char *title, Panda::World &world, Panda::UUID value,
     std::function<void(Panda::UUID)> onChange, bool mixed = false

@@ -1,7 +1,7 @@
-#include "UI/Widgets/ObjectIcons.hpp"
+#include "PandaEditorKit/Widgets/ObjectIcons.hpp"
 
-#include <PandaEditorKit/EditorExtensions.hpp>
-#include <PandaEditorKit/Widgets/Icons.hpp>
+#include "PandaEditorKit/EditorExtensions.hpp"
+#include "PandaEditorKit/Widgets/Icons.hpp"
 
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/Components/BaseComponents.hpp>

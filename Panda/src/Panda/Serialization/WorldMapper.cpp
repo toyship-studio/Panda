@@ -110,7 +110,52 @@ namespace {
         }
     };
 
+    // --- One component: the object a world file holds for it under an entity.
+
+    struct ComponentDocument {
+        Entity entity;
+        const ComponentType *type = nullptr;
+
+        static void encode(const char *key, Rain::Encoder *encoder, const ComponentDocument &document) {
+            encoder->beginObject(key);
+            if (document.type->encode != nullptr) { document.type->encode(*encoder, document.entity); }
+            encoder->endObject();
+        }
+
+        static bool decode(const char *key, Rain::Decoder *decoder, ComponentDocument &document) {
+            if (!decoder->beginObject(key)) { return false; }
+            bool found = false;
+            for (const std::string &name : decoder->getMemberKeys()) {
+                if (name == document.type->name) { found = true; }
+            }
+            if (found && document.type->decode != nullptr) {
+                // decode adds an optional component: the one that is there makes room first.
+                if (!document.type->builtin && document.type->remove != nullptr &&
+                    document.entity.hasComponent(document.type->typeId)) {
+                    document.type->remove(document.entity);
+                }
+                document.type->decode(*decoder, document.entity);
+            }
+            decoder->endObject();
+            return found;
+        }
+    };
+
 } // namespace
+
+void WorldMapper::saveComponent(Entity entity, const ComponentType &type, Rain::Encoder &encoder, std::ostream &stream) {
+    ComponentDocument document;
+    document.entity = entity;
+    document.type = &type;
+    encoder.encode(stream, document);
+}
+
+bool WorldMapper::loadComponent(Entity entity, const ComponentType &type, Rain::Decoder &decoder, std::istream &stream) {
+    ComponentDocument document;
+    document.entity = entity;
+    document.type = &type;
+    return decoder.decode(stream, document);
+}
 
 void WorldMapper::save(const World &world, Rain::Encoder &encoder, std::ostream &stream) {
     WorldDocument document;

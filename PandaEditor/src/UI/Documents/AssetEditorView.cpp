@@ -4,8 +4,12 @@
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "UI/EditorModelHelper.hpp"
 
+#include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
+#include <Panda/Assets/Base/AssetRef.hpp>
+#include <Panda/Assets/ImportedMeshAsset.hpp>
+#include <Panda/Assets/TextureAsset.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 
 #include <cstdio>
@@ -19,6 +23,15 @@ namespace {
 
     Panda::AssetHandlerEditor *assetHandler() {
         return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
+    }
+
+    // A count a person reads at a glance: "103 330".
+    std::string formatCount(size_t value) {
+        std::string digits = std::to_string(value);
+        for (int position = static_cast<int>(digits.size()) - 3; position > 0; position -= 3) {
+            digits.insert(static_cast<size_t>(position), " ");
+        }
+        return digits;
     }
 
     // File size for the asset header: "512 B" / "12.4 KB" / "1.2 MB".
@@ -114,7 +127,29 @@ void AssetEditorView::bind() {
             // the runtime Asset Package: important for the game size).
             const uint64_t sizeOnDisk = handler->assetSizeOnDisk(m_assets.front());
             const std::string type = assetTypeString(it->second.type);
-            m_subtitle->setText(sizeOnDisk > 0 ? type + " · " + formatByteSize(sizeOnDisk) : type);
+            std::string subtitle = sizeOnDisk > 0 ? type + " · " + formatByteSize(sizeOnDisk) : type;
+            // What the file holds, where the engine knows it: the pixels of a texture, the
+            // triangles of a model.
+            if (it->second.type == Panda::AssetType::TEXTURE) {
+                Panda::AssetRef<Panda::TextureAsset> texture{it->first};
+                if (texture && texture->getSize().width > 0) {
+                    subtitle += " · " + std::to_string(static_cast<int>(texture->getSize().width)) + " × " +
+                                std::to_string(static_cast<int>(texture->getSize().height));
+                }
+            } else if (it->second.type == Panda::AssetType::IMPORTED_MESH) {
+                Panda::AssetRef<Panda::ImportedMeshAsset> mesh{it->first};
+                if (mesh) {
+                    size_t triangles = 0;
+                    for (size_t i = 0; i < mesh->submeshCount(); ++i) {
+                        for (const Panda::ImportedPrimitive &primitive : mesh->submeshAt(i).primitives) {
+                            triangles += primitive.indicesCount / 3;
+                        }
+                    }
+                    subtitle += " · " + std::to_string(mesh->submeshCount()) + (mesh->submeshCount() == 1 ? " part · " : " parts · ") +
+                                formatCount(triangles) + " triangles";
+                }
+            }
+            m_subtitle->setText(subtitle);
             rebuildProperties();
             return;
         }
@@ -140,8 +175,9 @@ void AssetEditorView::rebuildProperties() {
         auto label = std::make_shared<Label>(kind == "scene" ? "World / Scene" : kind);
         label->setFont(Typo::Item);
         label->setTextRole(TextRole::Secondary);
-        auto section = std::make_shared<CollapsibleSection>(kind == "scene" ? "Scene (read-only)" : "Asset");
+        auto section = makeFormSection(kind == "scene" ? "WORLD" : "ASSET");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));
+        if (kind == "scene") { section->addContent(makeFormHint("A double click in the Content Browser opens the world in a tab.")); }
         m_props->addSubview(section);
         setNeedsLayout();
         return;

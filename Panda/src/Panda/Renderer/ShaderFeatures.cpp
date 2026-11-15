@@ -108,7 +108,8 @@ namespace ShaderFeatures {
              "ssao",
              "Ambient Occlusion (SSAO)",
              "PANDA_FEATURE_SSAO",
-             "Screen-space ambient occlusion: two half-resolution passes over the depth of the frame.",
+             "Screen-space ambient occlusion (GTAO): two passes over the depth of the frame; the world sets what "
+             "they cost (Settings → Ambient Occlusion).",
              {{"ssaoMap", "Texture2D", "SamplerState"}},
              {}},
         };

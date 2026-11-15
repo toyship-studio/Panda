@@ -42,7 +42,7 @@ bool WorldFile::read(const path_t &path) {
     // Broken JSON: the world in memory and its path are NOT touched — fix the file and repeat
     // Reload; an accidental Save does not silently overwrite the broken file.
     if (!WorldMapper::load(m_world, decoder, file)) {
-        LOG_ERROR_EDITOR("WORLD FILE IS BROKEN (JSON parse error): %s", path.string().c_str());
+        LOG_ERROR_EDITOR("The world file %s is not valid JSON and was not loaded.", path.string().c_str());
         return false;
     }
     m_path = path;
@@ -50,7 +50,7 @@ bool WorldFile::read(const path_t &path) {
     // The script containers follow the loaded script build (classes and fields by its manifest).
     ScriptEngine *scripts = GameContext::getScriptEngine();
     if (scripts && scripts->isLoaded()) { m_world.updateScriptsAndFields(); }
-    LOG_INFO("LOADED WORLD AT PATH %s", path.string().c_str());
+    LOG_TRACE("Loaded world %s", path.string().c_str());
     return true;
 }
 

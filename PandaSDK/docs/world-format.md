@@ -30,7 +30,16 @@ the distance from its caster; 0 — a fixed filter), `lampTileSize` (the side of
 shadow atlas in texels, 512), `slopeBias`, `normalOffset`, `receiverBias`;
 `graphics.occlusion` — `enabled`, `aoStrength`, `sunStrengthNear`, `sunStrengthFar`, `cellSize`,
 `windowChunks`, `extinction`, `surfaceOffset`, `contrast`; `graphics.ssao` — `enabled`, `radius`
-(m), `intensity` (`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
+(m), `intensity`, and what the occlusion may cost: `slices` (directions around a pixel, 1–8,
+default 3), `steps` (depth samples along a direction each way, 1–12, default 4),
+`fullResolution` (the resolution of the frame instead of half of it, default false) — the
+Quality list of the editor is a name for a set of the three
+(`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
+A single component has the same text outside a world file: an object with the name of its type
+as the key, `{"pointLightComponent": {"color": {...}, "intensity": 10.0, ...}}`. Copy Values in
+the menu of a component section of the editor puts it on the clipboard and Paste Values reads
+it — into another entity, another world, another project.
+
 `lighting.environmentMap` is the id of a texture asset (an equirectangular `.hdr`): the default
 sky draws it and the lit shaders take the light of the sky from it, both scaled by
 `environmentIntensity`; `ambientColor` × `ambientIntensity` is a flat light added on top (0 —

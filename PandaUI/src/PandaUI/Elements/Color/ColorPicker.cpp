@@ -1,6 +1,8 @@
 #include "PandaUI/Elements/Color/ColorPicker.hpp"
 
 #include "PandaUI/Core/Theme.hpp"
+#include "PandaUI/Elements/Label.hpp"
+#include "PandaUI/Elements/Slider.hpp"
 #include "PandaUI/Rendering/UIRenderer.hpp"
 #include "PandaUI/Runtime/Context.hpp"
 
@@ -122,24 +124,32 @@ namespace {
         h = hue;
     }
 
-    std::string hexFromColor(Color color) {
+    // "#RRGGBB"; with alpha — "#RRGGBBAA".
+    std::string hexFromColor(Color color, bool withAlpha) {
         auto channel = [](float value) { return static_cast<int>(std::round(std::clamp(value, 0.f, 1.f) * 255.f)); };
-        char buffer[8];
-        std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", channel(color.r), channel(color.g), channel(color.b));
+        char buffer[12];
+        if (withAlpha) {
+            std::snprintf(
+                buffer, sizeof(buffer), "#%02X%02X%02X%02X", channel(color.r), channel(color.g), channel(color.b), channel(color.a)
+            );
+        } else {
+            std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", channel(color.r), channel(color.g), channel(color.b));
+        }
         return buffer;
     }
 
     bool parseHex(const std::string &text, Color &out) {
         std::string hex = text;
         if (!hex.empty() && hex.front() == '#') { hex.erase(hex.begin()); }
-        if (hex.size() != 6) { return false; }
+        if (hex.size() != 6 && hex.size() != 8) { return false; }
         for (char ch : hex) {
             if (!std::isxdigit(static_cast<unsigned char>(ch))) { return false; }
         }
         auto pair = [&](int index) {
             return static_cast<float>(std::strtol(hex.substr(index, 2).c_str(), nullptr, 16)) / 255.f;
         };
-        out = Color(pair(0), pair(2), pair(4), 1.f);
+        // Six digits say nothing of the alpha: -1 leaves the one the picker holds.
+        out = Color(pair(0), pair(2), pair(4), hex.size() == 8 ? pair(6) : -1.f);
         return true;
     }
 
@@ -196,9 +206,44 @@ ColorPicker::ColorPicker()
     }
     addSubview(row);
 
+    // The opacity: a row of its own, there only for a color whose alpha means something.
+    m_alphaRow = std::make_shared<Panel>();
+    m_alphaRow->setBackgroundColor(Color(0x00000000));
+    m_alphaRow->layout().setFlexDirection(FlexDirection::Row);
+    m_alphaRow->layout().setAlignItems(Align::Center);
+    m_alphaRow->layout().setGap(8.f);
+    auto alphaTitle = std::make_shared<Label>("Opacity");
+    alphaTitle->setFont(Font(14.f));
+    alphaTitle->setTextRole(TextRole::Muted);
+    m_alphaRow->addSubview(alphaTitle);
+    m_alphaSlider = std::make_shared<Slider>();
+    m_alphaSlider->setRange(0.f, 1.f);
+    m_alphaSlider->layout().setFlexGrow(1.f);
+    m_alphaSlider->layout().setFlexShrink(1.f);
+    m_alphaSlider->layout().setWidth(Length::points(60.f));
+    m_alphaSlider->setOnValueChanged([this](Slider &slider) {
+        m_alpha = slider.getValue();
+        applyColorChanged(true, true);
+    });
+    m_alphaRow->addSubview(m_alphaSlider);
+    m_alphaLabel = std::make_shared<Label>("100%");
+    m_alphaLabel->setFont(Font::monospaced(14.f));
+    m_alphaLabel->setTextRole(TextRole::Secondary);
+    m_alphaLabel->setTextAlignment(TextAlignment::Right);
+    m_alphaLabel->layout().setWidth(Length::points(40.f));
+    m_alphaRow->addSubview(m_alphaLabel);
+    addSubview(m_alphaRow);
+    m_alphaRow->setCollapsed(true);
+
     m_swatch->surface().setBorderColor(ThemeColor::border);
     applyColorChanged(true, false);
     s_alivePickers.insert(this);
+}
+
+void ColorPicker::setAlphaEditable(bool editable) {
+    m_alphaEditable = editable;
+    m_alphaRow->setCollapsed(!editable);
+    applyColorChanged(true, false);
 }
 
 ColorPicker::~ColorPicker() {
@@ -211,11 +256,14 @@ void ColorPicker::setSystemColorSampler(SystemColorSampler sampler) {
 
 void ColorPicker::setColor(Color color) {
     rgbToHsv(color, m_hue, m_saturation, m_value);
+    m_alpha = std::clamp(color.a, 0.f, 1.f);
     applyColorChanged(true, false);
 }
 
 Color ColorPicker::getColor() const {
-    return hsvToRgb(m_hue, m_saturation, m_value);
+    Color color = hsvToRgb(m_hue, m_saturation, m_value);
+    color.a = m_alpha; // carried through even when it is not shown: a pick must not make a color opaque
+    return color;
 }
 
 void ColorPicker::setOnColorChanged(ColorChangedCallback callback) {
@@ -224,8 +272,14 @@ void ColorPicker::setOnColorChanged(ColorChangedCallback callback) {
 
 void ColorPicker::applyColorChanged(bool reformatHex, bool notify) {
     const Color color = getColor();
-    m_swatch->setBackgroundColor(color);
-    if (reformatHex) { m_hexField->setText(hexFromColor(color)); }
+    m_swatch->setBackgroundColor(Color(color.r, color.g, color.b, 1.f));
+    if (reformatHex) { m_hexField->setText(hexFromColor(color, m_alphaEditable && m_alpha < 0.999f)); }
+    if (m_alphaSlider) {
+        if (std::fabs(m_alphaSlider->getValue() - m_alpha) > 1.e-4f) { m_alphaSlider->setValue(m_alpha); }
+        char percent[8];
+        std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(std::round(m_alpha * 100.f)));
+        m_alphaLabel->setText(percent);
+    }
     setNeedsDisplay();
     if (notify && m_onColorChanged) { m_onColorChanged(*this); }
 }
@@ -234,6 +288,7 @@ void ColorPicker::handleHexInput() {
     Color parsed;
     if (!parseHex(m_hexField->getText(), parsed)) { return; }
     rgbToHsv(parsed, m_hue, m_saturation, m_value);
+    if (parsed.a >= 0.f && m_alphaEditable) { m_alpha = parsed.a; }
     applyColorChanged(false, true); // no reformatting while typing
 }
 

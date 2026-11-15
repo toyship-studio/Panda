@@ -184,7 +184,10 @@ void StartScreenView::rebuildContent() {
 }
 
 void StartScreenView::buildRecentProjects() {
-    m_content->addSubview(makeLabel("Recent Projects", 26.f, FontWeight::Bold));
+    // The header keeps its size; what is left of the height is the list, which scrolls.
+    auto title = makeLabel("Recent Projects", 26.f, FontWeight::Bold);
+    title->layout().setFlexShrink(0.f);
+    m_content->addSubview(title);
 
     auto hint = makeLabel(
         "Open a recent project, choose a project folder, or create a new project.",
@@ -194,22 +197,31 @@ void StartScreenView::buildRecentProjects() {
     );
     hint->setNumberOfLines(0);
     hint->layout().setWidth(Length::percent(100.f));
+    hint->layout().setFlexShrink(0.f);
     m_content->addSubview(hint);
 
-    auto card = makeSectionCard();
     if (m_model.recentProjects.empty()) {
+        auto card = makeSectionCard();
         auto emptyTitle = makeLabel("No recent projects", 18.f, FontWeight::Bold);
         auto emptyText = makeLabel("Create a new project or open an existing project folder.", 15.f, FontWeight::Regular, TextRole::Secondary);
         emptyText->setNumberOfLines(0);
         card->addSubview(emptyTitle);
         card->addSubview(emptyText);
-    } else {
-        for (size_t i = 0; i < m_model.recentProjects.size(); ++i) {
-            if (i > 0) { card->addSubview(makeDivider()); }
-            card->addSubview(makeProjectRow(i));
-        }
+        m_content->addSubview(card);
+        return;
     }
-    m_content->addSubview(card);
+    // The list takes what is left of the height and scrolls: any number of projects fits.
+    auto list = std::make_shared<ScrollView>();
+    list->setScrollDirection(ScrollDirection::Vertical);
+    list->layout().setFlexGrow(1.f);
+    list->layout().setFlexShrink(1.f);
+    list->layout().setMaxWidth(Length::points(760.f));
+    list->getContentView()->layout().setFlexDirection(FlexDirection::Column);
+    for (size_t i = 0; i < m_model.recentProjects.size(); ++i) {
+        if (i > 0) { list->addContentSubview(makeDivider()); }
+        list->addContentSubview(makeProjectRow(i));
+    }
+    m_content->addSubview(list);
 }
 
 void StartScreenView::buildNewProjectForm() {
@@ -318,9 +330,13 @@ std::shared_ptr<View> StartScreenView::makeProjectRow(size_t index) {
     textColumn->layout().setFlexDirection(FlexDirection::Column);
     textColumn->layout().setGap(3.f);
     textColumn->layout().setFlexGrow(1.f);
+    textColumn->layout().setFlexShrink(1.f); // a long path is cut, the trash keeps its place
 
-    auto title = makeLabel(project.name, 17.f, FontWeight::Bold);
-    auto path = makeLabel(project.path, 13.f, FontWeight::Regular, TextRole::Muted);
+    // A project whose folder is gone stays in the list (it may be on a drive that is not
+    // connected) and says so; the row still tries to open it, and the trash removes it.
+    auto title = makeLabel(project.name, 17.f, FontWeight::Bold, project.missing ? TextRole::Muted : TextRole::Primary);
+    auto path = makeLabel(project.missing ? "Folder not found: " + project.path : project.path, 13.f, FontWeight::Regular,
+                          project.missing ? TextRole::Dim : TextRole::Muted);
     path->setFont(Typo::ValueSmall); // the path is monospaced (design)
     path->setNumberOfLines(1);
     path->setTextOverflowMode(TextOverflowMode::TailEllipsis);

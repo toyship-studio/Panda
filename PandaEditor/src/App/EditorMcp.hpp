@@ -21,7 +21,10 @@ class EditorLayer;
 // What it cannot do with files is the editor's part, and only that is here — to look (a
 // screenshot of a viewport), to read what the editor said (the log), to make the editor take the
 // files (Reload, Save), to run the game (Play, Stop), to place the editor camera, to restart. The
-// screenshot of the whole window shows the agent the editor itself, when the editor is its work.
+// screenshot of the whole window shows the agent the editor itself, when the editor is its work,
+// and `pointer` and `key` let it use what it sees as the user would: press a button, drag a
+// label, type into a field — the input goes into the UI of the editor where the mouse and the
+// keyboard of the user go.
 // There are no tools that edit a world or an asset: that would be a second way to do what a text
 // file already does.
 //
@@ -43,6 +46,7 @@ public:
 
 private:
     struct Screenshot;
+    struct InputStep;
     enum class Exit { None, Restart, Quit };
 
     void syncServer(); // the server follows the project and its "mcp" section
@@ -59,6 +63,8 @@ private:
     Mcp::PendingResult camera(const rapidjson::Value &arguments);
     Mcp::PendingResult openWorld(const rapidjson::Value &arguments);
     Mcp::PendingResult show(const rapidjson::Value &arguments);
+    Mcp::PendingResult pointer(const rapidjson::Value &arguments);
+    Mcp::PendingResult key(const rapidjson::Value &arguments);
     Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.
@@ -67,6 +73,10 @@ private:
     void showViewport(ViewportKind view);
     // Draws the window into the capture target and asks for its pixels; false — the window has no size.
     bool captureWindow(Screenshot &shot);
+
+    // Plays the steps of a gesture, one a frame, and answers with what is under the pointer.
+    Mcp::PendingResult playInput(std::vector<InputStep> steps);
+    std::string pointerJson() const;
 
     bool hasProject() const;
     std::string cameraJson() const;

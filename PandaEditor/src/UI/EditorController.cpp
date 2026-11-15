@@ -14,6 +14,8 @@
 #include "UI/EditorDialogs.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
 #include <PandaEditorKit/Widgets/Icons.hpp>
+#include <PandaEditorKit/Widgets/ObjectIcons.hpp>
+#include <PandaEditorKit/Widgets/Picker.hpp>
 #include "Project/Build/ProjectBuilder.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
@@ -526,7 +528,9 @@ void EditorController::refreshFromWorld() {
     m_hierarchyView->reload();
     refreshStatistics();
     pushSelectionToPanels();
-    if (m_worldSettingsView) { m_worldSettingsView->rebuild(); } // a loaded world, undo/redo: the values changed
+    // A loaded world, undo/redo, a pasted component: the values changed under the forms.
+    if (m_editorTabs) { m_editorTabs->refreshEntityForms(); }
+    if (m_worldSettingsView) { m_worldSettingsView->rebuild(); }
 }
 
 void EditorController::updateProfilerPanel() {
@@ -659,13 +663,15 @@ void EditorController::pushSelectionToPanels() {
         // entity to show — the set keeps no order — so it moves nothing.
         if (ids.size() == 1) { m_hierarchyView->revealEntity(ids.front()); }
         m_contentView->clearAssetSelection();
-        m_hierarchyView->setStatusText(entities.size() == 1
-                                           ? "Selected: " + entities.front().getName()
-                                           : "Selected: " + std::to_string(entities.size()) + " items");
     } else {
         m_hierarchyView->setSelectedEntities({});
-        m_hierarchyView->setStatusText("Selected: -");
     }
+    // The foot of the Hierarchy: how large the world is and how much of it is selected.
+    const int total = liveEntityCount();
+    const std::string count = std::to_string(total) + (total == 1 ? " entity" : " entities");
+    m_hierarchyView->setStatusText(
+        entities.empty() ? count : std::to_string(entities.size()) + " of " + count + " selected"
+    );
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
     if (m_editorTabs) { m_editorTabs->showSelection(entities, entities.empty() ? m_selectedAssets : std::vector<Panda::AssetId>{}); }
 }
@@ -704,14 +710,14 @@ void EditorController::syncSelectionFromEngine() {
 void EditorController::updateChromeFromState(bool isEditMode) {
     if (!m_toolbarView) { return; }
     syncWorldTabs();
-    Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine();
-    const bool scriptingReady = engine && engine->isLoaded();
     // The undo/redo buttons show the stack state of the ACTIVE document (just like Cmd+Z itself).
     Document *document = activeDocument();
     Panda::CommandHistory *stack = document ? document->undoStack() : nullptr;
     const bool canUndo = stack && stack->CAN_UNDO();
     const bool canRedo = stack && stack->CAN_REDO();
-    const bool canPlay = isEditMode && scriptingReady; // Play: only from Edit and with scripting loaded
+    // Play is there whenever the world is edited: without the scripts of the project it explains
+    // what is missing (toolbarDidPickSceneState) instead of being a dead button.
+    const bool canPlay = isEditMode;
     const bool canStop = !isEditMode;                  // Stop: only while the world is running
 
     if (canUndo != m_tbCanUndo) { m_tbCanUndo = canUndo; m_toolbarView->setCanUndo(canUndo); }
@@ -878,6 +884,37 @@ void EditorController::hierarchyDidRequestDuplicate(const std::vector<Panda::UUI
     selectEntitiesByIds(dupIds);
 }
 
+void EditorController::hierarchyDidRequestRename(Panda::UUID id) {
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    Panda::Entity entity = m_panelsWorld ? m_panelsWorld->getById(id) : Panda::Entity();
+    if (context == nullptr || !entity.isValid()) { return; }
+    // Next to the Hierarchy, where the name is read.
+    const Rect frame = m_hierarchyView->getWorldFrame();
+    showNameDialog(
+        context, Point(frame.origin.x + 24.f, frame.origin.y + 48.f), "Rename", entity.getName(),
+        [this, id](const std::string &name) { renameEntities({id}, name); }, "Rename"
+    );
+}
+
+void EditorController::hierarchyDidActivateEntity(Panda::UUID) {
+    // The click that came first has made the entity the selection.
+    if (m_bridge) { m_bridge->focusSelection(); }
+}
+
+void EditorController::renameEntities(const std::vector<Panda::UUID> &ids, const std::string &name) {
+    if (!m_panelsWorld || name.empty()) { return; }
+    std::unordered_set<Panda::Entity> targets;
+    for (Panda::UUID id : ids) {
+        Panda::Entity entity = m_panelsWorld->getById(id);
+        if (entity.isValid() && entity.getName() != name) { targets.insert(entity); }
+    }
+    if (targets.empty()) { return; }
+    // The name is the tag component: one edit command, so Undo brings the old names back.
+    commitComponent<Panda::TagComponent>(*m_panelsWorld, targets, Panda::TagComponent(name));
+    m_panelsWorld->setChanged();
+    refreshFromWorld();
+}
+
 void EditorController::hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids) {
     if (!m_panelsWorld) { return; }
     std::vector<Panda::Entity> entities;
@@ -936,13 +973,10 @@ void EditorController::hierarchyDidReparent(const std::vector<Panda::UUID> &item
         if (ent.isValid()) { entities.push_back(ent); }
     }
     if (entities.empty()) { return; }
-    if (newParentId != Panda::UUID(0)) {
-        Panda::Entity parent = m_panelsWorld->getById(newParentId);
-        Panda::HierarchyCommand command(entities, parent);
-        m_panelsWorld->getCommandHistory().SAVE(command, true);
-    } else {
-        for (Panda::Entity ent : entities) { m_panelsWorld->setParent(ent, {}); } // a drop onto the "Scene" root
-    }
+    // A drop onto the root of the world makes roots: the command takes "no parent" too.
+    Panda::Entity parent = newParentId != Panda::UUID(0) ? m_panelsWorld->getById(newParentId) : Panda::Entity();
+    Panda::HierarchyCommand command(entities, parent);
+    m_panelsWorld->getCommandHistory().SAVE(command, true);
     m_panelsWorld->setChanged();
     refreshFromWorld();
 }
@@ -950,11 +984,7 @@ void EditorController::hierarchyDidReparent(const std::vector<Panda::UUID> &item
 /* --------------------------- Entity editor outputs --------------------------- */
 
 void EditorController::entityDidEditName(const std::string &name) {
-    std::vector<Panda::Entity> entities = selectedEntities();
-    if (entities.empty()) { return; }
-    for (Panda::Entity e : entities) { e.setName(name); } // setName calls setWorldChanged
-    m_hierarchyView->reload();                            // the name is visible in the tree
-    if (entities.size() == 1) { m_hierarchyView->setStatusText("Selected: " + entities.front().getName()); }
+    renameEntities(selectedEntityIds(), name);
 }
 
 void EditorController::entityDidSetStatic(bool isStatic) {
@@ -1282,9 +1312,8 @@ void EditorController::viewportDidDropAssets(const std::vector<std::uint32_t> &a
         instantiateMeshAssets(ids);
         return;
     }
-    m_outputView->appendLog(
-        OutputPanelView::LogLevel::Warning, "Drop of \"" + kind + "\" assets is not supported yet"
-    );
+    // A world dropped onto the viewport opens, as a double click on it in the Content Browser does.
+    if (kind == "scene" && m_bridge && !assetIds.empty()) { m_bridge->openWorldAsset(assetIds.front()); }
 }
 
 // gltf mesh → an entity subtree (one root per asset): the engine builds the nodes/transforms/submeshes
@@ -1489,6 +1518,31 @@ void EditorController::createPostprocessShader(const Panda::path_t &directory) {
 /* ----------------------------- Toolbar output ---------------------------- */
 
 void EditorController::toolbarDidPickSceneState(SceneState state) {
+    if (state == SceneState::Play) {
+        // The game is the world plus the scripts of the project: without their build there is
+        // nothing to play. The CMake panel is where they are built.
+        Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine();
+        if (engine == nullptr || !engine->isLoaded()) {
+            showPanel("cmake");
+            m_outputView->appendLog(
+                OutputPanelView::LogLevel::Warning,
+                "Play needs the scripts of the project. Build them here in the CMake panel (Scripts, Build), then press Play."
+            );
+            if (Context *context = m_root ? m_root->getContext() : nullptr) {
+                showConfirmDialog(
+                    context, "The scripts are not built",
+                    "The game is the world plus the C++ scripts of the project, and the scripts have not been built "
+                    "yet. The build runs in the CMake panel; the editor loads the scripts when it is done, and "
+                    "Play works from then on.",
+                    "Build Scripts", /*destructive*/ false,
+                    [this] {
+                        if (m_bridge) { m_bridge->startScriptsBuild(Panda::BuildAction::Build, Panda::ScriptsBuildConfig::Debug); }
+                    }
+                );
+            }
+            return;
+        }
+    }
     if (m_bridge) { m_bridge->setSceneState(state); } // the actual play/stop
     const char *message = state == SceneState::Play ? "Entered Play mode" : "Returned to Edit mode";
     m_outputView->appendLog(OutputPanelView::LogLevel::Info, message);
@@ -1639,7 +1693,9 @@ void EditorController::cmakeBuildFinished(Panda::BuildTargetKind kind, bool succ
 }
 
 void EditorController::toolbarDidExport() {
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Export / Cook requested");
+    // The button is File → Export Game → Cook Runtime Data; what it did is in the Output.
+    showPanel("output");
+    if (m_bridge) { m_bridge->exportGame(); }
 }
 
 // Undo/redo go by the stack of the ACTIVE DOCUMENT (the document model): a document tab —
@@ -1755,21 +1811,245 @@ void EditorController::entityDidRequestMaximize() {
 
 /* ----------------------------- Shortcuts --------------------------------- */
 
+namespace {
+
+    bool isInside(const View *view, const View *ancestor) {
+        for (; view != nullptr; view = view->getSuperview()) {
+            if (view == ancestor) { return true; }
+        }
+        return false;
+    }
+
+} // namespace
+
+// The keys of the entity commands belong to the places that show the world — the Scene surface
+// and the Hierarchy — and only while one of them has the keyboard. With the focus elsewhere (the
+// Content Browser, a settings tab, the settings sidebar of the viewport) or nowhere, the same
+// keys mean something else or nothing: Backspace there must not delete what is selected in the
+// world.
+bool EditorController::worldHasKeyboard() const {
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    const View *focused = context ? context->getFocusedView() : nullptr;
+    if (focused == nullptr) { return false; }
+    return (m_viewportView && m_viewportView->sceneHasFocus()) || isInside(focused, m_hierarchyView.get());
+}
+
+std::vector<Panda::UUID> EditorController::selectedEntityIds() {
+    std::vector<Panda::UUID> ids;
+    for (Panda::Entity entity : selectedEntities()) { ids.push_back(entity.getId()); }
+    return ids;
+}
+
 void EditorController::registerShortcuts() {
-    m_shortcuts.registerCommand(
-        "dock.toggleFullscreen", "Toggle Fullscreen",
-        KeyChord{Key::Space, /*shift*/ true, /*ctrl*/ false, /*alt*/ false, /*super*/ false},
-        [this] { return maximizeFocusedDock(); }
-    );
-    m_shortcuts.registerCommand(
-        "camera.focusSelection", "Focus Selection",
-        KeyChord{Key::Z, /*shift*/ false, /*ctrl*/ false, /*alt*/ false, /*super*/ false},
-        [this] { if (m_bridge) { m_bridge->focusSelection(); } return true; }
-    );
+    using Chord = KeyChord;
+    auto command = [this](const char *id, const char *group, const char *label, Chord chord, std::function<bool()> run,
+                          Chord alternate = {}) {
+        m_shortcuts.registerCommand(id, group, label, chord, std::move(run), alternate);
+    };
+    // An entity command by a key: only where the world has the keyboard. The palette runs the
+    // same handler with its own field in focus, so it asks nothing of the focus.
+    auto entityCommand = [this, &command](const char *id, const char *label, Chord chord, std::function<bool()> run,
+                                          Chord alternate = {}) {
+        command(id, "Entity", label, chord, [this, run = std::move(run)] {
+            if (!m_paletteRuns && !worldHasKeyboard()) { return false; }
+            return run();
+        }, alternate);
+    };
+
+    command("palette.show", "Editor", "Command Palette", Chord::primary(Key::P, /*shift*/ true), [this] {
+        showCommandPalette();
+        return true;
+    });
+    command("goto.show", "Editor", "Go to Asset or Entity", Chord::primary(Key::P), [this] {
+        showGoTo();
+        return true;
+    });
+    command("hierarchy.search", "Editor", "Find in Hierarchy", Chord::primary(Key::F), [this] {
+        if (!showPanel("hierarchy")) { return false; }
+        m_hierarchyView->focusSearch();
+        return true;
+    });
+    command("dock.toggleFullscreen", "Window", "Toggle Fullscreen of the Panel", Chord::plain(Key::Space, /*shift*/ true),
+            [this] { return maximizeFocusedDock(); });
+    command("camera.focusSelection", "View", "Focus Selection", Chord::plain(Key::F), [this] {
+        if (m_bridge) { m_bridge->focusSelection(); }
+        return true;
+    }, Chord::plain(Key::Z));
+    command("camera.reset", "View", "Reset Camera", {}, [this] {
+        if (m_bridge) { m_bridge->resetCamera(); }
+        return true;
+    });
+
+    entityCommand("entity.delete", "Delete", Chord::plain(Key::Backspace), [this] {
+        const std::vector<Panda::UUID> ids = selectedEntityIds();
+        if (ids.empty()) { return false; }
+        hierarchyDidRequestDelete(ids);
+        return true;
+    }, Chord::plain(Key::Delete));
+    entityCommand("entity.duplicate", "Duplicate", Chord::primary(Key::D), [this] {
+        const std::vector<Panda::UUID> ids = selectedEntityIds();
+        if (ids.empty()) { return false; }
+        hierarchyDidRequestDuplicate(ids);
+        return true;
+    });
+    entityCommand("entity.copy", "Copy", Chord::primary(Key::C), [this] {
+        const std::vector<Panda::UUID> ids = selectedEntityIds();
+        if (ids.empty()) { return false; }
+        hierarchyDidRequestCopy(ids);
+        return true;
+    });
+    entityCommand("entity.cut", "Cut", Chord::primary(Key::X), [this] {
+        const std::vector<Panda::UUID> ids = selectedEntityIds();
+        if (ids.empty()) { return false; }
+        hierarchyDidRequestCopy(ids); // the text goes to the clipboard, the entities go
+        hierarchyDidRequestDelete(ids);
+        return true;
+    });
+    entityCommand("entity.paste", "Paste", Chord::primary(Key::V), [this] {
+        if (!m_panelsWorld) { return false; }
+        hierarchyDidRequestPaste();
+        return true;
+    });
+    entityCommand("entity.rename", "Rename", Chord::plain(Key::F2), [this] {
+        Panda::Entity entity = primaryEntity();
+        if (!entity.isValid()) { return false; }
+        hierarchyDidRequestRename(entity.getId());
+        return true;
+    });
+    entityCommand("entity.selectAll", "Select All", Chord::primary(Key::A), [this] {
+        if (!m_panelsWorld) { return false; }
+        std::vector<Panda::UUID> ids;
+        for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {
+            if (m_panelsWorld->isValidEntt(handle)) { ids.push_back(m_panelsWorld->entity(handle).getId()); }
+        }
+        if (ids.empty()) { return false; }
+        selectEntitiesByIds(ids);
+        return true;
+    });
+    entityCommand("entity.deselect", "Deselect All", Chord::plain(Key::Escape), [this] {
+        if (selectedEntities().empty()) { return false; }
+        selectEntitiesByIds({});
+        return true;
+    });
+
+    // The tools of the gizmo: the keys the viewport has always had, now with any panel in focus.
+    static const char *const TOOLS[] = {"Move Tool", "Rotate Tool", "Scale Tool"};
+    static const char *const TOOL_IDS[] = {"gizmo.move", "gizmo.rotate", "gizmo.scale"};
+    for (int mode = 0; mode < 3; ++mode) {
+        command(TOOL_IDS[mode], "Tools", TOOLS[mode], Chord::plain(static_cast<Key>(static_cast<int>(Key::Key1) + mode)),
+                [this, mode] {
+                    if (!m_viewportView) { return false; }
+                    m_viewportView->setGizmoMode(mode);
+                    return true;
+                });
+    }
+
+    command("world.play", "World", "Play", Chord::plain(Key::F5), [this] {
+        toolbarDidPickSceneState(SceneState::Play);
+        return true;
+    });
+    command("world.stop", "World", "Stop", Chord::plain(Key::F5, /*shift*/ true), [this] {
+        toolbarDidPickSceneState(SceneState::Edit);
+        return true;
+    });
+
+    static const std::pair<const char *, const char *> PANELS[] = {
+        {"hierarchy", "Hierarchy"},   {"contentBrowser", "Content Browser"}, {"output", "Output"},
+        {"cmake", "CMake"},           {"statistics", "Statistics"},          {"profiler", "Profiler"},
+    };
+    for (const auto &[panelId, title] : PANELS) {
+        const std::string panel = panelId;
+        command(("panel." + panel).c_str(), "Window", (std::string("Show ") + title).c_str(), {}, [this, panel] {
+            return showPanel(panel);
+        });
+    }
 }
 
 bool EditorController::handleShortcut(const KeyEvent &event) {
     return m_shortcuts.handleKey(event);
+}
+
+// The command palette (⇧⌘P): every command of the editor by name — its own (ShortcutManager) and
+// the items of the menu bar — with the keys that run it. Enter or a click runs.
+void EditorController::showCommandPalette() {
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    if (context == nullptr) { return; }
+    std::vector<PickerItem> items;
+    // What choosing a row does, by the index of the row.
+    auto actions = std::make_shared<std::vector<std::function<void()>>>();
+    for (const ShortcutManager::Command &command : m_shortcuts.commands()) {
+        if (command.id == "palette.show") { continue; }
+        items.push_back({command.label, command.group, {}, command.chord.text()});
+        const std::string id = command.id;
+        actions->push_back([this, id] {
+            m_paletteRuns = true;
+            const bool ran = m_shortcuts.run(id);
+            m_paletteRuns = false;
+            if (!ran) {
+                m_outputView->appendLog(OutputPanelView::LogLevel::Info, "The command does not apply now: nothing to act on");
+            }
+        });
+    }
+    if (m_bridge) {
+        for (const EngineBridge::MenuCommand &command : m_bridge->menuCommands()) {
+            items.push_back({command.title, command.menu, {}, command.shortcut});
+            const uint32_t id = command.id;
+            actions->push_back([this, id] {
+                if (m_bridge) { m_bridge->runMenuCommand(id); }
+            });
+        }
+    }
+    showPalette(context, "Run a command…", std::move(items), [actions](int index) {
+        if (index >= 0 && index < static_cast<int>(actions->size())) { (*actions)[static_cast<size_t>(index)](); }
+    });
+}
+
+// Go to (⌘P): every entity of the world the panels show and every asset of the project by
+// name. An entity becomes the selection, an asset is selected and shown where it lives.
+void EditorController::showGoTo() {
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    if (context == nullptr) { return; }
+    std::vector<PickerItem> items;
+    auto actions = std::make_shared<std::vector<std::function<void()>>>();
+    if (m_panelsWorld) {
+        std::vector<Panda::Entity> entities;
+        m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>().each([&](Panda::IdComponent &id) {
+            Panda::Entity entity = m_panelsWorld->getById(id.id);
+            if (entity.isValid()) { entities.push_back(entity); }
+        });
+        std::sort(entities.begin(), entities.end(), [](Panda::Entity &a, Panda::Entity &b) { return a.getName() < b.getName(); });
+        for (Panda::Entity entity : entities) {
+            Panda::Entity parent = entity.getParent();
+            items.push_back({entity.getName(), parent.isValid() ? "in " + parent.getName() : "entity", entityIconName(entity), {}});
+            const Panda::UUID id = entity.getId();
+            actions->push_back([this, id] { selectEntity(id); });
+        }
+    }
+    if (Panda::AssetHandlerEditor *handler = assetHandler()) {
+        struct Found {
+            std::string name;
+            std::string folder;
+            Panda::AssetId id;
+            Panda::AssetType type;
+        };
+        std::vector<Found> found;
+        for (const auto &[id, info] : handler->getRegistry()) {
+            std::string folder = handler->assetPath(id).parent_path().lexically_relative(handler->getProjectPath()).generic_string();
+            if (folder.empty() || folder == "." || folder.rfind("..", 0) == 0) { continue; } // not a file of the project
+            found.push_back({handler->getAssetName(id), std::move(folder), id, info.type});
+        }
+        std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
+            return a.name != b.name ? a.name < b.name : a.folder < b.folder;
+        });
+        for (Found &asset : found) {
+            items.push_back({std::move(asset.name), std::move(asset.folder), assetIconName(asset.type), {}});
+            const Panda::AssetId id = asset.id;
+            actions->push_back([this, id] { selectAsset(id); });
+        }
+    }
+    showPalette(context, "Go to an asset or an entity…", std::move(items), [actions](int index) {
+        if (index >= 0 && index < static_cast<int>(actions->size())) { (*actions)[static_cast<size_t>(index)](); }
+    });
 }
 
 bool EditorController::maximizeFocusedDock() {
@@ -1785,12 +2065,20 @@ bool EditorController::maximizeFocusedDock() {
 
 /* ------------------------------ Statistics ------------------------------- */
 
-void EditorController::refreshStatistics() {
+// The entities of the world the panels show. An entity deleted by an undoable command stays in
+// the registry as a tombstone until its command leaves the history: it is not counted.
+int EditorController::liveEntityCount() const {
     int total = 0;
     if (m_panelsWorld) {
-        m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>().each([&total](Panda::IdComponent &) { ++total; });
+        for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {
+            if (m_panelsWorld->isValidEntt(handle)) { ++total; }
+        }
     }
-    m_statisticsView->setEntityCount(total);
+    return total;
+}
+
+void EditorController::refreshStatistics() {
+    m_statisticsView->setEntityCount(liveEntityCount());
 }
 
 /* ------------------------------ EditorTabsHost ---------------------------- */

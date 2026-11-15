@@ -120,6 +120,9 @@ public:
     void flashItem(TreeItem item);
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnContextMenu(ContextMenuCallback callback);
+    // A double click on a row (not on its arrow): "open this" — what it means is the
+    // application's (the Hierarchy moves the camera to the entity).
+    void setOnItemActivated(std::function<void(TreeView &, TreeItem item)> callback);
 
     // Drag-and-drop reparent within the tree. Applying it to the model is up to the application.
     void setCanMove(CanMoveCallback callback);
@@ -206,6 +209,7 @@ private:
     TreeSelectionMode m_selectionMode = TreeSelectionMode::Single;
     SelectionChangedCallback m_onSelectionChanged;
     ContextMenuCallback m_onContextMenu;
+    std::function<void(TreeView &, TreeItem)> m_onItemActivated;
     CanMoveCallback m_canMove;
     MoveCallback m_onMove;
 

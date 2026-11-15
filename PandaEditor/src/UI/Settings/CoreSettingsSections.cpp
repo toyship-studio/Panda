@@ -60,7 +60,24 @@ namespace {
         });
     }
 
-    // Cascaded shadows from the sun.
+    // The side of a texture in texels: the sizes a person would choose from. A size written into
+    // the file by hand that is not one of them keeps its place in the list.
+    std::shared_ptr<PropertyRow> addTexelSizeRow(
+        CollapsibleSection &section, const char *title, std::vector<uint32_t> sizes, uint32_t value,
+        std::function<void(uint32_t)> onChange
+    ) {
+        if (std::find(sizes.begin(), sizes.end(), value) == sizes.end()) {
+            sizes.insert(std::upper_bound(sizes.begin(), sizes.end(), value), value);
+        }
+        std::vector<std::string> items;
+        for (uint32_t size : sizes) { items.push_back(std::to_string(size)); }
+        const int selected = static_cast<int>(std::find(sizes.begin(), sizes.end(), value) - sizes.begin());
+        return addComboRow(section, title, std::move(items), selected, [sizes, onChange = std::move(onChange)](int index) {
+            if (index >= 0 && index < static_cast<int>(sizes.size())) { onChange(sizes[static_cast<size_t>(index)]); }
+        });
+    }
+
+    // The shadows of the world: the cascades of the sun and the tiles of the lamps.
     void buildShadows(CollapsibleSection &section, Panda::TypeContext &store) {
         auto data = std::make_shared<Panda::WorldGraphicsSettings>(store.get<Panda::WorldGraphicsSettings>());
         auto emit = [data] { commitSettings<Panda::WorldGraphicsSettings>(SettingsScope::World, *data); };
@@ -68,48 +85,44 @@ namespace {
             data->shadows.enabled = on;
             emit();
         });
-        addNumberRow(section, "Cascades", 1.f, 4.f, static_cast<float>(data->shadows.cascadeCount), [data, emit](float value) {
-            data->shadows.cascadeCount = static_cast<uint32_t>(std::max(0.f, value));
+        addIntegerRow(section, "Cascades", 1, 4, static_cast<int>(data->shadows.cascadeCount), [data, emit](int value) {
+            data->shadows.cascadeCount = static_cast<uint32_t>(value);
             emit();
-        });
-        // Side of a cascade tile in the atlas (texels).
-        addNumberRow(section, "Map Size", 256.f, 4096.f, static_cast<float>(data->shadows.tileSize), [data, emit](float value) {
-            data->shadows.tileSize = static_cast<uint32_t>(std::max(0.f, value));
+        })->setHelp("The parts the shadow distance is cut into, each with a map of its own: a depth pass over the world per cascade");
+        addTexelSizeRow(section, "Map Size", {256, 512, 1024, 2048, 4096}, data->shadows.tileSize, [data, emit](uint32_t value) {
+            data->shadows.tileSize = value;
             emit();
-        });
+        })->setHelp("The side of the map of a cascade, texels");
         addNumberRow(section, "Distance", 1.f, 4096.f, data->shadows.distance, [data, emit](float value) {
             data->shadows.distance = value;
             emit();
-        });
+        })->setHelp("How far from the camera the sun casts shadows, m");
         addNumberRow(section, "Strength", 0.f, 1.f, data->shadows.strength, [data, emit](float value) {
             data->shadows.strength = value;
             emit();
-        });
-        // The angular radius of the sun (degrees): how fast the edge of a shadow softens with the
-        // distance from its caster. 0 — the fixed filter.
+        })->setHelp("0 — no shadow, 1 — the sun does not reach a shadowed point at all");
         addNumberRow(section, "Softness", 0.f, 5.f, data->shadows.softness, [data, emit](float value) {
             data->shadows.softness = value;
             emit();
-        });
-        // Side of a tile of the lamp shadow atlas (texels): a spot has one tile, a point light six.
-        addNumberRow(section, "Lamp Map Size", 128.f, 2048.f, static_cast<float>(data->shadows.lampTileSize), [data, emit](float value) {
-            data->shadows.lampTileSize = static_cast<uint32_t>(std::max(0.f, value));
+        })->setHelp("The angular radius of the sun, degrees: how fast the edge of a shadow softens with the distance from its caster. 0 — an edge of a fixed width");
+        addTexelSizeRow(section, "Lamp Map Size", {128, 256, 512, 1024, 2048}, data->shadows.lampTileSize, [data, emit](uint32_t value) {
+            data->shadows.lampTileSize = value;
             emit();
-        });
+        })->setHelp("The side of the map of a lamp that casts shadows, texels: a spot has one map, a lamp that shines all around six");
         // Biases against acne: slope — the rasterizer of the depth pass; normal offset and receiver
         // bias — in cascade texels (independent of the scene scale).
         addNumberRow(section, "Slope Bias", 0.f, 16.f, data->shadows.slopeBias, [data, emit](float value) {
             data->shadows.slopeBias = value;
             emit();
-        });
+        })->setHelp("Pushes the depth of a caster away by its slope to the light: against the stripes a surface casts on itself");
         addNumberRow(section, "Normal Offset", 0.f, 8.f, data->shadows.normalOffset, [data, emit](float value) {
             data->shadows.normalOffset = value;
             emit();
-        });
+        })->setHelp("Moves the point that is looked up along its normal, texels of the map: against stripes on surfaces the light grazes");
         addNumberRow(section, "Depth Bias", 0.f, 8.f, data->shadows.receiverBias, [data, emit](float value) {
             data->shadows.receiverBias = value;
             emit();
-        });
+        })->setHelp("Moves the point that is looked up towards the light, texels of the map");
     }
 
     // Screen-space ambient occlusion: the contact darkening of the ambient light (the `ssao`
@@ -121,15 +134,96 @@ namespace {
             data->ssao.enabled = on;
             emit();
         });
-        // How far an occluder reaches (m).
         addNumberRow(section, "Radius", 0.05f, 4.f, data->ssao.radius, [data, emit](float value) {
             data->ssao.radius = value;
             emit();
-        });
+        })->setHelp("How far an occluder reaches, m");
         addNumberRow(section, "Intensity", 0.f, 4.f, data->ssao.intensity, [data, emit](float value) {
             data->ssao.intensity = value;
             emit();
+        })->setHelp("0 — none, 1 — the occlusion as computed, above — darker");
+
+        // The budget: directions around a pixel × depth samples along each, at half or at full
+        // resolution. The world file holds the three numbers; the quality is a name for a set of
+        // them, not a setting of its own.
+        struct Quality {
+            const char *name;
+            int slices;
+            int steps;
+            bool fullResolution;
+        };
+        static const Quality QUALITIES[] = {
+            {"Low", 2, 3, false}, {"Medium", 3, 4, false}, {"High", 3, 4, true}, {"Ultra", 6, 6, true}};
+        const int qualityCount = static_cast<int>(std::size(QUALITIES));
+        auto qualityOf = [qualityCount](const Panda::SsaoSettings &ssao) {
+            for (int i = 0; i < qualityCount; ++i) {
+                const Quality &quality = QUALITIES[i];
+                if (ssao.slices == quality.slices && ssao.steps == quality.steps && ssao.fullResolution == quality.fullResolution) {
+                    return i;
+                }
+            }
+            return qualityCount; // "Custom"
+        };
+        // The rows show each other's changes; they are held by the section, the callbacks by the
+        // rows: raw pointers, no cycle.
+        auto refresh = std::make_shared<std::function<void()>>();
+        auto changed = [emit, refresh] {
+            emit();
+            if (*refresh) { (*refresh)(); }
+        };
+        std::vector<std::string> names;
+        for (const Quality &quality : QUALITIES) { names.push_back(quality.name); }
+        names.push_back("Custom");
+        auto qualityRow = addComboRow(section, "Quality", names, qualityOf(data->ssao), [data, changed, qualityCount](int index) {
+            if (index < 0 || index >= qualityCount) { return; } // "Custom" is what the numbers are
+            data->ssao.slices = QUALITIES[index].slices;
+            data->ssao.steps = QUALITIES[index].steps;
+            data->ssao.fullResolution = QUALITIES[index].fullResolution;
+            changed();
         });
+        qualityRow->setHelp("What the occlusion may cost: a set of the three numbers below");
+        auto slicesRow = addIntegerRow(section, "Slices", 1, Panda::SsaoSettings::MAX_SLICES, data->ssao.slices, [data, changed](int value) {
+            data->ssao.slices = value;
+            changed();
+        });
+        slicesRow->setHelp("Directions the surroundings of a pixel are searched in: more — less grain");
+        auto stepsRow = addIntegerRow(section, "Steps", 1, Panda::SsaoSettings::MAX_STEPS, data->ssao.steps, [data, changed](int value) {
+            data->ssao.steps = value;
+            changed();
+        });
+        stepsRow->setHelp("Depth samples along a direction, each way: more — a small occluder is not missed");
+        auto fullRow = addToggleRow(section, "Full Resolution", data->ssao.fullResolution, [data, changed](bool on) {
+            data->ssao.fullResolution = on;
+            changed();
+        });
+        fullRow->setHelp("At the resolution of the frame instead of half of it: the occlusion follows thin details, four times the pixels");
+        for (const auto &row : {slicesRow, stepsRow, fullRow}) { row->setIndent(14.f); }
+        auto cost = makeFormHint({});
+        section.addContent(cost);
+
+        auto *quality = dynamic_cast<Combobox *>(qualityRow->editor().get());
+        auto *slices = dynamic_cast<NumberField *>(slicesRow->editor().get());
+        auto *steps = dynamic_cast<NumberField *>(stepsRow->editor().get());
+        auto *full = dynamic_cast<Toggle *>(fullRow->editor().get());
+        Label *costLabel = cost.get();
+        *refresh = [data, qualityOf, quality, slices, steps, full, costLabel] {
+            const Panda::SsaoSettings &ssao = data->ssao;
+            if (quality != nullptr) { quality->setSelectedIndex(qualityOf(ssao)); }
+            // A field the user is not in takes the value (a preset was chosen); setValue of the
+            // field being typed into would rewrite the text under the caret.
+            if (slices != nullptr && static_cast<int>(std::lround(slices->getValue())) != ssao.slices) {
+                slices->setValue(static_cast<float>(ssao.slices));
+            }
+            if (steps != nullptr && static_cast<int>(std::lround(steps->getValue())) != ssao.steps) {
+                steps->setValue(static_cast<float>(ssao.steps));
+            }
+            if (full != nullptr && full->isOn() != ssao.fullResolution) { full->setOn(ssao.fullResolution); }
+            costLabel->setText(
+                std::to_string(2 * ssao.slices * ssao.steps + 5) + " depth samples a pixel, at " +
+                (ssao.fullResolution ? "the resolution of the frame." : "half the resolution of the frame.")
+            );
+        };
+        (*refresh)();
     }
 
     // Occlusion Volume: sky visibility and sun transmittance from the flora scattering.
@@ -157,13 +251,10 @@ namespace {
             emit();
         });
         // Window — chunks per side (a chunk is 64 cells: with a 4 m cell an 8-chunk window = 2 km).
-        addNumberRow(
-            section, "Window Chunks", 2.f, 8.f, static_cast<float>(data->occlusion.windowChunks),
-            [data, emit](float value) {
-                data->occlusion.windowChunks = static_cast<int>(std::lround(value));
-                emit();
-            }
-        );
+        addIntegerRow(section, "Window Chunks", 2, 8, data->occlusion.windowChunks, [data, emit](int value) {
+            data->occlusion.windowChunks = value;
+            emit();
+        })->setHelp("Chunks per side of the window around the camera; a chunk is 64 cells");
         addNumberRow(section, "Extinction", 0.f, 8.f, data->occlusion.extinction, [data, emit](float value) {
             data->occlusion.extinction = value;
             emit();
@@ -225,7 +316,7 @@ namespace {
         addNumberRow(section, "Camera Speed", 1.f, 500.f, data->cameraSpeed, [data, emit](float value) {
             data->cameraSpeed = value;
             emit();
-        });
+        })->setHelp("How fast the editor camera flies, m/s");
         addToggleRow(section, "Wireframe", data->wireframe, [data, emit](bool on) {
             data->wireframe = on;
             emit();
@@ -331,11 +422,11 @@ namespace {
         fontRow("Mono Font", "JetBrains Mono", appearance.monoFont, [](Panda::EditorAppearanceSettings &data, const std::string &family) {
             data.monoFont = family;
         });
-        addNumberRow(section, "UI Font Size", 12.f, 20.f, appearance.uiFontSize, [](float value) {
+        addIntegerRow(section, "UI Font Size", 12, 20, static_cast<int>(std::lround(appearance.uiFontSize)), [](int value) {
             auto data = editorHost().settings(SettingsScope::Editor).get<Panda::EditorAppearanceSettings>();
-            data.uiFontSize = std::round(value);
+            data.uiFontSize = static_cast<float>(value);
             commitSettings<Panda::EditorAppearanceSettings>(SettingsScope::Editor, data);
-        });
+        })->setHelp("The size of the text of the editor; it is designed at 16");
         section.addContent(makeFormHint("Any font installed on this computer. A character the font lacks is drawn with the bundled one."));
     }
 
@@ -378,13 +469,13 @@ namespace {
         })});
         auto updateRestart = [data, restartHint, restartRow] {
             const bool needed = Panda::ProjectModules::restartNeeded(*data);
-            restartHint->setHidden(!needed);
-            restartRow->setHidden(!needed);
+            restartHint->setCollapsed(!needed);
+            restartRow->setCollapsed(!needed);
         };
         for (const Panda::BuiltinModule &module : Panda::builtinModules()) {
             const std::string id = module.id;
             const bool enabled = Panda::ProjectModules::isEnabled(*data, id);
-            addToggleRow(section, module.id, enabled, [data, emit, id, updateRestart](bool on) {
+            auto row = addToggleRow(section, module.name, enabled, [data, emit, id, updateRestart](bool on) {
                 auto &entries = data->entries;
                 auto it = std::find_if(entries.begin(), entries.end(), [&](const Panda::ModuleRef &ref) {
                     return ref.id == id;
@@ -399,6 +490,7 @@ namespace {
                 emit();
                 updateRestart();
             });
+            row->setDescription(std::string(module.id) + " · " + module.version); // what project.json names
         }
         if (Panda::builtinModules().empty()) { section.addContent(makeFormHint("The distribution has no modules.")); }
         section.addContent(makeFormHint(
@@ -426,8 +518,7 @@ namespace {
                 set.set(feature, on);
                 data->features = set.names();
                 emit();
-            });
-            section.addContent(makeFormHint(info.cost));
+            })->setDescription(info.cost);
         }
         section.addContent(makeFormHint(
             "Shadows and occlusion need lights. Applied on save: the shaders of the project recompile for the set."
@@ -443,8 +534,8 @@ namespace {
             data->enabled = on;
             emit();
         });
-        addNumberRow(section, "Port", 1024.f, 65535.f, static_cast<float>(data->port), [data, emit](float value) {
-            data->port = static_cast<int>(std::lround(value));
+        addIntegerRow(section, "Port", 1024, 65535, data->port, [data, emit](int value) {
+            data->port = value;
             emit();
         });
         section.addContent(makeFormHint(

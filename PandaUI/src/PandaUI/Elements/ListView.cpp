@@ -166,6 +166,17 @@ void ListView::setOnSelectionChanged(SelectionChangedCallback callback) {
     m_onSelectionChanged = std::move(callback);
 }
 
+void ListView::setOnItemActivated(ItemActivatedCallback callback) {
+    m_onItemActivated = std::move(callback);
+}
+
+bool ListView::activateSelected() {
+    const int index = selectedIndex();
+    if (index < 0) { return false; }
+    if (m_onItemActivated) { m_onItemActivated(*this, index); }
+    return true;
+}
+
 void ListView::setCommitsSelectionOnPointerDown(bool commits) {
     m_commitsOnPointerDown = commits;
 }
@@ -181,13 +192,20 @@ void ListView::handleRowClicked(int index, bool additive) {
         } else {
             m_selection.push_back(index);
         }
-    } else {
+    } else if (m_selection.size() != 1 || m_selection.front() != index) {
         // Plain click (or Single mode) — select exactly one row.
-        if (m_selection.size() == 1 && m_selection.front() == index) { return; }
         m_selection.assign(1, index);
+    } else {
+        // The selected row again: nothing changes, the click still chooses it. The callback may
+        // close the list — nothing of it is touched afterwards.
+        if (m_onItemActivated) { m_onItemActivated(*this, index); }
+        return;
     }
     applySelectionStyles();
+    // The callbacks are copied: the first may destroy the list (a picker closes on a choice).
+    const ItemActivatedCallback activated = m_onItemActivated;
     if (m_onSelectionChanged) { m_onSelectionChanged(*this); }
+    if (activated) { activated(*this, index); }
 }
 
 void ListView::applySelectionStyles() {

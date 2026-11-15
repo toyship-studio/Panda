@@ -175,6 +175,8 @@ public:
 
     // HierarchyPanelOutput.
     void hierarchyDidSelectEntities(const std::vector<Panda::UUID> &ids) override;
+    void hierarchyDidRequestRename(Panda::UUID id) override;
+    void hierarchyDidActivateEntity(Panda::UUID id) override;
     CreateActions hierarchyCreateActions(Panda::UUID parentId) override;
     void createEntity(Panda::UUID parentId);
     void createPrimitive(Panda::UUID parentId, PrimitiveKind kind);
@@ -200,7 +202,7 @@ public:
     void entityDidRemoveScript(int scriptIndex) override;
     void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) override;
     void entityDidClickBackground() override;
-    void entityDidSelectAsset(Panda::AssetId assetId) override;
+    void entityDidSelectAsset(Panda::AssetId assetId); // the asset becomes the selection: its tab opens
     void entityDidRequestMaximize() override;
 
     // ViewportPanelOutput.
@@ -307,6 +309,13 @@ private:
     void buildLayout();
     void registerDocumentTypes(); // the settings of the project and of the editor in the "+" menu
     void registerShortcuts();
+    void showCommandPalette();
+    void showGoTo(); // the palette of the entities of the world and the assets of the project
+    bool worldHasKeyboard() const; // the focus is in the viewport or the Hierarchy (or nowhere)
+    std::vector<Panda::UUID> selectedEntityIds();
+    int liveEntityCount() const; // the entities of the world the panels show, tombstones aside
+    // The name of entities as one undoable edit (the inspector field, Rename of the Hierarchy).
+    void renameEntities(const std::vector<Panda::UUID> &ids, const std::string &name);
     bool maximizeFocusedDock();
     // The document that undo/redo is addressed to (the document model): the selected document tab
     // of the dock with the focus, the document of the active viewport session (brush strokes go
@@ -385,6 +394,7 @@ private:
     std::function<void()> m_viewportEditingStop;
     Panda::AssetId m_viewportEditingDocument = 0;
     ShortcutManager m_shortcuts;
+    bool m_paletteRuns = false; // a command is being run by name, not by its key
     int m_nextEntity = 1; // counter for the names of new entities
 };
 

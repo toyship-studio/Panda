@@ -6,9 +6,15 @@
 #include <Panda/WorldCommands/Impl/AddRemoveComponentCommand.hpp>
 #include <Panda/WorldCommands/WorldCommand.hpp>
 
+#include <string>
 #include <typeinfo>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+namespace Panda {
+struct ComponentType;
+}
 
 namespace Editor {
 
@@ -92,6 +98,20 @@ void commitComponent(Panda::World &world, const std::unordered_set<Panda::Entity
     command.saveAfterEdit();
     world.getCommandHistory().SAVE(command, false);
 }
+
+// A component by the name of its type, as text — the fragment of a world file that holds it
+// (WorldMapper::saveComponent). What Copy Values of a component section puts on the clipboard:
+// it pastes into another entity, another world or project, and reads in any text editor.
+std::string componentText(Panda::Entity entity, const Panda::ComponentType &type);
+// Writes such a text into the component of every target that has it, as one undoable edit.
+// false — the text does not hold this component (the clipboard has something else): nothing
+// changes.
+bool commitComponentText(
+    Panda::World &world, const std::vector<Panda::Entity> &targets, const Panda::ComponentType &type,
+    const std::string &text
+);
+// The component of the targets as a freshly added one, as one undoable edit.
+bool resetComponent(Panda::World &world, const std::vector<Panda::Entity> &targets, const Panda::ComponentType &type);
 
 // Same for the form's target list (ComponentInspectorContext::entities): written to those that have T.
 template<typename T>

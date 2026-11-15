@@ -385,6 +385,13 @@ void Layout::setFlexBasis(float basis) {
     markDirty();
 }
 
+void Layout::setFlexBasisAuto() {
+    YGNodeRef node = nodeFor(internal());
+    if (!node) { return; }
+    YGNodeStyleSetFlexBasisAuto(node);
+    markDirty();
+}
+
 void Layout::setFlexShrink(float flexShrink) {
     YGNodeRef node = nodeFor(internal());
     if (!node) { return; }

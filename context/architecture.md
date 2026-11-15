@@ -438,6 +438,60 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 - A form must not be destroyed from the callback of its own control: the rebuild is deferred
   (`Context::postDeferred`; `AssetEditorView` rebuilds through it with a lifetime token of the
   view, which is what `AssetEditorContext::rebuild` of the Kit does).
+- **Commands.** What the user can ask of the editor by a key or by name is a command of
+  `ShortcutManager` (`UI/Shortcuts.hpp`): an id (`entity.duplicate`), the group and the name the
+  palette shows, the chords, a handler that answers whether it did something.
+  `EditorController::registerShortcuts` is the list: the entity commands (Delete, Duplicate,
+  Copy, Cut, Paste, Rename, Deselect), the tools of the gizmo, Play and Stop, the panels, the
+  camera. A key no view used reaches them through `Context::setUnhandledKeyDownHandler` — never
+  while a text field has the focus or an overlay is open. The entity commands act on the
+  selection only while the world has the keyboard — the Scene surface or the Hierarchy
+  (`worldHasKeyboard`); with the focus in the Content Browser, a settings tab or nowhere the
+  same keys are not theirs. The Hierarchy and the viewport do not handle these keys themselves.
+  A selection that opens a tab does not take the keyboard away: `DockManager::rebuild` puts the
+  tabs back and returns the focus to the view that had it.
+- **The command palette** (⇧⌘P, `showCommandPalette`) lists every command by name with its
+  keys: the commands of `ShortcutManager` and the items of the menu bar
+  (`EditorMenuBar::commands()` flattens the menus as they were last built;
+  `EngineBridge::menuCommands` / `runMenuCommand`). A new menu item or command is in the palette
+  without more code. The native menu keeps the chords with a modifier (the system dispatches
+  them); a command on a bare key lives in `ShortcutManager` only, so that it never takes a key
+  away from a text field.
+- **An edit of the world is a command of its history**, the name of an entity included
+  (`renameEntities` commits the tag component) and a drop onto the root of the Hierarchy
+  (`HierarchyCommand` with no parent): what the user did, Undo takes back. When the world
+  changes under the forms — undo, redo, a pasted or reset component — every entity tab reads its
+  targets again (`EditorTabs::refreshEntityForms`, from `refreshFromWorld`); an edit made in a
+  form does not go that way, since a rebuild would take the field from under the caret.
+- **A component has a text form** — the object a world file holds for it,
+  `{"pointLightComponent": {...}}` (`WorldMapper::saveComponent` / `loadComponent`, by the type
+  registry of the engine, so a module's component has it too). The menu of a component section
+  is built on it: Copy Values puts the text on the clipboard, Paste Values and Reset write it
+  into the component of every target as one undoable edit (Kit: `componentText`,
+  `commitComponentText`, `resetComponent`). The clipboard outlives Stop, so this is also how
+  values tuned in a playing world reach the world being edited. A decoder ADDS an optional
+  component, so a paste removes the one that is there first; the types every entity has from
+  its creation (`ComponentType::builtin`: the name, the transform, the hierarchy, the scripts)
+  are written in place.
+- **An asset tab holds its asset.** The editor frees every asset nobody references at the end
+  of a frame (`EditorLayer::onUpdate`: `cleanup`). An open tab is a reference
+  (`AssetHandlerEditor::setAssetOpenedInTab`; a preview tab that takes another asset in place
+  reports the one it leaves and the one it takes): without it a material no entity uses was
+  read from its file again for every frame of its preview, and an edit made in its tab was gone
+  with the frame.
+- **The Output panel is for what the user has to know.** A line of `LOG_*_EDITOR` is written
+  as a sentence that names the file and, for an error, says what to do; a successful load of an
+  asset is not news (`LOG_TRACE` on the console). The panel is created with the chrome, after a
+  project given on the command line (or the last one) has opened: it starts from the editor
+  lines of `Foundation::LogHistory`, so what the opening of the project reported is the first
+  thing it shows.
+- **A button always does something.** Play is enabled whenever the world is edited: without the
+  scripts of the project (a new project, never built) it says what is missing and offers the
+  build, which loads the scripts when it is done (`toolbarDidPickSceneState`). A project whose
+  scripts are not built is not an error at open — one warning says where to build them
+  (`ProjectLoader::reloadScriptsDll`).
+- **The start screen** lists the recent projects in a scroll (any number fits the window) and
+  marks a project whose folder is gone instead of failing on the click.
 
 ## World: registry owner and frame orchestrator
 
@@ -869,12 +923,25 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `restart`,
-  `quit`. `show` brings a panel, a settings tab, the tab of an asset or the inspector of an entity
-  in front — a click, not an edit: with the `window` screenshot it is how an agent looks at the
-  editor's own UI. A
+  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `pointer`,
+  `key`, `restart`, `quit`. `show` brings a panel, a settings tab, the tab of an asset or the
+  inspector of an entity in front — a click, not an edit: with the `window` screenshot it is how
+  an agent looks at the editor's own UI. A
   tool acts as the user does, through the same functions of `EditorLayer` (`reloadFromDisk`,
   `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
+- `pointer` and `key` are the hands for that look: when the editor itself is the work, an agent
+  presses what it sees. A gesture is a list of steps played one a frame into the UI context of
+  the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIImplFern` puts
+  the events of the window), so a hover is a frame older than the press that follows it, as with
+  a hand. The coordinates are those of a `window` screenshot. While a gesture plays, the real
+  mouse is not heard (`EditorUI::setPointerOverridden`). The answer names the views under the
+  pointer from the innermost out, the cursor and the view in focus — state a picture does not
+  show. What reads the device instead of the events (the gizmo, the fly camera) does not follow.
+  This is still not a way to edit a project: the files are.
+- `reload` with `discard` is "the disk wins": `EditorLayer::revertUnsaved` rereads every
+  document that has unsaved edits, then the reload proper takes what changed on disk. Without it
+  a reload only reads the files that changed, and a file that changed under unsaved edits is a
+  conflict the tool reports.
 - Nobody is at the screen while a tool runs. `SystemTools::Unattended` is a scope in which a
   native blocking dialog is not shown: the save-changes question answers as the scope says, a
   file dialog answers "cancelled", and the scope records the question — the tool fails with it.
@@ -883,7 +950,10 @@ second way to do what a text file already does. The user-facing page is
   (`ProjectMcpSettings`: `enabled`, `port`) switches it, because the port is what the client
   configuration of the project (`.mcp.json`) names. `EditorMcp::update` compares the section
   with what runs every frame; a taken port is reported once. The template project has the
-  section on and a `.mcp.json`.
+  section on and a `.mcp.json`. For work on the editor itself the command line overrides it:
+  `--mcp <port>` (`EditorLaunch::mcpPort`) makes the server listen from the start whatever is
+  open — the start screen included, where only `status`, `logs`, the `window` screenshot,
+  `pointer`, `key` and `quit` have something to act on; a restart carries the flag over.
 - `screenshot` reads the output texture of a viewport (`ViewportSurface`): the tab of the
   viewport comes forward (one viewport renders per frame), a few frames pass, `Miren::readTexture`
   reads the texture back, and the picture is scaled down by area averaging and packed as PNG

@@ -186,14 +186,40 @@ core reserves and skips. New modules take ids from the `0xE0000000..` range (par
 ## Editor extension points (`PandaEditorKit`)
 
 `PandaEditorKit` is the editor layer for editor parts of modules: form widgets
-(`Widgets/FormWidgets` with `addAssetRow`, `addNumberRow`, `addToggleRow`, `addColorRow`,
-`addComboRow`, `addVector3Row`, `addEntityRow`, each with a mixed flag for a multi-target form
-and `componentFieldMixed<T>` / `componentVectorMixed<T>` to compute it; `AssetWell`,
-`EntityWell`, `Vector3Field`, `Typography`, `Icons`, `EditorView`), `Viewport/HelperLine`,
+(`Widgets/FormWidgets` with `addAssetRow`, `addNumberRow`, `addIntegerRow`, `addToggleRow`,
+`addColorRow`, `addComboRow`, `addVector3Row`, `addEntityRow`, each with a mixed flag for a
+multi-target form and `componentFieldMixed<T>` / `componentVectorMixed<T>` to compute it;
+`AssetWell`, `EntityWell`, `Vector3Field`, `Picker`, `ObjectIcons`, `Typography`, `Icons`,
+`EditorView`), `Viewport/HelperLine`,
 `ComponentCommands` (`toggleComponentPresence<T>`, `commitComponent<T>`: one undo path for edits
-of core and module components), `EditorHost`, `EditorExtensions`, `EditorPackageEntry`.
+of core and module components; `componentText`, `commitComponentText`, `resetComponent`: the
+text form of a component by the name of its type, behind Copy Values, Paste Values and Reset of
+every component section), `EditorHost`, `EditorExtensions`, `EditorPackageEntry`.
 The Kit depends on Panda and PandaUI, not on the editor; an editor part knows only the Kit and
 the engine.
+
+How a form behaves is decided once, in these rows, and every section — the core's and a
+module's — gets it:
+
+- A row comes back from its `add…Row` as a `PandaUI::PropertyRow` for tuning: `setHelp` (a
+  tooltip over the label — what the field is, its unit), `setDescription` (a dim line under the
+  title: what a switch costs), `setVisible` (a field that does not apply now leaves the form:
+  the size of an orthographic view while the camera is a perspective one), `setIndent` (a
+  parameter of the toggle above it).
+- A number is typed into its field or scrubbed: a horizontal drag of the label of the row, or
+  of the axis letter of a `Vector3Field`, changes it (Shift — ten times coarser, Alt — ten times
+  finer). One gesture is one undo step, as the edit commands merge. A double click on an axis
+  letter resets the component (to 1 for a scale).
+- A toggle sits at the right edge of its row and the label takes the rest of the width.
+- "Choose one of these" is a `Picker` (`showPicker`): a search field over a list, the arrows and
+  Enter work from the field. The asset picker, the script picker, the entity picker of
+  `EntityWell` and Add Component are this one palette; a row may carry an icon and a dim detail
+  (the folder of an asset, the parents of an entity, the module of a component —
+  `ComponentInspector::group`, which the registry fills in with the name of the module that
+  registers).
+- A reference field has one anatomy: `[icon + name | choose | clear]`. A click on the value
+  shows where the thing is, a double click selects it, an empty field opens the picker, a drop
+  from the Content Browser or the Hierarchy sets it.
 
 Registries of `EditorExtensions` (`editorExtensions()`; contributions are never unloaded):
 
