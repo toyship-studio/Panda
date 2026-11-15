@@ -1,7 +1,3 @@
-//
-// Created by Admin on 09.02.2022.
-//
-
 #pragma once
 
 #include "Components/TransformComponent.hpp"

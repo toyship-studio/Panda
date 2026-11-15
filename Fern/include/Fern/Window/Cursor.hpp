@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 13.09.2023.
-//
-
 #pragma once
 
 namespace Fern {

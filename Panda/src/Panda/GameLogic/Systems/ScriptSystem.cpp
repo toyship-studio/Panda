@@ -66,7 +66,8 @@ void syncWithManifest(World &world) {
             if (!clazz) {
                 Entity entity = world.entity(entityHandle);
                 LOG_ERROR_EDITOR(
-                    "SCRIPT CLASS MANIFEST %s NOT FOUND.", container.getName().c_str(), entity.getName().c_str()
+                    "The entity %s has the script %s, which the built scripts do not have. Build the scripts and reload.",
+                    entity.getName().c_str(), container.getName().c_str()
                 );
                 continue;
             }
@@ -80,7 +81,8 @@ void syncWithManifest(World &world) {
                         const ScriptFieldManifest &fieldManifest = clazz.getField(field.name.c_str());
                         if (!fieldManifest) {
                             LOG_INFO_EDITOR(
-                                "SCRIPT %s FIELD %s NOT FOUND.", container.getName().c_str(), field.name.c_str()
+                                "The script %s has no field %s any more: its value is dropped.",
+                                container.getName().c_str(), field.name.c_str()
                             );
                             return true;
                         }
@@ -119,7 +121,7 @@ void instantiate(World &world) {
         for (ExternalScript &container : component.scripts) {
             const Handle scriptInstanceId = ExternalCalls::instantiateScript(entityId, container.getName().c_str());
             if (!scriptInstanceId) {
-                LOG_ERROR_EDITOR("CANNOT INSTANTIATE SCRIPT %s", container.getName().c_str());
+                LOG_ERROR_EDITOR("The script %s could not be created: the built scripts have no class of that name. Build the scripts and reload.", container.getName().c_str());
                 continue;
             }
             container.bind(entityId, scriptInstanceId);

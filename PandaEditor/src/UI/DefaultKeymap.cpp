@@ -46,6 +46,7 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         // World
         {"world.play", "f5"},
         {"world.stop", "shift-f5"},
+        {"build.scripts", "primary-b"},
     };
     return KEYMAP;
 }

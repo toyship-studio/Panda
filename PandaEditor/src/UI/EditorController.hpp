@@ -15,7 +15,6 @@
 #include "UI/DockManager.hpp"
 #include "UI/EditorTabs.hpp"
 #include "UI/Commands.hpp"
-#include "UI/EngineBridge.hpp"
 
 #include <PandaEditorKit/Document.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
@@ -31,12 +30,17 @@
 namespace Panda {
 class World;
 class CommandHistory;
+class EditorLayer;
+class WorldFile;
 } // namespace Panda
 
 namespace Editor {
 
-class WorldDocument;
+class AssetActions;
+class EntityActions;
 class GameDocument;
+class SettingsWindow;
+class WorldTabs;
 
 // The on-screen frames of the two viewport tabs (points): what the engine renders into and which
 // of them is visible this frame (the selected tab of a visible dock).
@@ -47,39 +51,48 @@ struct ViewportSurfaces {
     bool gameVisible = false;
 };
 
-// The editor COORDINATOR — the carrier of the logic. Implements the Output of all panels; the panels consume
-// the engine DIRECTLY (entities by UUID from World, assets from the registry, entity selection —
-// SelectionContext). There is no intermediate view-model: the coordinator only applies intents with engine
-// commands and pushes updates to the panels. It is also the host of the editor parts of packages
-// (Editor::EditorHost, PandaEditorKit) and the owner of the world document (the document model:
-// the viewport tab with the world settings sidebar; the other documents live in EditorTabs).
-class SettingsWindowView;
-
+// The editor COORDINATOR — the workspace of an open project: it builds the chrome (the panels, the
+// docks, the tabs), keeps it in step with the application once a frame and is the host of the
+// editor parts of packages (Editor::EditorHost, PandaEditorKit). The panels read the engine
+// DIRECTLY (entities by UUID from World, assets from the registry, the selection —
+// Editor::selection()); there is no intermediate view-model. What the user does goes to the part
+// it belongs to, each the Output of its panels: the entities — EntityActions, the assets —
+// AssetActions, the open worlds — WorldTabs, the builds — Panda::ProjectBuilds; the toolbar and
+// the viewport overlay are answered here. What a part needs of the application — the open worlds,
+// Save, Play — it asks of the application itself (Panda::EditorLayer), with no interface in between.
 class EditorController final : public Editor::EditorHost,
-                               public HierarchyPanelOutput,
-                               public EntityEditorOutput,
                                public ViewportPanelOutput,
-                               public ContentBrowserOutput,
                                public ToolbarOutput,
-                               public CMakePanelOutput,
                                public EditorTabsHost {
 public:
-    // Status indicators of the visibility strip (RAM/VRAM/CPU/GPU from EditorLayer).
-    void setStripStatusText(const std::string &text);
-    void saveActiveDocument(); // Cmd+S
-    // The file items of a context menu (a tab, an asset): the path, the external editor, the
-    // file manager. Nothing is added for an empty path.
-    void addFileItems(PandaUI::Menu &menu, const std::filesystem::path &file);
-    // A settings file was reread from disk: its open tab follows.
-    void settingsFileReloaded(Panda::SettingsScope scope);
-    explicit EditorController(Commands &commands);
+    explicit EditorController(Panda::EditorLayer &app);
     ~EditorController() override; // unbinds the process host (Editor::setEditorHost(nullptr))
 
     std::shared_ptr<PandaUI::View> rootView() const {
         return m_root;
     }
 
-    // The engine pushes the output textures of the viewports in and reads their frames out
+    // ---- The world the panels show. The application tells when it is another one.
+    void setWorld(Panda::World *world);       // a project opened: the world of the panels, the assets of the project
+    void setActiveWorld(Panda::World *world); // Play / Stop / another world in front: the panels show this one
+    void setWorldDisplayName(const std::string &name); // the root of the Hierarchy: the name of the world file
+    // Another world, another project or none: the entity tabs point into the previous world —
+    // they close; the navigation history points at what is gone — it is cleared.
+    void worldContextChanged();
+
+    // ---- Once a frame, from the application.
+    void syncSelection();      // what the viewport selected or moved → the panels and the tabs
+    void syncWorldStructure(); // the game created or destroyed entities → the Hierarchy, by the structure version
+    void updateChromeFromState(bool isEditMode); // the toolbar, the world tabs, the unsaved dots of the tabs
+    void setFrameStatistics(
+        int fps, uint32_t drawCalls3d, uint32_t shadowDrawCalls, uint32_t drawCalls2d, uint32_t quads,
+        uint32_t uiLayouts
+    );
+    void collectExtensionStatistics();                   // the statistics sections of the editor parts
+    void updateProfilerPanel();                          // rereads the snapshot of Foundation::Profiler
+    void setStripStatusText(const std::string &text);    // RAM / VRAM / CPU / GPU in the visibility strip
+
+    // ---- The viewports: the engine pushes the output textures in and reads the frames out
     // (EditorViewports: the Scene and the Game surfaces).
     void setViewportSceneTexture(PandaUI::TextureHandle texture, bool flip) {
         if (m_viewportView) { m_viewportView->setSceneTexture(texture, flip); }
@@ -91,33 +104,8 @@ public:
         return m_viewportView ? m_viewportView->sceneWorldFrame() : PandaUI::Rect();
     }
     ViewportSurfaces viewportSurfaces() const;
-    // The Game tab: whether its surface renders this frame (otherwise it shows its last frame and
-    // says so), a caption over the frame (empty — none), the keyboard focus of the game.
-    void setGameViewportLive(bool live) {
-        if (m_gameView) { m_gameView->setLive(live); }
-    }
-    void setGameViewportMessage(const std::string &text) {
-        if (m_gameView) { m_gameView->setMessage(text); }
-    }
-    bool isGameViewportFocused() const {
-        return m_gameView && m_gameView->isFocused();
-    }
-    // File → New: the entities go to the root of the open world, the assets into the folder the
-    // Content Browser shows. The same lists as in the context menus of the two panels.
-    CreateActions newEntityActions();
-    CreateActions newAssetActions();
-    void openGameView(); // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
-    // Brings a panel in front by its id ("hierarchy", "contentBrowser", "output", "cmake",
-    // "statistics", "profiler"); false — no such panel.
-    bool showPanel(const std::string &id);
-    void showSceneView(); // activates the tab of the active world — Stop
-    // The open worlds of the project as tabs of the center dock (EngineBridge::openWorlds). The
-    // tabs follow the list, the active world follows the selected tab (not while the game runs),
-    // and the one viewport of the editor moves into the tab of the active world. Once a frame,
-    // and whenever the layer changes the set of worlds or the active one.
-    void syncWorldTabs();
-    void focusGameView(); // the keyboard focus to the Game surface (a click on the game)
-    // Once a frame: what the Scene surface collected for the editor camera, the gizmo and the tools.
+    // What the Scene surface collected since the last frame for the editor camera, the gizmo and
+    // the tools.
     SceneNavigation takeSceneNavigation() {
         return m_viewportView ? m_viewportView->takeSceneNavigation() : SceneNavigation{};
     }
@@ -130,93 +118,75 @@ public:
     void setGizmoActive(bool active) {
         if (m_viewportView) { m_viewportView->setGizmoActive(active); }
     }
-    void setViewportToolCapture(bool capture) { // a viewport tool takes over LMB (set by Layer every frame)
+    void setViewportToolCapture(bool capture) { // a viewport tool takes the left button over
         if (m_viewportView) { m_viewportView->setToolCapture(capture); }
     }
-    void setBridge(EngineBridge *bridge) { m_bridge = bridge; } // engine/host bridge (implemented by EditorLayer)
-
-    void setWorld(Panda::World *world);       // project open: the panels' world + asset registry rescan
-    void setActiveWorld(Panda::World *world); // Play/Stop: the panels switch to the live world
-    void syncWorldStructure(); // per frame: scripts change the world in PLAY → reload Hierarchy by version
-    void thumbnailDidBecomeReady(Panda::AssetId assetId); // the thumbnail is ready → update the grid cell
-    void refreshAssetPanels();          // content + asset manager reread the registry (project change)
-    void setWorldDisplayName(const std::string &name);
-    // The context has changed (another world / another project / close / new world): entity tabs point
-    // into the old world — they are closed; the navigation history points to dead objects — it is cleared.
-    void worldContextChanged(); // name of the opened world → the Hierarchy root
-    // Per-frame render metrics of the current world (supplied by EditorLayer) → the Statistics panel.
-    void updateProfilerPanel(); // rereads the Foundation::Profiler snapshot (called by EditorLayer)
-    void setFrameStatistics(
-        int fps, uint32_t drawCalls3d, uint32_t shadowDrawCalls, uint32_t drawCalls2d, uint32_t quads,
-        uint32_t uiLayouts
-    );
-    void collectExtensionStatistics(); // per frame: statistics sections of the editor parts
-    // The editor registries have gained entries (the editor parts are loaded when a project is opened):
-    // the panels with contribution sections are rebuilt.
-    void extensionsChanged();
-    void undo();                        // undo on the active document's stack (asset tab/brush — asset, else world)
-    void redo();
-    void syncSelectionFromEngine();     // SelectionContext → panels (per frame; drives selection from the viewport)
-    void updateChromeFromState(bool isEditMode); // per frame: toolbar enable/disable + scene tab dirty indicator
-    void setUpdateStatus(const UpdateIndicatorModel &model); // the editor updater → the toolbar indicator
-    // Project build (Layer → CMake panel): cmake output once per frame + the change of the running state.
-    void appendCMakeOutput(Panda::BuildTargetKind kind, const std::vector<std::string> &lines);
-    void cmakeBuildStarted(Panda::BuildTargetKind kind);
-    void cmakeBuildFinished(Panda::BuildTargetKind kind, bool success, bool canceled);
-
-    // The docking layout (persisted in the editor session through Layer).
-    Panda::DockLayoutState captureDockLayout() const;
-    void applyDockLayout(const Panda::DockLayoutState &state);
-
-    // Viewport helper lines (recomputed by the engine once per frame).
     void setViewportHelperLines(std::vector<Panda::HelperLine> lines) {
         if (m_viewportView) { m_viewportView->setHelperLines(std::move(lines)); }
     }
-    // The dirty documents of the project besides the world and the assets (the project settings):
-    // the save flows of Layer (Cmd+S saves everything; the close questions name them).
+    // The Game tab: whether its surface renders this frame (otherwise it shows its last frame and
+    // says so), a caption over the frame (empty — none), the keyboard focus of the game.
+    void setGameViewportLive(bool live) {
+        if (m_gameView) { m_gameView->setLive(live); }
+    }
+    void setGameViewportMessage(const std::string &text) {
+        if (m_gameView) { m_gameView->setMessage(text); }
+    }
+    bool isGameViewportFocused() const {
+        return m_gameView && m_gameView->isFocused();
+    }
+    void focusGameView();  // the keyboard focus to the Game surface (a click on the game)
+    void openGameView();   // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
+    void showSceneView();  // the tab of the active world comes forward — Stop
 
-    // HierarchyPanelOutput.
-    void hierarchyDidSelectEntities(const std::vector<Panda::UUID> &ids) override;
-    void hierarchyDidRequestRename(Panda::UUID id) override;
-    void hierarchyDidActivateEntity(Panda::UUID id) override;
-    CreateActions hierarchyCreateActions(Panda::UUID parentId) override;
-    void createEntity(Panda::UUID parentId);
-    void createPrimitive(Panda::UUID parentId, PrimitiveKind kind);
-    void hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> &ids) override;
-    void hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids) override;
-    void hierarchyDidRequestPaste() override;
-    void hierarchyDidRequestDelete(const std::vector<Panda::UUID> &ids) override;
-    void hierarchyDidReparent(const std::vector<Panda::UUID> &items, Panda::UUID newParentId) override;
-    void hierarchyDidRequestMaximize() override;
+    // ---- What else the application tells the chrome.
+    void thumbnailDidBecomeReady(Panda::AssetId assetId); // the cell of the asset in the Content Browser follows
+    void refreshAssetPanels();                            // the Content Browser rereads the registry
+    // The registries of the editor gained entries (the editor parts of a project's modules were
+    // loaded): what is built from them is built again.
+    void extensionsChanged();
+    void setUpdateStatus(const UpdateIndicatorModel &model); // the editor updater → the indicator of the toolbar
+    void settingsFileReloaded(Panda::SettingsScope scope);   // settings.json / project.json was reread: its page follows
+    // The Settings window (a second window of the editor): the layer tells when the user closed
+    // it and when it got or lost the keyboard.
+    void closeSettingsWindow();
+    void settingsWindowFocusChanged(bool focused);
+    // The docking layout (kept in the editor session by the layer).
+    Panda::DockLayoutState captureDockLayout() const;
+    void applyDockLayout(const Panda::DockLayoutState &state);
 
-    // EntityEditorOutput.
-    void entityDidEditName(const std::string &name) override;
-    void entityDidSetStatic(bool isStatic) override;
-    void entityDidEditPosition(glm::vec3 position) override;
-    void entityDidEditRotation(glm::vec3 rotation) override;
-    void entityDidEditScale(glm::vec3 scale) override;
-    void entityDidAddComponent(ComponentType type) override;
-    void entityDidRemoveComponent(ComponentType type) override;
-    void entityDidEditComponent(const ComponentEdit &edit) override;
-    void entityDidAddExtensionComponent(const std::string &component) override;
-    void entityDidRemoveExtensionComponent(const std::string &component) override;
-    void entityDidAddScript(const std::string &className) override;
-    void entityDidRemoveScript(int scriptIndex) override;
-    void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) override;
-    void entityDidClickBackground() override;
-    void entityDidSelectAsset(Panda::AssetId assetId); // the asset becomes the selection: its tab opens
-    void entityDidRequestMaximize() override;
+    // ---- What the commands of the application and the MCP server ask.
+    // A panel in front by its id ("hierarchy", "contentBrowser", "output", "cmake", "statistics",
+    // "profiler"); false — no such panel.
+    bool showPanel(const std::string &id);
+    void openKeymap(); // the Keymap page of the Settings window
+    // File → New: the entities go to the root of the open world, the assets into the folder the
+    // Content Browser shows. The same lists as in the context menus of the two panels.
+    CreateActions newEntityActions();
+    CreateActions newAssetActions();
 
-    // ViewportPanelOutput.
-    void viewportDidClickBackground() override;
-    void viewportDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override;
-    void viewportDidPickGizmo(int mode) override;
-    void viewportDidResetCamera() override;
-    void viewportDidPickSpace(bool worldSpace) override;
-    void viewportDidDropAssets(const std::vector<std::uint32_t> &assetIds, const std::string &kind) override;
-    void viewportDidRequestDisplayOptions(PandaUI::View *anchor) override;
-    void viewportDidToggleWorldSettings() override;
-    void viewportDidRequestStopEditing() override;
+    // ---- The parts of the workspace, and what they ask of it.
+    EntityActions &entities() {
+        return *m_entityActions;
+    }
+    WorldTabs &worldTabs() {
+        return *m_worldTabs;
+    }
+    PandaUI::Context *context() const; // where a dialog is shown; nullptr — the chrome is in no window yet
+    PandaUI::Rect hierarchyFrame() const;
+    // The selection (Editor::selection()) and, at once, the panels and the tabs that show it.
+    void selectEntities(const std::vector<Panda::UUID> &ids);
+    void selectAssets(const std::vector<Panda::AssetId> &ids);
+    void deselectAll();
+    // What is selected, or something about it (a name, a component), changed: the panels and the
+    // tabs read it again.
+    void selectionChanged();
+    // The Transform fields of the tabs already show the transform of the selection (the edit was
+    // made in them): the per-frame sync does not refresh them under the caret.
+    void transformShown();
+    // The file items of a context menu (a tab, an asset): the path, the external editor, the
+    // file manager. Nothing is added for an empty path.
+    void addFileItems(PandaUI::Menu &menu, const std::filesystem::path &file);
 
     // Editor::EditorHost — the host of the editor parts of packages.
     std::string assetTitle(Panda::AssetId id) override;
@@ -239,35 +209,26 @@ public:
         const std::string &title, Panda::AssetId document, std::function<void()> onStop
     ) override;
     void endViewportEditing() override;
-    void refreshFromWorld() override; // rereads the panels after structural changes/undo
+    void refreshFromWorld() override; // the panels and the tabs reread the world (a structural edit, an undo)
     void refreshAssetEditors(Panda::AssetId id) override;
     Panda::TypeContext &settings(Panda::SettingsScope scope) override;
     void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) override;
     void openSettings(Panda::SettingsScope scope, const std::string &section = {}) override;
-    void openPlugins(); // the Plugins tab in the center dock (Window → Plugins, the "+" menu)
-    void openUiGallery(); // the UI Gallery tab in the center dock (Help → UI Gallery, the "+" menu)
     void restartEditor() override;
 
-    // ContentBrowserOutput.
-    void contentDidSelectAssets(const std::vector<Panda::AssetId> &assets) override;
-    void contentDidRequestDelete(const std::vector<Panda::AssetId> &assets) override;
-    void contentDidRequestImport(const std::vector<Panda::AssetId> &assets) override;
-    void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) override;
-    void contentDidRequestRefresh() override;
-    void contentDidRequestAddToScene(const std::vector<Panda::AssetId> &assets) override;
-    void contentDidRequestOpenWorld(Panda::AssetId assetId) override;
-    CreateActions contentCreateActions(const Panda::path_t &directory) override;
-    void createMaterial(const Panda::path_t &directory, Panda::AssetId shaderId);
-    void createPostprocessing(const Panda::path_t &directory);
-    void createPostprocessShader(const Panda::path_t &directory);
-    void createAsset(const Panda::path_t &directory, const AssetCreator &creator);
-    void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) override;
-    void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) override;
-    void contentDidRequestDeleteFolder(const Panda::path_t &folder) override;
-
+    // ViewportPanelOutput.
+    void viewportDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override;
+    void viewportDidPickGizmo(int mode) override;
+    void viewportDidResetCamera() override;
+    void viewportDidPickSpace(bool worldSpace) override;
+    void viewportDidDropAssets(const std::vector<std::uint32_t> &assetIds, const std::string &kind) override;
+    void viewportDidRequestDisplayOptions(PandaUI::View *anchor) override;
+    void viewportDidToggleWorldSettings() override;
+    void viewportDidRequestStopEditing() override;
 
     // ToolbarOutput.
-    void toolbarDidPickSceneState(SceneState state) override;
+    void toolbarDidTapPlay() override;
+    void toolbarDidTapStop() override;
     void toolbarDidTapReload() override;
     void toolbarDidSave() override;
     void toolbarDidExport() override;
@@ -278,28 +239,13 @@ public:
     void toolbarDidActivateUpdate() override;
     void toolbarDidDismissUpdate() override;
 
-    // CMakePanelOutput.
-    void cmakeDidRequestScriptsBuild(Panda::BuildAction action, Panda::ScriptsBuildConfig config) override;
-    void cmakeDidRequestExportBuild(Panda::BuildAction action, Panda::ExportProjectTarget target) override;
-    void cmakeDidTapStop() override;
-    void cmakeDidRequestShowProjectFolder(Panda::BuildTargetKind kind) override;
-
-    void openWorldTab(Panda::AssetId asset, bool preview);
-    void openKeymap(); // the Keymap page of the Settings window: the keys of every command, editable
-    // The Settings window (a second window of the editor): the layer tells when the user closed
-    // it and when it got or lost the keyboard.
-    void closeSettingsWindow();
-    void settingsWindowFocusChanged(bool focused);
-
-    // EditorTabsHost: editor tabs edit THEIR OWN targets — for the duration of an edit the global
-    // selection is substituted with the tab's targets (selectedEntities returns them).
+    // EditorTabsHost: what the tabs of the selection ask (EditorTabs.hpp).
     EntityEditorOutput &tabsHostOutput() override;
     void tabsBeginEntityTarget(const std::vector<Panda::UUID> &ids) override;
     void tabsEndEntityTarget() override;
     std::vector<Panda::Entity> tabsResolveEntities(const std::vector<Panda::UUID> &ids) override;
     Panda::World *tabsWorld() override;
     std::vector<std::string> tabsScriptClasses() override;
-    void tabsRequestMaximize(PandaUI::View *view) override;
     void tabsAssetTabClosed(Panda::AssetId id) override;
     void tabsAssetTabOpened(Panda::AssetId id) override;
     void tabsDocumentClosed(Document *document) override;
@@ -312,18 +258,20 @@ public:
     void tabsHistoryChanged(bool canGoBack, bool canGoForward) override;
 
 private:
-    friend class WorldDocument;
     friend class GameDocument;
     void buildLayout();
-    void registerDocumentTypes(); // the settings of the project and of the editor in the "+" menu
+    void registerDocumentTypes(); // the Plugins, UI Gallery and Game tabs in the "+" menu of a dock
     void registerCommands();
+    // What the commands of the workspace do.
+    void saveActiveDocument(); // Save: the document of the tab in focus
+    void undo();               // on the stack of the active document (activeDocument)
+    void redo();
+    void openPlugins();   // the Plugins tab in the center dock
+    void openUiGallery(); // the UI Gallery tab in the center dock
     void showCommandPalette();
     void showGoTo(); // the palette of the entities of the world and the assets of the project
     bool worldHasKeyboard() const; // the focus is in the viewport or the Hierarchy (or nowhere)
-    std::vector<Panda::UUID> selectedEntityIds();
     int liveEntityCount() const; // the entities of the world the panels show, tombstones aside
-    // The name of entities as one undoable edit (the inspector field, Rename of the Hierarchy).
-    void renameEntities(const std::vector<Panda::UUID> &ids, const std::string &name);
     bool maximizeFocusedDock();
     bool closeFocusedTab();
     // The document that undo/redo is addressed to (the document model): the selected document tab
@@ -333,20 +281,6 @@ private:
     Document *m_lastUndoDocument = nullptr; // survives the focus loss caused by form rebuilds
     void showDisplayOptions(PandaUI::View *anchor); // the viewport section of the editor scope in a popover
     void setWorldSettingsVisible(bool visible);
-    void refreshSettingsDocuments(); // the open settings documents reread their stores (module parts loaded)
-    void pushSelectionToPanels();               // current selection (SelectionContext + m_selectedAssets) → panels
-    std::vector<Panda::Entity> selectedEntities(); // valid selected entities (from SelectionContext)
-    Panda::Entity primaryEntity();              // the first valid selected one (or invalid)
-    void selectEntitiesByIds(const std::vector<Panda::UUID> &ids); // selection → SelectionContext + panels
-    void deselectAll();
-    // A transform edit through a command (undo, merge) + the systems' sync (Entity::transformUpdated /
-    // scaleUpdated): scaleEdit — a rebuild of what depends on the scale, otherwise a teleport.
-    void commitTransformEdit(const std::function<void(Panda::Entity)> &apply, bool scaleEdit = false);
-    void setComponentPresence(ComponentType type, bool add); // add/remove of an engine component + command
-    void selectAssets(const std::vector<Panda::AssetId> &ids, bool clearContentSelection); // asset selection dedup
-    void deleteAssets(const std::vector<Panda::AssetId> &ids);  // asset deletion: confirm → remove → refresh
-    void removeAssets(const std::vector<Panda::AssetId> &ids);  // the removal itself; open worlds among them close
-    void instantiateMeshAssets(const std::vector<Panda::AssetId> &ids); // gltf → entity subtree (D&D/menu)
     void refreshStatistics();                   // entity count → the statistics panel
 
     // The host of the editor parts (Editor::editorHost()) is this coordinator. The first member: it is set
@@ -361,10 +295,13 @@ private:
         }
     };
     HostBinding m_hostBinding;
+    Panda::EditorLayer &m_app; // the application: its documents, its viewports, Save / Play / builds
+    // Before the panels: they are built with these as their outputs.
+    std::unique_ptr<EntityActions> m_entityActions;
+    std::unique_ptr<AssetActions> m_assetActions;
     Panda::World *m_panelsWorld = nullptr; // the world shown by the panels (editing or playing)
     uint64_t m_lastStructureVersion = 0;   // snapshot of World::getStructureVersion for syncWorldStructure
-    std::vector<Panda::AssetId> m_selectedAssets;        // asset selection (entities are in SelectionContext)
-    std::uint64_t m_lastSelectionVersion = 0; // entity selection version at the last push (sync from the viewport)
+    std::uint64_t m_lastSelectionVersion = 0; // the version of the selection the panels show (syncSelection)
     std::uint64_t m_lastTransformVersion = 0; // transform version at the last push/edit (gizmo↔Inspector sync)
     // Cache of the toolbar enable states (init = the buttons' default enabled) — pushed to the View only
     // on change.
@@ -378,46 +315,19 @@ private:
     std::shared_ptr<ProfilerPanelView> m_profilerView;
     std::shared_ptr<ViewportPanelView> m_viewportView;
     std::shared_ptr<GameViewportView> m_gameView; // the surface of the Game tab (one instance, the tab comes and goes)
-    EngineBridge *m_bridge = nullptr; // requests to the engine/host (save/play/gizmo/rect-select)
     std::shared_ptr<PandaUI::View> m_root;
     std::unique_ptr<DockManager> m_dockManager;
     std::unique_ptr<EditorTabs> m_editorTabs; // editor tabs of the selection (after m_dockManager)
-    // The world documents: a tab per open world (EditorTabs owns them). The viewport lives in
-    // the tab of the active one; its settings sidebar shows the sections of the world scope over
-    // the context of the panels' world.
-    WorldDocument *worldDocument(uint32_t worldId);
-    Document *activeWorldDocument();
-    const OpenWorld *openWorld(uint32_t worldId) const; // from the list as of the last sync
-    std::vector<OpenWorld> m_openWorlds;
-    std::vector<uint32_t> m_worldTabs;       // the worlds that have a tab
-    std::vector<uint32_t> m_closedWorldTabs; // the user closed their tabs: they leave the list on the next sync
-    uint32_t m_shownWorldId = 0;             // the active world the tabs were last synced to
-    bool m_inWorldSync = false;              // the sync changes the active world itself: no nested sync
-    uint32_t m_previewWorldId = 0;           // the world of the preview tab (openWorldTab); 0 — none
-    bool m_closingWorldTab = false;          // the sync closes the tab of a world that is gone: not a request
+    std::unique_ptr<WorldTabs> m_worldTabs;   // a tab per open world; the viewport lives in the tab of the active one
+    // The settings sidebar of the viewport: the sections of the world scope over the context of
+    // the panels' world.
     std::shared_ptr<SettingsSectionsView> m_worldSettingsView;
-    // The active target of an edit from a tab (RAII through tabsBegin/EndEntityTarget): selectedEntities
-    // returns it instead of SelectionContext — edits of pinned tabs hit their own objects.
-    std::vector<Panda::UUID> m_entityTargetOverride;
-    bool m_entityTargetActive = false;
     // The active viewport editing session: null — no mode (the panel has no border);
     // the session document is the target of Undo from the viewport.
     std::function<void()> m_viewportEditingStop;
     Panda::AssetId m_viewportEditingDocument = 0;
-    enum class SettingsPage { Editor, Project, Keymap }; // the order of the pages
-    struct SettingsWindow {
-        std::unique_ptr<Document> editor, project, keymap;
-        std::shared_ptr<SettingsWindowView> view;
-        bool focused = false; // the window has the keyboard: Save and Undo mean its page
-        bool closeRequested = false; // Escape in the window: it closes on the next frame
-    };
-    std::unique_ptr<SettingsWindow> m_settingsWindow; // while the window is open
-    bool showSettingsWindow(SettingsPage page);
-    Document *settingsDocument(SettingsPage page); // nullptr — the window is closed
-    std::unique_ptr<Document> makeProjectSettingsDocument();
-    std::unique_ptr<Document> makeEditorSettingsDocument();
+    std::unique_ptr<SettingsWindow> m_settings; // the Settings window: its pages and their documents
     Commands &m_commands; // the registry of the editor: the workspace adds its commands to it
-    int m_nextEntity = 1; // counter for the names of new entities
 };
 
 } // namespace Editor

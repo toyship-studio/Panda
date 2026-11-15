@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 15.09.2023.
-//
-
 #pragma once
 
 #include "Panda/GameLogic/Components/TransformComponent.hpp"

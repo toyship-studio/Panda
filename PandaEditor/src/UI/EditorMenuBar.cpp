@@ -100,9 +100,7 @@ void EditorMenuBar::rebuild() {
         // the loop of external edits (agent, code editor, git) without a restart.
         item(fileMenu, "Reload", "file.reload");
         fileMenu.addSeparator();
-#ifdef PLATFORM_MACOS
         item(fileMenu, "Show C++ Project", "file.showCppProject");
-#endif
         item(fileMenu, "Close Tab", "tab.close");
         item(fileMenu, "Close Project", "file.closeProject");
         fileMenu.addSeparator();

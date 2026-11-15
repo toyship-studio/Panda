@@ -25,29 +25,21 @@ using namespace PandaUI;
 
 namespace {
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     // The asset type string from the registry by id (for the icon/color).
     std::string assetTypeOf(Panda::AssetId id) {
-        auto *handler = assetHandler();
+        auto *handler = Panda::AssetHandlerEditor::current();
         if (!handler) { return "text"; }
         const auto &registry = handler->getRegistry();
         auto it = registry.find(id);
         return it != registry.end() ? assetTypeString(it->second.type) : "text";
     }
 
+    // The look of a kind is its entry in the editor registry (EditorExtensions::assetKinds), for
+    // the kinds of the core and of the modules alike; a file of no kind is a gray generic file.
     Color colorForType(const std::string &type, bool folder) {
         if (folder) { return Color(0xC9A45FFF); }
-        if (type == "texture") { return Color(0x12B69DFF); }
-        if (type == "font") { return Color(0xE0B35AFF); }
-        if (type == "material") { return Color(0x57B894FF); }
-        if (type == "mesh") { return Color(0x8B7FD1FF); }
-        if (type == "scene") { return Color(0x6FC1FFFF); }
-        if (type == "shader") { return Color(0xC98B5FFF); }
-        if (type == "postfx") { return Color(0xD16FA8FF); }
-        if (const AssetKindUi *ui = editorExtensions().assetKinds.find(type)) { return ui->color; } // module kind
+        if (const AssetKindUi *ui = editorExtensions().assetKinds.find(type)) { return ui->color; }
         return Color(0x8A8A8AFF);
     }
 
@@ -55,15 +47,8 @@ namespace {
 
     const char *iconForType(const std::string &type, bool folder) {
         if (folder) { return Ic::Folder; }
-        if (type == "texture") { return Ic::FilePng; }
-        if (type == "font") { return Ic::FileFont; }
-        if (type == "material") { return Ic::Material; }
-        if (type == "mesh") { return Ic::Mesh; }
-        if (type == "scene") { return Ic::AssetWorld; }
-        if (type == "shader") { return Ic::FileCpp; }
-        if (type == "postfx") { return Ic::Sprite; }
         if (const AssetKindUi *ui = editorExtensions().assetKinds.find(type); ui && !ui->icon.empty()) {
-            return ui->icon.c_str(); // module kind
+            return ui->icon.c_str();
         }
         return Ic::FileGeneric;
     }
@@ -245,7 +230,7 @@ void ContentBrowserView::addSubviews() {
         if (Folder *folder = m_dataSource.folderAt(index)) {
             static_cast<AssetCell &>(cell).bind(folder->name, "folder", true, true, TextureHandle());
         } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
-            Panda::AssetHandlerEditor *handler = assetHandler();
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             const bool broken = file->assetId != 0 && handler && !handler->assetFilesExist(file->assetId);
             static_cast<AssetCell &>(cell).bind(
                 file->name, assetTypeOf(file->assetId), false, file->assetId != 0,
@@ -294,7 +279,7 @@ void ContentBrowserView::addSubviews() {
         }
         const FileEntry *file = m_dataSource.fileAt(index);
         if (!file || !m_output) { return; }
-        if (file->assetId != 0 && assetTypeOf(file->assetId) == "scene") {
+        if (file->assetId != 0 && assetTypeOf(file->assetId) == "world") {
             m_output->contentDidRequestOpenWorld(file->assetId);
         }
     });
@@ -432,7 +417,7 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
             if (m_output) { m_output->contentDidRequestDeleteFolder(directory); }
         });
         menu->addSeparator();
-        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::open(directory); });
+        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
     } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
         if (file->assetId == 0) { // a file of a format foreign to the engine — no operations
             return;
@@ -441,7 +426,7 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
             if (std::find(targets.begin(), targets.end(), file->assetId) == targets.end()) { targets = {file->assetId}; }
             const std::string name = file->name;
             const std::string typeOfClicked = assetTypeOf(file->assetId);
-            if (typeOfClicked == "scene") { // world: make it current (same as a double click)
+            if (typeOfClicked == "world") { // make it current (same as a double click)
                 const Panda::AssetId worldId = file->assetId;
                 menu->addItem("Open World", [this, worldId] {
                     if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
@@ -461,8 +446,8 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
                 for (Panda::AssetId targetId : targets) {
                     if (assetTypeOf(targetId) == "mesh") { meshes.push_back(targetId); }
                 }
-                menu->addItem(meshes.size() > 1 ? "Add to Scene (all)" : "Add to Scene", [this, meshes] {
-                    if (m_output) { m_output->contentDidRequestAddToScene(meshes); }
+                menu->addItem(meshes.size() > 1 ? "Add to World (all)" : "Add to World", [this, meshes] {
+                    if (m_output) { m_output->contentDidRequestAddToWorld(meshes); }
                 });
             }
             if (m_output && targets.size() == 1) { m_output->contentAddFileItems(*menu, targets.front()); }
@@ -480,7 +465,7 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
         if (directory.empty()) { return; } // no project open
         addCreateItems(*menu, directory, "New ");
         menu->addSeparator();
-        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::open(directory); });
+        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
     }
     presentMenu(menu, position);
 }

@@ -143,14 +143,11 @@ void showAssetPicker(
         std::string folder;
     };
     std::vector<Found> found;
-    auto *handler = static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
+    auto *handler = Panda::AssetHandlerEditor::current();
     Panda::AssetType type = Panda::AssetType::NONE;
     if (handler) {
-        // The kind tag (assetTypeString): built-in kinds have historical ones, kinds from the registry —
-        // their name.
-        if (kind == "scene") {
-            type = Panda::AssetType::WORLD;
-        } else if (const Panda::AssetKind *registered = Panda::GameContext::getExtensions().assetKinds.find(kind)) {
+        // The kind tag is the name of the kind in the registry (assetTypeString).
+        if (const Panda::AssetKind *registered = Panda::GameContext::getExtensions().assetKinds.find(kind)) {
             type = registered->type;
         }
         for (const auto &[id, info] : handler->getRegistry()) {

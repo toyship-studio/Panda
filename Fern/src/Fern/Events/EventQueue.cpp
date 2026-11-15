@@ -1,7 +1,3 @@
-//
-// Created by Admin on 19.02.2022.
-//
-
 #include "Fern/Events/EventQueue.hpp"
 #include "Fern/Events/KeyEvents.hpp"
 #include "Fern/Events/MenuEvents.hpp"

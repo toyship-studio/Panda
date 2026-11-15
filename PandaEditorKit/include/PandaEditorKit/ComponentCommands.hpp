@@ -32,8 +32,15 @@ void toggleComponentPresence(Panda::World &world, const std::unordered_set<Panda
     }
     if (targets.empty()) { return; }
     Panda::AddRemoveComponentCommand<T> command(targets);
-    world.getCommandHistory().SAVE(command, true);
+    world.getCommandHistory().execute(command);
     world.setChanged();
+}
+
+// The same over the targets of a form: what ComponentInspector::setPresence of component T is
+// (`inspector.setPresence = setComponentPresence<T>`).
+template<typename T>
+void setComponentPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
+    toggleComponentPresence<T>(world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add);
 }
 
 // Generic edit command for component T: copies the component before/after, undo/redo through
@@ -96,7 +103,7 @@ void commitComponent(Panda::World &world, const std::unordered_set<Panda::Entity
         }
     }
     command.saveAfterEdit();
-    world.getCommandHistory().SAVE(command, false);
+    world.getCommandHistory().record(command);
 }
 
 // A component by the name of its type, as text — the fragment of a world file that holds it

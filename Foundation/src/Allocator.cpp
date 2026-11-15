@@ -1,5 +1,6 @@
 #include "Foundation/Allocator.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <cstring>
@@ -15,11 +16,6 @@ void *operator new(size_t, Foundation::PlacementNewTag, void *_ptr) {
 void operator delete(void *, Foundation::PlacementNewTag, void *) throw() {}
 
 namespace Foundation {
-
-template<typename Ty>
-inline constexpr Ty max(const Ty &_a, const Ty &_b) {
-    return _a > _b ? _a : _b;
-}
 
 template<typename Ty>
 inline Ty alignUp(Ty _a, int32_t _align) {
@@ -61,7 +57,7 @@ void *realloc(AllocatorI *allocator, void *ptr, size_t size, size_t align, const
 }
 
 inline void *alignedAlloc(AllocatorI *_allocator, size_t _size, size_t _align, const char *_file, uint32_t _line) {
-    const size_t align = max(_align, sizeof(uint32_t));
+    const size_t align = std::max(_align, sizeof(uint32_t));
     const size_t total = _size + align;
     uint8_t *ptr = (uint8_t *)alloc(_allocator, total, 0, _file, _line);
     uint8_t *aligned = (uint8_t *)alignPtr(ptr, sizeof(uint32_t), align);
@@ -85,7 +81,7 @@ alignedRealloc(AllocatorI *_allocator, void *_ptr, size_t _size, size_t _align, 
     uint32_t offset = *((uint32_t *)aligned - 1);
     uint8_t *ptr = aligned - offset;
 
-    const size_t align = max(_align, sizeof(uint32_t));
+    const size_t align = std::max(_align, sizeof(uint32_t));
     ;
     const size_t total = _size + align;
     ptr = (uint8_t *)realloc(_allocator, ptr, total, 0, _file, _line);

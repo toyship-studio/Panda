@@ -33,13 +33,14 @@ struct DockPanel {
     std::shared_ptr<PandaUI::View> content;
     Dock dock;
     bool open = true;     // false — the panel is closed (not in the dock; available via the strip and "+")
-    bool inStrip = true;  // show the icon in the VisibilityStrip (center scenes — false)
-    bool closable = true; // a tab with a close button (center scenes — false)
+    bool inStrip = true;  // show the icon in the VisibilityStrip (the world tabs — false)
+    bool closable = true; // a tab with a close button
     // A temporary editor tab of an object (entity/asset): lives in the common specification — rebuild,
     // moving between docks and the menus work as for panels — but it is not saved into the layout, does
     // not get into the strip and "+", and closing REMOVES it (does not switch it to open=false).
     bool transient = false;
     bool preview = false; // unpinned (the title is dimmed); a double click on the tab pins it
+    bool dirty = false;   // the "unsaved" dot of the tab (setPanelDirty)
     // false — the tab stays in its dock: it is dragged to another place of the bar only and has
     // no "Dock ..." items (a world tab: the viewport lives in the center).
     bool movable = true;
@@ -68,7 +69,7 @@ public:
     void setStripStatusText(const std::string &text);
     DockManager(
         std::shared_ptr<PandaUI::View> toolbar,
-        std::shared_ptr<PandaUI::TabView> center, // the viewport (scene tabs); DockManager adds the trailing
+        std::shared_ptr<PandaUI::TabView> center, // the world tabs and the Game; DockManager adds the trailing
         std::vector<DockPanel> panels
     );
 
@@ -83,7 +84,6 @@ public:
     }
 
     void maximize(Dock dock);                     // zoom overlay of a zone (the same one again — restore)
-    void maximizeContaining(PandaUI::View *view); // zooms the dock containing view (buttons in panel headers)
     bool isMaximized() const {
         return m_zoomView != nullptr;
     }
@@ -204,6 +204,11 @@ private:
     std::uint64_t m_nextTabId = 1; // continuation of the id space for transient panels
     bool m_leftUserVisible = true, m_rightUserVisible = true, m_bottomUserVisible = true;
     bool m_inRebuild = false; // suppresses refreshStrip from onSelectionChanged during rebuild
+    // The tabs in the order they were last shown, the latest at the end: when the selected tab of
+    // a dock closes, the one shown before it takes its place (not the first of the row).
+    std::vector<std::string> m_shownOrder;
+    void noteShown(const std::string &id);
+    std::string lastShownIn(Dock dock) const; // empty — none of the open tabs of the dock was shown yet
     std::function<void(const std::string &)> m_onTransientClosed;
     std::function<void(const std::string &)> m_onPanelPinned;
     std::function<bool(const std::string &)> m_onTransientCloseRequest;

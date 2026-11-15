@@ -231,12 +231,11 @@ void EditorLogger::log(std::string_view message, MessageType type) {
             loggerType = Logger::MessageType::_ERROR;
             break;
     }
+    // A line for the user is a line of the log like any other — the history and the console —
+    // and, on the thread of the UI, a row of the Output panel.
     record(message, loggerType, true);
-    if (s_callback == nullptr || std::this_thread::get_id() != s_editorLoggerThread) {
-        Logger::print(message, loggerType);
-        return;
-    }
-    s_callback(message, type);
+    Logger::print(message, loggerType);
+    if (s_callback != nullptr && std::this_thread::get_id() == s_editorLoggerThread) { s_callback(message, type); }
 }
 
 void LogHistory::enable(size_t capacity) {

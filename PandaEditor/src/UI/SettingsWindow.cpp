@@ -1,5 +1,10 @@
 #include "UI/SettingsWindow.hpp"
 
+#include "App/EditorLayer.hpp"
+#include "UI/Commands.hpp"
+#include "UI/Documents/KeymapDocument.hpp"
+#include "UI/Documents/SettingsDocuments.hpp"
+
 #include <PandaEditorKit/Widgets/Icons.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -201,6 +206,129 @@ void SettingsWindowView::contextAttached() {
         if (m_onClose) { m_onClose(); }
         return true;
     });
+}
+
+/* ------------------------------ SettingsWindow ------------------------------ */
+
+SettingsWindow::SettingsWindow(Panda::EditorLayer &app, Commands &commands)
+    : m_app(app)
+    , m_commands(commands) {}
+
+SettingsWindow::~SettingsWindow() {
+    close(); // the tree leaves the window before its documents go
+}
+
+bool SettingsWindow::show(SettingsPage page) {
+    if (m_open) {
+        m_app.openSettingsWindow(m_open->view); // an open one comes to the front
+        m_open->view->selectPage(static_cast<int>(page));
+        return true;
+    }
+    auto open = std::make_unique<Open>();
+    Panda::EditorLayer *app = &m_app;
+    open->editor = std::make_unique<EditorSettingsDocument>(m_app.settingsStore(Panda::SettingsScope::Editor), [app] {
+        return app->settingsFilePath(Panda::SettingsScope::Editor);
+    });
+    ProjectSettingsDocument::Host project;
+    project.store = [app]() -> Panda::TypeContext & { return app->settingsStore(Panda::SettingsScope::Project); };
+    project.isDirty = [app] { return app->isProjectSettingsDirty(); };
+    project.markDirty = [app] { app->projectSettingsEdited(); };
+    project.save = [app] { return app->saveProjectSettings(); };
+    project.revert = [app] { app->revertProjectSettings(); };
+    project.filePath = [app] { return app->settingsFilePath(Panda::SettingsScope::Project); };
+    open->project = std::make_unique<ProjectSettingsDocument>(std::move(project));
+    open->keymap = std::make_unique<KeymapDocument>(m_commands, [this] { m_commands.run("keymap.openFile"); });
+
+    std::vector<SettingsWindowView::Page> pages = {
+        {"Editor", Ic::Configure, "This machine: the look, the viewport, the external editor. Applied at once.",
+         open->editor.get()},
+        {"Project", Ic::Folder, "project.json: what the game is built from. Applied when saved.", open->project.get()},
+        {"Keymap", Ic::Script, "The keys of every command. Applied at once.", open->keymap.get()},
+    };
+    open->view = std::make_shared<SettingsWindowView>(std::move(pages), [this] { requestClose(); });
+    if (!m_app.openSettingsWindow(open->view)) { return false; }
+    open->focused = true;
+    m_open = std::move(open);
+    m_open->view->selectPage(static_cast<int>(page));
+    return true;
+}
+
+void SettingsWindow::show(SettingsPage page, const std::string &section) {
+    if (!show(page) || section.empty()) { return; }
+    if (page == SettingsPage::Project) {
+        static_cast<ProjectSettingsDocument *>(m_open->project.get())->revealSection(section);
+    } else if (page == SettingsPage::Editor) {
+        static_cast<EditorSettingsDocument *>(m_open->editor.get())->revealSection(section);
+    }
+}
+
+void SettingsWindow::close() {
+    if (!m_open) { return; }
+    // The tree leaves the window before its documents go: the views are theirs.
+    m_app.closeSettingsWindow();
+    m_open.reset();
+}
+
+void SettingsWindow::requestClose() {
+    if (m_open) { m_open->closeRequested = true; }
+}
+
+bool SettingsWindow::isCloseRequested() const {
+    return m_open && m_open->closeRequested;
+}
+
+void SettingsWindow::setFocused(bool focused) {
+    if (m_open) { m_open->focused = focused; }
+}
+
+bool SettingsWindow::isFocused() const {
+    return m_open && m_open->focused;
+}
+
+Document *SettingsWindow::focusedDocument() const {
+    return isFocused() ? m_open->view->selectedDocument() : nullptr;
+}
+
+bool SettingsWindow::owns(const Document *document) const {
+    return m_open && document != nullptr &&
+           (document == m_open->editor.get() || document == m_open->project.get() || document == m_open->keymap.get());
+}
+
+Document *SettingsWindow::document(SettingsPage page) const {
+    if (!m_open) { return nullptr; }
+    switch (page) {
+        case SettingsPage::Editor: return m_open->editor.get();
+        case SettingsPage::Project: return m_open->project.get();
+        case SettingsPage::Keymap: return m_open->keymap.get();
+    }
+    return nullptr;
+}
+
+void SettingsWindow::settingsFileReloaded(Panda::SettingsScope scope) {
+    if (!m_open) { return; }
+    if (scope == Panda::SettingsScope::Project) {
+        static_cast<ProjectSettingsDocument *>(m_open->project.get())->fileReloaded();
+    } else if (scope == Panda::SettingsScope::Editor) {
+        m_open->editor->refresh();
+    }
+}
+
+void SettingsWindow::storesChanged() {
+    for (SettingsPage page : {SettingsPage::Project, SettingsPage::Editor}) {
+        if (Document *settings = document(page)) { settings->refresh(); }
+    }
+}
+
+void SettingsWindow::keymapChanged() {
+    if (Document *keymap = document(SettingsPage::Keymap)) { keymap->refresh(); }
+}
+
+bool SettingsWindow::commitProjectSettings(Foundation::Shared<Panda::WorldCommand> command) {
+    if (!m_open) { return false; }
+    auto *project = static_cast<ProjectSettingsDocument *>(m_open->project.get());
+    project->undoStack()->execute(std::move(command));
+    project->markDirty();
+    return true;
 }
 
 } // namespace Editor

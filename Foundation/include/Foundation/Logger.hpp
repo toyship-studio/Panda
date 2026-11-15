@@ -34,10 +34,11 @@ private:
     static void reset();
 };
 
-// The log the user sees: the Output panel of the editor through a callback the editor installs
-// (init); without one the messages go to the console. The callback is the panel's, so it runs
-// only on the thread that installed it: a message from another thread goes to the console
-// instead of into the UI.
+// The log the user sees: a line of it is written to the console and the history like any line
+// of Logger, and to the Output panel of the editor through a callback the editor installs (init).
+// One call is enough — a message is not written to Logger as well. The callback is the panel's,
+// so it runs only on the thread that installed it: a message from another thread reaches the
+// console and the history, not the UI.
 class EditorLogger {
 public:
     enum MessageType { Info, Warning, Error };

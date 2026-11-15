@@ -3,8 +3,7 @@
 #include "Panda/PhysicsEditor/ColliderLines.hpp"
 #include "Panda/PhysicsEditor/PhysicsEditorSettings.hpp"
 
-#include <PandaEditorKit/ComponentCommands.hpp>
-#include <PandaEditorKit/EditorExtensions.hpp>
+#include <PandaEditorKit/ComponentForm.hpp>
 #include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/SettingsCommands.hpp>
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
@@ -35,24 +34,19 @@ namespace {
     enum class Rebuild { None, Body, Joint };
 
     template<typename T>
-    struct Section {
+    struct Section : ComponentForm<T> {
         CollapsibleSection &section;
-        Panda::World &world;
-        const std::vector<Panda::Entity> &entities;
-        std::shared_ptr<T> data;
 
         explicit Section(CollapsibleSection &section, const ComponentInspectorContext &context)
-            : section(section)
-            , world(context.world)
-            , entities(context.entities)
-            , data(std::make_shared<T>(context.entities.front().getComponent<T>())) {}
+            : ComponentForm<T>(context)
+            , section(section) {}
 
         std::function<void()> emitter(Rebuild rebuild) const {
             Panda::World *world = &this->world;
             const std::vector<Panda::Entity> entities = this->entities;
-            std::shared_ptr<T> data = this->data;
-            return [world, entities, data, rebuild] {
-                commitComponent<T>(*world, entities, *data);
+            const std::function<void()> commit = this->commit;
+            return [world, entities, commit, rebuild] {
+                commit();
                 if (rebuild == Rebuild::None || !world->isRunning()) { return; }
                 Panda::Physics2D *physics2D = world->findContext<Panda::Physics2D>();
                 Panda::Physics3D *physics3D = world->findContext<Panda::Physics3D>();
@@ -69,20 +63,7 @@ namespace {
             };
         }
 
-        template<typename Get>
-        bool mixed(Get get) const {
-            return componentFieldMixed<T>(entities, get);
-        }
-        template<typename Get>
-        glm::bvec3 vectorMixed(Get get) const {
-            return componentVectorMixed<T>(entities, get);
-        }
     };
-
-    template<typename T>
-    void setPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-        toggleComponentPresence<T>(world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add);
-    }
 
     // --- Bodies.
 
@@ -577,7 +558,7 @@ namespace {
         ComponentInspector entry;
         entry.component = component;
         entry.displayName = displayName;
-        entry.setPresence = setPresence<T>;
+        entry.setPresence = setComponentPresence<T>;
         entry.build = build;
         return entry;
     }

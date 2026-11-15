@@ -1,7 +1,3 @@
-//
-// Created by Admin on 25.01.2022.
-//
-
 #include "Panda/GameLogic/World.hpp"
 #include "Panda/Serialization/SettingsMapper.hpp"
 #include "Panda/GameLogic/Input.hpp"
@@ -71,7 +67,7 @@ World::~World() {
     // The commands of the undo history hold entities of this world, and a command destroys the
     // tombstone it kept for undo: they go while the registry is alive (the members are destroyed
     // in the reverse order — the registry before the history).
-    m_commandHistory.CLEAR();
+    m_commandHistory.clear();
 }
 
 void World::startRunning() {
@@ -444,7 +440,7 @@ void World::destroyPending() {
 }
 
 void World::clear() {
-    m_commandHistory.CLEAR();
+    m_commandHistory.clear();
     m_changed = false;
     std::vector<UUID> entityIds;
     entityIds.reserve(m_entityIdMap.size());

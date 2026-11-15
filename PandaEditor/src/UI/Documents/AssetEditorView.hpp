@@ -26,10 +26,6 @@ public:
     void setAssets(const std::vector<Panda::AssetId> &assets);
     // The form rereads the document (undo/redo, a reload); the editor instance survives.
     void rebuild();
-    // The preview of the form, for what drives it without gestures (EditorMcp).
-    AssetPreviewView *previewView() const {
-        return m_preview.get();
-    }
 
 private:
     void addSubviews() override;

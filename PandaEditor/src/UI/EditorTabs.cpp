@@ -32,9 +32,6 @@ namespace {
     constexpr const char *MULTI_TAB_ID = "edit:multi"; // multi-selection: lives only as a preview
     constexpr int HISTORY_CAP = 50; // depth of the selection history
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     // Substitution of the edit target with the tab's entities — only when there are any.
     class TargetGuard final {
@@ -55,10 +52,10 @@ namespace {
 
 } // namespace
 
-// Per-tab Output: delegates entity edits to the controller, substituting the target with the
-// entities of ITS OWN tab (a pinned tab edits its own object, not the current selection).
+// Per-tab Output: delegates entity edits to the entity actions of the editor, with the entities
+// of ITS OWN tab as the target (a pinned tab edits its own object, not the current selection).
 // Structural edits (the set of components/scripts) reread the tab form themselves — the
-// controller's pushSelectionToPanels updates only the tab of the current selection.
+// workspace updates only what shows the current selection.
 class EditorTabs::Proxy final : public EntityEditorOutput {
 public:
     Proxy(EditorTabs *tabs, EditorTabsHost *host, std::string tabId)
@@ -90,35 +87,17 @@ public:
         TargetGuard g(m_host, targets());
         out().entityDidEditScale(scale);
     }
-    void entityDidAddComponent(ComponentType type) override {
+    void entityDidAddComponent(const std::string &component) override {
         {
             TargetGuard g(m_host, targets());
-            out().entityDidAddComponent(type);
+            out().entityDidAddComponent(component);
         }
         m_tabs->refreshTab(m_tabId); // structural — the tab rereads its sections
     }
-    void entityDidRemoveComponent(ComponentType type) override {
+    void entityDidRemoveComponent(const std::string &component) override {
         {
             TargetGuard g(m_host, targets());
-            out().entityDidRemoveComponent(type);
-        }
-        m_tabs->refreshTab(m_tabId);
-    }
-    void entityDidEditComponent(const ComponentEdit &edit) override {
-        TargetGuard g(m_host, targets());
-        out().entityDidEditComponent(edit);
-    }
-    void entityDidAddExtensionComponent(const std::string &component) override {
-        {
-            TargetGuard g(m_host, targets());
-            out().entityDidAddExtensionComponent(component);
-        }
-        m_tabs->refreshTab(m_tabId);
-    }
-    void entityDidRemoveExtensionComponent(const std::string &component) override {
-        {
-            TargetGuard g(m_host, targets());
-            out().entityDidRemoveExtensionComponent(component);
+            out().entityDidRemoveComponent(component);
         }
         m_tabs->refreshTab(m_tabId);
     }
@@ -142,9 +121,6 @@ public:
     }
     void entityDidClickBackground() override {
         out().entityDidClickBackground(); // globally: clear the selection
-    }
-    void entityDidRequestMaximize() override {
-        m_tabs->requestMaximize(m_tabId); // zoom of the dock of EXACTLY this tab
     }
 
 private:
@@ -225,7 +201,7 @@ public:
         return m_view;
     }
     bool isDirty() override {
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         if (!handler) { return false; }
         for (Panda::AssetId id : assets()) {
             if (handler->documents().isAssetChanged(id)) { return true; }
@@ -233,7 +209,7 @@ public:
         return false;
     }
     bool save() override {
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         if (!handler) { return false; }
         for (Panda::AssetId id : assets()) {
             if (handler->documents().isAssetChanged(id) && !m_tabs->m_host->tabsSaveAsset(id)) { return false; }
@@ -241,7 +217,7 @@ public:
         return true;
     }
     std::filesystem::path filePath() override {
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         const std::vector<Panda::AssetId> ids = assets();
         if (!handler || ids.size() != 1) { return {}; }
         const Panda::path_t relative = handler->assetPath(ids.front());
@@ -250,14 +226,14 @@ public:
     void revert() override {
         // Back to the file: otherwise the dirty state would remain in memory INVISIBLE (no tab) — a
         // violation of the invariant "the source of truth about what is unsaved is the open tabs".
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         if (!handler) { return; }
         for (Panda::AssetId id : assets()) {
             if (handler->documents().isAssetChanged(id)) { handler->reload(id); }
         }
     }
     Panda::CommandHistory *undoStack() override {
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         const std::vector<Panda::AssetId> ids = assets();
         return handler && ids.size() == 1 ? &handler->documents().undoStackFor(ids.front()) : nullptr;
     }
@@ -456,17 +432,13 @@ std::vector<Panda::UUID> EditorTabs::entityTargets(const std::string &tabId) {
     return entry ? entry->entityIds : std::vector<Panda::UUID>{};
 }
 
-void EditorTabs::requestMaximize(const std::string &tabId) {
-    if (TabEntry *entry = findEntry(tabId)) { m_host->tabsRequestMaximize(entry->document->view().get()); }
-}
-
 const char *EditorTabs::iconFor(const TabEntry &entry) const {
     if (!entry.entityIds.empty()) {
         const std::vector<Panda::Entity> alive = m_host->tabsResolveEntities(entry.entityIds);
         return alive.size() == 1 ? entityIconName(alive.front()) : Ic::EntityCube;
     }
     if (entry.assetIds.size() == 1) {
-        if (Panda::AssetHandlerEditor *handler = assetHandler()) {
+        if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) {
             auto it = handler->getRegistry().find(entry.assetIds.front());
             if (it != handler->getRegistry().end()) { return assetIconName(it->second.type); }
         }
@@ -484,7 +456,7 @@ std::string EditorTabs::titleFor(const TabEntry &entry) const {
         return std::to_string(alive.size()) + " entities";
     }
     if (entry.assetIds.size() == 1) {
-        if (Panda::AssetHandlerEditor *handler = assetHandler()) {
+        if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) {
             auto it = handler->getRegistry().find(entry.assetIds.front());
             if (it != handler->getRegistry().end()) { return handler->getAssetName(it->first); }
         }
@@ -502,7 +474,7 @@ void EditorTabs::bindEntry(TabEntry &entry) {
     }
     if (auto *asset = dynamic_cast<AssetDocument *>(entry.document.get())) {
         size_t alive = 0;
-        Panda::AssetHandlerEditor *handler = assetHandler();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         for (Panda::AssetId id : entry.assetIds) {
             if (handler && handler->hasAsset(id)) { ++alive; }
         }
@@ -679,21 +651,21 @@ void EditorTabs::refreshTab(const std::string &tabId) {
 }
 
 void EditorTabs::syncLifetimes() {
-    // Death of targets (undo/deletion/reload): a tab without live targets is closed, a partially
-    // live one (multi) is narrowed down to the live ones. Cheap detection by the live count, a rebuild —
-    // only when it actually happened. Documents of the registry have no targets.
+    // Death of targets (undo/deletion/reload): a tab without live targets is closed — whoever
+    // noticed the death first (a refresh of the forms counts the targets too) — and a partially
+    // live one (multi) is narrowed down to the live ones: a rebuild only when the count changed.
+    // Documents of the registry have no targets.
     std::vector<std::string> toClose;
-    Panda::AssetHandlerEditor *handler = assetHandler();
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     for (TabEntry &entry : m_entries) {
         if (!entry.typeId.empty()) { continue; }
         size_t alive = m_host->tabsResolveEntities(entry.entityIds).size();
         for (Panda::AssetId assetId : entry.assetIds) {
             if (handler && handler->hasAsset(assetId)) { ++alive; }
         }
-        if (alive == entry.aliveCount) { continue; }
         if (alive == 0) {
             toClose.push_back(entry.id);
-        } else {
+        } else if (alive != entry.aliveCount) {
             refreshTab(entry.id);
         }
     }
@@ -767,7 +739,7 @@ void EditorTabs::notifyHistory() {
 /* ------------------------------ Persist of pinned tabs ------------------------------ */
 
 void EditorTabs::restorePinned(const std::vector<Panda::PinnedTabPlacement> &pinned) {
-    Panda::AssetHandlerEditor *handler = assetHandler();
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     for (const Panda::PinnedTabPlacement &placement : pinned) {
         if (m_docks->panelExists(placement.id)) { continue; }
         const Dock dock = static_cast<Dock>(std::clamp(placement.dock, 0, 3));

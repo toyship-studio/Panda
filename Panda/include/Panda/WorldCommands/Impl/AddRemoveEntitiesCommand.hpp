@@ -2,7 +2,8 @@
 
 #include "Panda/WorldCommands/WorldCommand.hpp"
 #include "Panda/GameLogic/Entity.hpp"
-#include "Panda/GameLogic/SelectionContext.hpp"
+
+#include <unordered_set>
 
 namespace Panda {
 
@@ -31,12 +32,9 @@ public:
     bool execute() override {
         if (m_entities.empty()) { return false; }
         Entity firstEntity = *m_entities.begin();
-        World *world = firstEntity.getWorld();
         for (auto entity : m_entities) {
             const bool deleted = !entity.hasComponent<DeletedComponent>(); // own flag, not the ancestors'
             entity.setDeleted(deleted);
-            UUID id = entity.getId();
-            if (deleted && SelectionContext::isEntitySelected(id)) { SelectionContext::removeSelectedEntity(id); }
         }
         firstEntity.setWorldChanged();
         return true;

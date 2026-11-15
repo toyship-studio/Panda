@@ -4,96 +4,102 @@
 
 #include <Foundation/Foundation.hpp>
 
+#include <cstddef>
 #include <deque>
 #include <type_traits>
 #include <utility>
 
 namespace Panda {
 
-// Undo/redo history of ONE document (world — a World member; assets — a map in AssetHandlerEditor).
+// The undo/redo history of ONE document (a world — a member of World; an asset — the map of
+// AssetDocuments; the settings of the project — their document). A step is a command; a command
+// that continues the gesture of the step before it is merged into that step (WorldCommand::canMerge).
 class CommandHistory final {
-    inline static int MAX_OPERATIONS_IN_CACHE = 50;
-
 public:
-    // Do not prefill the deques: deque(N) is N null commands (size, not capacity), CAN_UNDO
-    // of an empty stack became true and UNDO crashed on null. The cap is kept by SAVE (pop_front).
-    CommandHistory() = default;
-
-    /// Save new command to history and execute if it needs to.
-    template<typename CMD>
-    void SAVE(CMD &cmd, bool needToExecute = true) {
-        static_assert(std::is_base_of_v<WorldCommand, CMD>, "Not inherited from WorldCommand");
-        SAVE_SHARED(Foundation::makeShared<CMD>(std::move(cmd)), needToExecute);
+    // Runs the command and makes it the last step of the history.
+    template<typename Command>
+        requires std::is_base_of_v<WorldCommand, Command>
+    void execute(Command &command) {
+        add(Foundation::makeShared<Command>(std::move(command)), true);
+    }
+    // The same for a command the caller built with its type erased (the settings commands).
+    void execute(Foundation::Shared<WorldCommand> command) {
+        add(std::move(command), true);
     }
 
-    /// Save a ready command (built by the caller, the type is erased: the settings commands of the
-    /// editor host) and execute if it needs to.
-    void SAVE_SHARED(Foundation::Shared<WorldCommand> command, bool needToExecute = true) {
-        auto last = PREVIOUS_COMMAND();
-        if (last && last->canMerge(*command)) {
-            last->merge(*command);
-        } else {
-            undoStack.push_back(std::move(command));
-        }
-        if (needToExecute) {
-            last = PREVIOUS_COMMAND();
-            if (!last->execute()) {
-                LOG_ERROR("ERROR EXECUTING COMMAND");
-                CLEAR();
-            }
-        }
-        if (undoStack.size() > MAX_OPERATIONS_IN_CACHE) { undoStack.pop_front(); }
-        redoStack.clear();
+    // Makes a change that is already applied a step of the history: the command is there to be
+    // undone (an entity that was just created, a stroke of a brush, a drag of the gizmo).
+    template<typename Command>
+        requires std::is_base_of_v<WorldCommand, Command>
+    void record(Command &command) {
+        add(Foundation::makeShared<Command>(std::move(command)), false);
     }
 
-    bool CAN_UNDO() {
-        return !undoStack.empty();
+    bool canUndo() const {
+        return !m_undoStack.empty();
     }
 
-    void UNDO() {
-        if (!CAN_UNDO()) { return; }
-        auto command = undoStack.back();
-        undoStack.pop_back();
+    void undo() {
+        if (!canUndo()) { return; }
+        auto command = m_undoStack.back();
+        m_undoStack.pop_back();
         if (!command->undo()) {
-            LOG_ERROR("ERROR EXECUTING COMMAND");
-            CLEAR();
+            failed();
             return;
         }
-        redoStack.push_back(command);
+        m_redoStack.push_back(command);
         // The new top is a completed history step: future edits are not merged into it.
-        if (!undoStack.empty()) { undoStack.back()->seal(); }
+        if (!m_undoStack.empty()) { m_undoStack.back()->seal(); }
     }
 
-    bool CAN_REDO() {
-        return !redoStack.empty();
+    bool canRedo() const {
+        return !m_redoStack.empty();
     }
 
-    void REDO() {
-        if (!CAN_REDO()) { return; }
-        auto command = redoStack.back();
-        redoStack.pop_back();
+    void redo() {
+        if (!canRedo()) { return; }
+        auto command = m_redoStack.back();
+        m_redoStack.pop_back();
         if (!command->execute()) {
-            LOG_ERROR("ERROR EXECUTING COMMAND");
-            CLEAR();
+            failed();
             return;
         }
-        undoStack.push_back(command);
+        m_undoStack.push_back(command);
         command->seal();
     }
 
-    Foundation::Shared<WorldCommand> PREVIOUS_COMMAND() {
-        if (undoStack.empty()) { return nullptr; }
-        return undoStack.back();
-    }
-
-    void CLEAR() {
-        undoStack.clear();
-        redoStack.clear();
+    void clear() {
+        m_undoStack.clear();
+        m_redoStack.clear();
     }
 
 private:
-    std::deque<Foundation::Shared<WorldCommand>> undoStack;
-    std::deque<Foundation::Shared<WorldCommand>> redoStack;
+    static constexpr size_t MAX_STEPS = 50;
+
+    void add(Foundation::Shared<WorldCommand> command, bool run) {
+        WorldCommand *last = m_undoStack.empty() ? nullptr : m_undoStack.back().get();
+        if (last && last->canMerge(*command)) {
+            last->merge(*command);
+        } else {
+            m_undoStack.push_back(std::move(command));
+        }
+        if (run && !m_undoStack.back()->execute()) {
+            failed();
+            return;
+        }
+        if (m_undoStack.size() > MAX_STEPS) { m_undoStack.pop_front(); }
+        m_redoStack.clear();
+    }
+
+    // A command that could not be executed or undone leaves the document in a state the history
+    // no longer describes: the history is dropped.
+    void failed() {
+        LOG_ERROR("A command of the undo history failed: the history is cleared.");
+        clear();
+    }
+
+    std::deque<Foundation::Shared<WorldCommand>> m_undoStack;
+    std::deque<Foundation::Shared<WorldCommand>> m_redoStack;
 };
 
 } // namespace Panda

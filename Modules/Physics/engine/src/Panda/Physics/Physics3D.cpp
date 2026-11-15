@@ -139,7 +139,6 @@ namespace {
 
     // Why a mesh collider has no shape: the game log and the editor console.
     void warnMeshCollider(Entity entity, const char *reason) {
-        LOG_WARN("Mesh Collider 3D on '%s': %s", entity.getName().c_str(), reason);
         LOG_WARN_EDITOR("Mesh Collider 3D on '%s': %s", entity.getName().c_str(), reason);
     }
 

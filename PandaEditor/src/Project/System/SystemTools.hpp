@@ -51,16 +51,15 @@ public:
         std::vector<std::string> m_questions;
         Unattended *m_outer; // the scopes nest
     };
-    static void copyFolder(const path_t &sourcePath, const path_t &newPath);
-    static void open(const path_t &path);
+    // A file — in the application of its type; a folder — in the file manager.
     static bool openWithDefaultApplication(const path_t &path);
     static bool openUrl(const std::string &url); // the default browser
-    static void show(const path_t &path);
+    // The file manager shows the folder of `path` (with `path` selected where it can select).
+    static void revealInFileManager(const path_t &path);
     // The file in a text editor: `command` is what the user chose (a command found in PATH and the
     // usual install folders, the path of an executable, on macOS also an application name);
     // empty or not found — the application the system opens the file with.
     static void openInEditor(const std::string &command, const path_t &path);
-    static void openCppProject(const path_t &path);
     // Restart of the editor: the UI sets the flag and closes the application through the usual
     // flow; main() starts the new instance after the teardown, so the settings written on exit
     // are what the new instance reads.

@@ -13,8 +13,8 @@ namespace PandaUI::Gallery {
 
 namespace {
 
-    DemoSceneNode *asNode(TreeItem item) {
-        return static_cast<DemoSceneNode *>(item);
+    DemoTreeNode *asNode(TreeItem item) {
+        return static_cast<DemoTreeNode *>(item);
     }
 
     // Tree row content: a caption, vertically centered. Reused — setText sets everything.
@@ -36,8 +36,8 @@ namespace {
         std::shared_ptr<Label> m_label;
     };
 
-    std::shared_ptr<DemoSceneNode> makeNode(const std::string &name, DemoSceneNode *parent) {
-        auto node = std::make_shared<DemoSceneNode>();
+    std::shared_ptr<DemoTreeNode> makeNode(const std::string &name, DemoTreeNode *parent) {
+        auto node = std::make_shared<DemoTreeNode>();
         node->name = name;
         node->parent = parent;
         return node;
@@ -51,14 +51,14 @@ TreeViewSection::TreeViewSection() {
     setupStyle();
 }
 
-void TreeViewSection::reparent(DemoSceneNode *node, DemoSceneNode *newParent) {
+void TreeViewSection::reparent(DemoTreeNode *node, DemoTreeNode *newParent) {
     if (!node->parent || !newParent) { return; } // the root is not moved
     auto &source = node->parent->children;
-    auto it = std::find_if(source.begin(), source.end(), [node](const std::shared_ptr<DemoSceneNode> &candidate) {
+    auto it = std::find_if(source.begin(), source.end(), [node](const std::shared_ptr<DemoTreeNode> &candidate) {
         return candidate.get() == node;
     });
     if (it == source.end()) { return; }
-    std::shared_ptr<DemoSceneNode> owned = *it;
+    std::shared_ptr<DemoTreeNode> owned = *it;
     source.erase(it);
     node->parent = newParent;
     newParent->children.push_back(owned);
@@ -70,25 +70,25 @@ void TreeViewSection::addSubviews() {
     ));
 
     auto example = std::make_shared<DemoExample>(
-        "Scene hierarchy", "Arrow — expand; click — select (⌘/Ctrl — add); drag onto a node; right-click — menu."
+        "World hierarchy", "Arrow — expand; click — select (⌘/Ctrl — add); drag onto a node; right-click — menu."
     );
 
     // --- model (source of truth) ---
-    auto scene = makeNode("Scene", nullptr);
-    auto camera = makeNode("Main Camera", scene.get());
-    auto light = makeNode("Directional Light", scene.get());
-    auto environment = makeNode("Environment", scene.get());
+    auto world = makeNode("World", nullptr);
+    auto camera = makeNode("Main Camera", world.get());
+    auto light = makeNode("Directional Light", world.get());
+    auto environment = makeNode("Environment", world.get());
     environment->children.push_back(makeNode("Sky", environment.get()));
     environment->children.push_back(makeNode("Fog", environment.get()));
-    auto player = makeNode("Player", scene.get());
+    auto player = makeNode("Player", world.get());
     player->children.push_back(makeNode("Mesh", player.get()));
     player->children.push_back(makeNode("Collider", player.get()));
     auto scripts = makeNode("Scripts", player.get());
     scripts->children.push_back(makeNode("Movement", scripts.get()));
     scripts->children.push_back(makeNode("Health", scripts.get()));
     player->children.push_back(scripts);
-    scene->children = {camera, light, environment, player};
-    m_root = scene;
+    world->children = {camera, light, environment, player};
+    m_root = world;
 
     // --- the tree as a projection of the model ---
     m_tree = std::make_shared<TreeView>();
@@ -107,7 +107,7 @@ void TreeViewSection::addSubviews() {
     dataSource.titleForItem = [](TreeItem item) { return asNode(item)->name; };
     m_tree->setDataSource(dataSource);
 
-    m_tree->setExpanded(scene.get(), true);
+    m_tree->setExpanded(world.get(), true);
     m_tree->setExpanded(player.get(), true);
 
     // drag-and-drop: apply the move to the model, then reload.
@@ -125,7 +125,7 @@ void TreeViewSection::addSubviews() {
     m_tree->setOnContextMenu([this](TreeView &tree, TreeItem item, Point position) {
         Context *context = tree.getContext();
         if (!context) { return; }
-        DemoSceneNode *node = asNode(item);
+        DemoTreeNode *node = asNode(item);
 
         auto menu = std::make_shared<Menu>();
         menu->addItem("Add child", [this, node] {
@@ -141,7 +141,7 @@ void TreeViewSection::addSubviews() {
         menu->addItem("Delete", [this, node] {
             if (!node->parent) { return; } // the root is not deleted
             auto &siblings = node->parent->children;
-            siblings.erase(std::remove_if(siblings.begin(), siblings.end(), [node](const std::shared_ptr<DemoSceneNode> &n) {
+            siblings.erase(std::remove_if(siblings.begin(), siblings.end(), [node](const std::shared_ptr<DemoTreeNode> &n) {
                 return n.get() == node;
             }), siblings.end());           // remove from the parent (destroys the subtree)
             m_tree->reloadData();

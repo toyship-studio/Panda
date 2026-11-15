@@ -32,7 +32,7 @@ rebuilds the settings and statistics sections; nothing is ever unregistered.
 
 | Registry | Contribution |
 |---|---|
-| `componentInspectors` | `ComponentInspector {component, displayName, icon, setPresence, build}`: the inspector section of a component type (by its registry key) and its Add Component entry |
+| `componentInspectors` | `ComponentInspector {component, displayName, icon, characteristic, setPresence, build}`: the inspector section of a component type (by its registry key) and its Add Component entry |
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: the icon and the color of an asset kind in the Content Browser and on tabs, the form of its tab (`AssetEditor`) |
 | `assetCreators` | `AssetCreator {title, create(directory) → path}`: an asset the editor can create: an entry of File → New and of the Content Browser menu. `title` is the noun ("Terrain"), the menu says "New"; the core registers and selects the new file |
 | `viewportTools` | `ViewportTool` (an owned object): runs before the world update in EDIT, may capture the left mouse button, draws helper lines |
@@ -54,11 +54,9 @@ using namespace Editor;
 using namespace PandaUI;
 
 void buildEmitterSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
-    Panda::Entity primary = context.entities.front();               // the values come from the primary target
-    auto data = std::make_shared<Panda::ParticleEmitterComponent>(primary.getComponent<Panda::ParticleEmitterComponent>());
-    Panda::World *world = &context.world;
-    const std::vector<Panda::Entity> entities = context.entities;   // an edit hits every target that has the component
-    auto emit = [world, entities, data] { commitComponent<Panda::ParticleEmitterComponent>(*world, entities, *data); };
+    ComponentForm<Panda::ParticleEmitterComponent> form(context);
+    auto data = form.data;   // a copy of the component of the primary target: the rows change it
+    auto emit = form.commit; // writes the copy to every target that has the component, as one undoable edit
 
     addToggleRow(section, "Playing", data->playing, [data, emit](bool v) { data->playing = v; emit(); });
     addNumberRow(section, "Rate (1/s)", 0.f, 5000.f, data->rate, [data, emit](float v) { data->rate = v; emit(); });
@@ -69,36 +67,39 @@ void buildEmitterSection(CollapsibleSection &section, const ComponentInspectorCo
     });
 }
 
-void setEmitterPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-    toggleComponentPresence<Panda::ParticleEmitterComponent>(world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add);
-}
-
 void ParticlesEditor::registerExtensions(EditorExtensions &extensions) {
     ComponentInspector emitter;
     emitter.component = "particleEmitterComponent"; // the registry key: presence on an entity is checked by it
     emitter.displayName = "Particle Emitter";        // the Add Component item; the section title in caps
     emitter.icon = Ic::Sprite;                       // the icon of an entity with the component (Hierarchy, tabs)
-    emitter.setPresence = setEmitterPresence;
+    emitter.setPresence = setComponentPresence<Panda::ParticleEmitterComponent>; // add / remove, one undo step each
     emitter.build = buildEmitterSection;
     extensions.componentInspectors.add(std::move(emitter));
 }
 ```
 
-The pattern: the section edits a copy of the component and commits it as a whole on every
-change. `commitComponent<T>` writes the copy to every target that has `T` with one undo
+The pattern (`PandaEditorKit/ComponentForm.hpp`): the section edits a copy of the component
+and commits it as a whole on every change. `ComponentForm<T>::commit` is `commitComponent<T>`:
+it writes the copy to every target that has `T` with one undo
 command (`GenericComponentUpdate<T>`: consecutive edits of the same targets merge, so a drag
-is one undo step); `toggleComponentPresence<T>` adds or removes it with one command
-(`AddRemoveComponentCommand<T>`). The core's own sections work the same way.
+is one undo step); `setComponentPresence<T>` adds or removes it with one command
+(`AddRemoveComponentCommand<T>`). The sections of the core — the camera, the lights, the
+meshes — are entries of the same registry (`CoreComponentInspectors.cpp` of the editor is a
+longer example of the same pattern).
+
+An entity shows the icon of its most telling component: a component that says what the entity
+is keeps `characteristic = true` (the default) and gives its icon first; set it to `false` for
+a component many kinds of entities carry, as the core does for its meshes and the sprite.
 
 A form with several targets shows the primary values and marks the fields that differ:
-every `add…Row` takes a `mixed` flag, and `componentFieldMixed<T>(entities, get)` /
-`componentVectorMixed<T>` compute it:
+every `add…Row` takes a `mixed` flag, and `form.mixed(get)` / `form.vectorMixed(get)`
+(`componentFieldMixed<T>(entities, get)` / `componentVectorMixed<T>`) compute it:
 
 ```cpp
 addNumberRow(section, "Radius", 0.001f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
-             componentFieldMixed<T>(entities, [](T &c) { return c.radius; }));
+             form.mixed([](T &c) { return c.radius; }));
 addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); },
-              componentVectorMixed<T>(entities, [](T &c) { return c.offset; }));
+              form.vectorMixed([](T &c) { return c.offset; }));
 addEntityRow(section, "Connected", context.world, data->connectedEntity, [data, emit](Panda::UUID id) { data->connectedEntity = id; emit(); });
 ```
 
@@ -136,8 +137,11 @@ Edits of the asset are commands on the document's stack:
 
 ```cpp
 Panda::CommandHistory &stack = editorHost().assetUndoStack(assetId);
-stack.SAVE(command); // applies the command and marks the document unsaved
+stack.execute(command); // applies the command and marks the document unsaved
 ```
+
+`record(command)` instead of `execute` puts a change that is already applied on the stack — a
+stroke of a brush that painted while the pointer moved: the command is there to be undone.
 
 A command is a `Panda::WorldCommand` with `execute`, `undo`, and `canMerge` / `merge` / `seal`
 for continuous gestures (a number typed character by character is one step). An operation
@@ -201,7 +205,16 @@ editor coordinator:
 | documents | `assetUndoStack(id)`, `clearAssetUndoStack(id)`, `refreshAssetEditors(id)`, `refreshFromWorld()` (the data was recreated structurally: the panels reread the world) |
 | viewport | `beginViewportEditing(title, document, onStop)`, `endViewportEditing()` |
 | settings | `settings(scope)`, `commitSettings(scope, command)`, `openSettings(scope, section)` |
-| output | `log(level, message)` — the Output panel |
+
+What is selected is `Editor::selection()` (`PandaEditorKit/Selection.hpp`): the entities of the
+world the editor shows (`entityIds()`, `entities()`, `isSelected(id)`) or the assets of the
+project (`assets()`), one or the other. An overlay asks it while it draws (the Physics module
+outlines the collider of a selected entity in full); `version()` counts the changes for a part
+that keeps something per selection. A part selects through the host (`selectEntity`,
+`selectAsset`): the panels and the tabs follow at once.
+
+A line for the Output panel is `LOG_INFO_EDITOR` / `LOG_WARN_EDITOR` / `LOG_ERROR_EDITOR`
+(`Foundation/Logger.hpp`): the panel shows that channel and nothing else.
 
 Everything else — the world, the entities, the assets, the registries — the part takes from
 the engine directly.

@@ -190,7 +190,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
             LOG_ERROR("RUNTIME: Mesh %u not found at %s", (uint32_t)id, entryPath.string().c_str());
         }
     } else if (loadedType == AssetType::WORLD) {
-        asset = F_NEW(m_allocator, WorldAsset)(entryPath);
+        asset = F_NEW(m_allocator, WorldAsset)();
     } else if (loadedType == AssetType::POSTPROCESSING) {
         path_t postfxPath = m_runtimeDataPath / entryPath;
         PostprocessingDataDto dataDto;
@@ -221,10 +221,17 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
             const path_t assetPath = m_runtimeDataPath / entryPath;
             asset = kind->load(m_allocator, assetPath);
             if (asset != nullptr) {
-                LOG_INFO("RUNTIME: Loaded %s %u from %s", kind->displayName.c_str(), (uint32_t)id, assetPath.string().c_str());
+                LOG_INFO(
+                    "RUNTIME: Loaded %s %u from %s", kind->displayName.c_str(), (uint32_t)id, assetPath.string().c_str()
+                );
             } else {
                 asset = kind->placeholder(m_allocator);
-                LOG_ERROR("RUNTIME: %s %u not found at %s", kind->displayName.c_str(), (uint32_t)id, assetPath.string().c_str());
+                LOG_ERROR(
+                    "RUNTIME: %s %u not found at %s",
+                    kind->displayName.c_str(),
+                    (uint32_t)id,
+                    assetPath.string().c_str()
+                );
             }
         } else {
             asset = nullptr;

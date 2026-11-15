@@ -506,30 +506,6 @@ SystemTools::saveFileDialog(const char *filter, const char *defaultPath, const c
     return res;
 }
 
-void SystemTools::copyFolder(const path_t &sourcePath, const path_t &newPath) {
-#ifdef PLATFORM_POSIX
-    std::string command = "cp -rf " + sourcePath.string() + " " + newPath.string();
-    system(command.c_str());
-#elif defined(PLATFORM_WINDOWS)
-    std::string command = "copy " + sourcePath.string() + " " + newPath.string();
-    system(command.c_str());
-#else
-#    error Unsupported platrofm
-#endif
-}
-
-void SystemTools::open(const path_t &path) {
-#ifdef PLATFORM_POSIX
-    std::string command = "open -R " + path.string();
-    system(command.c_str());
-#elif defined(PLATFORM_WINDOWS)
-    std::string command = "start " + path.string();
-    system(command.c_str());
-#else
-#    error Unsupported platrofm
-#endif
-}
-
 bool SystemTools::openWithDefaultApplication(const path_t &path) {
 #ifdef PLATFORM_MACOS
     return runCommand("/usr/bin/open", {path.string()});
@@ -538,7 +514,7 @@ bool SystemTools::openWithDefaultApplication(const path_t &path) {
 #elif defined(PLATFORM_WINDOWS)
     return runCommand("cmd.exe", {"/C", "start", "", path.string()});
 #else
-#    error Unsupported platrofm
+#    error Unsupported platform
 #endif
 }
 
@@ -578,27 +554,18 @@ void SystemTools::openInEditor(const std::string &command, const path_t &path) {
     openWithDefaultApplication(path);
 }
 
-void SystemTools::show(const Panda::path_t &path) {
-#ifdef PLATFORM_POSIX
-    std::string command = "open -R \"" + path.string() + "\"";
-    system(command.c_str());
+void SystemTools::revealInFileManager(const path_t &path) {
+#ifdef PLATFORM_MACOS
+    runCommand("/usr/bin/open", {"-R", path.string()});
+#elif defined(PLATFORM_LINUX)
+    // No common way to select a file: its folder opens.
+    std::error_code errorCode;
+    runCommand("xdg-open", {(std::filesystem::is_directory(path, errorCode) ? path : path.parent_path()).string()});
 #elif defined(PLATFORM_WINDOWS)
     std::string command = "explorer /select, \"" + path.string() + "\"";
     system(command.c_str());
 #else
-#    error Unsupported platrofm
-#endif
-}
-
-void SystemTools::openCppProject(const Panda::path_t &path) {
-#ifdef PLATFORM_MACOS
-    if (std::filesystem::exists("/Applications/CLion.app")) {
-        std::string command = "/Applications/CLion.app/Contents/MacOS/clion \"" + path.string() + "\"";
-        system(command.c_str());
-    } else if (std::filesystem::exists("/Applications/Visual Studio Code.app")) {
-        std::string command = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron \"" + path.string() + "\"";
-        system(command.c_str());
-    }
+#    error Unsupported platform
 #endif
 }
 

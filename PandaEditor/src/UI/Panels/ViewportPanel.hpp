@@ -13,13 +13,11 @@
 
 namespace Editor {
 
-// Viewport intents — implemented by the coordinator. A click on empty space = clear the selection (like
-// a click past an object); gizmo/camera reset come from the floating viewport overlay toolbar (UI-only,
-// no 3D engine).
+// Viewport intents — implemented by the coordinator. Gizmo/camera reset come from the floating
+// viewport overlay toolbar (UI-only, no 3D engine).
 class ViewportPanelOutput {
 public:
     virtual ~ViewportPanelOutput() = default;
-    virtual void viewportDidClickBackground() = 0;
     // LMB selection in the viewport: rect-select (a click = 1×1 = single selection). start/current —
     // local points, additive — adding to the selection, committed=true on release. GPU picking via
     // the IDS-FBO is done by the engine.
@@ -53,7 +51,7 @@ public:
         return m_sidebarVisible;
     }
 
-    // Engine feeds the live scene FBO texture here (migration seam #1); flip for bottom-left-origin FBOs.
+    // The frame of the Scene as the engine rendered it; flip for bottom-left-origin targets.
     void setSceneTexture(PandaUI::TextureHandle texture, bool flip) {
         m_scene->setSceneTexture(texture, flip);
     }
@@ -69,7 +67,7 @@ public:
         return m_scene->takePointer();
     }
     // Gizmo visibility (the engine decides: there is a selection and not PLAY). The overlay reads the
-    // geometry from the engine itself (seam #3).
+    // geometry from the engine itself.
     void setGizmoVisible(bool visible) {
         m_gizmoOverlay->setVisible(visible);
     }
@@ -101,7 +99,7 @@ private:
     void setupLayout() override;
     void setupStyle() override;
 
-    // Asset drop target: accepts "asset.mesh/prefab/scene" (an instance into the scene), rejects the rest.
+    // Asset drop target: a model ("asset.mesh") becomes entities of the world, a world ("asset.world") opens.
     bool canAcceptDrop(const PandaUI::DragInfo &drag) override;
     void dragEntered(const PandaUI::DragInfo &drag) override;
     void dragExited() override;
@@ -109,7 +107,6 @@ private:
 
     // ViewportViewOutput.
     void viewportViewDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override;
-    void viewportViewDidRequestGizmoMode(int mode) override;
 
     void selectGizmo(int mode);      // highlight the active tool in the group (radio)
     void applyGizmoMode(int mode);   // highlight + outward intent (the toolbar buttons, the commands)
@@ -125,7 +122,7 @@ private:
     bool m_sidebarVisible = false;
     std::shared_ptr<ViewportView> m_scene;            // scene surface (camera/picking input)
     std::shared_ptr<class HelperLinesOverlay> m_helperLines; // wireframe helpers (colliders) above the scene
-    std::shared_ptr<GizmoOverlayView> m_gizmoOverlay; // gizmo rendering on top of the scene (seam #3)
+    std::shared_ptr<GizmoOverlayView> m_gizmoOverlay; // the gizmo drawn over the frame
     std::shared_ptr<PandaUI::Panel> m_overlay;        // floating toolbar (the style is updated in setupStyle)
     std::shared_ptr<PandaUI::Panel> m_editBannerHost; // centering strip of the banner (does not catch input)
     std::shared_ptr<PandaUI::Panel> m_editBanner;     // edit mode banner

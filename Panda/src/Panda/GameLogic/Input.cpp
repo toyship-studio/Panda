@@ -1,7 +1,3 @@
-//
-// Created by Admin on 05.02.2022.
-//
-
 #include "Panda/GameLogic/Input.hpp"
 
 #include <Fern/Events/WindowEvents.hpp>
@@ -9,6 +5,7 @@
 #include <Fern/Events/KeyEvents.hpp>
 #include <Fern/Events/MouseEvents.hpp>
 #include <Foundation/Foundation.hpp>
+#include <algorithm>
 #include <vector>
 
 namespace Panda {
@@ -165,11 +162,11 @@ double Input::getMouseDeltaY() {
 }
 
 double Input::getMouseViewportPositionX() {
-    return Foundation::max(mousePositionX - viewportFrame.origin.x, 0.0);
+    return std::max(mousePositionX - viewportFrame.origin.x, 0.0);
 }
 
 double Input::getMouseViewportPositionY() {
-    return Foundation::max(mousePositionY - viewportFrame.origin.y, 0.0);
+    return std::max(mousePositionY - viewportFrame.origin.y, 0.0);
 }
 
 double Input::getMouseScrollX() {

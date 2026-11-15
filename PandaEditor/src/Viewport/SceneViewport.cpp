@@ -4,7 +4,7 @@
 #include <Panda.hpp>
 #include <Fern/Fern.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
-#include <Panda/GameLogic/SelectionContext.hpp>
+#include <PandaEditorKit/Selection.hpp>
 
 namespace Panda {
 
@@ -106,16 +106,15 @@ void SceneViewport::readIdsMemoryIfNeed() {
             }
         }
     }
-    SelectionContext::addSelectedEntities(select);
-    SelectionContext::removeSelectedEntities(unselect);
-    if (!m_rectSelection.appendSelection) { SelectionContext::unselectAllFiles(); }
+    Editor::selection().addEntities(select);
+    Editor::selection().removeEntities(unselect);
 }
 
 void SceneViewport::beginRectSelection(IVec2 viewportPoint, bool append) {
     m_rectSelection.isStarted = true;
     m_rectSelection.appendSelection = append;
     m_rectSelection.rect = IRect(viewportPoint.x, viewportPoint.y, 0, 0);
-    m_rectSelection.currentSelection = SelectionContext::getSelectedEntities();
+    m_rectSelection.currentSelection = Editor::selection().entityIds();
     m_rectSelection.initialSelection = m_rectSelection.currentSelection;
 }
 
@@ -175,10 +174,6 @@ void SceneViewport::cancelRectSelection() {
     m_rectSelection.readRequests.clear();
 }
 
-void SceneViewport::unselectAll() {
-    SelectionContext::unselectAll();
-}
-
 void SceneViewport::setCamera(Camera *camera) {
     m_camera = camera;
     m_gizmos.setCamera(camera);
@@ -197,7 +192,7 @@ void SceneViewport::setFrame(Rect frame) {
 
 void SceneViewport::driveRectSelection(IVec2 startPoint, IVec2 currentPoint, bool additive, bool committed) {
     // A no-move click ends up a 1×1 rect = single-entity pick. Same machinery queues async IDS reads and
-    // updates SelectionContext (incl. deselecting files on a plain entity click).
+    // updates the selection of the editor.
     if (!m_rectSelection.isStarted) { beginRectSelection(startPoint, additive); }
     updateRectSelection(currentPoint);
     if (committed) { endRectSelection(); }

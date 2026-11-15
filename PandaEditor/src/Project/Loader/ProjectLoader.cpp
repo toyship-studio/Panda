@@ -60,7 +60,7 @@ ProjectLoader::ProjectLoader(FileDocuments &documents, ProjectLoaderOutput *outp
     , m_session()
     , m_assetHandler(nullptr) {
     GameContext::setScriptEngine(&m_scriptEngine);
-    m_assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+    m_assetHandler = AssetHandlerEditor::current();
     StaticResources::initStaticResources();
 }
 
@@ -75,7 +75,7 @@ ProjectLoader::~ProjectLoader() {
 
 void ProjectLoader::loadInitialData(bool openLastProject, const path_t &project) {
     const path_t directory = editorDataDirectory();
-    if (directory.empty()) { LOG_WARN("NO USER DATA DIRECTORY: THE EDITOR SETTINGS ARE NOT PERSISTED"); }
+    if (directory.empty()) { LOG_WARN("There is no user data directory: the settings of the editor are not kept."); }
     m_documents.editorSettingsFile().open(directory.empty() ? path_t() : directory / "settings.json");
     if (!directory.empty() && !readJson(directory / "session.json", m_jsonDecoder, m_session)) {
         m_session = EditorSession();
@@ -107,7 +107,7 @@ void ProjectLoader::saveSession() {
         }
     }
     if (!writeJson(directory / "session.json", m_jsonEncoder, m_session)) {
-        LOG_ERROR("CANNOT WRITE THE EDITOR SESSION AT %s", (directory / "session.json").string().c_str());
+        LOG_ERROR("The session of the editor could not be written to %s.", (directory / "session.json").string().c_str());
     }
 }
 
@@ -131,7 +131,7 @@ void ProjectLoader::loadRecentProject() {
 
 void ProjectLoader::openProject(const path_t &path) {
     if (!std::filesystem::exists(path)) {
-        LOG_INFO("PROJECT NOT FOUND AT PATH %s", path.string().c_str());
+        LOG_INFO("There is no project at %s.", path.string().c_str());
         return;
     }
     if (hasOpenedProject()) {
@@ -166,7 +166,7 @@ void ProjectLoader::openProject(const path_t &path) {
     // compile for them as they load).
     ShaderCook::cookAndReloadSceneShaders(path);
     m_output->loaderDidLoadProject(path.filename().string(), path);
-    LOG_INFO("LOADED PROJECT AT PATH %s", path.string().c_str());
+    LOG_INFO("Opened the project at %s.", path.string().c_str());
     m_documents.openWorlds(m_projectSession);
 }
 
@@ -237,7 +237,7 @@ namespace {
         }
         std::ofstream file(path);
         if (!file.is_open()) {
-            LOG_ERROR("CANNOT WRITE SCRIPTS MANIFEST AT PATH %s", path.string().c_str());
+            LOG_ERROR("The scripts manifest could not be written to %s.", path.string().c_str());
             return;
         }
         Rain::Encoder *encoderPtr = &encoder;
@@ -315,16 +315,6 @@ void ProjectLoader::createProject(const std::string &name, const path_t &path) {
     openProject(path);
 }
 
-void ProjectLoader::openCppProject() {
-    std::string name = projectPath().filename().string();
-    SystemTools::openCppProject(projectPath() / "Scripts" / name);
-}
-
-void ProjectLoader::showCppProject() {
-    std::string name = projectPath().filename().string();
-    SystemTools::open(projectPath() / "Scripts" / name);
-}
-
 void ProjectLoader::appendRecentProject() {
     if (projectPath().empty()) { return; }
     RecentProject recentProject;
@@ -361,7 +351,6 @@ void ProjectLoader::closeProject() {
 }
 
 void ProjectLoader::removeRecentProject(int index) {
-    LOG_INFO("REMOVE PROJECT AT INDEX %d", index);
     m_session.recentProjects.erase(std::next(m_session.recentProjects.begin(), index));
 }
 
@@ -377,7 +366,7 @@ void ProjectLoader::saveProject() {
     m_projectSession = m_documents.session();
     const path_t sessionPath = projectDataDirectory(projectPath()) / "session.json";
     if (!writeJson(sessionPath, m_jsonEncoder, m_projectSession)) {
-        LOG_ERROR("CANNOT WRITE THE PROJECT SESSION AT %s", sessionPath.string().c_str());
+        LOG_ERROR("The session of the project could not be written to %s.", sessionPath.string().c_str());
     }
 }
 

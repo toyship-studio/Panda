@@ -22,7 +22,7 @@ OSX_GLContext::OSX_GLContext(NSView* view, NSOpenGLContext *shareContext)
     if(s_framework == NULL) {
         s_framework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
         if (s_framework == NULL) {
-            LOG_CRITICAL("ERROR: Failed to locate OpenGL framework");
+            LOG_CRITICAL("OPENGL: Failed to locate the OpenGL framework");
             return;
         }
     }
@@ -50,7 +50,7 @@ OSX_GLContext::OSX_GLContext(NSView* view, NSOpenGLContext *shareContext)
                                          shareContext:shareContext];
     [pixelFormat release];
     if(m_context == nil) {
-        LOG_CRITICAL("ERROR: Failed to create OpenGL context");
+        LOG_CRITICAL("OPENGL: Failed to create the context");
         return;
     }
     [view setWantsBestResolutionOpenGLSurface:YES];

@@ -1,7 +1,3 @@
-//
-// Created by Admin on 19.02.2022.
-//
-
 #pragma once
 
 #include "Fern/Events/Event.hpp"

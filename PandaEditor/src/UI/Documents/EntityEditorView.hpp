@@ -1,15 +1,14 @@
 #pragma once
 
-#include "UI/EditorModelHelper.hpp"
 #include "UI/Widgets/PanelHeader.hpp"
 
-#include <PandaEditorKit/EditorExtensions.hpp> // Editor::ComponentInspector (module component sections)
+#include <PandaEditorKit/EditorExtensions.hpp> // Editor::ComponentInspector
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 #include <PandaEditorKit/Widgets/Picker.hpp>
 #include <PandaEditorKit/Widgets/Vector3Field.hpp>
 
-#include <Panda/Assets/Base/Asset.hpp>                   // Panda::AssetId
-#include <Panda/GameLogic/Components/BaseComponents.hpp> // engine components (edit payload)
+#include <Panda/Assets/Base/Asset.hpp> // Panda::AssetId
+#include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/ScriptEngine/ExternalScript.hpp> // Panda::ExternalScript, ScriptFieldValue
 
@@ -18,7 +17,6 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace Panda {
@@ -27,17 +25,11 @@ struct ComponentType;
 
 namespace Editor {
 
-// Payload of a CORE component edit — a concrete engine component (the View edits a copy and sends it
-// as a whole; the coordinator writes to the World via GenericComponentUpdate<T> with a single
-// visitor). No intermediate model. Module components edit themselves (Kit: commitComponent<T>).
-using ComponentEdit =
-    std::variant<Panda::CameraComponent, Panda::DirectionalLightComponent, Panda::PointLightComponent,
-                 Panda::SpriteRendererComponent, Panda::RuntimeMeshComponent, Panda::PrimitiveMeshComponent,
-                 Panda::ImportedSubmeshComponent, Panda::SkyComponent>;
-
-// Intents of the entity editor — implemented by the coordinator. Edits apply to the targets of the
-// tab (the coordinator substitutes the selection with them for the duration of an edit); identity
-// is the engine's (a component by ComponentType, a script by its index in ScriptListComponent).
+// Intents of the entity editor — implemented by Editor::EntityActions. Edits apply to the targets
+// of the tab (EditorTabs names them for the duration of an edit); identity
+// is the engine's (a component by the name of its type, a script by its index in
+// ScriptListComponent). The values of a component are edited by its section itself
+// (ComponentInspector::build, Kit: commitComponent<T>).
 class EntityEditorOutput {
 public:
     virtual ~EntityEditorOutput() = default;
@@ -46,24 +38,20 @@ public:
     virtual void entityDidEditPosition(glm::vec3 position) = 0;
     virtual void entityDidEditRotation(glm::vec3 rotation) = 0;
     virtual void entityDidEditScale(glm::vec3 scale) = 0;
-    virtual void entityDidAddComponent(ComponentType type) = 0;
-    virtual void entityDidRemoveComponent(ComponentType type) = 0;
-    virtual void entityDidEditComponent(const ComponentEdit &edit) = 0; // edit of one component (visit → command)
-    // A module component by type name (EditorExtensions::componentInspectors): add/remove.
-    virtual void entityDidAddExtensionComponent(const std::string &component) = 0;
-    virtual void entityDidRemoveExtensionComponent(const std::string &component) = 0;
+    // A component by the name of its type (EditorExtensions::componentInspectors).
+    virtual void entityDidAddComponent(const std::string &component) = 0;
+    virtual void entityDidRemoveComponent(const std::string &component) = 0;
     virtual void entityDidAddScript(const std::string &className) = 0;
     virtual void entityDidRemoveScript(int scriptIndex) = 0;
     virtual void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) = 0;
     virtual void entityDidClickBackground() = 0; // click on the background → clear selection
-    virtual void entityDidRequestMaximize() = 0; // zoom overlay of the dock of the tab
 };
 
 // VIEW: the form of an entity tab (the document model: an entity tab is a view of the world
 // document). setEntities shows the engine components of the targets, read directly; with
 // several targets the primary one gives the values and differing fields are marked "mixed".
-// Edits are sent through the Output in engine terms. Component sections of the core are built
-// here; module components come from the EditorExtensions::componentInspectors registry.
+// The name, the transform and the scripts are the form's own; every component section comes
+// from the EditorExtensions::componentInspectors registry, the core's like the modules'.
 class EntityEditorView final : public EditorView {
 public:
     explicit EntityEditorView(EntityEditorOutput *output);
@@ -93,25 +81,12 @@ private:
     void bindEntities(const std::vector<Panda::Entity> &entities);
     void rebuildComponents(Panda::Entity primary); // component sections from engine
 
-    // Per-type sections read/write the engine component (a copy) and send ComponentEdit.
-    std::shared_ptr<PandaUI::CollapsibleSection> buildCameraSection(const Panda::CameraComponent &component);
+    // The section of a component: the header and its menu are the form's, the content is the
+    // registry's.
     std::shared_ptr<PandaUI::CollapsibleSection>
-    buildDirectionalLightSection(const Panda::DirectionalLightComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection> buildPointLightSection(const Panda::PointLightComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection> buildSpriteRendererSection(const Panda::SpriteRendererComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection> buildRuntimeMeshSection(const Panda::RuntimeMeshComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection> buildPrimitiveMeshSection(const Panda::PrimitiveMeshComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection>
-    buildImportedSubmeshSection(const Panda::ImportedSubmeshComponent &component);
-    std::shared_ptr<PandaUI::CollapsibleSection> buildSkySection(const Panda::SkyComponent &component);
-    // A module component section: the header and the Remove menu are the form's, the content is
-    // a registry contribution.
-    std::shared_ptr<PandaUI::CollapsibleSection>
-    buildExtensionSection(const ComponentInspector &inspector, Panda::Entity primary);
+    buildComponentSection(const ComponentInspector &inspector, Panda::Entity primary);
     std::shared_ptr<PandaUI::CollapsibleSection> buildScriptSection(Panda::ExternalScript &script, int scriptIndex);
 
-    // The section of a core component: the caps title and the header menu that removes it.
-    std::shared_ptr<PandaUI::CollapsibleSection> makeComponentSection(ComponentType type);
     // "..." in the section header → the menu of the component: Copy Values, Paste Values and Reset
     // for a component with a text form (type — its entry in the registry of the engine; nullptr —
     // none), and Remove Component (onRemove defines what to remove).

@@ -9,22 +9,23 @@ namespace Panda {
 
 namespace StaticResources {
 
-    struct SkyVertex {
-        glm::vec3 pos;
+    namespace {
 
-        SkyVertex(float x, float y, float z)
-            : pos(x, y, z) {}
-    };
+        struct SkyVertex {
+            glm::vec3 pos;
 
-    void initStaticResources() {
-        // Static resource IDs are PERSISTED: materials (.mat) store the id of a built-in shader in
-        // meta.shader. The createAsset order must not be changed, new resources are added only AT
-        // THE END.
-        UUID ASSET_ID = 1;
-        AssetHandler *handler = GameContext::getAssetHandler();
-        /// ----------------------------------------
-        /// SKY MESH
-        /// ----------------------------------------
+            SkyVertex(float x, float y, float z)
+                : pos(x, y, z) {}
+        };
+
+        SceneShaderRegistry &sceneShaders() {
+            return GameContext::getExtensions().sceneShaders;
+        }
+
+    } // namespace
+
+    // The default sky: the environment map of the world on a cube around the camera.
+    static void createSky(AssetHandler *handler) {
         // The built-in environment map — a placeholder for the system slot environmentMap until
         // the world sets its own (Settings → World → Environment Map): an equirect gradient
         // zenith → horizon → ground, baked in code (there is no file in the resources). The id slot
@@ -58,15 +59,15 @@ namespace StaticResources {
             skyTextureConfig.m_minFiltering = Miren::TextureFiltering::LINEAR;
             skyTextureConfig.m_magFiltering = Miren::TextureFiltering::LINEAR;
             skyTextureConfig.m_wrap = Miren::TextureWrapMode::REPEAT;
-            defaultSkyTexture = handler->createAsset<TextureAsset>(ASSET_ID++, skyTextureConfig);
+            defaultSkyTexture = handler->createAsset<TextureAsset>(BuiltinAsset::SKY_TEXTURE, skyTextureConfig);
         }
         AssetRef<ShaderAsset> defaultSkyShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/sky/sky_hdr.vert", "default-shaders/sky/sky_hdr.frag"
+            BuiltinAsset::SKY_SHADER, "default-shaders/sky/sky_hdr.vert", "default-shaders/sky/sky_hdr.frag"
         );
         // The default sky draws the world's ENVIRONMENT MAP (the environment feature: the system
         // texture environmentMap and the exposure of PANDA_ENVIRONMENT); the material has no
         // fields. There is no sun on purpose: the disc lives in the project's custom sky material.
-        defaultSkyMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, MaterialData{}, defaultSkyShader);
+        defaultSkyMaterial = handler->createAsset<MaterialAsset>(BuiltinAsset::SKY_MATERIAL, MaterialData{}, defaultSkyShader);
         SkyVertex vertices[24] = {
             // Front
             SkyVertex(-1.0f, -1.0f, 1.0f), // 0
@@ -115,50 +116,73 @@ namespace StaticResources {
         Foundation::Memory verticesMemory = Foundation::Memory::copying(vertices, sizeof(SkyVertex) * 24);
         Foundation::Memory indicesMemory = Foundation::Memory::copying(indices, sizeof(uint32_t) * 36);
         MeshData skyMeshData(skyLayoutHandle, verticesMemory, 24 * sizeof(SkyVertex), indicesMemory, 36);
-        defaultSkyMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
+        defaultSkyMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::SKY_MESH);
         defaultSkyMesh->update(skyMeshData);
-        /// ----------------------------------------
-        /// WHITE TEXTURE
-        /// ----------------------------------------
+        sceneShaders().add(defaultSkyShader, "default-shaders/sky/sky_hdr.vert.hlsl", "default-shaders/sky/sky_hdr.frag.hlsl");
+    }
+
+    // What fills a texture slot nothing was put into: every declared slot of a shader is bound.
+    static void createPlaceholderTextures(AssetHandler *handler) {
         Foundation::Memory whiteTextureData = Foundation::Memory::alloc(sizeof(uint32_t));
         *(uint32_t *)whiteTextureData.data = 0xffffffff;
         Miren::TextureCreate whiteTextureCreate;
         whiteTextureCreate.m_data = whiteTextureData;
-        whiteTexture = handler->createAsset<TextureAsset>(ASSET_ID++, whiteTextureCreate);
+        whiteTexture = handler->createAsset<TextureAsset>(BuiltinAsset::WHITE_TEXTURE, whiteTextureCreate);
         Foundation::Memory blackTextureData = Foundation::Memory::alloc(sizeof(uint32_t));
         *(uint32_t *)blackTextureData.data = 0xFF000000;
         Miren::TextureCreate blackTextureCreate;
         blackTextureCreate.m_data = blackTextureData;
-        blackTexture = handler->createAsset<TextureAsset>(ASSET_ID++, blackTextureCreate);
+        blackTexture = handler->createAsset<TextureAsset>(BuiltinAsset::BLACK_TEXTURE, blackTextureCreate);
         Foundation::Memory flatNormalTextureData = Foundation::Memory::alloc(sizeof(uint32_t));
         *(uint32_t *)flatNormalTextureData.data = 0xFFFF8080;
         Miren::TextureCreate flatNormalTextureCreate;
         flatNormalTextureCreate.m_data = flatNormalTextureData;
-        flatNormalTexture = handler->createAsset<TextureAsset>(ASSET_ID++, flatNormalTextureCreate);
-        // Retired demo-logo slot: subsequent builtin IDs are persisted in project assets.
-        ASSET_ID++;
-        /// ----------------------------------------
-        /// DEFAULT UNLIT SHADER
-        /// ----------------------------------------
+        flatNormalTexture = handler->createAsset<TextureAsset>(BuiltinAsset::FLAT_NORMAL_TEXTURE, flatNormalTextureCreate);
+        Foundation::Memory transparentTextureData = Foundation::Memory::alloc(sizeof(uint32_t));
+        *(uint32_t *)transparentTextureData.data = 0x00000000;
+        Miren::TextureCreate transparentTextureCreate;
+        transparentTextureCreate.m_data = transparentTextureData;
+        transparentTexture =
+            handler->createAsset<TextureAsset>(BuiltinAsset::TRANSPARENT_TEXTURE, transparentTextureCreate);
+        // The shadowMap slot without a shadow atlas (a preview, shadows off): a depth format — in
+        // MSL the slot is depth2d — whose content is never read.
+        Miren::TextureCreate shadowFallbackCreate;
+        shadowFallbackCreate.m_format = Miren::TextureFormat::DEPTH32F;
+        shadowFallbackCreate.m_width = 4;
+        shadowFallbackCreate.m_height = 4;
+        shadowFallbackCreate.m_wrap = Miren::CLAMP_TO_BORDER;
+        shadowFallbackCreate.m_compare = Miren::COMPARE_LESS_EQUAL;
+        shadowFallbackTexture = handler->createAsset<TextureAsset>(BuiltinAsset::SHADOW_FALLBACK_TEXTURE, shadowFallbackCreate);
+        // The occlusionVolume slot without an occlusion volume: 1×1 "the sky is seen, nothing is in
+        // the way".
+        {
+            Miren::TextureCreate occlusionFallbackCreate;
+            occlusionFallbackCreate.m_format = Miren::TextureFormat::RGBA8;
+            occlusionFallbackCreate.m_width = 1;
+            occlusionFallbackCreate.m_height = 1;
+            occlusionFallbackCreate.m_depth = 1; // volume: the shaders declare occlusionVolume as Texture3D
+            occlusionFallbackCreate.m_minFiltering = Miren::LINEAR;
+            occlusionFallbackCreate.m_magFiltering = Miren::LINEAR;
+            occlusionFallbackCreate.m_wrap = Miren::CLAMP;
+            const uint8_t occlusionFallbackPixel[4] = {255, 255, 255, 255};
+            occlusionFallbackCreate.m_data = Foundation::Memory::copying(occlusionFallbackPixel, 4);
+            occlusionFallbackTexture = handler->createAsset<TextureAsset>(BuiltinAsset::OCCLUSION_FALLBACK_TEXTURE, occlusionFallbackCreate);
+        }
+    }
+
+    // The material shaders of the engine and the materials that carry their field sets (a
+    // built-in shader has no reflection: the fields of a .mat are checked against its template).
+    static void createMaterialTemplates(AssetHandler *handler) {
         defaultUnlitShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/default_unlit.vert", "default-shaders/default_unlit.frag"
+            BuiltinAsset::UNLIT_SHADER, "default-shaders/default_unlit.vert", "default-shaders/default_unlit.frag"
         );
-        /// ----------------------------------------
-        /// DEFAULT UNLIT MATERIAL
-        /// ----------------------------------------
         MaterialData materialData;
         materialData.inputs = {MaterialField("baseColorTexture", MaterialFieldType::TEXTURE, whiteTexture.asBaseAsset())
         };
-        defaultUnlitMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, materialData, defaultUnlitShader);
-        /// ----------------------------------------
-        /// DEFAULT LIT SHADER
-        /// ----------------------------------------
+        defaultUnlitMaterial = handler->createAsset<MaterialAsset>(BuiltinAsset::UNLIT_MATERIAL, materialData, defaultUnlitShader);
         defaultLitShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/default_lit.vert", "default-shaders/default_lit.frag"
+            BuiltinAsset::LIT_SHADER, "default-shaders/default_lit.vert", "default-shaders/default_lit.frag"
         );
-        /// ----------------------------------------
-        /// DEFAULT LIT MATERIAL
-        /// ----------------------------------------
         MaterialData litMaterialData;
         litMaterialData.inputs = {
             MaterialField("baseColorTexture", MaterialFieldType::TEXTURE, whiteTexture.asBaseAsset()),
@@ -179,262 +203,234 @@ namespace StaticResources {
             MaterialField("emissiveIntensity", MaterialFieldType::FLOAT, 1.f),
             MaterialField("transmissionFactor", MaterialFieldType::FLOAT, 0.f)
         };
-        defaultLitMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, litMaterialData, defaultLitShader);
-        /// ----------------------------------------
-        /// SELECTED GEOMETRY SHADER
-        /// ----------------------------------------
-        AssetRef<ShaderAsset> selectedGeometryShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/selection_map.vert", "default-shaders/selection_map.frag"
-        );
-        /// ----------------------------------------
-        /// SELECTED GEOMETRY MATERIAL
-        /// ----------------------------------------
-        selectedGeometryMaterial =
-            handler->createAsset<MaterialAsset>(ASSET_ID++, materialData, selectedGeometryShader);
-        /// ----------------------------------------
-        /// IDS SHADER
-        /// ----------------------------------------
-        AssetRef<ShaderAsset> idsShader =
-            handler->createAsset<ShaderAsset>(ASSET_ID++, "default-shaders/ids.vert", "default-shaders/ids.frag");
-        /// ----------------------------------------
-        /// IDS MATERIAL
-        /// ----------------------------------------
-        materialData.inputs = {MaterialField("id", MaterialFieldType::UINT, 0u)};
-        idsMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, materialData, idsShader);
-        /// ----------------------------------------
-        /// DEFAULT PBR SHADER (metallic-roughness, the vertex shader is shared with lit)
-        /// ----------------------------------------
+        defaultLitMaterial = handler->createAsset<MaterialAsset>(BuiltinAsset::LIT_MATERIAL, litMaterialData, defaultLitShader);
+        // Metallic-roughness: the vertex shader and the field set are the lit ones.
         defaultPbrShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/default_lit.vert", "default-shaders/default_pbr.frag"
+            BuiltinAsset::PBR_SHADER, "default-shaders/default_lit.vert", "default-shaders/default_pbr.frag"
         );
-        /// ----------------------------------------
-        /// POSTPROCESSING (engine pipeline shaders; not shown in the UI)
-        /// ----------------------------------------
-        // The bloom building-block assets (id 18..25) are removed: a legacy meta.shader pointing to
-        // these ids resolves to the Lit fallback (a type guard in the material loaders).
+        sceneShaders().add(defaultLitShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_lit.frag.hlsl");
+        sceneShaders().add(defaultPbrShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_pbr.frag.hlsl");
+        ShaderTemplateRegistry &templates = GameContext::getExtensions().shaderTemplates;
+        templates.add({defaultUnlitShader.getId(), "Unlit", defaultUnlitMaterial});
+        templates.add({defaultLitShader.getId(), "Lit", defaultLitMaterial});
+        templates.add({defaultPbrShader.getId(), "PBR", defaultLitMaterial}); // the same field set
+    }
+
+    // The passes a tool draws a world with besides its picture: the mask of the selected
+    // geometry and the ids of the entities under the pixels (RenderingMode::IDS).
+    static void createToolPasses(AssetHandler *handler) {
+        AssetRef<ShaderAsset> selectedGeometryShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::SELECTED_GEOMETRY_SHADER, "default-shaders/selection_map.vert", "default-shaders/selection_map.frag"
+        );
+        MaterialData materialData;
+        materialData.inputs = {MaterialField("baseColorTexture", MaterialFieldType::TEXTURE, whiteTexture.asBaseAsset())
+        };
+        selectedGeometryMaterial =
+            handler->createAsset<MaterialAsset>(BuiltinAsset::SELECTED_GEOMETRY_MATERIAL, materialData, selectedGeometryShader);
+        AssetRef<ShaderAsset> idsShader =
+            handler->createAsset<ShaderAsset>(BuiltinAsset::IDS_SHADER, "default-shaders/ids.vert", "default-shaders/ids.frag");
+        materialData.inputs = {MaterialField("id", MaterialFieldType::UINT, 0u)};
+        idsMaterial = handler->createAsset<MaterialAsset>(BuiltinAsset::IDS_MATERIAL, materialData, idsShader);
+    }
+
+    // The shaders of the pipeline behind the camera — the final pass, the bloom pyramid, the auto
+    // exposure. They are not materials a user picks.
+    static void createPostprocessing(AssetHandler *handler) {
         // The implicit final HDR→screen pass (executed by the pipeline; do NOT add it to the shader
         // combo box).
         tonemapShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/tonemap.frag"
+            BuiltinAsset::TONEMAP_SHADER, "default-shaders/postprocess.vert", "default-shaders/tonemap.frag"
         );
         MaterialData emptyPassData;
-        tonemapMaterial = handler->createAsset<MaterialAsset>(ASSET_ID++, emptyPassData, tonemapShader);
+        tonemapMaterial = handler->createAsset<MaterialAsset>(BuiltinAsset::TONEMAP_MATERIAL, emptyPassData, tonemapShader);
         // The pyramid of the built-in bloom (BloomRenderer): engine shaders without materials, the
         // uniforms are bound directly; they are not shown to the user.
         bloomDownsampleShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/bloom_downsample.frag"
+            BuiltinAsset::BLOOM_DOWNSAMPLE_SHADER, "default-shaders/postprocess.vert", "default-shaders/bloom_downsample.frag"
         );
         bloomUpsampleAddShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/bloom_upsample_add.frag"
+            BuiltinAsset::BLOOM_UPSAMPLE_ADD_SHADER, "default-shaders/postprocess.vert", "default-shaders/bloom_upsample_add.frag"
         );
         bloomApplyShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/bloom_apply.frag"
+            BuiltinAsset::BLOOM_APPLY_SHADER, "default-shaders/postprocess.vert", "default-shaders/bloom_apply.frag"
         );
-        // Slots 23..28 are reserved for a contribution (Terrain::Resources: the 2D/3D shaders and
-        // materials, the IDS variant): the ids are persisted in projects, the contribution creates
-        // the assets itself.
-        ASSET_ID = UUID(ASSET_ID + 6);
-        /// ----------------------------------------
-        /// VERTEX LAYOUTS
-        /// ----------------------------------------
-        generalVertexLayout = Miren::createVertexLayout(Vertex::createBufferLayoutData());
-        /// ----------------------------------------
-        /// GREYBOXING PRIMITIVES (checker + meshes; only AT THE END — the ASSET_ID order)
-        /// ----------------------------------------
-        {
-            // Procedural checker 256²: a 64px cell (4×4 per texture → 25 cm on a 1 m face),
-            // two shades of gray; sRGB + a full mip pyramid (minification without shimmer).
-            constexpr uint32_t checkerSize = 256;
-            constexpr uint32_t cellPixels = 64;
-            Foundation::Memory checkerData =
-                Foundation::Memory::alloc(checkerSize * checkerSize * sizeof(uint32_t));
-            uint32_t *pixels = static_cast<uint32_t *>(checkerData.data);
-            for (uint32_t y = 0; y < checkerSize; y++) {
-                for (uint32_t x = 0; x < checkerSize; x++) {
-                    const bool light = ((x / cellPixels) + (y / cellPixels)) % 2 == 0;
-                    pixels[y * checkerSize + x] = light ? 0xFFB4B4B4 : 0xFF787878;
-                }
-            }
-            Miren::TextureCreate checkerCreate;
-            checkerCreate.m_data = checkerData;
-            checkerCreate.m_width = checkerSize;
-            checkerCreate.m_height = checkerSize;
-            checkerCreate.m_format = Miren::TextureFormat::RGBA8_SRGB;
-            checkerCreate.m_minFiltering = Miren::LINEAR_MIPMAP_LINEAR;
-            checkerCreate.m_magFiltering = Miren::LINEAR;
-            checkerCreate.m_wrap = Miren::REPEAT;
-            checkerCreate.m_numMips = 8;
-            checkerTexture = handler->createAsset<TextureAsset>(ASSET_ID++, checkerCreate);
-
-            MaterialData primitiveMaterialData;
-            primitiveMaterialData.inputs = litMaterialData.inputs;
-            for (MaterialField &field : primitiveMaterialData.inputs) {
-                if (field.name == "baseColorTexture") { field.value = checkerTexture.asBaseAsset(); }
-            }
-            primitiveMaterial =
-                handler->createAsset<MaterialAsset>(ASSET_ID++, primitiveMaterialData, defaultLitShader);
-
-            cubeMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            cubeMesh->update(PrimitiveMeshes::buildCube());
-            sphereMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            sphereMesh->update(PrimitiveMeshes::buildSphere());
-            capsuleMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            capsuleMesh->update(PrimitiveMeshes::buildCapsule());
-            planeMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            planeMesh->update(PrimitiveMeshes::buildPlane());
-            cylinderMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            cylinderMesh->update(PrimitiveMeshes::buildCylinder());
-        }
-        /// ----------------------------------------
-        /// INSTANCING (only AT THE END — the ASSET_ID order)
-        /// ----------------------------------------
-        {
-            instancedLitShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/default_lit_instanced.vert", "default-shaders/default_lit.frag"
-            );
-            MaterialData instancedLitMaterialData;
-            instancedLitMaterialData.inputs = litMaterialData.inputs;
-            instancedLitMaterial =
-                handler->createAsset<MaterialAsset>(ASSET_ID++, instancedLitMaterialData, instancedLitShader);
-            // Instance stream: columns of the instance transform matrix (glm::mat4, column-major).
-            Miren::VertexBufferLayoutData instanceLayoutData;
-            instanceLayoutData.pushVec4();
-            instanceLayoutData.pushVec4();
-            instanceLayoutData.pushVec4();
-            instanceLayoutData.pushVec4();
-            instanceMat4Layout = Miren::createVertexLayout(instanceLayoutData);
-        }
-        /// ----------------------------------------
-        /// TERRAIN MODULE SLOTS (only AT THE END — the ASSET_ID order)
-        /// ----------------------------------------
-        {
-            // 38..40 — the noise, the shader and the material of the terrain grass
-            // (Terrain::Resources): projects store their ids; the resources are created by the
-            // module, the core skips the slots.
-            ASSET_ID = UUID(ASSET_ID + 3);
-            Foundation::Memory transparentTextureData = Foundation::Memory::alloc(sizeof(uint32_t));
-            *(uint32_t *)transparentTextureData.data = 0x00000000;
-            Miren::TextureCreate transparentTextureCreate;
-            transparentTextureCreate.m_data = transparentTextureData;
-            transparentTexture =
-                handler->createAsset<TextureAsset>(ASSET_ID++, transparentTextureCreate);
-
-            // Instanced variant of the PBR template: the same fragment shader, a vertex shader with
-            // instance attributes (PBR and lit share the vertex shader — they share the instanced
-            // version as well). The flora renderer uses it to draw the user's PBR materials
-            // (generated by the import) without manual reconfiguration.
-            instancedPbrShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/default_lit_instanced.vert",
-                "default-shaders/default_pbr.frag"
-            );
-
-            // Impostor flora: normal baking (the shared lit vertex shader; the crown pass is at
-            // the end of the list) + the billboard.
-            floraImposterNormalShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/default_lit.vert",
-                "default-shaders/flora_imposter_normal.frag"
-            );
-            floraImposterNormalSolidShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/default_lit.vert",
-                "default-shaders/flora_imposter_normal_solid.frag"
-            );
-            floraBillboardShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/flora_billboard.vert",
-                "default-shaders/flora_billboard.frag"
-            );
-            Miren::VertexBufferLayoutData billboardLayoutData;
-            billboardLayoutData.pushVec2(); // corner
-            billboardLayoutData.pushVec2(); // uv (v=0 — the top of the atlas)
-            floraBillboardVertexLayout = Miren::createVertexLayout(billboardLayoutData);
-            // Billboard quad: x ∈ [-0.5..0.5], y ∈ [0..1] (the bottom is on the ground).
-            const float quadVertices[] = {
-                -0.5f, 0.f, 0.f, 1.f, //
-                0.5f,  0.f, 1.f, 1.f, //
-                0.5f,  1.f, 1.f, 0.f, //
-                -0.5f, 1.f, 0.f, 0.f, //
-            };
-            const uint32_t quadIndices[] = {0, 1, 2, 0, 2, 3};
-            MeshData quadMesh(
-                floraBillboardVertexLayout,
-                Foundation::Memory::copying(quadVertices, sizeof(quadVertices)),
-                sizeof(quadVertices),
-                Foundation::Memory::copying(quadIndices, sizeof(quadIndices)), 6
-            );
-            quadMesh.vertexStride = sizeof(float) * 4;
-            floraBillboardMesh = handler->createAsset<RuntimeMeshAsset>(ASSET_ID++);
-            floraBillboardMesh->update(quadMesh);
-
-            // Retired preview-blit slot: the program is now owned by PandaEditor.
-            ASSET_ID++;
-
-            // The material of the impostor flora billboards (a quad + mat4 instances, the generic
-            // submitInstanced): the runtime slots are fed by the owner per species — the bake
-            // atlases and the frame parameters; doubleSided — the quad always faces the camera.
-            MaterialData billboardMaterialData;
-            billboardMaterialData.inputs = {
-                MaterialField("sizeParams", MaterialFieldType::VEC4, Vec4(1.f, 1.f, 0.f, 8.f), true),
-                MaterialField("cameraLocal", MaterialFieldType::VEC4, Vec4(0.f, 0.f, 0.f, 0.f), true),
-                MaterialField("fadeParams", MaterialFieldType::VEC4, Vec4(1.e6f, 2.e6f, 0.f, 0.f), true),
-                MaterialField("doubleSided", MaterialFieldType::UINT, 1u),
-                // The crown surface of the species (x — metallic, y — roughness): the billboard's
-                // Cook-Torrance = that of the mesh crown. The depth shaders read the PREFIX of the
-                // blob — the field goes strictly after doubleSided, before the textures.
-                MaterialField("surfaceParams", MaterialFieldType::VEC4, Vec4(0.f, 1.f, 0.f, 0.f), true),
-                MaterialField("imposterColorTexture", MaterialFieldType::TEXTURE, AssetRef<Asset>(), true),
-                MaterialField("imposterNormalTexture", MaterialFieldType::TEXTURE, AssetRef<Asset>(), true),
-            };
-            floraBillboardMaterial = handler->createAsset<MaterialAsset>(
-                ASSET_ID++, billboardMaterialData, floraBillboardShader
-            );
-        }
-        /// ----------------------------------------
-        /// SHADOW DEPTH (only AT THE END — the ASSET_ID order)
-        /// ----------------------------------------
-        {
-            shadowDepthShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/shadow_depth.vert", "default-shaders/shadow_depth.frag"
-            );
-            shadowDepthMaskedShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/shadow_depth.vert", "default-shaders/shadow_depth_masked.frag"
-            );
-            shadowDepthInstancedShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/shadow_depth_instanced.vert", "default-shaders/shadow_depth.frag"
-            );
-            shadowDepthInstancedMaskedShader = handler->createAsset<ShaderAsset>(
-                ASSET_ID++, "default-shaders/shadow_depth_instanced.vert", "default-shaders/shadow_depth_masked.frag"
-            );
-            ASSET_ID++; // slot 53 is reserved for a contribution (Terrain::Resources: depth pass)
-            Miren::TextureCreate shadowFallbackCreate;
-            shadowFallbackCreate.m_format = Miren::TextureFormat::DEPTH32F;
-            shadowFallbackCreate.m_width = 4;
-            shadowFallbackCreate.m_height = 4;
-            shadowFallbackCreate.m_wrap = Miren::CLAMP_TO_BORDER;
-            shadowFallbackCreate.m_compare = Miren::COMPARE_LESS_EQUAL;
-            shadowFallbackTexture = handler->createAsset<TextureAsset>(ASSET_ID++, shadowFallbackCreate);
-        }
         // Auto exposure (ExposureRenderer): measure → reduce → adapt → apply.
-        // STRICTLY AT THE END of the ASSET_ID sequence: user assets persist
-        // references to builtin ids (meta.shader in .mat.pmeta, the materials of imported
-        // trees) — an insertion in the middle shifted the ids and broke them (the terrain and
-        // the leaves disappeared: their materials already pointed to foreign shaders).
         exposureMeasureShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/exposure_measure.frag"
+            BuiltinAsset::EXPOSURE_MEASURE_SHADER, "default-shaders/postprocess.vert", "default-shaders/exposure_measure.frag"
         );
         exposureReduceShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/exposure_reduce.frag"
+            BuiltinAsset::EXPOSURE_REDUCE_SHADER, "default-shaders/postprocess.vert", "default-shaders/exposure_reduce.frag"
         );
         exposureAdaptShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/exposure_adapt.frag"
+            BuiltinAsset::EXPOSURE_ADAPT_SHADER, "default-shaders/postprocess.vert", "default-shaders/exposure_adapt.frag"
         );
         exposureApplyShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/postprocess.vert", "default-shaders/exposure_apply.frag"
+            BuiltinAsset::EXPOSURE_APPLY_SHADER, "default-shaders/postprocess.vert", "default-shaders/exposure_apply.frag"
+        );
+    }
+
+    // Greyboxing primitives: unit meshes and the checker material they wear.
+    static void createPrimitives(AssetHandler *handler) {
+        // Procedural checker 256²: a 64px cell (4×4 per texture → 25 cm on a 1 m face),
+        // two shades of gray; sRGB + a full mip pyramid (minification without shimmer).
+        constexpr uint32_t checkerSize = 256;
+        constexpr uint32_t cellPixels = 64;
+        Foundation::Memory checkerData =
+            Foundation::Memory::alloc(checkerSize * checkerSize * sizeof(uint32_t));
+        uint32_t *pixels = static_cast<uint32_t *>(checkerData.data);
+        for (uint32_t y = 0; y < checkerSize; y++) {
+            for (uint32_t x = 0; x < checkerSize; x++) {
+                const bool light = ((x / cellPixels) + (y / cellPixels)) % 2 == 0;
+                pixels[y * checkerSize + x] = light ? 0xFFB4B4B4 : 0xFF787878;
+            }
+        }
+        Miren::TextureCreate checkerCreate;
+        checkerCreate.m_data = checkerData;
+        checkerCreate.m_width = checkerSize;
+        checkerCreate.m_height = checkerSize;
+        checkerCreate.m_format = Miren::TextureFormat::RGBA8_SRGB;
+        checkerCreate.m_minFiltering = Miren::LINEAR_MIPMAP_LINEAR;
+        checkerCreate.m_magFiltering = Miren::LINEAR;
+        checkerCreate.m_wrap = Miren::REPEAT;
+        checkerCreate.m_numMips = 8;
+        checkerTexture = handler->createAsset<TextureAsset>(BuiltinAsset::CHECKER_TEXTURE, checkerCreate);
+
+        MaterialData primitiveMaterialData;
+        primitiveMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        for (MaterialField &field : primitiveMaterialData.inputs) {
+            if (field.name == "baseColorTexture") { field.value = checkerTexture.asBaseAsset(); }
+        }
+        primitiveMaterial =
+            handler->createAsset<MaterialAsset>(BuiltinAsset::PRIMITIVE_MATERIAL, primitiveMaterialData, defaultLitShader);
+
+        cubeMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::CUBE_MESH);
+        cubeMesh->update(PrimitiveMeshes::buildCube());
+        sphereMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::SPHERE_MESH);
+        sphereMesh->update(PrimitiveMeshes::buildSphere());
+        capsuleMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::CAPSULE_MESH);
+        capsuleMesh->update(PrimitiveMeshes::buildCapsule());
+        planeMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::PLANE_MESH);
+        planeMesh->update(PrimitiveMeshes::buildPlane());
+        cylinderMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::CYLINDER_MESH);
+        cylinderMesh->update(PrimitiveMeshes::buildCylinder());
+    }
+
+    // Instancing: the lit template with the instance matrix in a second vertex stream.
+    static void createInstancing(AssetHandler *handler) {
+        instancedLitShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::INSTANCED_LIT_SHADER, "default-shaders/default_lit_instanced.vert", "default-shaders/default_lit.frag"
+        );
+        MaterialData instancedLitMaterialData;
+        instancedLitMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        instancedLitMaterial =
+            handler->createAsset<MaterialAsset>(BuiltinAsset::INSTANCED_LIT_MATERIAL, instancedLitMaterialData, instancedLitShader);
+        // Instance stream: columns of the instance transform matrix (glm::mat4, column-major).
+        Miren::VertexBufferLayoutData instanceLayoutData;
+        instanceLayoutData.pushVec4();
+        instanceLayoutData.pushVec4();
+        instanceLayoutData.pushVec4();
+        instanceLayoutData.pushVec4();
+        instanceMat4Layout = Miren::createVertexLayout(instanceLayoutData);
+        // Instanced variant of the PBR template: the same fragment shader, a vertex shader with
+        // instance attributes (PBR and lit share the vertex shader — they share the instanced
+        // version as well). The flora renderer uses it to draw the user's PBR materials
+        // (generated by the import) without manual reconfiguration.
+        instancedPbrShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::INSTANCED_PBR_SHADER, "default-shaders/default_lit_instanced.vert",
+            "default-shaders/default_pbr.frag"
+        );
+        // Instanced variants are a property of the template shaders: the instanced draw of
+        // Renderer3D asks the shader itself for the variant and knows no specific templates.
+        defaultLitShader->setInstancedVariant(instancedLitShader.asBaseAsset());
+        defaultPbrShader->setInstancedVariant(instancedPbrShader.asBaseAsset());
+        sceneShaders().add(
+            instancedLitShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_lit.frag.hlsl"
+        );
+        sceneShaders().add(
+            instancedPbrShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_pbr.frag.hlsl"
+        );
+    }
+
+    // The depth passes of the shadows (RenderingMode::SHADOW_DEPTH), chosen by the vertex layout
+    // of the caster; the masked variants cut the alpha mask out by the fields of its material.
+    static void createShadowDepth(AssetHandler *handler) {
+        shadowDepthShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::SHADOW_DEPTH_SHADER, "default-shaders/shadow_depth.vert", "default-shaders/shadow_depth.frag"
+        );
+        shadowDepthMaskedShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::SHADOW_DEPTH_MASKED_SHADER, "default-shaders/shadow_depth.vert", "default-shaders/shadow_depth_masked.frag"
+        );
+        shadowDepthInstancedShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::SHADOW_DEPTH_INSTANCED_SHADER, "default-shaders/shadow_depth_instanced.vert", "default-shaders/shadow_depth.frag"
+        );
+        shadowDepthInstancedMaskedShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::SHADOW_DEPTH_INSTANCED_MASKED_SHADER, "default-shaders/shadow_depth_instanced.vert", "default-shaders/shadow_depth_masked.frag"
+        );
+    }
+
+    // Vegetation: the materials of an exported tree and of grass (the crown, the tufts) and the
+    // impostor of a distant tree — its bake and its billboard (context/vegetation.md).
+    static void createVegetation(AssetHandler *handler) {
+        // Impostor flora: normal baking (the shared lit vertex shader; the pass of the crown is
+        // below, with the crown) + the billboard.
+        floraImposterNormalShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::FLORA_IMPOSTER_NORMAL_SHADER, "default-shaders/default_lit.vert",
+            "default-shaders/flora_imposter_normal.frag"
+        );
+        floraImposterNormalSolidShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::FLORA_IMPOSTER_NORMAL_SOLID_SHADER, "default-shaders/default_lit.vert",
+            "default-shaders/flora_imposter_normal_solid.frag"
+        );
+        floraBillboardShader = handler->createAsset<ShaderAsset>(
+            BuiltinAsset::FLORA_BILLBOARD_SHADER, "default-shaders/flora_billboard.vert",
+            "default-shaders/flora_billboard.frag"
+        );
+        Miren::VertexBufferLayoutData billboardLayoutData;
+        billboardLayoutData.pushVec2(); // corner
+        billboardLayoutData.pushVec2(); // uv (v=0 — the top of the atlas)
+        floraBillboardVertexLayout = Miren::createVertexLayout(billboardLayoutData);
+        // Billboard quad: x ∈ [-0.5..0.5], y ∈ [0..1] (the bottom is on the ground).
+        const float quadVertices[] = {
+            -0.5f, 0.f, 0.f, 1.f, //
+            0.5f,  0.f, 1.f, 1.f, //
+            0.5f,  1.f, 1.f, 0.f, //
+            -0.5f, 1.f, 0.f, 0.f, //
+        };
+        const uint32_t quadIndices[] = {0, 1, 2, 0, 2, 3};
+        MeshData quadMesh(
+            floraBillboardVertexLayout,
+            Foundation::Memory::copying(quadVertices, sizeof(quadVertices)),
+            sizeof(quadVertices),
+            Foundation::Memory::copying(quadIndices, sizeof(quadIndices)), 6
+        );
+        quadMesh.vertexStride = sizeof(float) * 4;
+        floraBillboardMesh = handler->createAsset<RuntimeMeshAsset>(BuiltinAsset::FLORA_BILLBOARD_MESH);
+        floraBillboardMesh->update(quadMesh);
+
+        // The material of the impostor flora billboards (a quad + mat4 instances, the generic
+        // submitInstanced): the runtime slots are fed by the owner per species — the bake
+        // atlases and the frame parameters; doubleSided — the quad always faces the camera.
+        MaterialData billboardMaterialData;
+        billboardMaterialData.inputs = {
+            MaterialField("sizeParams", MaterialFieldType::VEC4, Vec4(1.f, 1.f, 0.f, 8.f), true),
+            MaterialField("cameraLocal", MaterialFieldType::VEC4, Vec4(0.f, 0.f, 0.f, 0.f), true),
+            MaterialField("fadeParams", MaterialFieldType::VEC4, Vec4(1.e6f, 2.e6f, 0.f, 0.f), true),
+            MaterialField("doubleSided", MaterialFieldType::UINT, 1u),
+            // The crown surface of the species (x — metallic, y — roughness): the billboard's
+            // Cook-Torrance = that of the mesh crown. The depth shaders read the PREFIX of the
+            // blob — the field goes strictly after doubleSided, before the textures.
+            MaterialField("surfaceParams", MaterialFieldType::VEC4, Vec4(0.f, 1.f, 0.f, 0.f), true),
+            MaterialField("imposterColorTexture", MaterialFieldType::TEXTURE, AssetRef<Asset>(), true),
+            MaterialField("imposterNormalTexture", MaterialFieldType::TEXTURE, AssetRef<Asset>(), true),
+        };
+        floraBillboardMaterial = handler->createAsset<MaterialAsset>(
+            BuiltinAsset::FLORA_BILLBOARD_MATERIAL, billboardMaterialData, floraBillboardShader
         );
         // Foliage clusters (tree exports): the cluster cards of the crown, the leaves are a baked
         // tile of points. A vertex shader of its own — the cards sway in the wind (with the same
-        // gust wave as the flutter/flashes of the fragment shader). Also at the end — the rule
-        // above.
+        // gust wave as the flutter/flashes of the fragment shader).
         vegCrownShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/veg_crown.vert", "default-shaders/veg_crown.frag"
+            BuiltinAsset::VEG_CROWN_SHADER, "default-shaders/veg_crown.vert", "default-shaders/veg_crown.frag"
         );
         // The carrier of the veg_crown field template (the pbr set + the crown parameters):
         // choosing the shader in the editor synchronizes the material fields with this set AND its
@@ -442,7 +438,7 @@ namespace StaticResources {
         // the switch: double-sided, a MASK cutout by the tile mask, a working gloss roughness
         // (the lit default of 1.0 kills the foliage specular).
         MaterialData vegCrownMaterialData;
-        vegCrownMaterialData.inputs = litMaterialData.inputs;
+        vegCrownMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
         vegCrownMaterialData.getField("doubleSided").value = 1u;
         vegCrownMaterialData.getField("alphaMode").value = 1u;
         vegCrownMaterialData.getField("roughnessFactor").value = 0.25f;
@@ -473,22 +469,22 @@ namespace StaticResources {
         // the leaf/needle normal, a — the leaf random; baked by ShootBaker) — there is no separate
         // field, the slot default is a flat normal.
         vegCrownMaterial =
-            handler->createAsset<MaterialAsset>(ASSET_ID++, vegCrownMaterialData, vegCrownShader);
+            handler->createAsset<MaterialAsset>(BuiltinAsset::VEG_CROWN_MATERIAL, vegCrownMaterialData, vegCrownShader);
         // Instanced variant of the crown: the flora (Mesh layers) draws trees as instances —
         // Renderer3D swaps the shader for the variant of the same template (the fragment shader is
         // shared).
         instancedVegCrownShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/veg_crown_instanced.vert", "default-shaders/veg_crown.frag"
+            BuiltinAsset::INSTANCED_VEG_CROWN_SHADER, "default-shaders/veg_crown_instanced.vert", "default-shaders/veg_crown.frag"
         );
         // Vegetation grass (tufts of intersecting billboards): cutout of the user
         // texture + vertex wind + view fade. The template = the lit set with MASK and
         // doubleSided + the grass fields at the end; the user switches the "grass" material from
-        // the import to this shader manually (like the crown). Also at the end — the rule above.
+        // the import to this shader manually (like the crown).
         vegGrassShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/veg_grass.vert", "default-shaders/veg_grass.frag"
+            BuiltinAsset::VEG_GRASS_SHADER, "default-shaders/veg_grass.vert", "default-shaders/veg_grass.frag"
         );
         MaterialData vegGrassMaterialData;
-        vegGrassMaterialData.inputs = litMaterialData.inputs;
+        vegGrassMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
         vegGrassMaterialData.getField("alphaMode").value = 1u;
         vegGrassMaterialData.getField("doubleSided").value = 1u;
         vegGrassMaterialData.inputs.push_back(
@@ -516,101 +512,75 @@ namespace StaticResources {
             MaterialField("grassFade", MaterialFieldType::VEC4, Vec4(1.e6f, 2.e6f, 0.f, 0.f))
         );
         vegGrassMaterial =
-            handler->createAsset<MaterialAsset>(ASSET_ID++, vegGrassMaterialData, vegGrassShader);
+            handler->createAsset<MaterialAsset>(BuiltinAsset::VEG_GRASS_MATERIAL, vegGrassMaterialData, vegGrassShader);
         instancedVegGrassShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/veg_grass_instanced.vert", "default-shaders/veg_grass.frag"
+            BuiltinAsset::INSTANCED_VEG_GRASS_SHADER, "default-shaders/veg_grass_instanced.vert", "default-shaders/veg_grass.frag"
         );
-        // Instanced variants are a property of the template shaders: the instanced draw of
-        // Renderer3D asks the shader itself for the variant and knows no specific templates.
-        defaultLitShader->setInstancedVariant(instancedLitShader.asBaseAsset());
-        defaultPbrShader->setInstancedVariant(instancedPbrShader.asBaseAsset());
         vegCrownShader->setInstancedVariant(instancedVegCrownShader.asBaseAsset());
         vegGrassShader->setInstancedVariant(instancedVegGrassShader.asBaseAsset());
-        // Two ids of a retired pair (the ACES variant of the final pass: the curve is a setting
-        // of the camera now, one tonemap shader): the ids after them are persisted in projects.
-        ASSET_ID = UUID(ASSET_ID + 2);
         // Depth variant of the impostor billboard (the forest shadow beyond Flora Distance): the
         // quad turns towards the light in its own vertex shader — the builtin shadow_depth does not
-        // fit. At the end — the id rule.
+        // fit.
         floraBillboardShadowShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/flora_billboard_shadow.vert",
+            BuiltinAsset::FLORA_BILLBOARD_SHADOW_SHADER, "default-shaders/flora_billboard_shadow.vert",
             "default-shaders/flora_billboard_shadow.frag"
         );
         floraBillboardShader->setShadowVariant(floraBillboardShadowShader.asBaseAsset());
         // The normal pass of the impostor bake for the veg_crown crown: the crown vertex shader
         // (the wind is muted by the bake) + the normal of every leaf from the normal tile — the
-        // billboard repeats the foliage of the mesh (FloraImposter::bakeTile). At the end — the id
-        // rule.
+        // billboard repeats the foliage of the mesh (FloraImposter::bakeTile).
         floraImposterNormalCrownShader = handler->createAsset<ShaderAsset>(
-            ASSET_ID++, "default-shaders/veg_crown.vert",
+            BuiltinAsset::FLORA_IMPOSTER_NORMAL_CROWN_SHADER, "default-shaders/veg_crown.vert",
             "default-shaders/flora_imposter_normal_crown.frag"
         );
-        // Placeholder for the occlusionVolume slot: 1×1 "sky visibility 1, transmittance 1" — there
-        // is no occlusion (previews, flora without crowns). AT THE END of the ids — the rule above:
-        // an insertion in the middle shifts the ids of all built-in assets below, and the project
-        // materials refer to foreign shaders and textures.
-        {
-            Miren::TextureCreate occlusionFallbackCreate;
-            occlusionFallbackCreate.m_format = Miren::TextureFormat::RGBA8;
-            occlusionFallbackCreate.m_width = 1;
-            occlusionFallbackCreate.m_height = 1;
-            occlusionFallbackCreate.m_depth = 1; // volume: the shaders declare occlusionVolume as Texture3D
-            occlusionFallbackCreate.m_minFiltering = Miren::LINEAR;
-            occlusionFallbackCreate.m_magFiltering = Miren::LINEAR;
-            occlusionFallbackCreate.m_wrap = Miren::CLAMP;
-            const uint8_t occlusionFallbackPixel[4] = {255, 255, 255, 255};
-            occlusionFallbackCreate.m_data = Foundation::Memory::copying(occlusionFallbackPixel, 4);
-            occlusionFallbackTexture = handler->createAsset<TextureAsset>(ASSET_ID++, occlusionFallbackCreate);
-        }
-        /// ----------------------------------------
-        /// REGISTRIES: the built-in shader templates (the editor picker, reconciliation of .mat
-        /// fields) and the static resources of contributions — after the core: they need its
-        /// placeholder textures.
-        /// ----------------------------------------
-        Extensions &extensions = GameContext::getExtensions();
-        // Scene shaders: the engine shaders that read the scene feature blocks (ShaderFeatures.hpp).
-        // A project compiles them with its feature set — the editor into the project cache, the
-        // export into the game — and reloads them in place; the bundle holds the build-time bake
-        // with every feature. The instanced variants share the fragment shader; the depth variant
-        // of the billboard reads the sun, the crown normal bake the wind.
-        SceneShaderRegistry &sceneShaders = extensions.sceneShaders;
-        sceneShaders.add(defaultSkyShader, "default-shaders/sky/sky_hdr.vert.hlsl", "default-shaders/sky/sky_hdr.frag.hlsl");
-        sceneShaders.add(defaultLitShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_lit.frag.hlsl");
-        sceneShaders.add(defaultPbrShader, "default-shaders/default_lit.vert.hlsl", "default-shaders/default_pbr.frag.hlsl");
-        sceneShaders.add(
-            instancedLitShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_lit.frag.hlsl"
-        );
-        sceneShaders.add(
-            instancedPbrShader, "default-shaders/default_lit_instanced.vert.hlsl", "default-shaders/default_pbr.frag.hlsl"
-        );
-        sceneShaders.add(vegCrownShader, "default-shaders/veg_crown.vert.hlsl", "default-shaders/veg_crown.frag.hlsl");
-        sceneShaders.add(
+        sceneShaders().add(vegCrownShader, "default-shaders/veg_crown.vert.hlsl", "default-shaders/veg_crown.frag.hlsl");
+        sceneShaders().add(
             instancedVegCrownShader, "default-shaders/veg_crown_instanced.vert.hlsl", "default-shaders/veg_crown.frag.hlsl"
         );
-        sceneShaders.add(vegGrassShader, "default-shaders/veg_grass.vert.hlsl", "default-shaders/veg_grass.frag.hlsl");
-        sceneShaders.add(
+        sceneShaders().add(vegGrassShader, "default-shaders/veg_grass.vert.hlsl", "default-shaders/veg_grass.frag.hlsl");
+        sceneShaders().add(
             instancedVegGrassShader, "default-shaders/veg_grass_instanced.vert.hlsl", "default-shaders/veg_grass.frag.hlsl"
         );
-        sceneShaders.add(
+        sceneShaders().add(
             floraBillboardShader, "default-shaders/flora_billboard.vert.hlsl", "default-shaders/flora_billboard.frag.hlsl"
         );
-        sceneShaders.add(
+        sceneShaders().add(
             floraBillboardShadowShader, "default-shaders/flora_billboard_shadow.vert.hlsl",
             "default-shaders/flora_billboard_shadow.frag.hlsl"
         );
-        sceneShaders.add(
+        sceneShaders().add(
             floraImposterNormalCrownShader, "default-shaders/veg_crown.vert.hlsl",
             "default-shaders/flora_imposter_normal_crown.frag.hlsl"
         );
-        extensions.shaderTemplates.add({defaultUnlitShader.getId(), "Unlit", defaultUnlitMaterial});
-        extensions.shaderTemplates.add({defaultLitShader.getId(), "Lit", defaultLitMaterial});
-        extensions.shaderTemplates.add({defaultPbrShader.getId(), "PBR", defaultLitMaterial}); // the same field set
-        extensions.shaderTemplates.add({vegCrownShader.getId(), "Vegetation Crown", vegCrownMaterial});
-        extensions.shaderTemplates.add({vegGrassShader.getId(), "Vegetation Grass", vegGrassMaterial});
+        ShaderTemplateRegistry &templates = GameContext::getExtensions().shaderTemplates;
+        templates.add({vegCrownShader.getId(), "Vegetation Crown", vegCrownMaterial});
+        templates.add({vegGrassShader.getId(), "Vegetation Grass", vegGrassMaterial});
+    }
+
+    // The ids are named (BuiltinAsset): the sections below depend on each other only through
+    // what they create — a placeholder texture, the lit field set — not through their order in
+    // a count. The scene shaders are the ones that read the feature blocks of a frame
+    // (ShaderFeatures.hpp): a project compiles them with its feature set and reloads them in
+    // place; the order of the shader templates is the order of the picker of the editor.
+    void initStaticResources() {
+        AssetHandler *handler = GameContext::getAssetHandler();
+        generalVertexLayout = Miren::createVertexLayout(Vertex::createBufferLayoutData());
+        createPlaceholderTextures(handler);
+        createSky(handler);
+        createMaterialTemplates(handler);
+        createToolPasses(handler);
+        createPostprocessing(handler);
+        createPrimitives(handler);
+        createInstancing(handler);
+        createShadowDepth(handler);
+        createVegetation(handler);
+        // The built-in assets of the modules — after the core's: they use its placeholders and
+        // templates. A module that arrives later (the plugins of a project) is initialized at once.
+        Extensions &extensions = GameContext::getExtensions();
         for (const ResourceProvider &provider : extensions.resourceProviders.providers()) {
             provider.init(*handler);
         }
-        extensions.resourceProviders.setLive(handler); // late providers (project plugins) — right away
+        extensions.resourceProviders.setLive(handler);
     }
 
     AssetRef<RuntimeMeshAsset> primitiveMeshOf(PrimitiveMeshKind kind) {

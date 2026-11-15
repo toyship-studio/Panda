@@ -52,7 +52,7 @@ ShaderSpirvReflectionData reflectD3D11FragmentShader(const path_t &fragmentSourc
             source.data(), source.size(), nullptr, nullptr, nullptr, "main", "ps_5_0", flags, 0, &bytecode, &errors
         ))) {
         const char *message = errors ? static_cast<const char *>(errors->GetBufferPointer()) : "no error output";
-        LOG_ERROR_EDITOR("SHADER COMPILATION ERROR (reflection):\n%s", message);
+        LOG_ERROR_EDITOR("Shader compilation failed (reflection):\n%s", message);
         if (errors) { errors->Release(); }
         if (bytecode) { bytecode->Release(); }
         return reflection;

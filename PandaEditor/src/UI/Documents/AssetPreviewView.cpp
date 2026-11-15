@@ -50,7 +50,7 @@ namespace {
     }
 
     Panda::AssetType typeOf(Panda::AssetId asset) {
-        auto *handler = static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
+        auto *handler = Panda::AssetHandlerEditor::current();
         if (handler == nullptr) { return Panda::AssetType::NONE; }
         const auto it = handler->getRegistry().find(asset);
         return it == handler->getRegistry().end() ? Panda::AssetType(Panda::AssetType::NONE) : it->second.type;

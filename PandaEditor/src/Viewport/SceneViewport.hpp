@@ -44,11 +44,11 @@ public:
     Rect getFrame() const {
         return m_frame;
     }
-    Gizmos &gizmo() { // the viewport panel drives the gizmo itself (EditorLayer::drivePandaUIGizmo → manipulate)
+    Gizmos &gizmo() { // the viewport panel drives the gizmo itself (EditorLayer::updateGizmo → manipulate)
         return m_gizmos;
     }
     // Rect-select (and 1×1 single-click) driven from the PandaUI viewport. start/current are
-    // viewport-local points; committed=true on mouse-up. Writes to SelectionContext.
+    // viewport-local points; committed=true on mouse-up. Writes to the selection of the editor (Editor::selection()).
     void driveRectSelection(IVec2 startPoint, IVec2 currentPoint, bool additive, bool committed);
     void pollSelection(); // apply async IDS reads queued by driveRectSelection (call each frame)
 
@@ -59,7 +59,6 @@ private:
     void updateRectSelection(IVec2 viewportPoint);
     void endRectSelection();
     void cancelRectSelection();
-    void unselectAll();
 
     SceneRenderTargets *m_targets;
     Gizmos m_gizmos;

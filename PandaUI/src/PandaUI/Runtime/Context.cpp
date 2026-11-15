@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 29.11.2023.
-//
-
 #include "PandaUI/Runtime/Context.hpp"
 
 #include "PandaUI/Core/Profile.hpp"
@@ -415,6 +411,33 @@ bool Context::handleTextInput(TextInputEvent event) {
     if (m_focusedView && !m_focusedView->canBecomeFocused()) { setFocusedView(nullptr); }
     dispatchTextInput(m_focusedView, event);
     return event.isHandled;
+}
+
+bool Context::handleEvent(const Event &event) {
+    switch (event.type) {
+        case EventType::WindowResize:
+            setSafeAreaInsets(event.safeAreaInsets);
+            updateViewportSize(event.windowSize, event.dpiScale);
+            return false;
+        case EventType::PointerDown:
+            return handlePointerDown(event.pointer);
+        case EventType::PointerUp:
+            return handlePointerUp(event.pointer);
+        case EventType::PointerMove:
+            return handlePointerMove(event.pointer);
+        case EventType::Scroll:
+            return handleScroll(event.scroll);
+        case EventType::KeyDown:
+            return handleKeyDown(event.key);
+        case EventType::KeyUp:
+            return handleKeyUp(event.key);
+        case EventType::TextInput:
+            return handleTextInput(event.textInput);
+        case EventType::WindowCloseRequest:
+        case EventType::None:
+            return false;
+    }
+    return false;
 }
 
 void Context::setFocusedView(View *view) {

@@ -99,8 +99,8 @@ The buttons follow the status of the plugin:
 ### The plugin store
 
 `Panda::PluginStore` holds the state and is the only code that changes the plugin folders. It is
-owned by `EditorLayer` and reaches the tab through `EngineBridge` (`pluginStore()`,
-`currentThemeId()`, `selectTheme(id)`, `installDevPlugin()`).
+owned by `EditorLayer`, which the tab asks directly (`pluginStore()`, `currentThemeId()`,
+`selectTheme(id)`, `installDevPlugin()`).
 
 - Installed plugins: `Resources/plugins/*` (built-in) and `<userdata>/Panda/Plugins/<id>`,
   scanned by `EditorPlugins` (`InstalledPlugin {manifest, directory, builtIn, dev, themes, icons}`). One
@@ -157,7 +157,7 @@ whose model changed on the next frame.
 - Every kind of plugin data has to be loadable and unloadable live before it is accepted into the
   plugin format; today that is themes (`EditorPlugins::loadTheme`, `PandaUI::setTheme`) and icons
   (`EditorUI::applyIconOverrides`: the plugin PNG goes behind the texture handle the icon token
-  already has — `PandaUIImplMiren::replaceTexture` — so every view showing it changes on the next
+  already has — `PandaUIMirenRenderer::replaceTexture` — so every view showing it changes on the next
   frame; a token without an override goes back to the editor's file, a token the editor lacks
   becomes a new icon). The kinds and their state are listed in `context/plugins.md`, "Plugin data
   kinds".

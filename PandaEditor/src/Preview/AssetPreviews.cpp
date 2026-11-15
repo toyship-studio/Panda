@@ -18,7 +18,7 @@ namespace {
     constexpr uint32_t MAX_PREVIEW_SIDE = 2048; // px: a preview is a part of a form, not a screen
 
     AssetType typeOf(AssetId assetId) {
-        auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+        auto *handler = AssetHandlerEditor::current();
         if (handler == nullptr) { return AssetType::NONE; }
         const auto it = handler->getRegistry().find(assetId);
         return it == handler->getRegistry().end() ? AssetType(AssetType::NONE) : it->second.type;

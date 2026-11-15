@@ -1,7 +1,3 @@
-//
-// Created by Admin on 11.02.2022.
-//
-
 #pragma once
 
 #include <Foundation/Assert.hpp>

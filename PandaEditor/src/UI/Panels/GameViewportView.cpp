@@ -43,7 +43,7 @@ GameViewportView::GameViewportView() {
     m_badge->surface().setBorderWidth(1.f);
     m_badge->surface().setBorderColor(ThemeColor::border);
     m_badge->setBackgroundColor(ThemeColor::surface);
-    m_badgeLabel = std::make_shared<Label>("Not rendering: the Scene tab is active");
+    m_badgeLabel = std::make_shared<Label>("Not rendering: the tab of the world is in front");
     m_badgeLabel->setFont(Typo::Caption);
     m_badgeLabel->setTextRole(TextRole::Secondary);
     m_badgeLabel->setUserInteractionEnabled(false);

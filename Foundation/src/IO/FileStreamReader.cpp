@@ -7,7 +7,7 @@ FileStreamReader::FileStreamReader(const std::filesystem::path &path)
     : m_path(path) {
     m_stream = std::ifstream(path, std::ifstream::in | std::ifstream::binary);
     if (!m_stream.is_open()) {
-        LOG_ERROR("FILE %s DOESN'T EXISTS", path.string().c_str());
+        LOG_ERROR("The file %s could not be opened.", path.string().c_str());
         m_totalSize = 0;
         return;
     }

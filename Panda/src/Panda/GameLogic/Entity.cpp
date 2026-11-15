@@ -1,7 +1,3 @@
-//
-// Created by Admin on 09.02.2022.
-//
-
 #include "Panda/GameLogic/Entity.hpp"
 #include "Panda/GameLogic/World.hpp"
 

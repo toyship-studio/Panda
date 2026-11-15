@@ -8,7 +8,8 @@
 namespace Panda {
 
 // Toggle of component T on a set of entities: all have it — remove (the value is remembered
-// for undo), otherwise — add to those that lack it. A tag (empty T) carries no value.
+// for undo), otherwise — add to those that lack it. A tag (empty T) carries no value. Every
+// toggle is a step of the history of its own: adding a component and removing it are two steps.
 template<typename T>
 class AddRemoveComponentCommand : public WorldCommand {
 public:
@@ -42,12 +43,6 @@ public:
             entity.setWorldChanged();
         }
         return true;
-    }
-
-    bool canMerge(WorldCommand &command) override {
-        if (typeid(command) != typeid(*this)) { return false; }
-        AddRemoveComponentCommand &other = static_cast<AddRemoveComponentCommand &>(command);
-        return other.m_entities == m_entities;
     }
 
 private:

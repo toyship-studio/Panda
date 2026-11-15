@@ -179,7 +179,7 @@ void HierarchyPanelView::configureTree() {
             const std::uint32_t uuid = toUuid(item);
             if (uuid != 0) { ids.push_back(Panda::UUID(uuid)); }
         }
-        m_output->hierarchyDidReparent(ids, Panda::UUID(toUuid(newParent))); // newParent==0 → to the scene root
+        m_output->hierarchyDidReparent(ids, Panda::UUID(toUuid(newParent))); // newParent==0 → to the root of the world
     });
     m_tree->setOnContextMenu([this](TreeView &tree, TreeItem item, Point position) {
         showContextMenu(tree, Panda::UUID(toUuid(item)), position);

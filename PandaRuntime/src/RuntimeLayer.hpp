@@ -13,7 +13,7 @@
 
 namespace Panda {
 
-class PandaUIImpl;
+class GameUI;
 
 class RuntimeLayer final : public Layer {
 public:
@@ -41,7 +41,7 @@ private:
     ScriptEngine *m_scriptEngine;
     World *m_world;
     RuntimeProjectLoader *m_projectLoader;
-    PandaUIImpl *m_pandaUI;
+    GameUI *m_gameUI;
     AssetId m_pendingWorldLoad;
     Size m_viewportSize;
     Size m_viewportDpi;

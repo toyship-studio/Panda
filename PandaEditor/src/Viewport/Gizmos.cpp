@@ -1,11 +1,8 @@
-//
-// Created by Michael Andreichev on 06.10.2024.
-//
-
 #include "Gizmos.hpp"
 
 #include "Viewport/Gizmo/Gizmo.hpp"
 #include <Panda/WorldCommands/Impl/EntityTransformCommand.hpp>
+#include <PandaEditorKit/Selection.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace Panda {
@@ -48,14 +45,14 @@ bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const
     Gizmo::setInput(input);
     Gizmo::beginFrame();
     m_gizmoVisible = false;
-    if (!viewMatrix || !m_camera || !m_world || SelectionContext::isEmpty()) { return false; }
+    if (!viewMatrix || !m_camera || !m_world || !Editor::selection().hasEntities()) { return false; }
     m_gizmoVisible = true;
     Gizmo::setOrthographic(false);
     Gizmo::setRect(viewportRect.origin.x, viewportRect.origin.y, viewportRect.size.width, viewportRect.size.height);
 
     glm::mat4 view = *viewMatrix;
     glm::mat4 projection = m_camera->getProjection();
-    glm::mat4 transform = SelectionContext::getMedianMatrix();
+    glm::mat4 transform = Editor::selection().medianMatrix();
     glm::mat4 delta = glm::mat4(1.0f);
     const bool manipulated = Gizmo::manipulate(
         glm::value_ptr(view),
@@ -67,7 +64,7 @@ bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const
     );
     if (!manipulated) { return true; } // visible but not being moved — draw it
 
-    auto ids = SelectionContext::getManipulatingEntities();
+    const std::unordered_set<UUID> &ids = Editor::selection().manipulatedEntityIds();
     std::unordered_set<Entity> entities = m_world->getById(ids);
     EntityTransformCommand transformCommand(entities);
     transformCommand.saveBeforeEdit();
@@ -84,8 +81,8 @@ bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const
     }
     transformCommand.saveAfterEdit();
     CommandHistory &cmd = m_world->getCommandHistory();
-    cmd.SAVE(transformCommand, false);
-    SelectionContext::updateValues();
+    cmd.record(transformCommand);
+    Editor::selection().transformChanged();
     m_world->setChanged();
     return true;
 }

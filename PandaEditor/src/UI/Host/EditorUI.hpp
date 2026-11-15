@@ -1,9 +1,8 @@
 #pragma once
 
-#include "UI/Host/PandaUIImplFern.hpp"
-#include "UI/Host/PandaUIImplMiren.hpp"
-
 #include <Miren/Miren.hpp>
+#include <Panda/UI/PandaUIFernHost.hpp>
+#include <Panda/UI/PandaUIMirenRenderer.hpp>
 #include <PandaUI/Rendering/Font.hpp>
 #include <PandaUI/Runtime/Context.hpp>
 
@@ -29,9 +28,9 @@ class IconLibrary;
 
 namespace Panda {
 
-// The C++-side PandaUI host for the editor chrome. Owns the Context, renders its draw-list through Miren and
-// feeds it with Fern input. Tech debt: the render/input temporarily duplicate the engine's
-// PandaUIImpl(runtime) — to be unified engine-side as a separate step.
+// The UI of the editor itself (the chrome): its PandaUI context, the fonts and the icons it
+// draws with, a second window for the Settings. The input of the windows and the drawing are
+// the engine's (PandaUIFernHost, PandaUIMirenRenderer).
 class EditorUI final {
 public:
     void initialize(Fern::Window *window, Miren::ViewId viewId);
@@ -94,8 +93,8 @@ public:
     PandaUI::Context *auxiliaryContext();
     void renderAuxiliaryTo(Miren::ViewId viewId); // like renderTo, the tree of the second window
 
-    // Wrap an engine FBO texture (scene color attachment) as a PandaUI texture for the viewport ImageView
-    // (migration seam #1). The handle is stable across resizes, so wrap once. Ownership stays with the engine.
+    // The texture a viewport renders into, as a PandaUI texture for its ImageView. The handle is
+    // stable across resizes, so it is wrapped once; the texture stays the engine's.
     PandaUI::TextureHandle wrapNativeTexture(Miren::TextureHandle native, PandaUI::Size size) {
         return m_renderer.wrapNativeTexture(native, size);
     }
@@ -115,12 +114,12 @@ public:
     }
 
 private:
-    PandaUIImplMiren m_renderer;
-    PandaUIImplFern m_platform;
+    PandaUIMirenRenderer m_renderer;
+    PandaUIFernHost m_platform;
     PandaUI::Context m_context;
     struct AuxiliaryWindow {
         Fern::Window *window = nullptr;
-        PandaUIImplFern platform;
+        PandaUIFernHost platform;
         PandaUI::Context context;
     };
     std::unique_ptr<AuxiliaryWindow> m_auxiliary;

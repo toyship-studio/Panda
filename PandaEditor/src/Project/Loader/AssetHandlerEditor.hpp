@@ -27,6 +27,9 @@ class AssetHandlerEditor;
 class AssetHandlerEditor final : public AssetHandler {
 public:
     AssetHandlerEditor();
+    // The handler of the editor (the engine keeps it by its own interface, GameContext); nullptr —
+    // before the editor has made it.
+    static AssetHandlerEditor *current();
     void registerAsset(const path_t &path);
     bool canImport(const path_t &path);
     void reload(AssetId id);
@@ -109,7 +112,6 @@ private:
     friend class AssetDocuments;      // layers of one pair: the registry/loaded assets/sidecars are
     friend class AssetImportPipeline; // accessible through friend, the public API does not bloat
 
-    AssetInfo &getInfoRef(AssetId id);
     void registerPath(AssetId id, const path_t &relativePath); // both maps: id→path and path→id
     // Shader pair: frag is derived from vert by the *vert.hlsl -> *frag.hlsl convention.
     bool ensureShaderSourceFilesExist(AssetId id, const path_t &vertexRelPath, bool logErrors = true);

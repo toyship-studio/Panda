@@ -72,7 +72,7 @@ private:
         for (GLint i = 0; i < numExtensions; ++i) {
             const char *ext = reinterpret_cast<const char *>(glGetStringi(GL_EXTENSIONS, i));
             if (ext) {
-                if (Foundation::strCmp(ext, "GL_", 3) == 0) { ext += 3; }
+                if (std::strncmp(ext, "GL_", 3) == 0) { ext += 3; }
                 extensions.push_back(ext);
             }
         }

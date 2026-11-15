@@ -1,7 +1,3 @@
-//
-// Created by Admin on 17.02.2022.
-//
-
 #import "UIKitWindow.h"
 #import "../AppDelegate.h"
 #ifdef PANDA_GRAPHICS_METAL

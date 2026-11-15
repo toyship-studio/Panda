@@ -1,7 +1,3 @@
-//
-// Created by Admin on 17.02.2022.
-//
-
 #pragma once
 
 #import "Fern/Window/Window.hpp"

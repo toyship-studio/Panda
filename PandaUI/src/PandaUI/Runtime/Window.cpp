@@ -84,30 +84,7 @@ bool Window::update(double deltaTime) {
 bool Window::handleEvent(const Event &event) {
     if (!isValid() || event.window != m_handle) { return false; }
     Context *windowContext = getContext();
-    if (!windowContext) { return false; }
-
-    switch (event.type) {
-        case EventType::WindowResize:
-            windowContext->setSafeAreaInsets(event.safeAreaInsets);
-            windowContext->updateViewportSize(event.windowSize, event.dpiScale);
-            return false;
-        case EventType::PointerDown:
-            return windowContext->handlePointerDown(event.pointer);
-        case EventType::PointerUp:
-            return windowContext->handlePointerUp(event.pointer);
-        case EventType::PointerMove:
-            return windowContext->handlePointerMove(event.pointer);
-        case EventType::Scroll:
-            return windowContext->handleScroll(event.scroll);
-        case EventType::KeyDown:
-            return windowContext->handleKeyDown(event.key);
-        case EventType::KeyUp:
-            return windowContext->handleKeyUp(event.key);
-        case EventType::TextInput:
-            return windowContext->handleTextInput(event.textInput);
-        default:
-            return false;
-    }
+    return windowContext != nullptr && windowContext->handleEvent(event);
 }
 
 const DrawList &Window::getDrawList() const {

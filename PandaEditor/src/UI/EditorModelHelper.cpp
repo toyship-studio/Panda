@@ -15,65 +15,11 @@ std::vector<std::pair<Panda::AssetId, std::string>> builtinShaderOptions() {
     return options;
 }
 
-const char *componentTypeName(ComponentType type) {
-    switch (type) {
-        case ComponentType::Camera: return "Camera";
-        case ComponentType::DirectionalLight: return "Directional Light";
-        case ComponentType::PointLight: return "Point Light";
-        case ComponentType::SpriteRenderer: return "Sprite Renderer";
-        case ComponentType::RuntimeMesh: return "Runtime Mesh";
-        case ComponentType::PrimitiveMesh: return "Primitive Mesh";
-        case ComponentType::ImportedSubmesh: return "Imported Submesh";
-        case ComponentType::Sky: return "Cube Map (Sky)";
-        case ComponentType::Script: return "Script";
-    }
-    return "Component";
-}
-
-const char *componentTypeTitle(ComponentType type) {
-    switch (type) {
-        case ComponentType::Camera: return "CAMERA";
-        case ComponentType::DirectionalLight: return "DIRECTIONAL LIGHT";
-        case ComponentType::PointLight: return "POINT LIGHT";
-        case ComponentType::SpriteRenderer: return "SPRITE RENDERER";
-        case ComponentType::RuntimeMesh: return "RUNTIME MESH";
-        case ComponentType::PrimitiveMesh: return "PRIMITIVE MESH";
-        case ComponentType::ImportedSubmesh: return "IMPORTED SUBMESH";
-        case ComponentType::Sky: return "CUBE MAP (SKY)";
-        case ComponentType::Script: return "SCRIPT";
-    }
-    return "COMPONENT";
-}
-
-const char *componentTypeIcon(ComponentType type) {
-    switch (type) {
-        case ComponentType::Camera: return Ic::Camera;
-        case ComponentType::DirectionalLight: return Ic::LightSun;
-        case ComponentType::PointLight: return Ic::LightPoint;
-        case ComponentType::SpriteRenderer: return Ic::Sprite;
-        case ComponentType::RuntimeMesh:
-        case ComponentType::PrimitiveMesh:
-        case ComponentType::ImportedSubmesh: return Ic::Mesh;
-        case ComponentType::Sky: return Ic::Globe;
-        case ComponentType::Script: return Ic::Script;
-    }
-    return Ic::EntityCube;
-}
-
-std::vector<ComponentType> addableComponentTypes() {
-    return {
-        ComponentType::Camera,         ComponentType::DirectionalLight, ComponentType::PointLight,
-        ComponentType::SpriteRenderer, ComponentType::RuntimeMesh,      ComponentType::PrimitiveMesh,
-        ComponentType::ImportedSubmesh, ComponentType::Sky,             ComponentType::Script,
-    };
-}
-
-// The kind string for the editor UI: built-in kinds have historical tags (world — "scene", cubemap and
-// runtime mesh share the tag with texture and mesh), kinds from the registry — their name.
+// The kind string for the editor UI: the name of the kind in the registry (Extensions::assetKinds).
+// A cube map and a runtime mesh answer as a texture and a mesh: the editor shows and picks them alike.
 const char *assetTypeString(Panda::AssetType type) {
     if (type == Panda::AssetType::TEXTURE || type == Panda::AssetType::CUBE_MAP) { return "texture"; }
     if (type == Panda::AssetType::IMPORTED_MESH || type == Panda::AssetType::RUNTIME_MESH) { return "mesh"; }
-    if (type == Panda::AssetType::WORLD) { return "scene"; }
     if (const Panda::AssetKind *kind = Panda::GameContext::getExtensions().assetKinds.find(type)) {
         return kind->name.c_str();
     }

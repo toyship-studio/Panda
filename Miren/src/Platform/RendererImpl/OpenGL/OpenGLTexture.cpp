@@ -1,7 +1,3 @@
-//
-// Created by Admin on 11.02.2022.
-//
-
 #include "OpenGLTexture.hpp"
 #include "Texture/TextureFormat.hpp"
 
@@ -159,7 +155,7 @@ void OpenGLTexture::readPixels(void *data) {
     const GLenum format = s_textureFormat[m_create.m_format].m_internalFmt;
     GL_CALL(glGetTexImage(m_target, 0, format, m_type, data));
 #else
-    LOG_ERROR("READ TEXTURE NOT SUPPORTED IN GLES");
+    LOG_ERROR("OPENGL: Reading a texture back is not supported on GLES");
 #endif
 }
 

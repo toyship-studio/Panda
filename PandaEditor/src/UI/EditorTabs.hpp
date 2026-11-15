@@ -12,21 +12,20 @@
 
 namespace Editor {
 
-// The coordinator's bridge for editor tabs: applying entity edits (the controller's Output methods
-// hit the "current selection" — for the duration of an edit from a tab the selection is substituted
-// with its targets), resolving live objects and services.
+// What the editor tabs ask of the workspace: where the edits of an entity tab go (the entity
+// actions of the editor, with the entities of the tab as their target for the duration of an
+// edit), live objects by their ids, the saving of what stands behind a tab.
 class EditorTabsHost {
 public:
     virtual ~EditorTabsHost() = default;
     virtual EntityEditorOutput &tabsHostOutput() = 0;
-    // Edit target = the tab's entities (see the controller's selectedEntities). The empty end clears it.
+    // Edit target = the tab's entities (EntityActions::targets). The end clears it.
     virtual void tabsBeginEntityTarget(const std::vector<Panda::UUID> &ids) = 0;
     virtual void tabsEndEntityTarget() = 0;
     virtual std::vector<Panda::Entity> tabsResolveEntities(const std::vector<Panda::UUID> &ids) = 0;
     // The world the entity tabs show: the one of the panels (the edited world, the playing copy).
     virtual Panda::World *tabsWorld() = 0;
     virtual std::vector<std::string> tabsScriptClasses() = 0;
-    virtual void tabsRequestMaximize(PandaUI::View *view) = 0;
     // The asset tab is closed: the viewport session with this document ends (the tool lets go).
     virtual void tabsAssetTabClosed(Panda::AssetId id) = 0;
     virtual void tabsAssetTabOpened(Panda::AssetId id) = 0; // counterpart: tracks openness in AssetEditorMeta
@@ -56,7 +55,7 @@ public:
     EditorTabs(DockManager *docks, EditorTabsHost *host);
     ~EditorTabs();
 
-    // Current editor selection (from pushSelectionToPanels). An empty selection does not touch the tabs.
+    // The selection of the editor (EditorController::selectionChanged). An empty one does not touch the tabs.
     void showSelection(const std::vector<Panda::Entity> &entities, const std::vector<Panda::AssetId> &assets);
     // A document of the registry (EditorExtensions::documentTypes) in the dock; an open one is activated.
     void openDocumentType(const std::string &typeId, Dock dock);
@@ -110,7 +109,6 @@ private:
     friend class AssetDocument;
 
     std::vector<Panda::UUID> entityTargets(const std::string &tabId);
-    void requestMaximize(const std::string &tabId);
     // An edit of an asset document from its form: the preview tab gets PINNED — otherwise the
     // next selection would hide a tab with unsaved changes.
     void documentEdited(Document *document);

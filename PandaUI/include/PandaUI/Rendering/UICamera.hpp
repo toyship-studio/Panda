@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 30.11.2023.
-//
-
 #pragma once
 
 #include "PandaUI/Core/Base.hpp"

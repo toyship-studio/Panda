@@ -191,7 +191,7 @@ void AssetImportPipeline::importTextureSourceAssetAs(const path_t &path, bool sr
     if (existingAssetIt != m_handler.m_registeredAssets.end()) {
         AssetInfo &info = m_handler.m_registry.at(existingAssetIt->second);
         if (info.type != AssetType::TEXTURE) {
-            LOG_ERROR_EDITOR("FILE %s IS ALREADY REGISTERED AS ANOTHER ASSET TYPE", sourceAssetPath.string().c_str());
+            LOG_ERROR_EDITOR("%s is registered as an asset of another kind already.", sourceAssetPath.string().c_str());
             return;
         }
         // Repeated import (for example, gltf refines the sRGB role of a texture).
@@ -379,7 +379,7 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
     path_t gltfRelativePath = m_handler.assetPath(meshAssetId);
     path_t gltfPath = m_handler.m_projectPath / gltfRelativePath;
     if (!std::filesystem::exists(gltfPath)) {
-        LOG_ERROR_EDITOR("GLTF %s NOT FOUND", gltfRelativePath.string().c_str());
+        LOG_ERROR_EDITOR("The model %s could not be imported: the file is missing.", gltfRelativePath.string().c_str());
         m_handler.markMissingFiles(meshAssetId);
         return 0;
     }
@@ -400,7 +400,7 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
         if (registeredAssetIt != m_handler.m_registeredAssets.end()) {
             materialAssetId = registeredAssetIt->second;
             if (m_handler.m_registry.at(materialAssetId).type != AssetType::MATERIAL) {
-                LOG_ERROR_EDITOR("FILE %s IS ALREADY REGISTERED AS ANOTHER ASSET TYPE", materialPath.string().c_str());
+                LOG_ERROR_EDITOR("%s is registered as an asset of another kind already.", materialPath.string().c_str());
                 continue;
             }
         } else {

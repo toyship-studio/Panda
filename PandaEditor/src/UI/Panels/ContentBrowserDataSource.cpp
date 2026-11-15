@@ -15,9 +15,6 @@ namespace Editor {
 
 namespace {
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     // Sorting of FS entries by name, ignoring case.
     bool nameLess(const std::string &a, const std::string &b) {
@@ -38,7 +35,7 @@ void ContentBrowserDataSource::rebuild() {
     const Panda::path_t previousPath = m_currentFolder ? m_currentFolder->path : Panda::path_t();
     m_root = std::make_shared<Folder>();
     m_root->name = "Assets";
-    auto *handler = assetHandler();
+    auto *handler = Panda::AssetHandlerEditor::current();
     if (handler && !handler->getProjectPath().empty()) {
         m_root->path = handler->getProjectPath() / "Assets";
         std::function<void(Folder &)> scan = [&](Folder &folder) {
@@ -120,7 +117,7 @@ const ContentBrowserDataSource::FileEntry *ContentBrowserDataSource::fileAt(int 
 Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
     const FileEntry *file = fileAt(index);
     if (!file || file->assetId == 0) { return 0; }
-    auto *handler = assetHandler();
+    auto *handler = Panda::AssetHandlerEditor::current();
     if (!handler) { return 0; }
     const auto &registry = handler->getRegistry();
     auto it = registry.find(file->assetId);

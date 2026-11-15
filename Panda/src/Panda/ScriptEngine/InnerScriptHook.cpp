@@ -1,5 +1,5 @@
 #include "Panda/ScriptEngine/InnerScriptHook.hpp"
-#include "Panda/UI/PandaUIImpl.hpp"
+#include "Panda/UI/GameUI.hpp"
 #include "Panda/Application/Application.hpp"
 #include "Panda/GameLogic/Input.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
@@ -29,7 +29,7 @@ Entity resolveScriptEntity(Handle entityHandle) {
     if (!entity.isValid()) {
         static std::unordered_set<uint32_t> reported;
         if (reported.insert((uint32_t)entityHandle).second) {
-            LOG_ERROR("SCRIPT CALL WITH INVALID ENTITY %u", (uint32_t)entityHandle);
+            LOG_ERROR("A script called the engine with an entity that does not exist (%u).", (uint32_t)entityHandle);
             if (Foundation::EditorLogger::isInitialized()) {
                 LOG_ERROR_EDITOR("Script call with invalid entity %u", (uint32_t)entityHandle);
             }
@@ -183,7 +183,7 @@ namespace InternalCalls {
         if (componentType == nullptr) {
             static std::unordered_set<std::string> reported;
             if (reported.insert(type).second) {
-                LOG_ERROR("SCRIPT CALL WITH UNKNOWN COMPONENT TYPE %s", type);
+                LOG_ERROR("A script asked for a component type the engine does not know: %s.", type);
                 if (Foundation::EditorLogger::isInitialized()) {
                     LOG_ERROR_EDITOR("Script call with unknown component type %s", type);
                 }
@@ -395,8 +395,7 @@ namespace InternalCalls {
         if (textureId) {
             auto textureRef = AssetRef<TextureAsset>(textureId);
             if (!textureRef.get()) {
-                LOG_ERROR("TEXTURE %u NOT FOUND", textureRef.getId());
-                LOG_ERROR_EDITOR("TEXTURE %u NOT FOUND", textureRef.getId());
+                LOG_ERROR_EDITOR("A script refers to texture %u, which does not exist.", textureRef.getId());
                 return;
             }
         }
@@ -437,8 +436,7 @@ namespace InternalCalls {
     void meshComponent_SetMaterial(Handle entityHandle, Handle materialHandle) {
         auto materialRef = AssetRef<MaterialAsset>(materialHandle);
         if (!materialRef) {
-            LOG_ERROR("MATERIAL %u NOT FOUND", materialRef.getId());
-            LOG_ERROR_EDITOR("MATERIAL %u NOT FOUND", materialRef.getId());
+            LOG_ERROR_EDITOR("A script refers to material %u, which does not exist.", materialRef.getId());
             return;
         }
         Entity entity = resolveScriptEntity(entityHandle);
@@ -581,11 +579,10 @@ namespace InternalCalls {
     /// MESH
 
     void mesh_Create(Handle *handle) {
-        AssetHandler *assetHandler = GameContext::getAssetHandler();
-        UUID id;
-        auto meshRef = assetHandler->createAsset<RuntimeMeshAsset>(id);
-        *handle = id;
-        s_scriptCreatedAssets[id] = meshRef.asBaseAsset();
+        // An id of the runtime range: it cannot fall on an asset of the project.
+        auto meshRef = GameContext::getAssetHandler()->createRuntimeAsset<RuntimeMeshAsset>();
+        *handle = meshRef.getId();
+        s_scriptCreatedAssets[meshRef.getId()] = meshRef.asBaseAsset();
     }
 
     void mesh_Update(
@@ -593,8 +590,7 @@ namespace InternalCalls {
     ) {
         auto meshRef = AssetRef<RuntimeMeshAsset>(handle);
         if (!meshRef) {
-            LOG_ERROR("MESH %u NOT FOUND", meshRef.getId());
-            LOG_ERROR_EDITOR("MESH %u NOT FOUND", meshRef.getId());
+            LOG_ERROR_EDITOR("A script refers to mesh %u, which does not exist.", meshRef.getId());
             return;
         }
         uint32_t verticesSize = sizeof(Vertex) * verticesCount;
@@ -608,8 +604,7 @@ namespace InternalCalls {
 
     void mesh_Delete(Handle handle) {
         if (!s_scriptCreatedAssets.contains(handle)) {
-            LOG_ERROR("MESH %u WAS NOT CREATED BY SCRIPTING", handle);
-            LOG_ERROR_EDITOR("MESH %u WAS NOT CREATED BY SCRIPTING", handle);
+            LOG_ERROR_EDITOR("Mesh %u was not created by a script: a script deletes only the meshes it created.", handle);
             return;
         }
         s_scriptCreatedAssets.erase(handle);
@@ -619,7 +614,6 @@ namespace InternalCalls {
 
     void texture_CreateRGBA8(uint32_t width, uint32_t height, Handle *handle) {
         AssetHandler *assetHandler = GameContext::getAssetHandler();
-        UUID id;
         Miren::TextureCreate create;
         create.m_format = Miren::TextureFormat::RGBA8;
         create.m_width = static_cast<uint16_t>(width);
@@ -632,24 +626,22 @@ namespace InternalCalls {
         Foundation::Memory pixels = Foundation::Memory::alloc(sizeBytes);
         std::memset(pixels.data, 0, sizeBytes);
         create.m_data = pixels;
-        auto textureRef = assetHandler->createAsset<TextureAsset>(id, create);
-        *handle = id;
-        s_scriptCreatedAssets[id] = textureRef.asBaseAsset();
+        auto textureRef = assetHandler->createRuntimeAsset<TextureAsset>(create);
+        *handle = textureRef.getId();
+        s_scriptCreatedAssets[textureRef.getId()] = textureRef.asBaseAsset();
     }
 
     void texture_UpdateRGBA8(Handle handle, const void *pixels, uint32_t sizeBytes) {
         auto textureRef = AssetRef<TextureAsset>(handle);
         if (!textureRef) {
-            LOG_ERROR("TEXTURE %u NOT FOUND", handle);
-            LOG_ERROR_EDITOR("TEXTURE %u NOT FOUND", handle);
+            LOG_ERROR_EDITOR("A script refers to texture %u, which does not exist.", handle);
             return;
         }
         const Size textureSize = textureRef->getSize();
         const uint32_t expectedBytes =
             static_cast<uint32_t>(textureSize.width) * static_cast<uint32_t>(textureSize.height) * 4;
         if (sizeBytes != expectedBytes) {
-            LOG_ERROR("TEXTURE %u UPDATE SIZE MISMATCH (%u != %u)", handle, sizeBytes, expectedBytes);
-            LOG_ERROR_EDITOR("TEXTURE %u UPDATE SIZE MISMATCH (%u != %u)", handle, sizeBytes, expectedBytes);
+            LOG_ERROR_EDITOR("Texture %u: the update has %u bytes, the texture takes %u.", handle, sizeBytes, expectedBytes);
             return;
         }
         Miren::updateTexture(textureRef->getMirenHandle(), Foundation::Memory::copying(pixels, sizeBytes));
@@ -657,8 +649,7 @@ namespace InternalCalls {
 
     void texture_Delete(Handle handle) {
         if (!s_scriptCreatedAssets.contains(handle)) {
-            LOG_ERROR("TEXTURE %u WAS NOT CREATED BY SCRIPTING", handle);
-            LOG_ERROR_EDITOR("TEXTURE %u WAS NOT CREATED BY SCRIPTING", handle);
+            LOG_ERROR_EDITOR("Texture %u was not created by a script: a script updates only the textures it created.", handle);
             return;
         }
         s_scriptCreatedAssets.erase(handle);
@@ -785,7 +776,7 @@ namespace {
         s_hostApi.hostApiTable_Find = InternalCalls::hostApiTable_Find;
         s_hostApi.font_ReadData = InternalCalls::font_ReadData;
         s_hostApi.console_Log = InternalCalls::console_Log;
-        PandaUIImpl::bindHostApi(s_hostApi);
+        GameUI::bindHostApi(s_hostApi);
 
         s_hostApiInitialized = true;
     }

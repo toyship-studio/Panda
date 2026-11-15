@@ -98,8 +98,14 @@ header box. A single-line `Label` is centered vertically even when the box is lo
 
 ## Integration
 
-- Runtime and editor: the `PandaUIImpl*` bridges map Fern events into PandaUI and pass draw data
-  to the Miren path. The bridge is thin and has no hidden logic.
+- PandaUI knows neither Fern nor Miren; the engine joins them once, for every host of a context
+  (`Panda/include/Panda/UI/`). `PandaUIFern::translate` turns an event of a window into a
+  `PandaUI::Event` — which `Context::handleEvent` dispatches — and maps the cursor and the
+  clipboard; `PandaUIMirenRenderer` holds the two UI programs and the textures behind the PandaUI
+  handles and submits a draw list into a view. On top of the pair there are two hosts and no
+  third: `PandaUIFernHost` for a context that lives in the process (the editor's `EditorUI`, any
+  tool built on the engine), and `GameUI` for the UI of a game, whose contexts live in the script
+  bundle and reach the same pair through the `ui_*` entries of the script ABI.
 - The gallery is pure PandaUI too. What it needs from an application — textures from pixels, the
   logo image, a serif face for its "Fantasy" skin, extra windows, a theme switch — comes through
   `PandaUI::Gallery::Host` (`examples/gallery/include/PandaUIGallery/Gallery.hpp`); a capability

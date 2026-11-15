@@ -38,7 +38,7 @@ lives in the `.pmeta` next to the file, so references survive), scripts are copi
    `Panda::Extensions` (`GameContext::getExtensions()`), the editor owns `EditorExtensions`.
    Packages are contributions, not bus nodes.
 2. **Built-in systems register through the same registries.** The engine core has no terrain or
-   vegetation `#include` and does not know their names (only reserved static asset id slots).
+   vegetation `#include` and does not know their names.
 3. **User data survives a missing module.** Components and settings sections of a module are
    named JSON values in `.world` and in the settings files. When the module is not registered the
    value is kept as is and written back (`ForeignComponents`, `ForeignSettings`), with a warning
@@ -179,9 +179,11 @@ Data format: in `.world` an entity stores one key per component type name (core 
 the same path; a key without a contribution is preserved as is), and contribution settings are
 top-level keys by name (`"terrain"`, `"flora"`). The contract is `PandaSDK/docs/world-format.md`.
 
-Static asset ids: the terrain module uses historical core slots (23–28, 38–40, 53), which the
-core reserves and skips. New modules take ids from the `0xE0000000..` range (particles:
-`0xE0000100+`).
+Static asset ids: every built-in asset has a named id that never changes its meaning — the
+core's are `BuiltinAsset::…` (`StaticResources.hpp`), a module's are constants in its resource
+provider, from the `0xE0000000..` range (particles: `0xE0000100+`; the terrain module, the
+oldest, keeps 23–28, 38–40 and 53). Nothing is numbered by the order of creation, and
+`AssetHandler::createAsset` refuses an id that is taken.
 
 ## Editor extension points (`PandaEditorKit`)
 
@@ -191,8 +193,10 @@ core reserves and skips. New modules take ids from the `0xE0000000..` range (par
 multi-target form and `componentFieldMixed<T>` / `componentVectorMixed<T>` to compute it;
 `AssetWell`, `EntityWell`, `Vector3Field`, `Picker`, `ObjectIcons`, `Typography`, `Icons`,
 `EditorView`), `Viewport/HelperLine`,
-`ComponentCommands` (`toggleComponentPresence<T>`, `commitComponent<T>`: one undo path for edits
-of core and module components; `componentText`, `commitComponentText`, `resetComponent`: the
+`ComponentCommands` (`toggleComponentPresence<T>`, `setComponentPresence<T>` — the same as a
+ready `ComponentInspector::setPresence` — and `commitComponent<T>`: one undo path for edits
+of core and module components; `ComponentForm<T>` is what a section holds while it builds its
+rows: the copy of the component it edits, `commit` and the mixed flags of its fields; `componentText`, `commitComponentText`, `resetComponent`: the
 text form of a component by the name of its type, behind Copy Values, Paste Values and Reset of
 every component section), `EditorHost`, `EditorExtensions`, `EditorPackageEntry`.
 The Kit depends on Panda and PandaUI, not on the editor; an editor part knows only the Kit and
@@ -225,7 +229,7 @@ Registries of `EditorExtensions` (`editorExtensions()`; contributions are never 
 
 | Registry | Contribution |
 |---|---|
-| `componentInspectors` | `ComponentInspector {component, displayName, icon, setPresence, build}`: an inspector section and an Add Component entry by component type name |
+| `componentInspectors` | `ComponentInspector {component, displayName, icon, characteristic, setPresence, build}`: an inspector section and an Add Component entry by component type name. The icon of an entity (Hierarchy, tabs) is the icon of the first registered component on it that is `characteristic` — one that says what the entity is (a camera, a lamp, a terrain; the default) — and only then of one many kinds of entities carry (`characteristic = false`: a mesh, a sprite) |
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: icon and color of the kind in the Content Browser and tabs, and the tab form `AssetEditor` (one instance per tab; its state survives rebuilds) |
 | `assetCreators` | `AssetCreator {title, create(directory) -> path}`: what File → New and the Content Browser menu offer to create; `title` is the noun ("Terrain"); the core registers the file |
 | `viewportTools` | `ViewportTool {update(ViewportToolFrame), isDriving, appendHelperLines}`: runs before the world update, can capture the left mouse button (rect select and gizmo are off), draws lines over the viewport |

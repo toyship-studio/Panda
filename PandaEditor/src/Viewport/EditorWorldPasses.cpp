@@ -2,7 +2,7 @@
 
 #include <Foundation/Profile.hpp>
 #include <Panda/Assets/StaticResources.hpp>
-#include <Panda/GameLogic/SelectionContext.hpp>
+#include <PandaEditorKit/Selection.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
 
 namespace Panda::EditorWorldPasses {
@@ -13,7 +13,7 @@ void renderSelectionOverlay(World &world, const glm::mat4 &viewProj) {
     renderer2d.begin(RenderingMode::GEOMETRY_ONLY, Views::SELECTED_GEOMETRY_VIEW);
     renderer3d.begin(RenderingMode::GEOMETRY_ONLY, Views::SELECTED_GEOMETRY_VIEW);
     renderer3d.setViewProj(viewProj);
-    const std::unordered_set<Entity> selected = world.getById(SelectionContext::getSelectedEntities());
+    const std::unordered_set<Entity> selected = world.getById(Editor::selection().entityIds());
     for (Entity entity : selected) {
         glm::mat4 transform = world.getWorldSpaceTransformMatrix(entity);
         if (entity.hasComponent<SpriteRendererComponent>()) {

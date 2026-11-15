@@ -1,7 +1,3 @@
-//
-// Created by Admin on 14.03.2022.
-//
-
 #include "RendererOpenGL.hpp"
 #include "OpenGLBase.hpp"
 
@@ -32,8 +28,7 @@ static void *loadGLFunction(const char *name) {
 void gpuErrorCallback(
     GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam
 ) {
-    LOG_INFO(message);
-    LOG_CRITICAL("OPENGL ERROR");
+    LOG_ERROR("OPENGL: %s", message);
 }
 
 const char *getGLErrorStr(GLenum err) {
@@ -218,7 +213,7 @@ void RendererOpenGL::addInput(ProgramHandle program, const PassInput &input) {
             return;
         }
     }
-    LOG_ERROR("PASS INPUT TYPE IS UNDEFINED");
+    LOG_ERROR("OPENGL: A view input of an unknown type is ignored");
 }
 
 void RendererOpenGL::submit(Frame *frame) {

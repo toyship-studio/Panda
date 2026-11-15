@@ -7,12 +7,8 @@
 #include <algorithm>
 #include <cstdlib>
 
-#if defined(PLATFORM_WINDOWS)
-#    include <windows.h>
-#elif defined(PLATFORM_LINUX)
-#    include <limits.h>
-#    include <unistd.h>
-#endif
+#include <limits.h>
+#include <unistd.h>
 
 // We gather version tests as define in order to easily see which features are version-dependent.
 #define GLFW_VERSION_COMBINED (GLFW_VERSION_MAJOR * 1000 + GLFW_VERSION_MINOR * 100 + GLFW_VERSION_REVISION)
@@ -31,20 +27,11 @@ namespace Fern {
 namespace {
 
     std::filesystem::path findExecutableDirectory() {
-#if defined(PLATFORM_WINDOWS)
-        char path[MAX_PATH];
-        DWORD length = GetModuleFileNameA(nullptr, path, MAX_PATH);
-        if (length == 0 || length == MAX_PATH) { return {}; }
-        return std::filesystem::path(path).parent_path();
-#elif defined(PLATFORM_LINUX)
         char path[PATH_MAX];
         ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
         if (length <= 0) { return {}; }
         path[length] = '\0';
         return std::filesystem::path(path).parent_path();
-#else
-        return {};
-#endif
     }
 
     void changeToResourcesDirectory(const std::filesystem::path &resourcesPath) {
@@ -56,7 +43,7 @@ namespace {
 } // namespace
 
 void glfwErrorCallback(int error_code, const char *description) {
-    LOG_ERROR("GLFW ERROR, code: %d, description: %s", error_code, description);
+    LOG_ERROR("GLFW: error %d: %s", error_code, description);
 }
 
 GLFW_System::GLFW_System()
@@ -66,7 +53,7 @@ GLFW_System::GLFW_System()
     LOG_INFO("Hello GLFW! %s", glfwGetVersionString());
     glfwSetErrorCallback(glfwErrorCallback);
     if (glfwInit() == false) {
-        LOG_CRITICAL("GLFW INITIALIZATION ERROR");
+        LOG_CRITICAL("GLFW: Failed to initialize");
         exit(1);
     }
     m_cursors[Cursor::ARROW] = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);

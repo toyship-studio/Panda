@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 08.09.2024.
-//
-
 #include "ProjectCreator.hpp"
 #include "PandaSdkLocator.hpp"
 
@@ -189,7 +185,7 @@ void createZedTasks(const std::string &projectName, const path_t &projectPath) {
 
     std::ofstream file(zedDirectory / "tasks.json");
     if (!file.is_open()) {
-        LOG_ERROR("FAILED TO CREATE .zed/tasks.json FOR PROJECT %s", projectName.c_str());
+        LOG_ERROR("The file .zed/tasks.json of the project %s could not be created.", projectName.c_str());
         return;
     }
 

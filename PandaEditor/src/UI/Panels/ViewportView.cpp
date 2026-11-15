@@ -22,8 +22,8 @@ ViewportView::ViewportView(ViewportViewOutput *output)
     layout().setJustifyContent(Justify::Center);
     layout().setAlignItems(Align::Center);
 
-    // Scene surface: on migration the engine's FBO texture is fed here (seam #1). Absolutely
-    // stretched, does not intercept clicks (ViewportView itself catches them for picking).
+    // The Scene surface: the frame the engine renders, as a texture. Stretched over the whole
+    // view; it does not intercept clicks (ViewportView itself catches them for picking).
     m_sceneImage = std::make_shared<ImageView>();
     m_sceneImage->setUserInteractionEnabled(false);
     // The FBO is rendered exactly at the panel size/aspect (syncExternalFrame) → Stretch = 1:1,

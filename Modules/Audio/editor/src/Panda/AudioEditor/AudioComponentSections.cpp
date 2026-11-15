@@ -140,23 +140,11 @@ namespace {
         section.addContent(makeFormButtonRow({play, stop}));
     }
 
-    void setSourcePresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-        toggleComponentPresence<AudioSourceComponent>(
-            world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add
-        );
-    }
-
     void buildListenerSection(CollapsibleSection &section, const ComponentInspectorContext &) {
         section.addContent(makeFormHint(
             "Spatial sounds are heard from this entity: its position, forward (−Z) and up (+Y). "
             "Without a listener the main camera is used."
         ));
-    }
-
-    void setListenerPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-        toggleComponentPresence<Panda::Audio::AudioListenerComponent>(
-            world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add
-        );
     }
 
 } // namespace
@@ -166,7 +154,7 @@ void registerComponentSections(EditorExtensions &extensions) {
     source.component = "audioSourceComponent";
     source.displayName = "Audio Source";
     source.icon = Ic::Audio;
-    source.setPresence = setSourcePresence;
+    source.setPresence = setComponentPresence<AudioSourceComponent>;
     source.build = buildSourceSection;
     extensions.componentInspectors.add(std::move(source));
 
@@ -174,7 +162,7 @@ void registerComponentSections(EditorExtensions &extensions) {
     listener.component = "audioListenerComponent";
     listener.displayName = "Audio Listener";
     listener.icon = Ic::Audio;
-    listener.setPresence = setListenerPresence;
+    listener.setPresence = setComponentPresence<Panda::Audio::AudioListenerComponent>;
     listener.build = buildListenerSection;
     extensions.componentInspectors.add(std::move(listener));
 }

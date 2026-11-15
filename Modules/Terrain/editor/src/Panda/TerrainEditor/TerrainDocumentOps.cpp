@@ -43,7 +43,7 @@ void editFlora(const TerrainFormHost &host, Panda::AssetId assetId, const Panda:
     }
     // A series of gesture ticks merges into one step (canMerge); execute applies it (sets changed).
     Panda::EditTerrainFloraCommand command(assetId, asset->getFloraSettings(), flora, std::move(orphaned));
-    editorHost().assetUndoStack(assetId).SAVE(command);
+    editorHost().assetUndoStack(assetId).execute(command);
     edited(host);
 }
 
@@ -71,9 +71,9 @@ void scatterTrees(
     });
     std::vector<Panda::TreeInstance> added =
         Panda::TerrainTreeScatter::scatter(asset->getData(), *layer, rules, occupied);
-    LOG_INFO_EDITOR("TREES SCATTERED: %s +%zu -%zu", layer->name.c_str(), added.size(), removed.size());
+    LOG_INFO_EDITOR("Scattered the trees of %s: %zu added, %zu removed.", layer->name.c_str(), added.size(), removed.size());
     Panda::EditTerrainTreesCommand command(assetId, std::move(removed), std::move(added));
-    editorHost().assetUndoStack(assetId).SAVE(command);
+    editorHost().assetUndoStack(assetId).execute(command);
     edited(host);
     rebuild(host); // the layer's tree counter in the form
 }
@@ -88,7 +88,7 @@ void clearTrees(const TerrainFormHost &host, Panda::AssetId assetId, uint32_t tr
     });
     if (removed.empty()) { return; }
     Panda::EditTerrainTreesCommand command(assetId, std::move(removed), {});
-    editorHost().assetUndoStack(assetId).SAVE(command);
+    editorHost().assetUndoStack(assetId).execute(command);
     edited(host);
     rebuild(host);
 }
@@ -125,12 +125,12 @@ void importHeightmap(
     uint32_t width = 0;
     uint32_t height = 0;
     if (!Panda::AssetImporterBase::loadHeightmapSamples(path, samples, width, height)) {
-        LOG_ERROR_EDITOR("HEIGHTMAP IMPORT FAILED: %s", imagePath.c_str());
+        LOG_ERROR_EDITOR("The heightmap %s could not be imported: the image cannot be read.", imagePath.c_str());
         return;
     }
     terrain->applyHeightmap(samples.data(), width, height, heightScale);
     editorHost().clearAssetUndoStack(assetId);
-    LOG_INFO_EDITOR("HEIGHTMAP IMPORTED: %s (%ux%u)", path.filename().string().c_str(), width, height);
+    LOG_INFO_EDITOR("Imported the heightmap %s (%ux%u).", path.filename().string().c_str(), width, height);
     editorHost().refreshFromWorld();
     edited(host);
     rebuild(host);

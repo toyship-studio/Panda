@@ -37,9 +37,11 @@
 #include <Panda/GameLogic/Input.hpp>
 #include <PandaUI/PandaUI.hpp>
 
-#include "UI/EditorController.hpp" // shared coordinator of the PandaUI editor (migration)
+#include "UI/EditorController.hpp"
+#include "UI/WorldTabs.hpp"
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/EditorHost.hpp>
+#include <PandaEditorKit/Selection.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 
 #include <cstdlib>
@@ -70,47 +72,18 @@ namespace {
         }
     }
 
-    struct ExportProjectOpenCommand {
-        const char *generatedProjectExtension;
-        const char *projectTypeName;
-    };
-
-    ExportProjectOpenCommand exportProjectOpenCommand(ExportProjectTarget target) {
-        switch (target) {
-            case ExportProjectTarget::XcodeMacOS:
-            case ExportProjectTarget::XcodeIOSSimulator:
-            case ExportProjectTarget::XcodeIOSDevice: return {".xcodeproj", "Xcode"};
-            case ExportProjectTarget::VisualStudioWindows: return {".sln", "Visual Studio"};
-        }
-        PND_ASSERT(false, "Unknown export project target");
-        return {"", ""};
-    }
-
-    std::optional<path_t> findGeneratedProjectFile(const path_t &directory, const char *extension) {
-        if (!std::filesystem::exists(directory)) { return std::nullopt; }
-
-        for (const auto &entry : std::filesystem::directory_iterator(directory)) {
-            if (entry.path().extension() == extension) { return entry.path(); }
-        }
-        return std::nullopt;
-    }
-
-    void logCommandOutput(std::string_view line) {
-        if (!line.empty()) { LOG_INFO_EDITOR("%.*s", static_cast<int>(line.size()), line.data()); }
-    }
-
 } // namespace
 
 EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
     : m_playingWorld()
     , m_currentWorld(nullptr)
-    , m_sceneState(SceneState::EDIT)
     , m_documents(this)
     , m_loader(m_documents, this)
+    , m_builds(m_loader, m_documents, [this] { scriptsWereBuilt(); })
     , m_pendingWorldLoad(0)
     , m_window(window)
     , m_menuBar(window, this, m_commands)
-    , m_pandaUI(window)
+    , m_gameUI(window)
     , m_viewports() {
     m_launch = std::move(launch);
     m_currentWorld = &editingWorld();
@@ -133,7 +106,7 @@ void EditorLayer::onAttach() {
     // ShaderBlocks.hpp: a mismatch means the layout has drifted and the files were not regenerated.
     const std::string staleIncludes = ShaderInterface::checkIncludes(AssetImporterBase::getShaderIncludeRoot());
     if (!staleIncludes.empty()) { LOG_ERROR_EDITOR("%s", staleIncludes.c_str()); }
-    SelectionContext::setWorld(m_currentWorld); // the selection is of the world the editor shows
+    Editor::selection().setWorld(m_currentWorld); // the selection is of the world the editor shows
     // A script quit in the editor = Stop of the game, not closing the application. Deferred: the
     // request arrives in the middle of the world update — stop() tears down the playing world and
     // would crash the script frame in progress.
@@ -183,7 +156,7 @@ void EditorLayer::onAttach() {
         std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), this);
     m_startScreenController->setNewProjectDefaults("UntitledGame", defaultProjectParentPath().string());
     syncStartScreenModel();
-    m_editorController = std::make_unique<Editor::EditorController>(m_commands);
+    m_editorController = std::make_unique<Editor::EditorController>(*this);
     m_editorController->setWorld(panelsWorld()); // panels read the real engine world directly
     m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
     // A ready thumbnail → targeted update of the visible grid cell (cells are configured once).
@@ -196,7 +169,6 @@ void EditorLayer::onAttach() {
             return m_commands.handleKey(event);
         }
     );
-    m_editorController->setBridge(this); // save / play-simulate-stop / reload / gizmo / rect-select — a single seam
     m_menuBar.rebuild(); // File → New lists what the controller can create
     // The themes for the APPEARANCE section of the editor settings (the data plugins live here).
     Editor::setThemeProvider({
@@ -235,10 +207,11 @@ void EditorLayer::onDetach() {
     AssetPreviews::setShared(nullptr);
     m_previews.reset();
     m_editorUI.shutdown();
-    m_pandaUI.shutdown();
+    m_gameUI.shutdown();
     GameContext::setQuitRequestHandler(nullptr);
     GameContext::setWorldLoadRequestHandler(nullptr);
-    SelectionContext::setWorld(nullptr);
+    Editor::selection().clear();
+    Editor::selection().setWorld(nullptr);
 }
 
 void EditorLayer::onUpdate(double deltaTime) {
@@ -249,7 +222,11 @@ void EditorLayer::onUpdate(double deltaTime) {
     pushUpdateStatus();
     if (m_pendingStop) { // script quit from the previous frame → Stop before the worlds update begins
         m_pendingStop = false;
-        if (m_sceneState != SceneState::EDIT) { stop(); }
+        stop();
+    }
+    if (m_scriptsBuiltWhilePlaying && !m_playing) {
+        m_scriptsBuiltWhilePlaying = false;
+        if (m_loader.hasOpenedProject()) { m_loader.reloadScriptsDll(); }
     }
     // The requests of the agent, before the frame is built: a tool changes the state of the
     // editor (Play, Reload, another world) where a click of the user would.
@@ -259,16 +236,16 @@ void EditorLayer::onUpdate(double deltaTime) {
         syncViewports();
         updateGameInput();
         m_viewports.scene().pollSelection(); // apply async rect-select / click-picking results
-        m_editorController->syncSelectionFromEngine(); // SelectionContext → panels (viewport → Hierarchy/Inspector)
+        m_editorController->syncSelection(); // what the viewport selected → the panels and the tabs
         m_editorController->syncWorldStructure(); // scripts created/deleted entities → live Hierarchy
-        m_editorController->updateChromeFromState(m_sceneState == SceneState::EDIT); // toolbar + dirty scene tab
-        pumpProjectBuild(); // cmake output → CMake panel; on a successful scripts Build — reload the dylib
+        m_editorController->updateChromeFromState(!m_playing); // toolbar + dirty scene tab
+        m_builds.update(); // the output of cmake → the CMake panel; built scripts are loaded
     }
 
     if (m_loader.hasOpenedProject()) {
         // The frame of the CURRENT world (the playing copy in Play) through the live viewport: the Scene
         // sees it with the editor camera, the Game with the main camera of the world.
-        const bool playing = m_sceneState == SceneState::PLAY;
+        const bool playing = m_playing;
         // What the user did over the Scene surface since the last frame: the flight of the editor
         // camera, the pointer of the gizmo and of the tools. Taken every frame (the surface
         // accumulates), meaningful only while the Scene renders.
@@ -294,8 +271,8 @@ void EditorLayer::onUpdate(double deltaTime) {
         if (!playing || m_playingWorld.isRunning()) { m_currentWorld->update(deltaTime, frame); }
         m_viewports.finishFrame(*m_currentWorld, m_viewportSettings, Application::get()->getTime());
         if (playing) {
-            syncPandaUIViewportFrame();
-            m_pandaUI.update(static_cast<float>(deltaTime)); // the game UI draws into the Game surface
+            syncGameUiFrame();
+            m_gameUI.update(static_cast<float>(deltaTime)); // the game UI draws into the Game surface
             loadPendingWorldRequest();
         }
         updateViewportHelperLines(); // after the camera update — collider outlines without a one-frame lag
@@ -338,7 +315,7 @@ void EditorLayer::onUpdate(double deltaTime) {
             m_editorController->setGizmoVisible(false);
             m_editorController->setGizmoActive(false);
         } else {
-            drivePandaUIGizmo(); // gizmo: input+manipulation BEFORE the overlay renders
+            updateGizmo(); // gizmo: input+manipulation BEFORE the overlay renders
         }
     }
     m_editorUI.update(deltaTime); // PandaUI chrome on top of the scene
@@ -352,7 +329,7 @@ void EditorLayer::syncViewports() {
     frames.sceneVisible = surfaces.sceneVisible;
     frames.game = Rect(surfaces.game.origin.x, surfaces.game.origin.y, surfaces.game.size.width, surfaces.game.size.height);
     frames.gameVisible = surfaces.gameVisible;
-    m_viewports.sync(frames, m_sceneState == SceneState::PLAY);
+    m_viewports.sync(frames, m_playing);
     // Wrap the output textures once (the native handles are stable across resizes) and feed the panels.
     // The wrap waits for a laid-out tab: an ImageView draws nothing for a texture of size zero, and the
     // size is frozen at the wrap (the panel stretches the image to its frame anyway).
@@ -373,7 +350,7 @@ void EditorLayer::syncViewports() {
     if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
     m_editorController->setGameViewportLive(m_viewports.isGameLive());
     m_editorController->setGameViewportMessage(
-        !hasWorld() && m_sceneState == SceneState::EDIT           ? "No world is open"
+        !hasWorld() && !m_playing                                  ? "No world is open"
         : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
                                                                    : ""
     );
@@ -386,7 +363,7 @@ void EditorLayer::syncViewports() {
 // The loss releases what the game held (the releases will go to the editor) and the cursor lock:
 // an FPS is left by clicking elsewhere, and locks again in onApplicationFocus(true).
 void EditorLayer::updateGameInput() {
-    const bool active = m_sceneState == SceneState::PLAY && m_windowFocused && m_viewports.isGameLive() &&
+    const bool active = m_playing && m_windowFocused && m_viewports.isGameLive() &&
                         m_editorController->isGameViewportFocused() && !m_editorUI.context().modals().isPresenting();
     if (active == m_gameInputActive) { return; }
     m_gameInputActive = active;
@@ -455,53 +432,24 @@ bool EditorLayer::eventBelongsToGame(Fern::Event *event) {
     }
 }
 
-// EngineBridge — requests from the editor chrome (EditorController) to the engine/host.
-void EditorLayer::save() {
-    saveAll();
+void EditorLayer::activateWorld(WorldFile &world) {
+    if (!m_playing) { m_documents.activateWorld(world); }
 }
 
-std::vector<Editor::OpenWorld> EditorLayer::openWorlds() {
-    std::vector<Editor::OpenWorld> worlds;
-    worlds.reserve(m_documents.worlds().size());
-    for (const std::unique_ptr<WorldFile> &world : m_documents.worlds()) {
-        worlds.push_back({world->id(), world->name(), world->path(), world->isDirty(), &world->world()});
-    }
-    return worlds;
-}
-
-uint32_t EditorLayer::activeWorldId() {
-    WorldFile *active = m_documents.activeWorld();
-    return active != nullptr ? active->id() : 0;
-}
-
-bool EditorLayer::canActivateWorld() {
-    return m_sceneState == SceneState::EDIT;
-}
-
-void EditorLayer::activateWorld(uint32_t worldId) {
-    if (m_sceneState != SceneState::EDIT) { return; }
-    if (WorldFile *world = m_documents.findWorld(worldId)) { m_documents.activateWorld(*world); }
-}
-
-bool EditorLayer::saveWorld(uint32_t worldId) {
-    WorldFile *world = m_documents.findWorld(worldId);
-    if (world == nullptr) { return false; }
+bool EditorLayer::saveWorld(WorldFile &world) {
     // A world without a file yet is saved even when untouched: Save names it (Save As).
-    if (!world->isDirty() && !world->path().empty()) { return true; }
-    return saveFile(*world);
+    if (!world.isDirty() && !world.path().empty()) { return true; }
+    return saveFile(world);
 }
 
-void EditorLayer::closeWorld(uint32_t worldId) {
-    WorldFile *world = m_documents.findWorld(worldId);
-    if (world == nullptr) { return; }
+void EditorLayer::closeWorld(WorldFile &world) {
     // The game plays a copy of the active world: it ends with that world.
-    if (world == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
-    m_documents.closeWorld(*world);
+    if (&world == m_documents.activeWorld()) { stop(); }
+    m_documents.closeWorld(world);
 }
 
-bool EditorLayer::saveAsset(uint32_t assetId) {
-    auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
-    const std::unique_ptr<AssetFile> file = m_documents.assetFile(assetId);
+bool EditorLayer::saveAsset(AssetId asset) {
+    const std::unique_ptr<AssetFile> file = m_documents.assetFile(asset);
     return file && saveFile(*file);
 }
 
@@ -545,43 +493,35 @@ void EditorLayer::openInExternalEditor(const std::filesystem::path &path) {
 }
 
 void EditorLayer::revealInFileManager(const std::filesystem::path &path) {
-    if (!path.empty()) { SystemTools::show(path); }
+    if (!path.empty()) { SystemTools::revealInFileManager(path); }
 }
 
-void EditorLayer::openWorldAsset(uint32_t worldAssetId) {
-    auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+void EditorLayer::openWorldAsset(AssetId worldAssetId) {
+    auto *assetHandler = AssetHandlerEditor::current();
     if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) {
-        LOG_ERROR_EDITOR("World asset %u not found", worldAssetId);
+        LOG_ERROR_EDITOR("World asset %u not found", (uint32_t)worldAssetId);
         return;
     }
     AssetInfo assetInfo = assetHandler->getInfo(worldAssetId);
     if (assetInfo.type != AssetType::WORLD) {
-        LOG_ERROR_EDITOR("Asset %u is not a world", worldAssetId);
+        LOG_ERROR_EDITOR("Asset %u is not a world", (uint32_t)worldAssetId);
         return;
     }
     const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
     if (assetRelativePath.empty()) {
-        LOG_ERROR_EDITOR("World asset %u has empty path", worldAssetId);
+        LOG_ERROR_EDITOR("World asset %u has empty path", (uint32_t)worldAssetId);
         return;
     }
     const path_t worldPath = assetHandler->getProjectPath() / assetRelativePath;
     // Nothing is dropped: the world opens in a tab of its own next to the open ones. The game
     // plays a copy of the active world, so it stops before another world takes that place.
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     if (m_documents.openWorld(worldPath) == nullptr) {
         LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
         return;
     }
     // Its tab comes forward, also when the world was open and active already (behind the Game tab).
     if (m_editorController) { m_editorController->showSceneView(); }
-}
-
-void EditorLayer::setSceneState(Editor::SceneState state) {
-    if (state == Editor::SceneState::Play) {
-        play();
-    } else {
-        stop();
-    }
 }
 
 /* ------------------------------ File documents ------------------------------ */
@@ -622,7 +562,7 @@ void EditorLayer::reloadFile(FileDocument &file) {
 }
 
 int EditorLayer::revertUnsaved() {
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     int reverted = 0;
     const FileDocumentList files = m_documents.list();
     for (FileDocument *file : files.all) {
@@ -645,7 +585,7 @@ bool EditorLayer::saveFile(FileDocument &file) {
     if (file.isChangedOnDisk()) { return resolveFileConflict(file) != FileResolution::Cancelled; }
     if (!file.save()) { return false; }
     LOG_INFO_EDITOR("Saved %s.", file.title().c_str());
-    if (&file == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) {
+    if (&file == m_documents.activeWorld() && m_playing) {
         // Save writes the world being edited. Play runs on its copy: what the simulation and the
         // inspector change there lives until Stop.
         LOG_INFO_EDITOR("The changes made while playing are not saved: Stop discards them.");
@@ -668,11 +608,11 @@ void EditorLayer::reloadFromDisk() {
     // changed on disk is reread; when the memory has edits too, the user picks the version that
     // stays; Cancel aborts the rest. The script build is a step of its own before the worlds
     // (nothing edits it in memory).
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     // The registry follows the tree first: a file put into the project since the last scan
     // becomes an asset (its sidecar gets an id), a file that is gone leaves the registry. The ids
     // of the known assets live in their sidecars and do not change, so nothing loaded is touched.
-    if (auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler())) {
+    if (auto *assetHandler = AssetHandlerEditor::current()) {
         assetHandler->rescanProject();
         if (m_editorController) { m_editorController->refreshAssetPanels(); }
     }
@@ -701,22 +641,6 @@ void EditorLayer::reloadFromDisk() {
     } else {
         LOG_INFO_EDITOR("Reload: %s", reloaded.c_str());
     }
-}
-
-std::vector<Editor::EngineBridge::MenuCommand> EditorLayer::menuCommands() {
-    std::vector<Editor::EngineBridge::MenuCommand> result;
-    for (MenuCommandInfo &item : m_menuBar.dynamicItems()) {
-        result.push_back({std::move(item.menu), std::move(item.title), item.id});
-    }
-    return result;
-}
-
-void EditorLayer::runMenuCommand(uint32_t id) {
-    m_menuBar.run(id);
-}
-
-void EditorLayer::exportGame() {
-    cookRuntimeData();
 }
 
 bool EditorLayer::openSettingsWindow(std::shared_ptr<PandaUI::View> root) {
@@ -765,10 +689,10 @@ void EditorLayer::resetCamera() {
 // selected entities and of everything under them (a model is selected by its root), or a meter
 // around an entity that draws nothing (a light, an empty).
 void EditorLayer::focusSelection() {
-    if (SelectionContext::isEmpty() || m_currentWorld == nullptr) { return; }
+    if (!Editor::selection().hasEntities() || m_currentWorld == nullptr) { return; }
     std::vector<UUID> ids;
     std::vector<UUID> pending;
-    for (UUID id : SelectionContext::getSelectedEntities()) { pending.push_back(id); }
+    for (UUID id : Editor::selection().entityIds()) { pending.push_back(id); }
     while (!pending.empty()) {
         const UUID id = pending.back();
         pending.pop_back();
@@ -777,7 +701,7 @@ void EditorLayer::focusSelection() {
         ids.push_back(id);
         for (UUID child : entity.getChildEntities()) { pending.push_back(child); }
     }
-    glm::vec3 center = SelectionContext::getMedianPosition();
+    glm::vec3 center = Editor::selection().medianPosition();
     float radius = 1.f;
     glm::vec3 boundsMin, boundsMax;
     if (m_currentWorld->getMeshBounds(boundsMin, boundsMax, &ids)) {
@@ -785,51 +709,6 @@ void EditorLayer::focusSelection() {
         radius = std::max(glm::length(boundsMax - boundsMin) * 0.5f, 0.1f);
     }
     m_viewports.cameraController().frame(center, radius, m_viewports.editorCamera().getFieldOfView());
-}
-
-void EditorLayer::startScriptsBuild(BuildAction action, ScriptsBuildConfig config) {
-    if (!m_loader.hasOpenedProject()) { return; }
-    const path_t projectPath = m_loader.getOpenedProjectPath();
-    const path_t scriptsDir = projectPath / "Scripts" / projectPath.filename();
-    if (m_projectBuilder.startScripts(action, config, scriptsDir)) {
-        m_editorController->cmakeBuildStarted(BuildTargetKind::Scripts);
-    }
-}
-
-void EditorLayer::startExportBuild(BuildAction action, ExportProjectTarget target) {
-    if (!m_loader.hasOpenedProject()) { return; }
-    if (m_projectBuilder.isRunning()) { return; }
-    // The Export project consumes cooked data — it is prepared before cmake (as in the Export menu;
-    // see cookRuntimeData).
-    if (!cookRuntimeData()) {
-        m_editorController->appendCMakeOutput(
-            BuildTargetKind::Export, {"error: runtime data cook failed - see Output"}
-        );
-        return;
-    }
-    const path_t exportDir = m_loader.getOpenedProjectPath() / "Export";
-    if (m_projectBuilder.startExport(action, target, exportDir)) {
-        m_editorController->cmakeBuildStarted(BuildTargetKind::Export);
-    }
-}
-
-void EditorLayer::cancelProjectBuild() {
-    m_projectBuilder.cancel();
-}
-
-void EditorLayer::showProjectFolder(BuildTargetKind kind) {
-    const path_t projectPath = m_loader.getOpenedProjectPath();
-    if (projectPath.empty()) { return; } // no project open — nothing to show
-    // The same path conventions as the build (ProjectBuilder): Scripts/<name>, Export/.
-    const path_t folder = kind == BuildTargetKind::Export ? projectPath / "Export"
-                                                          : projectPath / "Scripts" / projectPath.filename();
-    if (!std::filesystem::exists(folder)) {
-        LOG_ERROR_EDITOR("Project folder not found: %s", folder.string().c_str());
-        return;
-    }
-    // openWithDefaultApplication: the folder is OPENED in Finder (SystemTools::open does a reveal
-    // in the parent and does not escape spaces in the path).
-    SystemTools::openWithDefaultApplication(folder);
 }
 
 TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
@@ -933,7 +812,7 @@ void EditorLayer::updateViewportHelperLines() {
         // the overlays of the modules (collider outlines from the nearest one).
         const glm::mat4 &viewProj = m_viewports.sceneViewProj();
         const PandaUI::Rect frame = m_editorController->viewportSceneFrame();
-        if (m_sceneState == SceneState::EDIT) {
+        if (!m_playing) {
             for (const std::unique_ptr<Editor::ViewportTool> &tool : Editor::editorExtensions().viewportTools.tools()) {
                 tool->appendHelperLines(lines, viewProj, frame);
             }
@@ -947,21 +826,13 @@ void EditorLayer::updateViewportHelperLines() {
     m_editorController->setViewportHelperLines(std::move(lines));
 }
 
-void EditorLayer::pumpProjectBuild() {
-    std::vector<std::string> lines = m_projectBuilder.drainLines();
-    if (!lines.empty()) { m_editorController->appendCMakeOutput(m_projectBuilder.activeKind(), lines); }
-    if (std::optional<ProjectBuilder::Finished> finished = m_projectBuilder.takeFinished()) {
-        m_editorController->cmakeBuildFinished(finished->kind, finished->success, finished->canceled);
-        if (finished->success && finished->kind == BuildTargetKind::Scripts && finished->action == BuildAction::Build) {
-            // Payoff of the author→build→run loop: the fresh dylib is picked up immediately, without
-            // a manual reload.
-            if (m_sceneState == SceneState::EDIT) {
-                m_loader.reloadScriptsDll();
-            } else {
-                LOG_INFO_EDITOR("Scripts built. Stop the world to reload them.");
-            }
-        }
+void EditorLayer::scriptsWereBuilt() {
+    if (m_playing) {
+        m_scriptsBuiltWhilePlaying = true;
+        LOG_INFO_EDITOR("Scripts built: the editor loads them when the game stops.");
+        return;
     }
+    m_loader.reloadScriptsDll();
 }
 
 void EditorLayer::rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) {
@@ -973,7 +844,7 @@ void EditorLayer::rectSelect(PandaUI::Point start, PandaUI::Point current, bool 
     );
 }
 
-void EditorLayer::drivePandaUIGizmo() {
+void EditorLayer::updateGizmo() {
     if (!m_editorController) { return; }
     // The gizmo lives in the Scene: in a Game frame there is nothing to manipulate in.
     if (!m_viewports.isSceneLive()) {
@@ -994,7 +865,7 @@ void EditorLayer::drivePandaUIGizmo() {
     // At runtime the physics moves the selected bodies by itself, so the selection median (the gizmo
     // center and the inspector's Transform fields) is refreshed once per frame; otherwise the gizmo
     // freezes at the body's starting position.
-    if (m_currentWorld->isRunning() && !SelectionContext::isEmpty()) { SelectionContext::updateValues(); }
+    if (m_currentWorld->isRunning() && Editor::selection().hasEntities()) { Editor::selection().transformChanged(); }
     const glm::mat4 view = m_viewports.sceneView(); // the editor camera: the Scene manipulates in its screen rays
     Gizmos &gizmo = m_viewports.gizmo();
     const bool visible = gizmo.manipulate(m_viewports.scene().getFrame(), input, &view);
@@ -1033,10 +904,10 @@ void EditorLayer::onEvent(Fern::Event *event) {
             case Fern::EventType::WindowFocus: m_windowFocused = true; break;
             case Fern::EventType::WindowLostFocus: m_windowFocused = false; break;
             case Fern::EventType::WindowMinimized:
-                if (m_sceneState == SceneState::PLAY) { ScriptSystem::applicationPause(m_playingWorld, true); }
+                if (m_playing) { ScriptSystem::applicationPause(m_playingWorld, true); }
                 break;
             case Fern::EventType::WindowRestored:
-                if (m_sceneState == SceneState::PLAY) { ScriptSystem::applicationPause(m_playingWorld, false); }
+                if (m_playing) { ScriptSystem::applicationPause(m_playingWorld, false); }
                 break;
             default: break;
         }
@@ -1044,14 +915,14 @@ void EditorLayer::onEvent(Fern::Event *event) {
 
     // The input of the window is either the game's or the editor's, never both. In Play, while
     // the Game renders, the game owns the pointer over the Game surface and the keys of the
-    // focused Game tab (eventBelongsToGame): its UI (m_pandaUI) sees them first, the rest
+    // focused Game tab (eventBelongsToGame): its UI (m_gameUI) sees them first, the rest
     // Application feeds to Panda::Input. Everything else is the editor's: the PandaUI chrome,
     // whose Scene surface collects the camera navigation and the pointer of the gizmo and of the
     // tools; none of it reaches Panda::Input.
     if (isInputEvent(event)) {
-        if (m_sceneState == SceneState::PLAY && m_viewports.isGameLive() && eventBelongsToGame(event)) {
-            syncPandaUIViewportFrame();
-            if (m_pandaUI.handleEvent(event)) { event->isHandled = true; }
+        if (m_playing && m_viewports.isGameLive() && eventBelongsToGame(event)) {
+            syncGameUiFrame();
+            if (m_gameUI.handleEvent(event)) { event->isHandled = true; }
             return;
         }
         m_editorUI.handleEvent(event);
@@ -1069,9 +940,9 @@ void EditorLayer::onEvent(Fern::Event *event) {
     } else if (event->type == Fern::EventType::WindowResize && event->getWindow() == m_window) {
         const Fern::WindowResizeEvent *ev = static_cast<const Fern::WindowResizeEvent *>(event);
         windowSizeChanged(Size(ev->getWidth(), ev->getHeight()));
-        if (m_sceneState == SceneState::PLAY) {
-            syncPandaUIViewportFrame();
-            m_pandaUI.syncWindow(event->getWindow());
+        if (m_playing) {
+            syncGameUiFrame();
+            m_gameUI.syncWindow(event->getWindow());
         }
     }
 }
@@ -1086,15 +957,15 @@ void EditorLayer::windowSizeChanged(Size size) {
 }
 
 void EditorLayer::play() {
-    if (m_sceneState == SceneState::PLAY) { return; }
+    if (m_playing) { return; }
     if (!hasWorld()) {
         LOG_WARN_EDITOR("Nothing to play: no world is open (File \xE2\x86\x92 New \xE2\x86\x92 World, or open a world file).");
         return;
     }
-    m_sceneState = SceneState::PLAY;
+    m_playing = true;
     m_playingWorld = editingWorld();
     m_currentWorld = &m_playingWorld;
-    SelectionContext::setWorld(m_currentWorld); // the same ids: the selection moves to the copy
+    Editor::selection().setWorld(m_currentWorld); // the same ids: the selection moves to the copy
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
     m_viewports.scene().setWorld(m_currentWorld);
     m_pendingWorldLoad = AssetId(0);
@@ -1108,19 +979,20 @@ void EditorLayer::play() {
         m_editorController->setActiveWorld(panelsWorld()); // panels → the live world
     }
     syncViewports();
-    syncPandaUIViewportFrame();
-    m_pandaUI.initialize();
+    syncGameUiFrame();
+    m_gameUI.initialize();
     m_playingWorld.startRunning();
     loadPendingWorldRequest();
+    LOG_INFO_EDITOR("Entered Play mode");
 }
 
 void EditorLayer::stop() {
-    if (m_sceneState == SceneState::EDIT) { return; }
+    if (!m_playing) { return; }
     m_playingWorld.finishRunning();
     Fern::setCursorLocked(false);
-    m_pandaUI.shutdown();
-    m_pandaUI.clearMainViewportFrame();
-    m_sceneState = SceneState::EDIT;
+    m_gameUI.shutdown();
+    m_gameUI.clearMainViewportFrame();
+    m_playing = false;
     m_gameInputActive = false;
     m_gameMouseButtons = 0;
     Input::setFocused(false);
@@ -1128,7 +1000,7 @@ void EditorLayer::stop() {
     m_pendingWorldLoad = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
     m_currentWorld = &editingWorld();
-    SelectionContext::setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
+    Editor::selection().setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
     m_viewports.scene().setWorld(m_currentWorld);
     if (m_editorController) {
         m_editorController->setActiveWorld(panelsWorld()); // panels → the editing world
@@ -1137,15 +1009,19 @@ void EditorLayer::stop() {
     // Play is a simulation: its asset mutations (script ABI, e.g. terrain digging) do not
     // survive Stop — the affected assets are reloaded from disk. Unsaved EDITOR edits
     // in such an asset (only editor tools set dirty) are rolled back as well.
-    if (auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler())) {
+    if (auto *assetHandler = AssetHandlerEditor::current()) {
         for (AssetId id : GameContext::takeRuntimeMutatedAssets()) {
             if (!assetHandler->isLoaded(id)) { continue; }
             if (assetHandler->documents().isAssetChanged(id)) {
-                LOG_WARN_EDITOR("STOP: unsaved editor changes of asset %u discarded (mutated in Play)", (uint32_t)id);
+                LOG_WARN_EDITOR(
+                    "%s was changed by the game: its unsaved edits are dropped with the changes of the game.",
+                    assetHandler->getAssetName(id).c_str()
+                );
             }
             assetHandler->reload(id);
         }
     }
+    LOG_INFO_EDITOR("Returned to Edit mode");
 }
 
 void EditorLayer::requestWorldLoad(AssetId worldAssetId) {
@@ -1153,7 +1029,7 @@ void EditorLayer::requestWorldLoad(AssetId worldAssetId) {
 }
 
 void EditorLayer::loadPendingWorldRequest() {
-    if (!m_pendingWorldLoad || m_sceneState == SceneState::EDIT) { return; }
+    if (!m_pendingWorldLoad || !m_playing) { return; }
 
     AssetId worldAssetId = m_pendingWorldLoad;
     m_pendingWorldLoad = AssetId(0);
@@ -1163,7 +1039,7 @@ void EditorLayer::loadPendingWorldRequest() {
 }
 
 bool EditorLayer::loadWorldAssetIntoPlayingWorld(AssetId worldAssetId) {
-    AssetHandlerEditor *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+    AssetHandlerEditor *assetHandler = AssetHandlerEditor::current();
     if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) {
         LOG_ERROR_EDITOR("World asset %u not found", (uint32_t)worldAssetId);
         return false;
@@ -1241,9 +1117,9 @@ path_t EditorLayer::defaultProjectParentPath() const {
     return std::filesystem::current_path();
 }
 
-void EditorLayer::syncPandaUIViewportFrame() {
+void EditorLayer::syncGameUiFrame() {
     Fern::Size dpi = m_window->getDpi();
-    m_pandaUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height)); // the game UI lives in the Game tab
+    m_gameUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height)); // the game UI lives in the Game tab
 }
 
 #pragma region Project loader output
@@ -1294,11 +1170,11 @@ std::string EditorLayer::worldDisplayName() {
 void EditorLayer::documentsDidActivateWorld() {
     // The game plays a copy of the world that was active when it started: it ends before another
     // world takes that place (the tabs do not switch while it runs; opening a world stops it).
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     m_currentWorld = &editingWorld();
     m_viewports.scene().setWorld(m_currentWorld);
-    SelectionContext::unselectAll(); // the selection is of one world, and ids repeat between worlds
-    SelectionContext::setWorld(m_currentWorld);
+    Editor::selection().deselectEntities(); // the selection is of one world, and ids repeat between worlds
+    Editor::selection().setWorld(m_currentWorld);
     if (m_editorController) {
         m_editorController->worldContextChanged(); // the entity tabs point into the previous world
         m_editorController->setActiveWorld(panelsWorld());
@@ -1311,18 +1187,18 @@ void EditorLayer::documentsDidLoadWorld() {
 }
 
 void EditorLayer::worldDidChange() {
-    SelectionContext::unselectAll();
+    Editor::selection().deselectEntities();
     m_menuBar.rebuild();
     if (!m_editorController) { return; }
     m_editorController->worldContextChanged();
     m_editorController->setWorldDisplayName(worldDisplayName());
     m_editorController->refreshFromWorld(); // the Hierarchy rereads the tree
-    m_editorController->syncWorldTabs();    // no tab outlives its world
+    m_editorController->worldTabs().sync(); // no tab outlives its world
 }
 
 void EditorLayer::loaderDidLoadCloseProject() {
     m_playingWorld.clear();
-    SelectionContext::unselectAll();
+    Editor::selection().clear(); // the assets of the project go with it
     if (m_editorController) { m_editorController->worldContextChanged(); }
     m_sceneTexture = {};
     m_sceneNative = {};
@@ -1384,54 +1260,50 @@ void EditorLayer::registerCommands() {
         });
     };
     const bool anywhere = false;
-    command("file.newWorld", "File", "New World", [this] { menuBarNewWorld(); });
-    command("file.newWindow", "File", "New Window", [this] { menuBarNewWindow(); }, anywhere);
-    command("file.openProject", "File", "Open Project", [this] { menuBarOpenProject(); }, anywhere);
-    command("file.save", "File", "Save", [this] { menuBarSave(); });
-    command("file.saveAll", "File", "Save All", [this] { menuBarSaveAll(); });
-    command("file.reload", "File", "Reload", [this] { menuBarReload(); });
+    command("file.newWorld", "File", "New World", [this] { newWorld(); });
+    command("file.newWindow", "File", "New Window", [this] { newWindow(); }, anywhere);
+    command("file.openProject", "File", "Open Project", [this] { openProjectRequest(); }, anywhere);
+    command("file.saveAll", "File", "Save All", [this] { saveAll(); });
+    command("file.reload", "File", "Reload", [this] { reloadFromDisk(); });
+    command("file.showCppProject", "File", "Show C++ Project", [this] { m_builds.showFolder(BuildTargetKind::Scripts); });
+    command("file.closeProject", "File", "Close Project", [this] { closeProjectRequest(); });
+    command("app.exit", "File", "Exit", [this] { closeAppRequest(); }, anywhere);
+    // The scripts as the game plays them in the editor; the CMake panel has the other builds.
+    command("build.scripts", "Build", "Build Scripts", [this] {
+        m_editorController->showPanel("cmake");
+        m_builds.startScripts(BuildAction::Build, ScriptsBuildConfig::Debug);
+    });
+    command("build.stop", "Build", "Stop Build", [this] { m_builds.cancel(); });
+    command("export.cook", "Export Game", "Cook Runtime Data", [this] { m_builds.cook(); });
 #ifdef PLATFORM_MACOS
-    command("file.showCppProject", "File", "Show C++ Project", [this] { menuBarShowCppProject(); });
-#endif
-    command("file.closeProject", "File", "Close Project", [this] { menuBarCloseProject(); });
-    command("export.cook", "Export Game", "Cook Runtime Data", [this] { menuBarExportGame(); });
-#ifdef PLATFORM_MACOS
-    command("export.xcodeMacOS", "Export Game", "Open Xcode: macOS", [this] { menuBarOpenExportProject(ExportProjectTarget::XcodeMacOS); });
+    command("export.xcodeMacOS", "Export Game", "Open Xcode: macOS", [this] {
+        m_builds.openExportProject(ExportProjectTarget::XcodeMacOS);
+    });
     command("export.xcodeIOSSimulator", "Export Game", "Open Xcode: iOS Simulator", [this] {
-        menuBarOpenExportProject(ExportProjectTarget::XcodeIOSSimulator);
+        m_builds.openExportProject(ExportProjectTarget::XcodeIOSSimulator);
     });
     command("export.xcodeIOSDevice", "Export Game", "Open Xcode: iOS Device", [this] {
-        menuBarOpenExportProject(ExportProjectTarget::XcodeIOSDevice);
+        m_builds.openExportProject(ExportProjectTarget::XcodeIOSDevice);
     });
 #endif
 #ifdef PLATFORM_WINDOWS
     command("export.visualStudio", "Export Game", "Open Visual Studio", [this] {
-        menuBarOpenExportProject(ExportProjectTarget::VisualStudioWindows);
+        m_builds.openExportProject(ExportProjectTarget::VisualStudioWindows);
     });
 #endif
-    command("settings.open", "Settings", "Open Settings", [this] { menuBarOpenEditorSettings(); });
-    command("settings.openFile", "Settings", "Open Settings File", [this] { menuBarShowEditorSettingsFile(); }, anywhere);
-    command("settings.openProject", "Settings", "Open Project Settings", [this] { menuBarOpenProjectSettings(); });
-    command("settings.openProjectFile", "Settings", "Open Project Settings File", [this] { menuBarShowProjectSettingsFile(); });
-    command("keymap.open", "Settings", "Open Keymap", [this] {
-        if (m_editorController) { m_editorController->openKeymap(); }
+    command("settings.openFile", "Settings", "Open Settings File", [this] { showSettingsFile(SettingsScope::Editor); }, anywhere);
+    command("settings.openProjectFile", "Settings", "Open Project Settings File", [this] {
+        showSettingsFile(SettingsScope::Project);
     });
     command("keymap.openFile", "Settings", "Open Keymap File", [this] { showKeymapFile(); }, anywhere);
-    command("app.exit", "File", "Exit", [this] { menuBarCloseApp(); }, anywhere);
-    command("edit.undo", "Edit", "Undo", [this] { menuBarUndo(); });
-    command("edit.redo", "Edit", "Redo", [this] { menuBarRedo(); });
-    command("window.worldSettings", "Window", "World Settings", [this] { menuBarOpenWorldSettings(); });
-    command("window.game", "Window", "Game", [this] { menuBarOpenGameView(); });
-    command("window.plugins", "Window", "Plugins", [this] { menuBarOpenPlugins(); });
-    command("help.checkForUpdates", "Help", "Check for Updates", [this] { menuBarCheckForUpdates(); }, anywhere);
+    command("help.checkForUpdates", "Help", "Check for Updates", [this] { checkForUpdates(true); }, anywhere);
     m_commands.add("help.restartToUpdate", "Help", "Restart to Update", [this] {
-        if (!menuBarUpdateReady()) { return false; }
-        menuBarRestartToUpdate();
+        if (!m_updater.hasReadyUpdate()) { return false; }
+        restartEditor();
         return true;
     });
-    command("help.releaseNotes", "Help", "Release Notes", [this] { menuBarViewReleaseNotes(); }, anywhere);
-    command("help.uiGallery", "Help", "UI Gallery", [this] { menuBarOpenUiGallery(); });
-    command("help.about", "Help", "About", [this] { menuBarAbout(); }, anywhere);
+    command("help.releaseNotes", "Help", "Release Notes", [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); }, anywhere);
+    command("help.about", "Help", "About", [this] { showAbout(); }, anywhere);
 }
 
 // The keymap file in the external editor. A file that was never written gets an empty object, so
@@ -1449,51 +1321,28 @@ void EditorLayer::showKeymapFile() {
     openInExternalEditor(path);
 }
 
-void EditorLayer::menuBarUndo() {
-    if (m_editorController) { m_editorController->undo(); } // undo — coordinator domain (content edit, editing world)
-}
-
-void EditorLayer::menuBarRedo() {
-    if (m_editorController) { m_editorController->redo(); }
-}
-
 bool EditorLayer::menuBarHasOpenedProject() {
     return m_loader.hasOpenedProject();
 }
 
-void EditorLayer::menuBarOpenWorldSettings() {
-    if (m_editorController) { m_editorController->openSettings(SettingsScope::World); }
-}
-
-void EditorLayer::menuBarOpenProjectSettings() {
-    if (m_editorController) { m_editorController->openSettings(SettingsScope::Project); }
-}
-
-void EditorLayer::menuBarOpenEditorSettings() {
-    if (m_editorController) { m_editorController->openSettings(SettingsScope::Editor); }
-}
-
-// "Show … File": the JSON of the scope selected in the file manager (the editor has no text
-// editor). A file that was never written (a fresh install, a project made outside the editor)
-// is written first with the values the editor has, so there is something to show.
-void EditorLayer::menuBarShowEditorSettingsFile() {
-    const path_t path = m_documents.editorSettingsFile().path();
-    if (path.empty()) {
-        LOG_ERROR_EDITOR("No user data directory: the editor settings are not persisted");
+// "Open … File": the JSON of the scope in the external editor. A file that was never written (a
+// fresh install, a project made outside the editor) is written first with the values the editor
+// has, so there is something to open.
+void EditorLayer::showSettingsFile(SettingsScope scope) {
+    SettingsFile &file =
+        scope == SettingsScope::Project ? m_documents.projectSettingsFile() : m_documents.editorSettingsFile();
+    const path_t path = file.path();
+    if (path.empty()) { // the project scope: no project is open
+        if (scope == SettingsScope::Editor) {
+            LOG_ERROR_EDITOR("No user data directory: the editor settings are not persisted");
+        }
         return;
     }
-    if (!std::filesystem::exists(path)) { m_documents.editorSettingsFile().save(); }
+    if (!std::filesystem::exists(path) && !file.save()) { return; }
     openInExternalEditor(path);
 }
 
-void EditorLayer::menuBarShowProjectSettingsFile() {
-    const path_t path = m_documents.projectSettingsFile().path();
-    if (path.empty()) { return; } // no project open
-    if (!std::filesystem::exists(path) && !m_documents.projectSettingsFile().save()) { return; }
-    openInExternalEditor(path);
-}
-
-void EditorLayer::menuBarOpenProject() {
+void EditorLayer::openProjectRequest() {
     runAfterUnsavedQuestion([this]() { openProjectFolderDialog(); });
 }
 
@@ -1506,9 +1355,9 @@ void EditorLayer::menuBarOpenProject(const RecentProject &project) {
     });
 }
 
-void EditorLayer::menuBarNewWorld() {
+void EditorLayer::newWorld() {
     // A new world opens in a tab of its own next to the open ones: nothing is dropped.
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     m_documents.newWorld();
 }
 
@@ -1551,23 +1400,7 @@ const path_t &EditorLayer::menuBarGetOpenedProjectPath() {
     return m_loader.getOpenedProjectPath();
 }
 
-void EditorLayer::menuBarCloseApp() {
-    closeAppRequest();
-}
-
-void EditorLayer::menuBarShowCppProject() {
-    m_loader.showCppProject();
-}
-
-void EditorLayer::menuBarSave() {
-    if (m_editorController) { m_editorController->saveActiveDocument(); }
-}
-
-void EditorLayer::menuBarSaveAll() {
-    saveAll();
-}
-
-void EditorLayer::menuBarNewWindow() {
+void EditorLayer::newWindow() {
     // The session is written first: the new instance reads the recent projects from it.
     m_loader.saveSession();
     if (!SystemTools::startNewInstance({SystemTools::NEW_WINDOW_ARGUMENT})) {
@@ -1575,25 +1408,21 @@ void EditorLayer::menuBarNewWindow() {
     }
 }
 
-void EditorLayer::menuBarReload() {
-    reloadFromDisk();
-}
-
-void EditorLayer::reloadWorldAsset(uint32_t worldAssetId) {
+void EditorLayer::reloadWorldAsset(AssetId worldAssetId) {
     // Reimport in the Content Browser: a world is reread when it is open (unsaved edits ask which
     // version stays; a broken file only logs an error). A world that is not open has nothing in
     // memory to refresh.
-    auto *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+    auto *assetHandler = AssetHandlerEditor::current();
     if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) { return; }
     const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
     if (assetRelativePath.empty()) { return; }
     WorldFile *world = m_documents.findWorld(assetHandler->getProjectPath() / assetRelativePath);
     if (world == nullptr) { return; }
-    if (world == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
+    if (world == m_documents.activeWorld()) { stop(); }
     takeDiskVersion(*world);
 }
 
-void EditorLayer::menuBarCloseProject() {
+void EditorLayer::closeProjectRequest() {
     runAfterUnsavedQuestion([this]() { closeProject(); });
 }
 
@@ -1663,10 +1492,6 @@ void EditorLayer::selectThemeIndex(int index) {
     selectTheme(themes[static_cast<size_t>(index)].id);
 }
 
-Panda::PluginStore &EditorLayer::pluginStore() {
-    return m_pluginStore;
-}
-
 std::string EditorLayer::currentThemeId() {
     return m_documents.editorSettings().get<EditorAppearanceSettings>().theme;
 }
@@ -1685,23 +1510,11 @@ void EditorLayer::installDevPlugin() {
     m_pluginStore.installDev(*folder);
 }
 
-PandaUI::FontFamily EditorLayer::fontFamilyForAsset(uint32_t assetId) {
-    AssetRef<FontAsset> ref{AssetId(assetId)};
+PandaUI::FontFamily EditorLayer::fontFamilyForAsset(AssetId assetId) {
+    AssetRef<FontAsset> ref{assetId};
     const FontAsset *font = ref.get();
     if (!font || font->isEmpty()) { return PandaUI::FontFamily::Sans; }
     return m_editorUI.fontFamilyForAsset(assetId, font->data());
-}
-
-void EditorLayer::menuBarOpenPlugins() {
-    if (m_editorController) { m_editorController->openPlugins(); }
-}
-
-void EditorLayer::menuBarOpenUiGallery() {
-    if (m_editorController) { m_editorController->openUiGallery(); }
-}
-
-void EditorLayer::menuBarOpenGameView() {
-    if (m_editorController) { m_editorController->openGameView(); }
 }
 
 PandaUI::Gallery::Host EditorLayer::galleryHost() {
@@ -1726,7 +1539,7 @@ PandaUI::Gallery::Host EditorLayer::galleryHost() {
     return host; // no openWindow (a tab, not a window), no applyTheme (the theme is the plugin chosen in Plugins)
 }
 
-void EditorLayer::menuBarAbout() {
+void EditorLayer::showAbout() {
     Editor::AboutInfo info;
     info.version = EditorUpdater::versionString();
     info.channel = ENGINE_RELEASE_CHANNEL;
@@ -1738,18 +1551,6 @@ void EditorLayer::menuBarAbout() {
     info.onCheckForUpdates = [this] { checkForUpdates(true); };
     info.onReleaseNotes = [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); };
     Editor::showAboutDialog(&m_editorUI.context(), info);
-}
-
-void EditorLayer::menuBarCheckForUpdates() {
-    checkForUpdates(true);
-}
-
-void EditorLayer::menuBarRestartToUpdate() {
-    if (m_updater.hasReadyUpdate()) { restartEditor(); }
-}
-
-void EditorLayer::menuBarViewReleaseNotes() {
-    SystemTools::openUrl(m_updater.releaseNotesUrl());
 }
 
 bool EditorLayer::menuBarUpdateReady() {
@@ -1885,14 +1686,6 @@ void EditorLayer::pushUpdateStatus() {
     }
 }
 
-void EditorLayer::menuBarExportGame() {
-    cookRuntimeData();
-}
-
-void EditorLayer::menuBarOpenExportProject(ExportProjectTarget target) {
-    openExportProject(target);
-}
-
 void EditorLayer::startScreenDidRequestOpenProjectDialog() {
     std::optional<path_t> optionalPath = SystemTools::openFolderDialog();
     if (!optionalPath.has_value()) {
@@ -1956,108 +1749,6 @@ void EditorLayer::startScreenDidRequestChooseProjectLocation() {
     std::optional<path_t> optionalPath = SystemTools::openFolderDialog(initialFolder.c_str());
     if (!optionalPath.has_value()) { return; }
     if (m_startScreenController) { m_startScreenController->setNewProjectLocation(optionalPath->string()); }
-}
-
-bool EditorLayer::cookRuntimeData() {
-    if (!m_loader.hasOpenedProject()) {
-        LOG_WARN_EDITOR("No project is open. Open a project before exporting.");
-        return false;
-    }
-
-    const ProjectModuleSettings &modules = m_documents.projectSettings().get<ProjectModuleSettings>();
-    AssetHandlerEditor *assetHandler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
-
-    // Validate before exporting. The export cooks the open world as it is edited (not the copy
-    // a running game plays in); the start world of the project settings takes over with the
-    // scene list (context/roadmap.md).
-    std::string openWorld;
-    if (hasWorld() && !m_documents.activeWorld()->path().empty()) {
-        openWorld = std::filesystem::relative(m_documents.activeWorld()->path(), m_loader.getOpenedProjectPath()).generic_string();
-    }
-    std::vector<std::string> validationErrors =
-        GameExporter::validate(m_loader.getOpenedProjectPath(), openWorld, *assetHandler);
-
-    if (!validationErrors.empty()) {
-        for (const auto &error : validationErrors) {
-            LOG_ERROR_EDITOR("Export: %s", error.c_str());
-        }
-        LOG_ERROR_EDITOR("Export validation failed. Fix the errors above before exporting.");
-        return false;
-    }
-
-    path_t runtimeDataDir = m_loader.getOpenedProjectPath() / ".Panda" / "Cooked" / "Runtime";
-    path_t exportProjectDir = m_loader.getOpenedProjectPath() / "Export";
-
-    LOG_INFO_EDITOR("========================================");
-    LOG_INFO_EDITOR("Cooking runtime data to: %s", runtimeDataDir.string().c_str());
-    LOG_INFO_EDITOR("========================================");
-
-    ExportSettings exportSettings;
-    exportSettings.runtimeDataDirectory = runtimeDataDir;
-    exportSettings.appName = m_loader.getOpenedProjectPath().filename().string();
-    exportSettings.modules = ProjectModules::enabledIds(modules);
-
-    GameExporter exporter;
-    ExportResult result =
-        exporter.exportGame(exportSettings, m_loader.getOpenedProjectPath(), *assetHandler, editingWorld());
-
-    if (result.success) {
-        LOG_INFO_EDITOR("========================================");
-        LOG_INFO_EDITOR("Runtime data cooked successfully!");
-        LOG_INFO_EDITOR("Runtime data: %s", runtimeDataDir.string().c_str());
-        LOG_INFO_EDITOR("Export project: %s", exportProjectDir.string().c_str());
-        LOG_INFO_EDITOR("========================================");
-        for (const auto &warning : result.warnings) {
-            LOG_WARN_EDITOR("Export: %s", warning.c_str());
-        }
-        return true;
-    } else {
-        LOG_ERROR_EDITOR("Export failed: %s", result.errorMessage.c_str());
-        return false;
-    }
-}
-
-void EditorLayer::openExportProject(ExportProjectTarget target) {
-    if (!cookRuntimeData()) { return; }
-
-    const ExportProjectOpenCommand command = exportProjectOpenCommand(target);
-    const char *buildDirName = ProjectBuilder::exportBuildDirName(target);
-    const path_t projectPath = m_loader.getOpenedProjectPath();
-    const path_t exportPath = projectPath / "Export";
-    const path_t buildPath = exportPath / "build" / buildDirName;
-    const std::optional<path_t> cmakePath = SystemTools::findCMakeExecutable();
-    if (!cmakePath.has_value()) {
-        LOG_ERROR_EDITOR("CMake executable not found");
-        return;
-    }
-    const std::optional<path_t> sdkDir = findPandaSdkConfigDirectory();
-    if (!sdkDir.has_value()) {
-        LOG_ERROR_EDITOR("PandaSDK not found near the editor");
-        return;
-    }
-
-    LOG_INFO_EDITOR("Configuring export project: %s", buildDirName);
-    LOG_INFO_EDITOR("CMake: %s", cmakePath->string().c_str());
-    // The same argument composition as in the CMake panel (without presets — they carried
-    // machine-specific paths).
-    if (!SystemTools::runCommand(
-            *cmakePath, ProjectBuilder::exportConfigureArgs(target, exportPath, *sdkDir), {}, logCommandOutput
-        )) {
-        LOG_ERROR_EDITOR("Failed to configure export project: %s", buildDirName);
-        return;
-    }
-
-    std::optional<path_t> generatedProject = findGeneratedProjectFile(buildPath, command.generatedProjectExtension);
-    if (!generatedProject.has_value()) {
-        LOG_ERROR_EDITOR("%s project not found in: %s", command.projectTypeName, buildPath.string().c_str());
-        return;
-    }
-
-    if (SystemTools::openWithDefaultApplication(*generatedProject)) {
-        LOG_INFO_EDITOR("Opened %s project: %s", command.projectTypeName, generatedProject->string().c_str());
-    } else {
-        LOG_ERROR_EDITOR("Failed to open %s project: %s", command.projectTypeName, generatedProject->string().c_str());
-    }
 }
 
 #pragma endregion
@@ -2150,7 +1841,7 @@ void EditorLayer::runAfterUnsavedQuestion(std::function<void()> action) {
     // The gate of everything that drops what is in memory (another world or project, closing,
     // quitting): the unsaved file documents are named and saved, discarded or the action is
     // cancelled.
-    if (m_sceneState != SceneState::EDIT) { stop(); }
+    stop();
     std::vector<std::string> dirty;
     {
         const FileDocumentList files = m_documents.list();

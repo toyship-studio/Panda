@@ -217,7 +217,7 @@ void TerrainTool::finishStroke() {
         m_strokeTreesRemoved.clear();
         m_strokeTreesAdded.clear();
         // The edits are already applied by the stroke ticks — the command is only for undo/redo.
-        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->SAVE(command, false); }
+        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->record(command); }
         return;
     }
 
@@ -256,7 +256,7 @@ void TerrainTool::finishStroke() {
             std::move(before), std::move(after)
         );
         // The edits are already applied by the stroke ticks — the command is only for undo/redo.
-        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->SAVE(command, false); }
+        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->record(command); }
         return;
     }
 
@@ -301,7 +301,7 @@ void TerrainTool::finishStroke() {
             std::move(after), std::move(beforeLayers), std::move(afterLayers)
         );
         // The edits are already applied by the stroke ticks — the command is only for undo/redo.
-        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->SAVE(command, false); }
+        if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) { stack->record(command); }
         return;
     }
 
@@ -335,7 +335,7 @@ void TerrainTool::finishStroke() {
         region.maxZ, std::move(before), std::move(after)
     );
     if (CommandHistory *stack = strokeUndoStack(m_strokeAssetId)) {
-        stack->SAVE(command, false);
+        stack->record(command);
     }
 }
 

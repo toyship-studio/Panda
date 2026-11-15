@@ -103,7 +103,7 @@ void PreviewStage::clear() {
 
 bool PreviewStage::show(AssetId asset, PrimitiveMeshKind shape) {
     clear();
-    auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+    auto *handler = AssetHandlerEditor::current();
     if (handler == nullptr) { return false; }
     // A type guard, not just an existence check: AssetRef<T> on a foreign id resolves an object
     // of another class.
@@ -150,7 +150,7 @@ bool PreviewStage::showMaterial(AssetId asset, PrimitiveMeshKind shape) {
 }
 
 bool PreviewStage::showModel(AssetId asset) {
-    auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+    auto *handler = AssetHandlerEditor::current();
     AssetRef<ImportedMeshAsset> mesh(asset);
     if (!mesh) { return false; }
     const UUID root = AssetImporterBase::addGltfSceneToWorld(handler->getProjectPath() / handler->assetPath(asset), mesh, m_world);

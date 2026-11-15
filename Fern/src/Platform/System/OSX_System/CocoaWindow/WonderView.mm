@@ -1,9 +1,3 @@
-//
-//  WonderView.mm
-//
-//  Created by Andreichev Mikhail on 07.02.2025.
-//
-
 #import "WonderView.h"
 #import "Fern/Events/EventQueue.hpp"
 #import <IOKit/hidsystem/IOLLEvent.h> // NX_DEVICE*KEYMASK: the left / right modifier bits of NSEvent.modifierFlags

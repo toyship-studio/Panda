@@ -126,7 +126,6 @@ namespace {
             // A file written before the encoder dropped the tombstones of undoable deletions lists
             // children that do not exist; the sort and the hierarchy need every link to resolve.
             if (const size_t repaired = world.repairHierarchy()) {
-                LOG_WARN("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
                 LOG_WARN_EDITOR("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
             }
             world.setChanged(false);

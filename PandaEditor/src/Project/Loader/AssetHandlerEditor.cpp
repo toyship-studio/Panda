@@ -63,6 +63,10 @@ namespace {
 
 } // namespace
 
+AssetHandlerEditor *AssetHandlerEditor::current() {
+    return static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+}
+
 AssetHandlerEditor::AssetHandlerEditor()
     : m_projectPath()
     , m_documents(*this)
@@ -206,7 +210,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
         }
     } else if (loadedType == AssetType::WORLD) {
         path_t path = m_projectPath / relativePath;
-        asset = F_NEW(m_allocator, WorldAsset)(relativePath);
+        asset = F_NEW(m_allocator, WorldAsset)();
         if (std::filesystem::exists(path)) {
             LOG_TRACE("Loaded world %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
@@ -399,13 +403,13 @@ bool AssetHandlerEditor::renameAsset(AssetId id, const std::string &newFileName)
     const path_t oldPath = assetPath(id);
     const path_t newPath = oldPath.parent_path() / (newFileName + oldPath.extension().string());
     if (std::filesystem::exists(m_projectPath / newPath)) {
-        LOG_ERROR_EDITOR("CAN'T RENAME: %s ALREADY EXISTS", newPath.string().c_str());
+        LOG_ERROR_EDITOR("The asset was not renamed: %s exists already.", newPath.string().c_str());
         return false;
     }
     std::error_code errorCode;
     std::filesystem::rename(m_projectPath / oldPath, m_projectPath / newPath, errorCode);
     if (errorCode) {
-        LOG_ERROR_EDITOR("CAN'T RENAME %s", oldPath.string().c_str());
+        LOG_ERROR_EDITOR("%s could not be renamed: the file cannot be moved.", oldPath.string().c_str());
         return false;
     }
     std::filesystem::remove(AssetPmeta::sidecarPathFor(m_projectPath / oldPath), errorCode);
@@ -420,11 +424,6 @@ AssetInfo AssetHandlerEditor::getInfo(AssetId id) {
         PND_ASSERT(false, "UNKNOWN ASSET ID");
         return {};
     }
-    return m_registry.at(id);
-}
-
-AssetInfo &AssetHandlerEditor::getInfoRef(AssetId id) {
-    PND_ASSERT(m_registry.contains(id), "UNKNOWN ASSET ID");
     return m_registry.at(id);
 }
 

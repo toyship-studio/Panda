@@ -12,7 +12,7 @@ and background jobs (`PandaAsync`).
 - `Foundation`: the bottom layer shared by Fern, Miren and Panda — logging, the editor log
   callback and the log history in memory, asserts, the allocator and the memory blob, the profiler, platform and graphics API
   detection, the command buffer, a semaphore, thread names, a file reader, SHA-256.
-- `Rain`: serialization (text coders for JSON and YAML, and a binary coder).
+- `Rain`: serialization (a text coder for JSON and a binary coder).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
   context, native menu, and the network layer `Fern::Net` on the stacks of the systems
@@ -113,9 +113,16 @@ and background jobs (`PandaAsync`).
 
 The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 
-- **Model**: the source of truth: engine types plus `SelectionContext`
-  (`Panda/include/Panda/GameLogic/SelectionContext.hpp`; entity selection and file selection are
-  kept separately). It does not depend on the views.
+- **Model**: the source of truth: engine types plus the selection of the editor,
+  `Editor::selection()` (`PandaEditorKit/Selection.hpp`): the selected entities of the world the
+  editor shows, or the selected assets of the project — one or the other — and the selected
+  entities as one body for the gizmo (the median, the entities a drag moves). One object for
+  everything editor-side: the viewport picks into it, the gizmo and the outline read it, the
+  panels and the tabs show it, the editor parts of modules ask it. It calls nobody back: who
+  shows the selection compares `version()` once a frame (`EditorController::syncSelection`). The
+  engine core knows no selection: a world command deletes or moves entities, and the editor
+  follows after it ran (`refreshFromWorld`: what is gone leaves the selection, the median is
+  found again). The model does not depend on the views.
 - **View**: a panel built on PandaUI (base class `Editor::EditorView`: `addSubviews` /
   `setupLayout` / `setupStyle`; `themeChanged` calls `setupStyle`). Colors are
   `PandaUI::ThemeColor`: a token of the theme (`ThemeColor::border`, the model of UIKit's dynamic
@@ -169,15 +176,36 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   proof: the same controls with
   the editor look and with the "Fantasy" skin (procedural nine-slice plates, a serif face of the
   system, outlines, gradients, a rounded clip) side by side.
-- **Coordinator** (`EditorController`): carries the logic, implements the `Output` of every
-  panel, holds the model and the views. On an intention it changes the model and EXPLICITLY pushes
-  the updates into the affected panels (retained mode: no subscriptions, no reactivity). Panels do
-  not know about each other. A change of the entity selection, whoever made it (a pick in the
-  viewport, a row of the Hierarchy, Add Child), reaches the panels once a frame
-  (`pushSelectionToPanels`); a single selected entity is revealed in the Hierarchy — its
+- **Coordinator** (`EditorController`), the workspace of an open project: it builds the chrome
+  (the panels, the docks, the tabs), keeps it in step with the application once a frame and is
+  the host of the editor parts of modules (`EditorHost`). What the user does goes to the part it
+  belongs to, each the `Output` of its panels and a file of `PandaEditor/src/UI`:
+  `EntityActions` — the Hierarchy and the entity tabs (create, duplicate, copy and paste, delete,
+  reparent, rename, the transform, components, scripts; every edit a command of the world's
+  history); `AssetActions` — the Content Browser (select, create, rename, reimport, delete —
+  assets and folders — and the question before a deletion); `WorldTabs` — the open worlds as
+  tabs of the center; `Panda::ProjectBuilds` — the CMake panel. The toolbar and the viewport
+  overlay are answered by the coordinator itself. A part changes the model and EXPLICITLY asks
+  the workspace to update what shows it (`refreshFromWorld`, `selectionChanged`,
+  `refreshAssetPanels`; retained mode: no subscriptions, no reactivity). Panels do not know
+  about each other. An edit of an entity tab goes to the entities of that tab, whatever is
+  selected (`EntityActions::targets`: a pinned tab edits its own). A change of the selection,
+  whoever made it (a pick in the viewport, a row of the Hierarchy, Add Child), reaches the
+  panels at once when the chrome made it and once a frame otherwise
+  (`EditorController::syncSelection` → `selectionChanged`); a single selected entity is revealed in the Hierarchy — its
   ancestors expand and the tree scrolls to its row when it is out of view
   (`HierarchyPanelView::revealEntity` → `TreeView::revealItem`, applied after the rows are
   rebuilt). A multi-selection has no primary entity and moves nothing.
+- **Application** (`EditorLayer`): the frame and the events, and the owner of the parts the
+  editor is made of — the file documents (`documents()`: the open worlds, the settings, the
+  assets), the project (`project()`), its builds (`builds()`), the viewports (`viewports()`),
+  the UI host (`ui()`), the commands (`commands()`), the plugin store. They are public: the coordinator and the MCP server
+  work with the parts themselves — a world tab holds the `WorldFile` it shows, the palette lists
+  the menu bar's own items — and ask the application for what crosses several of them (Play,
+  Save with its questions, a build, a reload). There is no interface between the chrome and the
+  application and no copy of the application's state on the chrome's side: the layer is one
+  object with one user of each kind, and an interface with one implementation only repeated
+  every call three times.
 
 #### The document model
 
@@ -259,15 +287,20 @@ A tab that edits a file of the project is titled with the name of that file (`wo
 the name of what they show — an entity tab the entity, the Game and the Plugins tabs — and
 their file is one right-click away.
 
+When the selected tab of a dock closes, the tab shown before it comes back
+(`DockManager::lastShownIn`; with none, the tab that took its place in the row). A closed
+Plugins or asset tab returns to the world that was being edited instead of activating the first
+world of the row.
+
 The tab documents:
 
-- a **world** (`WorldDocument` in the coordinator, one per open world): a tab of the center
+- a **world** (`WorldDocument` of `UI/WorldTabs`, one per open world): a tab of the center
   dock, titled with the name of the world file (`world.world`; `Untitled World` before the
   first save), dirty is the world's change flag, the undo stack is the world's, Save writes the
   world file (a world without a file yet asks for one), closing the tab closes the world (with
-  the question when it has edits). The tabs follow the loader's list and the active world
-  follows the selected tab (`EditorController::syncWorldTabs`, once a frame: a tab callback
-  never rebuilds the docks it is called from). The editor has one viewport: it lives in the tab
+  the question when it has edits). `WorldTabs` is the whole of it: the tabs follow the loader's
+  list and the active world follows the selected tab (`WorldTabs::sync`, once a frame: a tab
+  callback never rebuilds the docks it is called from). The editor has one viewport: it lives in the tab
   of the active world (the content of a world tab is a host panel, the viewport is re-parented
   into the active one), so a world tab stays in the center (`DockPanel::movable`; it is dragged
 to another place of its bar only). World tabs
@@ -284,9 +317,12 @@ to another place of its bar only). World tabs
   below. Nothing to save or undo; opened by Play, Window → Game and the "+" of a dock.
 - an **entity tab** (`EditorTabs::EntityDocument`): a view of the world document (Save and the
   file are the world's, no dirty dot of its own) — the form of
-  `EntityEditorView` over the live targets (the core component sections and the module sections
-  from `componentInspectors`), the edits dirty the world and go into its stack through a per-tab
-  proxy that substitutes the selection with the tab's targets;
+  `EntityEditorView` over the live targets: the name, the transform and the scripts are the
+  form's own, every component section comes from `componentInspectors` — the core registers
+  its camera, lights, sprite, meshes and sky there (`registerCoreComponentInspectors`) the way
+  a module registers its components, and there is no other path. The edits dirty the world and
+  go into its stack; adding and removing a component go through a per-tab proxy that
+  substitutes the selection with the tab's targets;
 - an **asset tab** (`EditorTabs::AssetDocument`): the document of the asset — dirty state, Save
   and revert through `AssetDocuments`, the undo stack per asset, the form of `AssetEditorView`
   with the editor of the kind from `EditorExtensions::assetKinds` (the core kinds — texture,
@@ -332,7 +368,7 @@ so the files derived from them and the loaded objects go too, and then the direc
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). A world is a document, not an asset with parameters: a click on a
-`.world` in the Content Browser shows it in the preview tab of the center (`openWorldTab`, the
+`.world` in the Content Browser shows it in the preview tab of the center (`WorldTabs::open`, the
 title in italics; there is one such tab, the next world shown this way takes its place), a
 double click on the file or on the tab keeps it, and so does an edit of the world; a world that
 is open only comes forward, and while the game plays a click only selects the file. A world tab
@@ -349,12 +385,12 @@ going with it, not blocking it) with a UI tree of its own — `EditorUI::openAux
 gives it a `PandaUI::Context` over the renderer, the fonts and the theme of the chrome, drawn
 into the graphics context of that window through its own Miren view
 (`Views::AUXILIARY_WINDOW_VIEW`); the events of Fern carry their window, and each context
-takes its own. The coordinator builds the content and owns the three documents while the
-window is open (`showSettingsWindow`); the window is closed by its button, by Escape and with
-the project. The project settings page is the document of `project.json` (its own undo stack,
-dirty until saved): a footer with Save and Revert appears while it has unsaved changes, and
-while the window has the keyboard Save and Undo of the menu mean the document of its page
-(`activeDocument`). Closing the window keeps unsaved project settings unsaved — Save All and
+takes its own. `Editor::SettingsWindow` (`UI/SettingsWindow`) builds the content and owns the
+three documents while the window is open (`show(page)`); the window is closed by its button, by
+Escape and with the project. The project settings page is the document of `project.json` (its
+own undo stack, dirty until saved): a footer with Save and Revert appears while it has unsaved
+changes, and while the window has the keyboard Save and Undo of the menu mean the document of
+its page (`SettingsWindow::focusedDocument`, asked by the coordinator's `activeDocument`). Closing the window keeps unsaved project settings unsaved — Save All and
 the question at exit still cover them. The menu follows Zed: File → Settings holds Open
 Settings (Cmd+,), Open Project Settings and Open Keymap — the pages — and Open Settings File /
 Open Project Settings File / Open Keymap File, which open `settings.json`,
@@ -395,7 +431,7 @@ Unity's Scene and Game views:
   frame). The other viewport keeps its last frame and its panel says so. Two live cameras would
   mean a second set of views and targets and a second fit of the camera-dependent state (CSM,
   exposure, terrain LOD, the occlusion window) — not done.
-- `SceneState` is EDIT or PLAY; Play opens (or raises) the Game tab and gives it the focus, Stop
+- The editor edits or plays (`EditorLayer::play` / `stop`); Play opens (or raises) the Game tab and gives it the focus, Stop
   raises the Scene. Edits made in PLAY land in the playing copy and are discarded on Stop, as
   before: the tabs change where one looks, not what survives.
 - **`Panda::Input` is the game's input, and only the game's.** `EditorLayer::onEvent` gives
@@ -491,8 +527,8 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   the callback, and the form that called it applies the edit (a command pushed to the undo stack
   of the document through `EditorHost`). The rule for inspector forms: an operation with
   parameters and an "apply" button is a dialog, not a nested form inside a section.
-- The confirmation of a destructive action belongs to the COORDINATOR (one for all panels:
-  `deleteAssets`). A panel only sends the intention.
+- The confirmation of a destructive action belongs to the part that performs it
+  (`AssetActions::contentDidRequestDelete`). A panel only sends the intention.
 - Modality is complete: under a modal both the PandaUI accelerators (the overlay) and the commands
   of the native menu are silent (`EditorMenuBar::handleEvent(event, modalPresented)`; only Exit
   passes). The form of a dialog is built from the state at the moment it opened, and an Undo or a
@@ -508,12 +544,15 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 - **Commands.** Everything the user can ask of the editor by a key, a menu item or by name is
   a command of one registry, `Editor::Commands` (`UI/Commands.hpp`), owned by the application
   layer: a stable id (`entity.duplicate`), the group and the name the palette shows, a scope
-  and a handler that answers whether it did something. The layer registers the commands of the
-  application and the project (`file.*`, `edit.*`, `settings.*`, `help.*`), the coordinator
-  those of the workspace (`EditorController::registerCommands`: the entity commands, the tools
-  of the gizmo, Play and Stop, the panels, the camera, the palettes). The menu bar is built
-  from command ids and has no handlers of its own; the lists that change with the project
-  (File → New, the recent projects) are the only items that are not commands.
+  and a handler that answers whether it did something. A command is registered where its
+  action lives: the layer registers the commands of the application and the project
+  (`EditorLayer::registerCommands`: the project and its windows, Save All and Reload, the
+  builds and the export, the settings files, the updates), the coordinator those of the
+  workspace (`EditorController::registerCommands`: Save, Undo and Redo of the tab in focus, the
+  settings pages, the tabs and the panels, the entity commands, the tools of the gizmo, Play
+  and Stop, the camera, the palettes) — these do not apply without an open project. The menu
+  bar is built from command ids and has no handlers of its own; the lists that change with the
+  project (File → New, the recent projects) are the only items that are not commands.
 - **The keys live in one place.** No command, menu, tooltip or view names a key. The default
   chord of every command is a row of `UI/DefaultKeymap.cpp` — a table of command ids and chords
   in the text of the keymap file (`primary-shift-p`, `f5`; `primary` is ⌘ on macOS and Ctrl
@@ -543,7 +582,7 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   A new command is in the palette, in the Keymap and in the `command` tool of the MCP server
   without more code.
 - **An edit of the world is a command of its history**, the name of an entity included
-  (`renameEntities` commits the tag component) and a drop onto the root of the Hierarchy
+  (`EntityActions::rename` commits the tag component) and a drop onto the root of the Hierarchy
   (`HierarchyCommand` with no parent): what the user did, Undo takes back. When the world
   changes under the forms — undo, redo, a pasted or reset component — every entity tab reads its
   targets again (`EditorTabs::refreshEntityForms`, from `refreshFromWorld`); an edit made in a
@@ -577,7 +616,7 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   thing it shows.
 - **A button always does something.** Play is enabled whenever the world is edited: without the
   scripts of the project (a new project, never built) it says what is missing and offers the
-  build, which loads the scripts when it is done (`toolbarDidPickSceneState`). A project whose
+  build, which loads the scripts when it is done (`toolbarDidTapPlay`). A project whose
   scripts are not built is not an error at open — one warning says where to build them
   (`ProjectLoader::reloadScriptsDll`).
 - **The start screen** lists the recent projects in a scroll (any number fits the window) and
@@ -629,8 +668,10 @@ What follows from the rules:
   the world's wind to `SceneWind` when the frame begins, the lighting is collected per world
   (`LightingSystem`). The views a world renders into are fixed (`Views::SCENE_VIEW`, the shadow
   views), so one world is drawn per frame.
-- The selection of the editor (`SelectionContext`) is of one world, the one the editor shows:
-  `SelectionContext::setWorld` on a switch between the edited world and the playing copy.
+- The entities of the editor's selection (`Editor::selection()`) are of one world, the one the
+  editor shows: `Selection::setWorld` on a switch between the edited world and the playing copy
+  (the same ids: the selection moves with them); another world in front deselects them first —
+  ids repeat between worlds.
 
 ### Frame
 
@@ -936,30 +977,38 @@ Smoke test: `PandaSDK/test/AsyncSmokeTest.cpp`, target `BambooAsyncSmoke`. It ch
 deduction, the work and main phases, move-only results, cooperative cancellation, groups and the
 dropping of the queue on `waitAll`.
 
-## Editor: build panel
+## Editor: builds of the project
 
-`UI/Panels/CMakePanel` (a tab of the bottom dock) builds the open project inside the editor and
-closes the loop author → build → run: edit a script, press Build, the script bundle is reloaded,
-play.
+`Project/Build/ProjectBuilds` is everything the editor builds for the open project: its two cmake
+projects — the scripts (`Scripts/<Name>`) and the game (`Export/`) — and the runtime data the
+second one is built from. `UI/Panels/CMakePanel` (a tab of the bottom dock) is its face; together
+they close the loop author → build → run: edit a script, press Build, the script library is
+loaded, play.
 
-- `Project/Build/ProjectBuilder` holds all build logic: asynchronous cmake pipelines for the two
-  targets (Scripts and Export), one build at a time, a background-priority worker, a queue of
-  output lines drained once per frame, cooperative cancellation. Its state lives in a
-  `shared_ptr`, so closing the editor during a build is safe.
-- Wiring: panel → `CMakePanelOutput` → `EditorController` → `EngineBridge::startScriptsBuild` /
-  `startExportBuild` / `cancelProjectBuild` → `EditorLayer` → `ProjectBuilder`; back once per frame
-  (`pumpProjectBuild`) → `appendCMakeOutput(kind, ...)` / `cmakeBuildFinished(kind, ...)`.
+- One build at a time: cmake runs on a background-priority PandaAsync worker, its lines are
+  collected and handed to the panel once a frame (`update`), cancellation is cooperative. What the
+  worker shares with the main thread lives in a `shared_ptr`, so closing the editor during a
+  build is safe.
+- Wiring: the panel holds the builds and calls them (`startScripts`, `startExport`, `cancel`,
+  `showFolder`); it is their `ProjectBuildsOutput` (`buildStarted`, `buildOutput`,
+  `buildFinished`). Nothing stands between the two. The commands `build.scripts` (Cmd+B),
+  `build.stop`, `export.cook` and `export.<ide>` call the same object.
 - Scripts are built by convention, WITHOUT presets: `cmake -S Scripts/<Name>
   -B Scripts/<Name>/cmake-build-<cfg> -DCMAKE_BUILD_TYPE=<Debug|RelWithDebInfo>
   -DPandaSDK_DIR=<the editor's SDK> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, then `cmake --build`.
-  Build without a configured tree configures first. A successful build in edit mode reloads the
-  script bundle at once (`reloadScriptsDll`).
+  Build without a configured tree configures first. A successful Build tells the application
+  (`scriptsBuilt`), and it loads the new library: at once, or when the game stops if it plays.
 - Export is also built without presets (presets carried machine paths and broke projects on
   another computer): the generator and platform flags of each target are in
-  `ProjectBuilder::exportConfigureArgs` (macOS, iOS Simulator, iOS Device → Xcode; Windows →
-  Visual Studio 17 x64), the SDK is passed with `-DPandaSDK_DIR`, and the build directories are
-  `Export/build/<macos-debug|ios-debug|ios-device-debug|windows-debug>`. Runtime data is cooked
-  before the build starts (`cookRuntimeData`).
+  `ProjectBuilds.cpp` (macOS, iOS Simulator, iOS Device → Xcode; Windows → Visual Studio x64), the
+  SDK is passed with `-DPandaSDK_DIR`, and the build directories are
+  `Export/build/<macos-debug|ios-debug|ios-device-debug|windows-debug>`. The runtime data is
+  cooked before cmake starts (`cook`: the open world as it is edited, the assets, the list of
+  modules → `.Panda/Cooked/Runtime`). `openExportProject` (File → Export Game → Open Xcode / Visual
+  Studio) is the same Configure followed by opening what cmake generated.
+- What is wrong before cmake starts — no cmake, no SDK, no project, no world to cook — is a line of
+  the panel and a failed build; the log of the editor (the Output panel) says it too. A cmake that
+  fails leaves one line in the log pointing at the panel.
 - cmake is found by `SystemTools::findCMakeExecutable()` (bundled → SDK → PATH).
 
 Invariants:
@@ -967,9 +1016,9 @@ Invariants:
 1. One build flow, one build tree. The panel builds into the same directories with the same cache
    variables as the external shell scripts, so the result and the cache are shared. The build logic
    is never forked; it is always plain cmake.
-2. Asynchrony goes through PandaAsync (work → complete plus a per-frame pump), not private threads.
-3. A successful script build reloads the script bundle (in edit mode; in play mode the console
-   shows a hint).
+2. Asynchrony goes through PandaAsync (work → complete plus a per-frame update), not private threads.
+3. A successful script build loads the script library (in edit mode at once; a build that ends
+   while the game plays is loaded when the game stops).
 4. The scope is the open project, not the engine itself.
 
 Known limits: cancellation takes effect at the next line of cmake output; custom cache variables
@@ -1030,7 +1079,7 @@ second way to do what a text file already does. The user-facing page is
   `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
 - `pointer` and `key` are the hands for that look: when the editor itself is the work, an agent
   presses what it sees. A gesture is a list of steps played one a frame into the UI context of
-  the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIImplFern` puts
+  the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIFernHost` puts
   the events of the window), so a hover is a frame older than the press that follows it, as with
   a hand. The coordinates are those of a `window` screenshot. While a gesture plays, the real
   mouse is not heard (`EditorUI::setPointerOverridden`). The answer names the views under the

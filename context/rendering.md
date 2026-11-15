@@ -375,12 +375,12 @@ resolves it.
   the inspector use it.
 - `isSystem(field)` and `hint(name)` serve the UI. The cached field UBO of a material is
   invalidated by `version()`. `set()` deduplicates by value, so it can be called every frame.
-- Inspector (`PandaEditor/src/UI/Panels/InspectorPanel.cpp`): a system field shows the actual
-  value and is disabled (opacity 0.55). Under it there are the hint and a "Settings" link button
-  (`ButtonStyle::Link`) → `inspectorDidRequestOpenSettings` → `EditorTabs::visitPanel` (a step
-  of the tab history; `DockManager::showPanel` without toggling). A tooltip does not work on a
-  disabled view (it is excluded from hit testing), and the "▸" glyph is missing in the theme
-  font.
+- The material tab (`PandaEditor/src/UI/Documents/CoreAssetEditors.cpp`): a system field shows
+  the actual value and is disabled (opacity 0.55). Under it there are the hint and a "Settings"
+  link button (`ButtonStyle::Link`) that opens the section the value comes from
+  (`MaterialSystemValues::section(name)` → `editorHost().openSettings(SettingsScope::World,
+  section)`: the world settings sidebar of the viewport). A tooltip does not work on a disabled
+  view (it is excluded from hit testing), which is why the hint is a line of its own.
 - The system values of today are `windStrength` and `windGustiness`, published by the scene wind
   (next section).
 

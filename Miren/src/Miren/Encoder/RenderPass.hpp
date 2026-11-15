@@ -1,7 +1,3 @@
-//
-// Created by Admin on 13.03.2022.
-//
-
 #pragma once
 
 #include "Miren/Base.hpp"

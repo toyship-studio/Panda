@@ -79,11 +79,11 @@ void StatisticsPanelView::addSubviews() {
     addSubview(body);
 
     // Live metrics: entities are supplied by the coordinator, per-frame render metrics — by EditorLayer.
-    auto scene = std::make_shared<CollapsibleSection>("SCENE");
-    styleCapsSection(*scene);
+    auto world = std::make_shared<CollapsibleSection>("WORLD");
+    styleCapsSection(*world);
     m_entityCount = makeValue("0");
-    scene->addContent(statRow("Entities", m_entityCount));
-    body->addContentSubview(scene);
+    world->addContent(statRow("Entities", m_entityCount));
+    body->addContentSubview(world);
 
     auto renderer = std::make_shared<CollapsibleSection>("RENDERER");
     styleCapsSection(*renderer);

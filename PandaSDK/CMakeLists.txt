@@ -161,7 +161,6 @@ set(PANDA_SDK_PACKAGED_FILE_GLOBS
         ${FERN_DIRECTORY}/include/Fern/*
         ${PANDA_ROOT_DIRECTORY}/Rain/include/Rain/*
         ${PANDA_ROOT_DIRECTORY}/Rain/Vendor/rapidjson/include/rapidjson/*
-        ${PANDA_ROOT_DIRECTORY}/Rain/Vendor/yaml-cpp/include/yaml-cpp/*
         ${VENDOR_DIRECTORY}/glm/glm/*
         ${VENDOR_DIRECTORY}/entt/src/entt/*
         ${VENDOR_DIRECTORY}/box2d/include/box2d/*
@@ -205,7 +204,6 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Fern
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Rain
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/rapidjson
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/yaml-cpp
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d
@@ -216,7 +214,6 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${FERN_DIRECTORY}/include/Fern ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Fern
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_ROOT_DIRECTORY}/Rain/include/Rain ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Rain
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_ROOT_DIRECTORY}/Rain/Vendor/rapidjson/include/rapidjson ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/rapidjson
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_ROOT_DIRECTORY}/Rain/Vendor/yaml-cpp/include/yaml-cpp ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/yaml-cpp
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/entt/src/entt ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box2d/include/box2d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box3d/include/box3d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d

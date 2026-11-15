@@ -1,7 +1,3 @@
-//
-// Created by Admin on 11.02.2022.
-//
-
 #include "GLFW_GLContext.hpp"
 
 namespace Fern {

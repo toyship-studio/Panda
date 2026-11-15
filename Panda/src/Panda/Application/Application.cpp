@@ -1,13 +1,9 @@
-//
-// Created by Admin on 22.01.2022.
-//
-
 #include "Panda/Application/Application.hpp"
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/GameLogic/Input.hpp"
 #include "Panda/Random/Random.hpp"
-#include "Panda/UI/PandaUIImpl.hpp"
+#include "Panda/UI/GameUI.hpp"
 
 #include <Foundation/Profile.hpp>
 #include <Miren/Miren.hpp>
@@ -49,13 +45,13 @@ uint64_t getMillis() {
 }
 
 Application::~Application() {
-    LOG_INFO("APP SHUTDOWN BEGIN");
+    LOG_INFO("Application: shutdown begins");
     F_DELETE(Foundation::getAllocator(), m_layerStack);
     // The application systems of the contributions stop after the layers and their worlds are
     // gone: a world that stops on the way out may still talk to them.
     GameContext::getExtensions().appSystems.setLive(false);
     s_instance = nullptr;
-    LOG_INFO("APP SHUTDOWN END");
+    LOG_INFO("Application: shutdown is complete");
 }
 
 void Application::pushLayer(Layer *layer) {
@@ -152,7 +148,7 @@ bool Application::tick(double deltaTime) {
         PANDA_PROFILE_SCOPE_N("Miren::frame (main)");
         Miren::frame();
     }
-    PandaUIImpl::flushPendingWindowDisposals();
+    GameUI::flushPendingWindowDisposals();
     PANDA_PROFILE_FRAME();
     return !m_isApplicationShouldClose;
 }

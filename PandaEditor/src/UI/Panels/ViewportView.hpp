@@ -15,7 +15,6 @@ public:
     // additive — shift/ctrl/super at the start; committed=true on release. GPU picking via the IDS-FBO
     // is done by the engine.
     virtual void viewportViewDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) = 0;
-    virtual void viewportViewDidRequestGizmoMode(int mode) = 0; // keys 1/2/3 → 0/1/2
 };
 
 // The navigation of the editor camera collected by the Scene surface since the last take: the
@@ -51,8 +50,8 @@ public:
     // accumulated rotation and zoom are reset) and where the pointer is.
     SceneNavigation takeNavigation();
     ScenePointer takePointer();
-    // Scene FBO texture (seam #1; empty before the migration). flipVertical=true for the engine's
-    // render-to-texture (it arrives flipped along Y).
+    // The frame of the Scene as a texture. flipVertical=true for a render target whose origin is
+    // at the bottom left (it arrives flipped along Y).
     void setSceneTexture(PandaUI::TextureHandle texture, bool flipVertical = false);
     // The gizmo is "over a handle"/being dragged → the LMB is its (it reads the pointer through
     // takePointer), rect-select does not start.

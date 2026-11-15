@@ -42,7 +42,7 @@ std::filesystem::path ProjectSettingsDocument::filePath() {
 }
 
 void ProjectSettingsDocument::fileReloaded() {
-    m_history.CLEAR(); // the history described the data that is gone
+    m_history.clear(); // the history described the data that is gone
     refresh();
 }
 

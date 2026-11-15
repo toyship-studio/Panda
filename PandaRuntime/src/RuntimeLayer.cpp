@@ -14,7 +14,7 @@
 #include <Panda/GameLogic/Systems/ScriptSystem.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
-#include <Panda/UI/PandaUIImpl.hpp>
+#include <Panda/UI/GameUI.hpp>
 
 extern "C" {
 extern const Panda::ScriptPluginApi *pandaLoadScriptBundle(const Panda::ScriptHostApi *hostApi);
@@ -32,7 +32,7 @@ RuntimeLayer::RuntimeLayer(const path_t &runtimeDataPath)
     , m_scriptEngine(nullptr)
     , m_world(nullptr)
     , m_projectLoader(nullptr)
-    , m_pandaUI(nullptr)
+    , m_gameUI(nullptr)
     , m_pendingWorldLoad(0)
     , m_viewportSize()
     , m_viewportDpi() {}
@@ -62,8 +62,8 @@ void RuntimeLayer::onAttach() {
     GameContext::setScriptEngine(m_scriptEngine);
 
     StaticResources::initStaticResources();
-    m_pandaUI = F_NEW(Foundation::getAllocator(), PandaUIImpl)(Application::get()->getMainWindow());
-    m_pandaUI->initialize();
+    m_gameUI = F_NEW(Foundation::getAllocator(), GameUI)(Application::get()->getMainWindow());
+    m_gameUI->initialize();
 
     m_world = F_NEW(Foundation::getAllocator(), World)();
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
@@ -94,7 +94,7 @@ void RuntimeLayer::onUpdate(double deltaTime) {
         m_world->update(deltaTime, WorldFrame{.mainCamera = true, .simulate = true});
     }
     updatePostprocessing();
-    if (m_pandaUI) { m_pandaUI->update(static_cast<float>(deltaTime)); }
+    if (m_gameUI) { m_gameUI->update(static_cast<float>(deltaTime)); }
     loadPendingWorldRequest();
 }
 
@@ -160,22 +160,31 @@ void RuntimeLayer::ensureSceneFramebuffer(uint32_t width, uint32_t height) {
 void RuntimeLayer::onEvent(Fern::Event *event) {
     if (event->type == Fern::EventType::WindowResize) {
         syncViewportWithWindow();
-        if (m_pandaUI) { m_pandaUI->syncWindow(event->getWindow()); }
+        if (m_gameUI) { m_gameUI->syncWindow(event->getWindow()); }
     }
     // In a game the window is the game: its focus and its minimizing are the application's.
     if (event->type == Fern::EventType::WindowFocus) { Input::setFocused(true); }
     if (event->type == Fern::EventType::WindowLostFocus) { Input::setFocused(false); }
     if (m_world && m_world->isRunning()) {
         switch (event->type) {
-            case Fern::EventType::WindowFocus: ScriptSystem::applicationFocus(*m_world, true); break;
-            case Fern::EventType::WindowLostFocus: ScriptSystem::applicationFocus(*m_world, false); break;
-            case Fern::EventType::WindowMinimized: ScriptSystem::applicationPause(*m_world, true); break;
-            case Fern::EventType::WindowRestored: ScriptSystem::applicationPause(*m_world, false); break;
-            default: break;
+            case Fern::EventType::WindowFocus:
+                ScriptSystem::applicationFocus(*m_world, true);
+                break;
+            case Fern::EventType::WindowLostFocus:
+                ScriptSystem::applicationFocus(*m_world, false);
+                break;
+            case Fern::EventType::WindowMinimized:
+                ScriptSystem::applicationPause(*m_world, true);
+                break;
+            case Fern::EventType::WindowRestored:
+                ScriptSystem::applicationPause(*m_world, false);
+                break;
+            default:
+                break;
         }
     }
 
-    if (m_pandaUI && m_pandaUI->handleEvent(event)) { event->isHandled = true; }
+    if (m_gameUI && m_gameUI->handleEvent(event)) { event->isHandled = true; }
 }
 
 void RuntimeLayer::onDetach() {
@@ -199,10 +208,10 @@ void RuntimeLayer::onDetach() {
         m_scriptEngine = nullptr;
     }
 
-    if (m_pandaUI) {
-        m_pandaUI->shutdown();
-        F_DELETE(Foundation::getAllocator(), m_pandaUI);
-        m_pandaUI = nullptr;
+    if (m_gameUI) {
+        m_gameUI->shutdown();
+        F_DELETE(Foundation::getAllocator(), m_gameUI);
+        m_gameUI = nullptr;
     }
     m_postprocessing.reset();
     if (m_sceneColor.isValid()) {

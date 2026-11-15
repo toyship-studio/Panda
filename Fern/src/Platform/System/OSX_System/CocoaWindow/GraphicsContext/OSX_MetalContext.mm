@@ -13,13 +13,13 @@ OSX_MetalContext::OSX_MetalContext(NSView *view)
     if (s_device == nil) {
         s_device = MTLCreateSystemDefaultDevice();
         if (s_device == nil) {
-            LOG_CRITICAL("ERROR: Failed to create Metal device");
+            LOG_CRITICAL("METAL: Failed to create the device");
             return;
         }
         s_queue = [s_device newCommandQueue];
     }
     if (![view.layer isKindOfClass:[CAMetalLayer class]]) {
-        LOG_CRITICAL("ERROR: Window view backing layer is not CAMetalLayer");
+        LOG_CRITICAL("METAL: The backing layer of the window view is not a CAMetalLayer");
         return;
     }
     m_layer = (CAMetalLayer *)view.layer;

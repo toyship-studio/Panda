@@ -33,7 +33,7 @@ RendererD3D11::RendererD3D11(Fern::GraphicsContext *ctx)
     , m_deviceContext(static_cast<ID3D11DeviceContext *>(ctx->nativeDeviceContext()))
     , m_currentFrameBuffer(MIREN_INVALID_HANDLE) {
     PND_ASSERT(m_device != nullptr, "D3D11 renderer requires a D3D11 drawing context");
-    LOG_INFO("D3D11 RENDERER CREATED");
+    LOG_INFO("D3D11: Renderer created");
 }
 
 RendererD3D11::~RendererD3D11() {
@@ -176,7 +176,7 @@ void RendererD3D11::addInput(ProgramHandle program, const PassInput &input) {
         case RenderPassInputType::Count:
             return;
     }
-    LOG_ERROR("PASS INPUT TYPE IS UNDEFINED");
+    LOG_ERROR("D3D11: A view input of an unknown type is ignored");
 }
 
 uint32_t RendererD3D11::currentRenderTargetHeight() {

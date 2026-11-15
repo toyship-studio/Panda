@@ -11,15 +11,12 @@ namespace Editor {
 
 class Commands;
 
-// Scene state: Edit (editing) or Play (the world runs; the Scene tab looks at it with the editor
-// camera, the Game tab shows the game).
-enum class SceneState { Edit, Play };
-
 // Toolbar intents — implemented by the coordinator (like ToolbarOutput in PandaEditor).
 class ToolbarOutput {
 public:
     virtual ~ToolbarOutput() = default;
-    virtual void toolbarDidPickSceneState(SceneState state) = 0; // Edit/Play
+    virtual void toolbarDidTapPlay() = 0; // the world starts playing (a copy of it runs)
+    virtual void toolbarDidTapStop() = 0; // back to editing
     virtual void toolbarDidTapReload() = 0;                      // sync with the disk (Reload)
     virtual void toolbarDidSave() = 0;                           // save the world
     virtual void toolbarDidExport() = 0;                         // export / cook
@@ -31,7 +28,7 @@ public:
     virtual void toolbarDidDismissUpdate() = 0;   // the update indicator was dismissed
 };
 
-// VIEW: the top toolbar of the editor. On the left — the Edit/Play scene mode and script
+// VIEW: the top toolbar of the editor. On the left — Play / Stop and script
 // reload; on the right — the update indicator (UpdateIndicatorView). Intents go out through
 // ToolbarOutput.
 // (The Move/Rotate/Scale gizmo and the camera reset have moved to the viewport overlay toolbar.)

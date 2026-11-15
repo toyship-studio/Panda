@@ -121,9 +121,9 @@ GameExporter::validate(const path_t &projectPath, const std::string &worldPath, 
         return errors;
     }
 
-    // Check that a world is selected
+    // The game starts in the world that is open in the editor: it has to be a file.
     if (worldPath.empty()) {
-        errors.emplace_back("No main world is set. Save the world and set it in project settings.");
+        errors.emplace_back("No world to start the game in. Open a world, or save the new one, and export again.");
     }
 
     // Check that the world file exists

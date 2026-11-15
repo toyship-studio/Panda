@@ -70,7 +70,6 @@ _panda_sdk_add_static_library(PandaSDK::glad glad)
 _panda_sdk_add_static_library(PandaSDK::stb_image stb_image)
 _panda_sdk_add_static_library(PandaSDK::bc7decomp bc7decomp)
 _panda_sdk_add_static_library(PandaSDK::yogacore yogacore)
-_panda_sdk_add_static_library(PandaSDK::yaml-cpp yaml-cpp)
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     _panda_sdk_add_static_library(PandaSDK::glfw glfw)
@@ -85,7 +84,6 @@ set(_PANDA_RUNTIME_LINK_LIBRARIES
     PandaSDK::Foundation
     PandaSDK::PandaAsync
     PandaSDK::Rain
-    PandaSDK::yaml-cpp
     PandaSDK::box2d
     PandaSDK::box3d
     PandaSDK::cgltf

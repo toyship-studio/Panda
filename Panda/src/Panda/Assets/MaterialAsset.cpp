@@ -129,7 +129,7 @@ void MaterialAsset::setFieldValue(const char *name, MaterialFieldValue value) {
             return;
         }
     }
-    LOG_ERROR_EDITOR("MATERIAL FIELD %s NOT FOUND", name);
+    LOG_ERROR_EDITOR("The material has no field named %s.", name);
 }
 
 void MaterialAsset::setRuntimeField(const char *name, MaterialFieldValue value) {
@@ -187,7 +187,7 @@ void MaterialAsset::updateFields() {
     if (shaderData.inputs.empty()) { return; }
     for (auto &field : m_data.inputs) {
         if (!shaderData.hasField(field.name)) {
-            LOG_INFO_EDITOR("MATERIAL FIELD %s NOT FOUND.", field.name.c_str());
+            LOG_INFO_EDITOR("The shader has no field %s any more: it is removed from the material.", field.name.c_str());
             m_data.removeField(field);
             continue;
         }

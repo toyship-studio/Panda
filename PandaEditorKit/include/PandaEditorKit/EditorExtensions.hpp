@@ -44,6 +44,10 @@ struct ComponentInspector final {
     std::string component;   // type name in the engine registry ("terrain2dComponent"): presence on an entity — by it
     std::string displayName; // "Terrain 2D": the Add Component item; the section title — in caps
     std::string icon;        // icon of an entity with this component (Hierarchy, tabs); empty — the regular one
+    // The component says what the entity is (a camera, a lamp, a terrain): its icon is the
+    // entity's. false — a thing many kinds of entities carry (a mesh, a sprite): its icon is the
+    // entity's only when nothing more telling is on it. Among equals the first registered wins.
+    bool characteristic = true;
     // Where the component comes from, shown next to its name in Add Component: the name of the
     // module. Filled in by the registry (setGroup) when it is empty.
     std::string group;

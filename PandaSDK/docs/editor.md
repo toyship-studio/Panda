@@ -37,6 +37,7 @@ Hierarchy (a click there gives it):
 | F | The camera goes to where the selection fits the frame. A double click on a row of the Hierarchy does the same |
 | 1, 2, 3 | The tool of the gizmo: move, rotate, scale |
 | F5, ⇧F5 | Play, Stop |
+| ⌘B | Build the scripts of the project: the CMake panel shows the build, the editor loads the result |
 | ⌘Z, ⇧⌘Z | Undo, Redo — of the document whose tab has the keyboard |
 | ⌘S, ⌥⌘S | Save the document of the tab, Save All |
 | ⌘R | Reload: the editor takes what changed on disk |
@@ -63,7 +64,9 @@ it, makes something inside it (New), or deletes it with everything in it — the
 first, and the files do not come back with Undo.
 
 Play needs the scripts of the project. In a project where they were never built, Play offers to
-build them; the CMake panel shows the build and the editor loads the result.
+build them; the CMake panel shows the build and the editor loads the result. Build Scripts
+(Cmd/Ctrl+B) builds them at any time; a build that ends while the game plays is loaded when the
+game stops.
 
 ## Previews
 

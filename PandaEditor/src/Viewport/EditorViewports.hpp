@@ -76,9 +76,6 @@ public:
     Miren::TextureHandle gameResult() const {
         return m_gameSurface.result();
     }
-    const Rect &sceneFrame() const {
-        return m_sceneSurface.frame();
-    }
     const Rect &gameFrame() const {
         return m_gameSurface.frame();
     }

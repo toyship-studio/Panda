@@ -58,8 +58,10 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
             return allowClose(panelForTabId(view.tabId(index)));
         });
         // Active tab change (a click on a tab) → update the icon highlight in the strip.
-        tv->setOnSelectionChanged([this](TabView &) {
-            if (!m_inRebuild) { refreshStrip(); }
+        tv->setOnSelectionChanged([this, d](TabView &) {
+            if (m_inRebuild) { return; }
+            noteShown(selectedPanelId(d));
+            refreshStrip();
         });
     }
 
@@ -137,7 +139,7 @@ std::shared_ptr<TabView> DockManager::dockTabView(Dock dock) const {
         case Dock::Left: return m_leftDock;
         case Dock::Right: return m_rightDock;
         case Dock::Bottom: return m_bottomDock;
-        case Dock::Center: return m_center; // the center is tabbed too: scenes + added panels
+        case Dock::Center: return m_center; // the center is tabbed too: the worlds + added panels
     }
     return nullptr;
 }
@@ -193,6 +195,20 @@ bool DockManager::userVisible(Dock dock) const {
     return true;
 }
 
+void DockManager::noteShown(const std::string &id) {
+    if (id.empty() || (!m_shownOrder.empty() && m_shownOrder.back() == id)) { return; }
+    std::erase(m_shownOrder, id);
+    m_shownOrder.push_back(id);
+}
+
+std::string DockManager::lastShownIn(Dock dock) const {
+    for (auto id = m_shownOrder.rbegin(); id != m_shownOrder.rend(); ++id) {
+        const DockPanel *panel = findPanel(*id);
+        if (panel != nullptr && panel->open && panel->dock == dock) { return *id; }
+    }
+    return {};
+}
+
 int DockManager::tabIndexOf(const std::string &id) const {
     const DockPanel *target = findPanel(id);
     if (!target || !target->open) { return -1; }
@@ -209,8 +225,9 @@ void DockManager::setStripStatusText(const std::string &text) {
     if (m_strip) { m_strip->setStatusText(text); }
 }
 void DockManager::setPanelDirty(const std::string &id, bool dirty) {
-    const DockPanel *panel = findPanel(id);
+    DockPanel *panel = findPanel(id);
     if (!panel) { return; }
+    panel->dirty = dirty; // a rebuild of the docks keeps it
     std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
     const int index = tabIndexOf(id);
     if (tabs && index >= 0) { tabs->setTabDirty(index, dirty); }
@@ -268,6 +285,7 @@ void DockManager::renameTransientPanel(const std::string &oldId, const std::stri
     if (it == m_panelTabId.end()) { return; }
     const std::uint64_t tid = it->second; // same tab-id — the tab/position/selection do not change
     m_panelTabId.erase(it);               // erase before insert: oldId may refer to p->id
+    std::replace(m_shownOrder.begin(), m_shownOrder.end(), std::string(oldId), newId); // a copy, for the same reason
     p->id = newId;
     m_panelTabId[p->id] = tid;
 }
@@ -338,6 +356,7 @@ void DockManager::closePanelInternal(const std::string &id) {
     }
     m_panelTabId.erase(id);
     const std::string closedId = id; // a copy: the erase below destroys the owning string
+    std::erase(m_shownOrder, closedId);
     m_panels.erase(
         std::remove_if(m_panels.begin(), m_panels.end(), [&](const DockPanel &q) { return q.id == closedId; }),
         m_panels.end()
@@ -540,7 +559,7 @@ std::shared_ptr<View> DockManager::makeDockTrailing(Dock dock) {
     row->layout().setAlignItems(Align::Center);
     row->layout().setGap(2.f);
 
-    // "+" on every dock, including the center (bottom panels can be added there next to the scenes).
+    // "+" on every dock, including the center (bottom panels can be added there next to the worlds).
     auto add = std::make_shared<IconButton>(Ic::Plus, Ic::HeaderSize, 23.f);
     add->setTooltip("Add Panel");
     IconButton *addPtr = add.get();
@@ -574,11 +593,16 @@ void DockManager::rebuild() {
     const Dock docks[] = {Dock::Left, Dock::Right, Dock::Bottom, Dock::Center};
     std::string selected[] = {selectedPanelId(Dock::Left), selectedPanelId(Dock::Right),
                               selectedPanelId(Dock::Bottom), selectedPanelId(Dock::Center)};
+    int selectedIndex[4];
+    for (int i = 0; i < 4; ++i) {
+        noteShown(selected[i]);
+        selectedIndex[i] = dockTabView(docks[i])->selectedIndex();
+    }
 
     m_leftDock->removeAllTabs();
     m_rightDock->removeAllTabs();
     m_bottomDock->removeAllTabs();
-    m_center->removeAllTabs(); // the center is re-laid out too (scenes + center panels from the specification)
+    m_center->removeAllTabs(); // the center is re-laid out too (the worlds + center panels from the specification)
     for (const DockPanel &p : m_panels) {
         if (!p.open) { continue; }
         // Fixed panels (closable=false) cannot be dragged; the tabs that stay in their dock
@@ -586,14 +610,21 @@ void DockManager::rebuild() {
         if (auto dock = dockTabView(p.dock)) {
             const TabDrag drag = !p.closable ? TabDrag::None : p.movable ? TabDrag::Free : TabDrag::WithinBar;
             const int idx = dock->addTab(p.title, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon));
-            if (p.preview) { dock->setTabPreview(idx, true); } // preview lives in the specification, style in the tab
+            // The preview and the unsaved dot live in the specification, their look in the tab.
+            if (p.preview) { dock->setTabPreview(idx, true); }
+            if (p.dirty) { dock->setTabDirty(idx, true); }
         }
     }
 
     for (int i = 0; i < 4; ++i) {
-        if (selected[i].empty()) { continue; }
-        const int idx = tabIndexOf(selected[i]);
-        if (idx >= 0) { dockTabView(docks[i])->setSelectedIndex(idx); }
+        if (selectedIndex[i] < 0) { continue; } // the dock had no tab
+        const auto tabs = dockTabView(docks[i]);
+        int idx = tabIndexOf(selected[i]);
+        // The selected tab is gone (closed; its panel has no id by now): the tab shown before it
+        // comes back; with none, the tab that took its place in the row.
+        if (idx < 0) { idx = tabIndexOf(lastShownIn(docks[i])); }
+        if (idx < 0) { idx = std::min(selectedIndex[i], tabs->tabCount() - 1); }
+        if (idx >= 0) { tabs->setSelectedIndex(idx); }
     }
 
     applyDockVisibility(Dock::Left);
@@ -634,7 +665,7 @@ void DockManager::refreshStrip() {
     std::vector<StripItem> items;
     items.reserve(m_panels.size());
     for (const DockPanel &p : m_panels) {
-        if (!p.inStrip) { continue; } // center scenes are not in the strip; closed panels are shown (dim)
+        if (!p.inStrip) { continue; } // the world tabs are not in the strip; closed panels are shown (dim)
         const auto tv = dockTabView(p.dock);
         const bool active = p.open && isVisible(p.dock) && tv && tv->selectedIndex() == tabIndexOf(p.id);
         items.push_back(StripItem{p.id, p.icon, p.dock, p.open, active});
@@ -758,8 +789,17 @@ void DockManager::panelClosed(Dock dock, int tabIndex) {
     for (DockPanel &p : m_panels) {
         if (!p.open || p.dock != dock) { continue; }
         if (idx == tabIndex) {
-            closePanelInternal(p.id); // regular → open=false (available through "+"); transient — removed
+            const std::string id = p.id; // a copy: a transient panel goes with its string
+            // The tab view closed the tab itself and selected its neighbor. When the closed tab
+            // was the one in front, the tab shown before it comes forward instead (as rebuild
+            // does for a tab closed by a command).
+            const bool wasInFront = lastShownIn(dock) == id;
+            closePanelInternal(id); // regular → open=false (available through "+"); transient — removed
+            // Asked before the rebuild: it takes the neighbor for the tab that is shown.
+            const std::string previous = wasInFront ? lastShownIn(dock) : std::string();
             rebuild();
+            const int index = tabIndexOf(previous);
+            if (index >= 0) { dockTabView(dock)->setSelectedIndex(index); }
             return;
         }
         ++idx;
@@ -784,7 +824,7 @@ void DockManager::showAddMenu(Dock dock, View *anchor) {
     auto menu = std::make_shared<Menu>();
     bool any = false;
     for (const DockPanel &p : m_panels) {
-        // Only closed ones; the non-closable center scenes are not added. Panels outside the strip
+        // Only closed ones; the world tabs are not added. Panels outside the strip
         // (Statistics/Profiler) are added exactly from here. There are no closed transients
         // (closing removes them) — a guard for the future.
         if (p.open || !p.closable || p.transient) { continue; }
@@ -839,11 +879,6 @@ void DockManager::maximize(Dock dock) {
     if (auto btn = maxButton(dock)) { btn->setIconName(Ic::Restore); } // maximized → the "restore" icon
     if (ctx && keepFocus) { ctx->setFocusedView(keepFocus); }          // the focus stays where it was
     m_root->setNeedsLayout();
-}
-
-void DockManager::maximizeContaining(View *view) {
-    Dock dock;
-    if (dockContaining(view, dock)) { maximize(dock); }
 }
 
 void DockManager::restoreMaximized() {

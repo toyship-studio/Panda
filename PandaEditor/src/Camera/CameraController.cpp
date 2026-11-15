@@ -1,7 +1,3 @@
-//
-// Created by Admin on 12.02.2022.
-//
-
 #include "CameraController.hpp"
 
 #include <Panda/Math/Math.hpp>

@@ -61,29 +61,6 @@ bool AssetDocuments::saveAsset(AssetId id) {
     return true;
 }
 
-bool AssetDocuments::hasUnsavedAssets() {
-    for (auto &entry : m_handler.m_loadedAssets) {
-        if (isAssetChanged(entry.first)) { return true; }
-    }
-    return false;
-}
-
-int AssetDocuments::saveChangedAssets() {
-    int saved = 0;
-    for (auto &entry : m_handler.m_loadedAssets) {
-        if (isAssetChanged(entry.first) && saveAsset(entry.first)) { ++saved; }
-    }
-    return saved;
-}
-
-std::vector<AssetId> AssetDocuments::collectChangedAssets() {
-    std::vector<AssetId> result;
-    for (auto &entry : m_handler.m_loadedAssets) {
-        if (isAssetChanged(entry.first)) { result.push_back(entry.first); }
-    }
-    return result;
-}
-
 bool AssetDocuments::setMaterialShader(AssetId materialId, AssetId shaderId) {
     AssetInfo info = m_handler.getInfo(materialId);
     auto meta = std::get<AssetInfo::MaterialSettings>(info.settings);
@@ -151,7 +128,7 @@ AssetId AssetDocuments::createMaterialAsset(const path_t &directory, AssetId sha
         MaterialDataDto dataDto;
         std::ofstream file(path);
         if (!file.is_open()) {
-            LOG_ERROR_EDITOR("CAN'T CREATE MATERIAL FILE %s", path.string().c_str());
+            LOG_ERROR_EDITOR("The material file %s could not be created.", path.string().c_str());
             return 0;
         }
         Rain::Encoder *encoder = &m_jsonEncoder;
@@ -186,7 +163,7 @@ AssetId AssetDocuments::createPostprocessingAsset(const path_t &directory) {
         PostprocessingDataDto dataDto;
         std::ofstream file(path);
         if (!file.is_open()) {
-            LOG_ERROR_EDITOR("CAN'T CREATE POSTPROCESSING FILE %s", path.string().c_str());
+            LOG_ERROR_EDITOR("The postprocessing file %s could not be created.", path.string().c_str());
             return 0;
         }
         Rain::Encoder *encoder = &m_jsonEncoder;
@@ -222,7 +199,7 @@ bool AssetDocuments::createPostprocessShader(const path_t &directory) {
         FileData data = AssetImporterBase::loadTextData(templatePath);
         std::ofstream file(destination);
         if (!file.is_open() || data.size == 0) {
-            LOG_ERROR_EDITOR("CAN'T CREATE POSTPROCESS SHADER FILE %s", destination.string().c_str());
+            LOG_ERROR_EDITOR("The shader file %s could not be created.", destination.string().c_str());
             return false;
         }
         file.write((const char *)data.memory.data, data.size);

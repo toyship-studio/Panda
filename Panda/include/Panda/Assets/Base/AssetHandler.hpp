@@ -31,8 +31,11 @@ public:
         , m_loadedAssets()
         , m_assetRefCounts() {}
 
+    /// An asset that exists in memory under a given id — a built-in one (StaticResources, the
+    /// ResourceProvider of a module), whose id is named in code and written into project files.
     template<typename T, typename... Args>
     AssetRef<T> createAsset(AssetId id, Args &&...args) {
+        PND_ASSERT_F(!m_loadedAssets.contains(id), "THE ASSET ID %u IS TAKEN", static_cast<uint32_t>(id));
         AssetEntry entry;
         entry.asset = F_NEW(m_allocator, T)(std::forward<Args>(args)...);
         m_loadedAssets[id] = entry;

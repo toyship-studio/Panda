@@ -12,9 +12,6 @@ namespace Panda {
 
 namespace {
 
-    AssetHandlerEditor *assetHandler() {
-        return static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
-    }
 
     bool isSubpath(const path_t &path, const path_t &base) {
         if (path.empty() || base.empty()) { return false; }
@@ -67,7 +64,7 @@ FileDocumentList FileDocuments::list() {
     list.all.push_back(&m_editorSettings);
     if (m_projectPath.empty()) { return list; }
     list.all.push_back(&m_projectSettings);
-    if (AssetHandlerEditor *handler = assetHandler()) {
+    if (AssetHandlerEditor *handler = AssetHandlerEditor::current()) {
         for (AssetId id : handler->loadedProjectAssets()) {
             const bool changedOnDisk = handler->isAssetChangedOnDisk(id);
             if (!changedOnDisk && !handler->documents().isAssetChanged(id)) { continue; }
@@ -239,7 +236,7 @@ void FileDocuments::syncStartWorld(const WorldFile &world) {
 }
 
 void FileDocuments::registerWorldAsset(const path_t &path) {
-    AssetHandlerEditor *handler = assetHandler();
+    AssetHandlerEditor *handler = AssetHandlerEditor::current();
     if (!handler || !std::filesystem::exists(path) || !isSubpath(path, m_projectPath)) { return; }
     if (handler->getAssetId(path) || !handler->canImport(path)) { return; }
     handler->registerAsset(path);
@@ -254,7 +251,7 @@ std::string FileDocuments::projectRelative(const path_t &path) const {
 /* ------------------------------ The asset documents ------------------------------ */
 
 std::unique_ptr<AssetFile> FileDocuments::assetFile(AssetId id) {
-    AssetHandlerEditor *handler = assetHandler();
+    AssetHandlerEditor *handler = AssetHandlerEditor::current();
     if (!handler || !handler->isLoaded(id) || !handler->getRegistry().contains(id)) { return nullptr; }
     return std::make_unique<AssetFile>(*handler, id, handler->isAssetChangedOnDisk(id));
 }

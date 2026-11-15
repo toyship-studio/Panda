@@ -59,12 +59,6 @@ namespace {
         addToggleRow(section, "World Space", data->worldSpace, [data, emit](bool v) { data->worldSpace = v; emit(); });
     }
 
-    void setEmitterPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-        toggleComponentPresence<Panda::ParticleEmitterComponent>(
-            world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add
-        );
-    }
-
 } // namespace
 
 void registerExtensions(EditorExtensions &extensions) {
@@ -72,7 +66,7 @@ void registerExtensions(EditorExtensions &extensions) {
     emitter.component = "particleEmitterComponent";
     emitter.displayName = "Particle Emitter";
     emitter.icon = Ic::Sprite;
-    emitter.setPresence = setEmitterPresence;
+    emitter.setPresence = setComponentPresence<Panda::ParticleEmitterComponent>;
     emitter.build = buildEmitterSection;
     extensions.componentInspectors.add(std::move(emitter));
 }

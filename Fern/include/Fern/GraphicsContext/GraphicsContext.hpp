@@ -1,7 +1,3 @@
-//
-// Created by Admin on 18.02.2022.
-//
-
 #pragma once
 
 #include "Fern/Base/Base.hpp"

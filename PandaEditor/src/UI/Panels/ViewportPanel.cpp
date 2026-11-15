@@ -309,14 +309,10 @@ void ViewportPanelView::viewportViewDidRectSelect(Point start, Point current, bo
     m_output->viewportDidRectSelect(start, current, additive, committed); // → GPU picking via the IDS-FBO (engine)
 }
 
-void ViewportPanelView::viewportViewDidRequestGizmoMode(int mode) {
-    applyGizmoMode(mode); // keys 1/2/3 — same as the toolbar buttons (highlight + intent)
-}
-
 bool ViewportPanelView::canAcceptDrop(const DragInfo &drag) {
     const std::string &t = drag.payload.type;
     // What a drop here means something for: a model becomes entities, a world opens.
-    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.scene");
+    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.world");
 }
 
 void ViewportPanelView::dragEntered(const DragInfo &) {
@@ -358,7 +354,7 @@ void ViewportPanelView::setupLayout() {
 }
 
 void ViewportPanelView::setupStyle() {
-    setBackgroundColor(ThemeColor::windowBackground); // dark "scene" (placeholder)
+    setBackgroundColor(ThemeColor::windowBackground); // what shows before the first frame arrives
     if (m_sidebar) {
         // Opaque: the controls must read on any scene behind them; a border line separates it
         // from the scene.

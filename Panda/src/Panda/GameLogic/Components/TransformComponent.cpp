@@ -1,7 +1,3 @@
-//
-// Created by Admin on 09.02.2022.
-//
-
 #include "Panda/GameLogic/Components/TransformComponent.hpp"
 #include "Panda/Math/Math.hpp"
 

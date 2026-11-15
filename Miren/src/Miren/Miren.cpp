@@ -1,7 +1,3 @@
-//
-// Created by Admin on 10.03.2022.
-//
-
 #include "Miren/Miren_p.hpp"
 
 namespace Miren {

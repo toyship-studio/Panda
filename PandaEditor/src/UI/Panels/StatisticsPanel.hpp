@@ -13,14 +13,14 @@ class Panel;
 
 namespace Editor {
 
-// VIEW: statistics panel — live scene and render metrics. Display only: the entity count is supplied
+// VIEW: statistics panel — live metrics of the world and of the renderer. Display only: the entity count is supplied
 // by the coordinator (setEntityCount), per-frame metrics — by EditorLayer (setFrameStatistics).
 // No header: the tab provides the name.
 class StatisticsPanelView final : public EditorView {
 public:
     StatisticsPanelView();
 
-    void setEntityCount(int count); // Input: scene entity count (counted by the coordinator over the world)
+    void setEntityCount(int count); // Input: the entities of the world (counted by the coordinator)
     // Input: per-frame metrics of the current world (application FPS, 3D scene draw calls, the sum of
     // the shadow passes, 2D draw calls, 2D quads) + chrome UI layout passes per second (the baseline
     // is ~2-3 from the panel itself; ~FPS = something is dirtying the layout).

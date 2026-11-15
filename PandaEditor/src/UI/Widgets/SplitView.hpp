@@ -28,9 +28,6 @@ public:
     // Hide/show pane index: Display::None on its wrapper + the adjacent divider (the neighbors reflow
     // by weights, without a double/dangling line). For docking toggles (visibility strip).
     void setPaneVisible(int index, bool visible);
-    int paneCount() const {
-        return static_cast<int>(m_panes.size());
-    }
 
     // Pane weight (share of space): get/set — for saving/restoring the layout.
     float paneWeight(int index) const;

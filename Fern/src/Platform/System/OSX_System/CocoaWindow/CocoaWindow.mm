@@ -8,6 +8,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <algorithm>
+
 using namespace Fern;
 
 namespace Fern {
@@ -446,8 +448,8 @@ Vec2 CocoaWindow::getCursorPosition() {
     int32_t y = int32_t(adjustFrame.size.height) - int32_t(location.y);
 
     // clamp within the range of the window
-    x = Foundation::clamp(x, 0, int32_t(adjustFrame.size.width) );
-    y = Foundation::clamp(y, 0, int32_t(adjustFrame.size.height) );
+    x = std::clamp(x, 0, int32_t(adjustFrame.size.width));
+    y = std::clamp(y, 0, int32_t(adjustFrame.size.height));
     return Vec2(x, y);
 }
 

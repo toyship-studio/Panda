@@ -265,7 +265,7 @@ bool compileHlslShaderToSpv(const path_t &input, const path_t &output, ShaderTyp
                              getSlangStage(shaderType) + " -entry main -target spirv -o \"" + output.string() +
                              "\" \"" + input.string() + "\"";
 
-    LOG_INFO("EXECUTING: %s", compileCmd.c_str());
+    LOG_INFO("Executing: %s", compileCmd.c_str());
     // The diagnostics point into the sources (the #line directives of the include expander).
     std::string compilerOutput;
     const int result = runCommand(compileCmd, compilerOutput);
@@ -278,7 +278,7 @@ bool compileHlslShaderToSpv(const path_t &input, const path_t &output, ShaderTyp
     }
 
     if (std::filesystem::exists(output)) {
-        LOG_INFO_EDITOR("Successfully created %s", output.c_str());
+        LOG_INFO("Shader written: %s", output.c_str());
     } else {
         LOG_ERROR_EDITOR("Error: SPIR-V file was not created");
     }
@@ -344,7 +344,7 @@ bool compileSpvShaderToGlsl(const path_t &input, const path_t &output, ShaderTyp
             LOG_ERROR_EDITOR("Error: glsl file was not created");
             return false;
         }
-        LOG_INFO_EDITOR("Successfully created %s", output.c_str());
+        LOG_INFO("Shader written: %s", output.c_str());
         return true;
     } catch (const std::exception &error) {
         LOG_ERROR_EDITOR("Error compiling SPIR-V to GLSL: %s", error.what());
@@ -373,7 +373,7 @@ bool compileSpvShaderToMsl(const path_t &input, const path_t &output, ShaderType
             LOG_ERROR_EDITOR("Error: msl file was not created");
             return false;
         }
-        LOG_INFO_EDITOR("Successfully created %s", output.c_str());
+        LOG_INFO("Shader written: %s", output.c_str());
         return true;
     } catch (const std::exception &error) {
         LOG_ERROR_EDITOR("Error compiling SPIR-V to MSL: %s", error.what());
@@ -395,7 +395,7 @@ bool reflect(const path_t &input, const path_t &output) {
             LOG_ERROR_EDITOR("Error: json reflection file was not created");
             return false;
         }
-        LOG_INFO_EDITOR("Successfully created %s", output.c_str());
+        LOG_INFO("Shader written: %s", output.c_str());
         return true;
     } catch (const std::exception &error) {
         LOG_ERROR_EDITOR("Error reflecting SPIR-V: %s", error.what());

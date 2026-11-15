@@ -21,9 +21,6 @@ using namespace PandaUI;
 
 namespace {
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     // A count a person reads at a glance: "103 330".
     std::string formatCount(size_t value) {
@@ -105,7 +102,7 @@ void AssetEditorView::rebuild() {
 }
 
 void AssetEditorView::bind() {
-    Panda::AssetHandlerEditor *handler = assetHandler();
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     if (m_assets.size() == 1 && handler) {
         const auto &registry = handler->getRegistry();
         auto it = registry.find(m_assets.front());
@@ -159,7 +156,7 @@ void AssetEditorView::bind() {
 
 void AssetEditorView::rebuildProperties() {
     m_props->removeAllSubviews();
-    Panda::AssetHandlerEditor *handler = assetHandler();
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     if (!handler || m_assets.size() != 1) { return; }
     const Panda::AssetId id = m_assets.front();
     const auto &registry = handler->getRegistry();
@@ -169,12 +166,12 @@ void AssetEditorView::rebuildProperties() {
     const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
     if (ui == nullptr || ui->createEditor == nullptr) {
         // A kind without an editor (a world, a shader, a file): the header says what it is.
-        auto label = std::make_shared<Label>(kind == "scene" ? "World / Scene" : kind);
+        auto label = std::make_shared<Label>(kind == "world" ? "World" : kind);
         label->setFont(Typo::Item);
         label->setTextRole(TextRole::Secondary);
-        auto section = makeFormSection(kind == "scene" ? "WORLD" : "ASSET");
+        auto section = makeFormSection(kind == "world" ? "WORLD" : "ASSET");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));
-        if (kind == "scene") { section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab.")); }
+        if (kind == "world") { section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab.")); }
         m_props->addSubview(section);
         setNeedsLayout();
         return;

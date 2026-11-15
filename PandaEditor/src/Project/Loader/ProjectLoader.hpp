@@ -40,8 +40,6 @@ public:
     void saveSession();
     void saveWindowState(LastOpenedProjectWindowState state);
     void openProject(const path_t &path);
-    void openCppProject();
-    void showCppProject();
     void reloadScriptsDll();
     // The script build on disk is newer than the loaded one (a step of Reload; the build is not
     // a document — nothing edits it in memory).

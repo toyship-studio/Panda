@@ -93,7 +93,7 @@ void WorldSystemRegistry::sort() {
             break; // back to the lowest index: the registration order among the ready ones
         }
         if (!progressed) {
-            LOG_ERROR("WORLD SYSTEMS: THE ORDER CONSTRAINTS FORM A CYCLE; THE REGISTRATION ORDER IS KEPT FOR THE REST");
+            LOG_ERROR("World systems: the order constraints form a cycle; the registration order is kept for the rest.");
             for (size_t i = 0; i < count; i++) {
                 if (!done[i]) {
                     done[i] = true;

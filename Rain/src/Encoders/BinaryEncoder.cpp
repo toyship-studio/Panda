@@ -269,7 +269,8 @@ BinaryNode *BinaryEncoder::addNode(const char *key, std::unique_ptr<BinaryNode> 
 }
 
 void BinaryEncoder::encodeRawJson(const char *key, const std::string &json) {
-    (void)key; // opaque values are JSON-only (supportsRawJson): the binary format carries typed data
+    (void)
+        key; // opaque values are JSON-only (supportsRawJson): the binary format carries typed data
     (void)json;
 }
 

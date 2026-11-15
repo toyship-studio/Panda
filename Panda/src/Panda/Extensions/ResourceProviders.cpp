@@ -43,7 +43,7 @@ void SceneShaderRegistry::reloadCooked(const path_t &cookedRoot, Foundation::Gra
         vertex.replace_extension();
         fragment.replace_extension();
         if (!std::filesystem::exists(vertex) || !std::filesystem::exists(fragment)) {
-            LOG_ERROR("SCENE SHADER %s: cooked pair not found at %s", entry.vertex.c_str(), backendRoot.string().c_str());
+            LOG_ERROR("Scene shader %s: the cooked pair is not at %s", entry.vertex.c_str(), backendRoot.string().c_str());
             continue;
         }
         ShaderAsset *shader = entry.shader.get();

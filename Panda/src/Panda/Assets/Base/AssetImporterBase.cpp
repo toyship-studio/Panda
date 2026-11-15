@@ -39,7 +39,7 @@ namespace {
     FileData loadFileDataInternal(const path_t &path, bool nullTerminate) {
         const path_t fullPath = Fern::getStaticResourcesPath() / path;
 #ifndef PLATFORM_ANDROID
-        if (!std::filesystem::exists(fullPath)) { LOG_ERROR("FILE %s DOESN'T EXISTS", path.string().c_str()); }
+        if (!std::filesystem::exists(fullPath)) { LOG_ERROR("The file %s does not exist.", path.string().c_str()); }
 #endif
         auto inputStream = Fern::createStaticResourceReader(fullPath);
         const size_t fileSize = inputStream->totalSize();
@@ -98,7 +98,7 @@ Miren::TextureCreate AssetImporterBase::load2DTexture(const path_t &path) {
     textureMem.release();
     Fern::disposeResourceReader(inputStream);
     if (image == nullptr) {
-        LOG_ERROR("Failed to load a texture file! %s", stbi_failure_reason());
+        LOG_ERROR("The texture file could not be read: %s", stbi_failure_reason());
         return {};
     }
     Miren::TextureCreate texture;
@@ -123,7 +123,7 @@ Miren::TextureCreate AssetImporterBase::load2DTextureFile(const path_t &fullPath
     if (stbi_is_hdr(fullPath.string().c_str())) {
         float *pixels = stbi_loadf(fullPath.string().c_str(), &width, &height, &channels, 4);
         if (pixels == nullptr) {
-            LOG_ERROR("Failed to load an HDR texture file! %s", stbi_failure_reason());
+            LOG_ERROR("The HDR texture file could not be read: %s", stbi_failure_reason());
             return {};
         }
         const size_t count = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
@@ -142,7 +142,7 @@ Miren::TextureCreate AssetImporterBase::load2DTextureFile(const path_t &fullPath
     }
     void *image = stbi_load(fullPath.string().c_str(), &width, &height, &channels, 4);
     if (image == nullptr) {
-        LOG_ERROR("Failed to load a texture file! %s", stbi_failure_reason());
+        LOG_ERROR("The texture file could not be read: %s", stbi_failure_reason());
         // TODO: Return "Missing" texture
         // https://ru.yougile.com/team/91006f9f80d3/#PANDA-41
         return {};
@@ -174,13 +174,13 @@ bool AssetImporterBase::readCookedTextureInfo(const path_t &path, CookedTextureI
 Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        LOG_ERROR("FAILED TO OPEN COOKED TEXTURE %s", path.string().c_str());
+        LOG_ERROR("The cooked texture %s could not be opened.", path.string().c_str());
         return {};
     }
 
     CookedTextureHeader header;
     if (!readCookedTextureHeader(file, header)) {
-        LOG_ERROR("INVALID COOKED TEXTURE HEADER %s", path.string().c_str());
+        LOG_ERROR("The cooked texture %s has an invalid header.", path.string().c_str());
         return {};
     }
 
@@ -191,14 +191,14 @@ Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     texture.m_isCubeMap = header.isCubeMap != 0;
     texture.m_dataMips = static_cast<uint8_t>(header.dataMips);
     if (texture.dataBytes() != header.dataSize) {
-        LOG_ERROR("COOKED TEXTURE %s: THE DATA DOES NOT FIT ITS HEADER", path.string().c_str());
+        LOG_ERROR("The cooked texture %s: the data does not fit its header.", path.string().c_str());
         return {};
     }
     texture.m_data = Foundation::Memory::alloc(header.dataSize);
 
     file.read(reinterpret_cast<char *>(texture.m_data.data), static_cast<std::streamsize>(header.dataSize));
     if (!file) {
-        LOG_ERROR("FAILED TO READ COOKED TEXTURE DATA %s", path.string().c_str());
+        LOG_ERROR("The data of the cooked texture %s could not be read.", path.string().c_str());
         texture.m_data.release();
         return {};
     }
@@ -211,7 +211,7 @@ bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::Textu
 
     const size_t dataSize = create.dataBytes();
     if (!create.m_data.data || dataSize == 0 || dataSize > UINT32_MAX) {
-        LOG_ERROR("INVALID COOKED TEXTURE DATA %s", path.string().c_str());
+        LOG_ERROR("The cooked texture %s has invalid data.", path.string().c_str());
         return false;
     }
 
@@ -226,7 +226,7 @@ bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::Textu
 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
-        LOG_ERROR("FAILED TO WRITE COOKED TEXTURE %s", path.string().c_str());
+        LOG_ERROR("The cooked texture %s could not be written.", path.string().c_str());
         return false;
     }
 
@@ -447,11 +447,11 @@ UUID AssetImporterBase::addGltfSceneToWorld(const path_t &path, AssetRef<Importe
     cgltf_data *data = nullptr;
     cgltf_result cgltfResult = cgltf_parse_file(&options, path.string().c_str(), &data);
     if (cgltfResult != cgltf_result_success) {
-        LOG_ERROR("ERROR LOADING GLTF AT PATH %s", path.string().c_str());
+        LOG_ERROR("The glTF file %s could not be read.", path.string().c_str());
         return UUID(0);
     }
     if (!data->scene) {
-        LOG_ERROR("GLTF HAS NO DEFAULT SCENE AT PATH %s", path.string().c_str());
+        LOG_ERROR("The glTF file %s has no default scene.", path.string().c_str());
         cgltf_free(data);
         return UUID(0);
     }
@@ -479,8 +479,7 @@ AssetInfo::MeshSettings AssetImporterBase::loadGltfMeshMeta(const path_t &gltfPa
     cgltf_data *data = nullptr;
     cgltf_result cgltfResult = cgltf_parse_file(&options, gltfPath.string().c_str(), &data);
     if (cgltfResult != cgltf_result_success) {
-        LOG_ERROR("ERROR LOADING GLTF META AT PATH %s", gltfPath.string().c_str());
-        LOG_ERROR_EDITOR("ERROR LOADING GLTF META AT PATH %s", gltfPath.string().c_str());
+        LOG_ERROR_EDITOR("The glTF file %s could not be read: its materials and nodes are unknown.", gltfPath.string().c_str());
         return meta;
     }
 
@@ -537,12 +536,12 @@ std::vector<ImportedMeshData> AssetImporterBase::loadGltfMesh(const path_t &path
     cgltf_data *data = nullptr;
     cgltf_result cgltfResult = cgltf_parse_file(&options, path.string().c_str(), &data);
     if (cgltfResult != cgltf_result_success) {
-        LOG_ERROR("ERROR LOADING GLTF AT PATH %s", path.string().c_str());
+        LOG_ERROR("The glTF file %s could not be read.", path.string().c_str());
         return {};
     }
     cgltfResult = cgltf_load_buffers(&options, data, path.string().c_str());
     if (cgltfResult != cgltf_result_success) {
-        LOG_ERROR("ERROR LOADING GLTF BUFFERS AT PATH %s", path.string().c_str());
+        LOG_ERROR("The buffers of the glTF file %s could not be read.", path.string().c_str());
         cgltf_free(data);
         return {};
     }

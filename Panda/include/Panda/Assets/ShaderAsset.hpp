@@ -1,7 +1,3 @@
-//
-// Created by Andreichev Mikhail on 06.11.2024.
-//
-
 #pragma once
 
 #include "Base/AssetHandler.hpp"

@@ -1,13 +1,10 @@
-//
-// Created by Michael Andreichev on 29.11.2023.
-//
-
 #pragma once
 
 #include "PandaUI/Rendering/Font.hpp"
 #include "PandaUI/Rendering/DrawList.hpp"
 #include "PandaUI/Rendering/TextLayout.hpp" // FontWeight
 #include "PandaUI/Rendering/UICamera.hpp"
+#include "PandaUI/Core/Event.hpp"
 #include "PandaUI/Core/View.hpp"
 
 #include <array>
@@ -56,6 +53,10 @@ public:
     bool handleKeyDown(KeyEvent event);
     bool handleKeyUp(KeyEvent event);
     bool handleTextInput(TextInputEvent event);
+    // An event of the window as a host delivers it (Core/Event.hpp): a resize takes the size, the
+    // scale and the safe area of the event, an input event goes to its handler above. true — a
+    // view consumed it.
+    bool handleEvent(const Event &event);
 
     // Global handler for keys not consumed by the focus chain (or when there is no focus) — the basis for
     // accelerators / a hotkey manager. Called after dispatchKeyDown; returned true → consumed.

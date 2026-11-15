@@ -107,11 +107,11 @@ void ToolbarPanelView::addSubviews() {
     };
 
     m_play = makeTransport(Ic::Play, ThemeColor::success);
-    m_play->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Play); });
+    m_play->setOnClick([this] { m_output->toolbarDidTapPlay(); });
     capsule->addSubview(m_play);
 
     m_stop = makeTransport(Ic::Stop, ThemeColor::danger);
-    m_stop->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Edit); });
+    m_stop->setOnClick([this] { m_output->toolbarDidTapStop(); });
     capsule->addSubview(m_stop);
 
     addSubview(capsule);

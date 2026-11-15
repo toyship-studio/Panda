@@ -26,15 +26,13 @@ namespace {
         id<MTLLibrary> library = [device newLibraryWithSource:code options:options error:&error];
         if (library == nil) {
             const char *message = error ? error.localizedDescription.UTF8String : "no error output";
-            LOG_ERROR("SHADER COMPILATION ERROR (%s):\n%s", kind, message);
-            LOG_ERROR_EDITOR("SHADER COMPILATION ERROR (%s):\n%s", kind, message);
+            LOG_ERROR_EDITOR("Shader compilation failed (%s):\n%s", kind, message);
             return nil;
         }
         // spirv-cross renames main → main0 (main is reserved in MSL).
         id<MTLFunction> function = [library newFunctionWithName:@"main0"];
         if (function == nil) { function = [library newFunctionWithName:@"main"]; }
         if (function == nil) {
-            LOG_ERROR("METAL: Entry point main0 not found (%s)", kind);
             LOG_ERROR_EDITOR("METAL: Entry point main0 not found (%s)", kind);
         }
         [library release];
@@ -304,7 +302,6 @@ void *MetalShader::getPipeline(
     [descriptor release];
     if (pipeline == nil) {
         const char *message = error ? error.localizedDescription.UTF8String : "no error output";
-        LOG_ERROR("METAL: Failed to create pipeline state:\n%s", message);
         LOG_ERROR_EDITOR("METAL: Failed to create pipeline state:\n%s", message);
         m_pipelines[key] = nullptr;
         return nullptr;

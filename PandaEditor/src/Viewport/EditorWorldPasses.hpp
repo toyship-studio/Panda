@@ -8,7 +8,7 @@ namespace Panda {
 
 // Editor passes on top of the world frame (after World::update of the same frame): selection
 // wireframe and IDS picking. The renderers and the world traversal are the engine's, the
-// selection — SelectionContext.
+// selection — Editor::selection().
 namespace EditorWorldPasses {
 
     // Wireframe of the selected entities in SELECTED_GEOMETRY_VIEW (GEOMETRY_ONLY mode).

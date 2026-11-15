@@ -257,7 +257,6 @@ private:
     void saveCachedCatalog(const CatalogPage &page);
     void beginInstall(const std::string &id, PluginOperation::Kind kind);
     void downloadAndInstall(const std::string &id, const PluginUpdate &version);
-    void runRemove(const std::string &id);
     void finishOperation(const std::string &id, bool ok, const std::string &message);
     void rescanAndNotify();
     void setNotice(const std::string &title, const std::string &message);

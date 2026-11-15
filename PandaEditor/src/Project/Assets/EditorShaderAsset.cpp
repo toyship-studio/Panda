@@ -1,7 +1,3 @@
-//
-// Created by Andreichev Mikhail on 26.09.2025.
-//
-
 #include "EditorShaderAsset.hpp"
 #include "ShaderCook.hpp"
 

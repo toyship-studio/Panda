@@ -478,9 +478,6 @@ namespace {
 
     /* ------------------------------ Project scope ------------------------------ */
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     // The main world of the project: a world asset of the project (the path is kept relative, with
     // forward slashes).
@@ -488,11 +485,11 @@ namespace {
         auto data = std::make_shared<Panda::ProjectWorldSettings>(store.get<Panda::ProjectWorldSettings>());
         auto emit = [data] { commitSettings<Panda::ProjectWorldSettings>(SettingsScope::Project, *data); };
         uint32_t current = 0;
-        if (Panda::AssetHandlerEditor *handler = assetHandler(); handler && !data->startWorld.empty()) {
+        if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current(); handler && !data->startWorld.empty()) {
             current = static_cast<uint32_t>(handler->getAssetId(handler->getProjectPath() / data->startWorld));
         }
-        addAssetRow(section, "Start World", "scene", current, [data, emit](uint32_t id) {
-            Panda::AssetHandlerEditor *handler = assetHandler();
+        addAssetRow(section, "Start World", "world", current, [data, emit](uint32_t id) {
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             data->startWorld = handler && id ? handler->assetPath(Panda::AssetId(id)).generic_string() : std::string();
             emit();
         });

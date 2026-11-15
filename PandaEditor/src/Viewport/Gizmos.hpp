@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 06.10.2024.
-//
-
 #pragma once
 
 #include "Camera/EditorCamera.hpp"
@@ -43,12 +39,6 @@ public:
 
     bool isUsing();
     bool isHovered() const;
-    Operation getOperation() const {
-        return m_operation;
-    }
-    Space getSpace() const {
-        return m_space;
-    }
 
 private:
     Camera *m_camera;

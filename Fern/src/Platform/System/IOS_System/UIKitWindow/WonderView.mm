@@ -1,10 +1,3 @@
-//
-//  WonderView.swift
-//  Wonderland
-//
-//  Created by Admin on 02.08.2021.
-//
-
 #import "WonderView.h"
 #import "Fern/Events/EventQueue.hpp"
 #import "Fern/Fern.hpp"

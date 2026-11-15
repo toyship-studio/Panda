@@ -204,8 +204,10 @@ public:
             field.setRValReferenceFlag();
         }
         // char[N] — a string (const char[N] coder), not an array of elements.
-        if constexpr (std::is_array_v<FieldType> &&
-                      !std::is_same_v<std::remove_cv_t<std::remove_extent_t<FieldType>>, char>) {
+        if constexpr (
+            std::is_array_v<FieldType> &&
+            !std::is_same_v<std::remove_cv_t<std::remove_extent_t<FieldType>>, char>
+        ) {
             field.setArray(
                 findOrCreateType<std::remove_extent_t<FieldType>>().id,
                 static_cast<uint32_t>(std::extent_v<FieldType>)
@@ -548,7 +550,8 @@ struct TypeEncoder<const char[N]> {
 /** FIXED ARRAY T[N] */
 template<typename T, size_t N>
 struct TypeEncoder<T[N]> {
-    static void encode(const char *key, Encoder *encoder, const TypeInfo &info, const T (&data)[N]) {
+    static void
+    encode(const char *key, Encoder *encoder, const TypeInfo &info, const T (&data)[N]) {
         encoder->beginArray(key);
         auto memberInfo = getTypeRegistry()->findOrCreateType<T>();
         for (const T &item : data) {

@@ -28,7 +28,7 @@ namespace {
     }
 
     const char *scopeText(CommandScope scope) {
-        return scope == CommandScope::World ? "Scene, Hierarchy" : "Editor";
+        return scope == CommandScope::World ? "Viewport, Hierarchy" : "Editor";
     }
 
     std::string chordsText(const std::vector<KeyChord> &chords) {

@@ -79,11 +79,6 @@ namespace {
         section.addContent(std::make_shared<PropertyRow>("Physics", physicsToggle, false));
     }
 
-    template<typename Component>
-    void setTerrainComponentPresence(Panda::World &world, const std::vector<Panda::Entity> &entities, bool add) {
-        toggleComponentPresence<Component>(world, std::unordered_set<Panda::Entity>(entities.begin(), entities.end()), add);
-    }
-
     // ---- Settings sections: the module's world settings (the "terrain" and "flora" sections of
     // .world, World::context<T>) — LOD/ring distances and flora ranges, meters. The store is the
     // context of the world the editor shows.
@@ -154,7 +149,7 @@ namespace {
         const Panda::path_t path = uniqueAssetPath(directory, "Terrain", ".terrain");
         std::ofstream file(path, std::ios::binary);
         if (!file.is_open()) {
-            LOG_ERROR_EDITOR("CAN'T CREATE TERRAIN FILE %s", path.string().c_str());
+            LOG_ERROR_EDITOR("The terrain file %s could not be created.", path.string().c_str());
             return {};
         }
         // cellSize 2: a height detail of 1 m is excessive for the relief, while memory grows
@@ -169,7 +164,7 @@ namespace {
         const Panda::path_t path = uniqueAssetPath(directory, "Terrain3D", ".terrain");
         std::ofstream file(path, std::ios::binary);
         if (!file.is_open()) {
-            LOG_ERROR_EDITOR("CAN'T CREATE TERRAIN FILE %s", path.string().c_str());
+            LOG_ERROR_EDITOR("The terrain file %s could not be created.", path.string().c_str());
             return {};
         }
         Panda::TerrainSerialization::write3D(file, Panda::TerrainData3D::makeFlat(128, 48, 128, 1.f, 8));
@@ -250,7 +245,7 @@ void registerExtensions(EditorExtensions &extensions) {
     terrain2d.component = "terrain2dComponent";
     terrain2d.displayName = "Terrain 2D";
     terrain2d.icon = Ic::Terrain;
-    terrain2d.setPresence = setTerrainComponentPresence<Panda::Terrain2DComponent>;
+    terrain2d.setPresence = setComponentPresence<Panda::Terrain2DComponent>;
     terrain2d.build = [](CollapsibleSection &section, const ComponentInspectorContext &context) {
         buildTerrainComponentSection<Panda::Terrain2DComponent>(section, context, "terrain2d");
     };
@@ -260,7 +255,7 @@ void registerExtensions(EditorExtensions &extensions) {
     terrain3d.component = "terrain3dComponent";
     terrain3d.displayName = "Terrain 3D";
     terrain3d.icon = Ic::Terrain;
-    terrain3d.setPresence = setTerrainComponentPresence<Panda::Terrain3DComponent>;
+    terrain3d.setPresence = setComponentPresence<Panda::Terrain3DComponent>;
     terrain3d.build = [](CollapsibleSection &section, const ComponentInspectorContext &context) {
         buildTerrainComponentSection<Panda::Terrain3DComponent>(section, context, "terrain3d");
     };

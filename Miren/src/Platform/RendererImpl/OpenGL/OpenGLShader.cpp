@@ -1,7 +1,3 @@
-//
-// Created by Admin on 11.02.2022.
-//
-
 #include "OpenGLShader.hpp"
 #include "Foundation/Logger.hpp"
 #include "Miren/Base.hpp"
@@ -100,15 +96,13 @@ bool OpenGLShader::checkCompileErrors(unsigned int shader, const std::string &ty
         glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
         if (!success) {
             glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
-            LOG_ERROR("SHADER COMPILATION ERROR of type: %s\n%s", type.c_str(), infoLog);
-            LOG_ERROR_EDITOR("SHADER COMPILATION ERROR of type: %s\n%s", type.c_str(), infoLog);
+            LOG_ERROR_EDITOR("Shader compilation failed (%s):\n%s", type.c_str(), infoLog);
         }
     } else {
         glGetProgramiv(shader, GL_LINK_STATUS, &success);
         if (!success) {
             glGetProgramInfoLog(shader, 1024, nullptr, infoLog);
-            LOG_ERROR("PROGRAM_LINKING_ERROR of type: %s\n%s", type.c_str(), infoLog);
-            LOG_ERROR_EDITOR("PROGRAM_LINKING_ERROR of type: %s\n%s", type.c_str(), infoLog);
+            LOG_ERROR_EDITOR("Shader program linking failed (%s):\n%s", type.c_str(), infoLog);
         }
     }
     return success;

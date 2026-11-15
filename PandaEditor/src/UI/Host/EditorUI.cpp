@@ -21,7 +21,7 @@ namespace Panda {
 
 namespace {
     PandaUI::TextureHandle makeFontAtlasTexture(void *userData, const PandaUI::FontAtlas::AtlasData &atlas) {
-        return static_cast<PandaUIImplMiren *>(userData)->createTextureRGBA8(atlas.rgbaPixels, atlas.width, atlas.height);
+        return static_cast<PandaUIMirenRenderer *>(userData)->createTextureRGBA8(atlas.rgbaPixels, atlas.width, atlas.height);
     }
 } // namespace
 
@@ -237,7 +237,7 @@ void EditorUI::loadBundledFonts() {
                 const auto *bytes = static_cast<const unsigned char *>(data.memory.data);
                 job.bytes.assign(bytes, bytes + data.size);
             } else {
-                LOG_ERROR("BUNDLED FONT NOT FOUND: %s", path);
+                LOG_ERROR("The bundled font %s is missing from the resources of the editor.", path);
             }
             data.memory.release();
             job.targets.push_back(role == 0 ? &m_sansRole.bundled[w] : &m_monoRole.bundled[w]);
@@ -408,7 +408,7 @@ void EditorUI::applyIconOverrides(const std::vector<path_t> &files) {
                         LOG_ERROR_EDITOR("Icon %s could not be replaced", token.c_str());
                     }
                 } else {
-                    added.set(token, m_renderer.createTextureFromDecoded(std::move(create)));
+                    added.set(token, m_renderer.createTexture(std::move(create)));
                 }
             }
         );
@@ -431,7 +431,7 @@ Editor::IconLibrary EditorUI::loadIconLibrary(const std::vector<path_t> &folders
         std::error_code error;
         std::filesystem::directory_iterator files(folder, error);
         if (error) {
-            LOG_ERROR("EDITOR ICONS FOLDER NOT FOUND: %s", folder.string().c_str());
+            LOG_ERROR("The icon folder %s is missing from the resources of the editor.", folder.string().c_str());
             continue;
         }
         for (const std::filesystem::directory_entry &file : files) {
@@ -443,7 +443,7 @@ Editor::IconLibrary EditorUI::loadIconLibrary(const std::vector<path_t> &folders
                 PandaAsync::JobDesc{"icon.decode"},
                 [path](PandaAsync::Context &) { return Panda::AssetImporterBase::load2DTextureFile(path); },
                 [this, &library, name](Miren::TextureCreate &&create) {
-                    library.set(name, m_renderer.createTextureFromDecoded(std::move(create)));
+                    library.set(name, m_renderer.createTexture(std::move(create)));
                 }
             );
         }

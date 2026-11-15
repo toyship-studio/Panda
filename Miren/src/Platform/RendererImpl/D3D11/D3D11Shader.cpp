@@ -30,8 +30,7 @@ namespace {
             D3DCompile(source, sourceSize, nullptr, nullptr, nullptr, "main", target, flags, 0, &bytecode, &errors);
         if (FAILED(result)) {
             const char *message = errors ? static_cast<const char *>(errors->GetBufferPointer()) : "no error output";
-            LOG_ERROR("SHADER COMPILATION ERROR (%s):\n%s", target, message);
-            LOG_ERROR_EDITOR("SHADER COMPILATION ERROR (%s):\n%s", target, message);
+            LOG_ERROR_EDITOR("Shader compilation failed (%s):\n%s", target, message);
             if (errors) { errors->Release(); }
             if (bytecode) { bytecode->Release(); }
             return nullptr;

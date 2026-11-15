@@ -18,8 +18,8 @@ class World;
 
 namespace Editor {
 
-// Intents of the hierarchy panel — implemented by the coordinator (EditorController). The identity
-// of entities is the engine UUID (0 = the synthetic "Scene" root). No reactive machinery: explicit
+// Intents of the hierarchy panel — implemented by Editor::EntityActions. The identity
+// of entities is the engine UUID (0 = the root: the world itself). No reactive machinery: explicit
 // named calls.
 enum class PrimitiveKind { Cube, Sphere, Capsule, Plane, Cylinder };
 
@@ -39,7 +39,6 @@ public:
     virtual void hierarchyDidRequestPaste() = 0;
     virtual void hierarchyDidRequestDelete(const std::vector<Panda::UUID> &entityIds) = 0;
     virtual void hierarchyDidReparent(const std::vector<Panda::UUID> &itemIds, Panda::UUID newParentId) = 0; // 0 = to root
-    virtual void hierarchyDidRequestMaximize() = 0; // zoom overlay of the left dock (chrome)
 };
 
 // VIEW: the hierarchy panel. The tree is read directly from the engine World (TreeItem = UUID), and

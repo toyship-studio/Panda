@@ -81,7 +81,7 @@ bool commitComponentText(
     }
     ComponentTextUpdate command(targets, type, text);
     if (command.isEmpty()) { return false; }
-    world.getCommandHistory().SAVE(command, true);
+    world.getCommandHistory().execute(command);
     world.setChanged();
     return true;
 }

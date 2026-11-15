@@ -121,7 +121,7 @@ forest comes from the Occlusion Volume.
   camera, terrain uses `collect()` without mutations, sprites, blended geometry and the sky are
   skipped. The view of cascade 0 gets a `touch` every frame (a view without draws is not executed,
   which leaves ghost shadows).
-- Depth shaders (`StaticResources`, the end of the list): `shadow_depth[_instanced|_terrain].vert`
+- Depth shaders (`StaticResources`, `createShadowDepth`): `shadow_depth[_instanced|_terrain].vert`
   plus `shadow_depth[_masked].frag`. Masked (alphaMode == 1): the renderer takes the alpha
   threshold and multiplier from the material fields by the naming convention of the lit template
   and passes the UBO `SHADOW_MASK`; the shader reads only `baseColorTexture`. Transparent geometry
@@ -363,8 +363,9 @@ light to occlude and only the transmittance addition inside the CSM distance sta
 
 ### Pitfalls
 
-- `StaticResources` ids are appended at the end only: a volume placeholder inserted in the middle
-  of `initStaticResources` shifted the ids of built-in assets and broke project materials.
+- The ids of the built-in assets are named constants (`BuiltinAsset`), not a count in the order
+  of creation: a volume placeholder once inserted in the middle of `initStaticResources` shifted
+  every id after it and broke project materials.
 - A billboard must sample the volume with the same offset as the mesh (along the normal),
   otherwise the joint between the zones reads as a step.
 - Sun transmittance across chunks uses integer ray shifts only (see the chunk bake).

@@ -25,6 +25,7 @@
 #include <thread>
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace Miren {
@@ -253,7 +254,7 @@ struct Context {
                     break;
                 }
                 default: {
-                    LOG_CRITICAL("UNKNOWN COMMAND");
+                    LOG_CRITICAL("MIREN: Unknown renderer command");
                 }
             }
         }
@@ -624,7 +625,7 @@ struct Context {
     }
 
     void swap() {
-        Foundation::swap(m_render, m_submit);
+        std::swap(m_render, m_submit);
     }
 
     // Main thread

@@ -25,7 +25,8 @@ or without it. This page lists what a module writes and what it must not change.
   field has to change meaning, add a new one and read the old one into it in `decode`.
 - **The numeric id of an asset kind.** It sits in every sidecar and in the runtime registry.
 - **The ids of static assets.** A project material stores the id of its shader; a module
-  shader keeps its id forever, and a removed shader keeps its slot reserved.
+  shader keeps its id forever, and the id of a removed shader is never given to another asset.
+  Name every id as a constant; the engine refuses to create two assets under one id.
 - **The semantics of a value.** Units, ranges, the meaning of an enum value (the body type
   0/1/2 of a rigid body): files written with the old meaning are everywhere.
 

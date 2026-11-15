@@ -1,7 +1,7 @@
 #include "Viewport/EditorHelpersRenderer.hpp"
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
-#include <Panda/GameLogic/SelectionContext.hpp>
+#include <PandaEditorKit/Selection.hpp>
 #include <Panda/Renderer/MirenViewDistribution.hpp>
 
 namespace Panda {
@@ -98,7 +98,7 @@ void EditorHelpersRenderer::submitIcon(
 void EditorHelpersRenderer::render(World *world, const glm::mat4 &viewProj, Size viewportSize) {
     if (!world) { return; }
 
-    const std::unordered_set<UUID> selectedIds = SelectionContext::getSelectedEntities();
+    const std::unordered_set<UUID> &selectedIds = Editor::selection().entityIds();
 
     auto directionalLights = world->getAllEntitiesWith<IdComponent, DirectionalLightComponent, TransformComponent>();
     for (auto entityHandle : directionalLights) {

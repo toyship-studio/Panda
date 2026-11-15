@@ -3,7 +3,6 @@
 #include "Panda/WorldCommands/WorldCommand.hpp"
 #include "Panda/GameLogic/Entity.hpp"
 #include "Panda/GameLogic/Components/TransformComponent.hpp"
-#include "Panda/GameLogic/SelectionContext.hpp"
 
 namespace Panda {
 
@@ -48,7 +47,6 @@ public:
 private:
     bool apply(std::unordered_map<UUID, glm::mat4> &transforms) {
         PND_ASSERT(!m_entities.empty(), "WRONG TRANSFORM COMMAND DATA");
-        bool selectionsUpdated = false;
         for (auto entity : m_entities) {
             if (!entity.isValid()) { return false; }
             auto &transformComponent = entity.getTransform();
@@ -62,9 +60,7 @@ private:
             } else {
                 entity.transformUpdated(); // the running systems move what they keep for the entity
             }
-            selectionsUpdated |= SelectionContext::isEntitySelected(entity.getId());
         }
-        if (selectionsUpdated) { SelectionContext::updateValues(); }
         return true;
     }
 

@@ -1,7 +1,3 @@
-//
-// Created by Admin on 26.01.2022.
-//
-
 #pragma once
 
 #include "Fern/Window/Window.hpp"

@@ -186,12 +186,12 @@ void EditorMcp::update() {
 
 void EditorMcp::syncServer() {
     int port = 0;
-    if (m_editor.m_launch.mcpPort > 0 && m_editor.m_launch.mcpPort < 65536) {
+    if (m_editor.launch().mcpPort > 0 && m_editor.launch().mcpPort < 65536) {
         // Asked for on the command line: the server is there whatever is open (the start screen
         // too) — work on the editor itself.
-        port = m_editor.m_launch.mcpPort;
+        port = m_editor.launch().mcpPort;
     } else if (hasProject()) {
-        const ProjectMcpSettings &settings = m_editor.m_documents.projectSettings().get<ProjectMcpSettings>();
+        const ProjectMcpSettings &settings = m_editor.documents().projectSettings().get<ProjectMcpSettings>();
         if (settings.enabled && settings.port > 0 && settings.port < 65536) { port = settings.port; }
     }
     // Decided once per change: a port that could not be taken is not tried again every frame.
@@ -228,12 +228,12 @@ void EditorMcp::performExit() {
 }
 
 bool EditorMcp::hasProject() const {
-    return m_editor.m_loader.hasOpenedProject();
+    return m_editor.project().hasOpenedProject();
 }
 
 std::vector<std::string> EditorMcp::dirtyDocuments() const {
     std::vector<std::string> titles;
-    const FileDocumentList files = m_editor.m_documents.list();
+    const FileDocumentList files = m_editor.documents().list();
     for (FileDocument *file : files.all) {
         if (file->isDirty()) { titles.push_back(file->title()); }
     }
@@ -241,7 +241,7 @@ std::vector<std::string> EditorMcp::dirtyDocuments() const {
 }
 
 std::string EditorMcp::cameraJson() const {
-    CameraController &camera = m_editor.m_viewports.cameraController();
+    CameraController &camera = m_editor.viewports().cameraController();
     rapidjson::StringBuffer buffer;
     JsonWriter writer(buffer);
     writer.SetMaxDecimalPlaces(3);
@@ -446,7 +446,7 @@ Mcp::PendingResult EditorMcp::status() {
         writer.EndObject();
         return Mcp::ready(textResult(takeText(buffer)));
     }
-    const path_t &projectPath = m_editor.m_loader.getOpenedProjectPath();
+    const path_t &projectPath = m_editor.project().getOpenedProjectPath();
     writer.Key("project");
     writer.StartObject();
     writer.Key("name");
@@ -456,18 +456,18 @@ Mcp::PendingResult EditorMcp::status() {
     writer.EndObject();
 
     writer.Key("state");
-    writer.String(m_editor.m_sceneState == SceneState::PLAY ? "play" : "edit");
+    writer.String(m_editor.isPlaying() ? "play" : "edit");
 
     writer.Key("worlds");
     writer.StartArray();
-    for (const std::unique_ptr<WorldFile> &world : m_editor.m_documents.worlds()) {
+    for (const std::unique_ptr<WorldFile> &world : m_editor.documents().worlds()) {
         writer.StartObject();
         writer.Key("file"); // relative to the project; empty — a new world that has no file yet
         std::error_code error;
         const path_t relative = world->path().empty() ? path_t() : std::filesystem::relative(world->path(), projectPath, error);
         writeText(writer, error ? world->path().string() : relative.generic_string());
         writer.Key("active");
-        writer.Bool(world.get() == m_editor.m_documents.activeWorld());
+        writer.Bool(world.get() == m_editor.documents().activeWorld());
         writer.Key("unsaved");
         writer.Bool(world->isDirty());
         writer.Key("changedOnDisk");
@@ -481,7 +481,7 @@ Mcp::PendingResult EditorMcp::status() {
     for (const std::string &title : dirtyDocuments()) { writeText(writer, title); }
     writer.EndArray();
 
-    const EditorViewports &viewports = m_editor.m_viewports;
+    const EditorViewports &viewports = m_editor.viewports();
     writer.Key("viewports");
     writer.StartObject();
     writer.Key("rendering"); // one viewport renders per frame: the one whose tab is in front
@@ -502,8 +502,8 @@ Mcp::PendingResult EditorMcp::status() {
     const std::string camera = cameraJson();
     writer.RawValue(camera.data(), camera.size(), rapidjson::kObjectType);
 
-    const Renderer3D::Statistics stats3d = m_editor.m_currentWorld->getRenderer3D().getStats();
-    const Renderer2D::Statistics stats2d = m_editor.m_currentWorld->getRenderer2D().getStats();
+    const Renderer3D::Statistics stats3d = m_editor.shownWorld()->getRenderer3D().getStats();
+    const Renderer2D::Statistics stats2d = m_editor.shownWorld()->getRenderer2D().getStats();
     const Miren::GpuStats gpu = Miren::getGpuStats();
     const Editor::SystemStats system = Editor::sampleSystemStats();
     const double megabyte = 1024.0 * 1024.0;
@@ -527,7 +527,7 @@ Mcp::PendingResult EditorMcp::status() {
 
     writer.Key("shaderFeatures");
     writer.StartArray();
-    for (const std::string &feature : m_editor.m_documents.projectSettings().get<ProjectRenderingSettings>().features) {
+    for (const std::string &feature : m_editor.documents().projectSettings().get<ProjectRenderingSettings>().features) {
         writeText(writer, feature);
     }
     writer.EndArray();
@@ -576,11 +576,11 @@ Mcp::PendingResult EditorMcp::logs(const rapidjson::Value &arguments) {
 /* ------------------------------ screenshot ------------------------------ */
 
 void EditorMcp::showViewport(ViewportKind view) {
-    if (!m_editor.m_editorController) { return; }
+    if (!m_editor.controller()) { return; }
     if (view == ViewportKind::Scene) {
-        m_editor.m_editorController->showSceneView();
+        m_editor.controller()->showSceneView();
     } else {
-        m_editor.m_editorController->openGameView();
+        m_editor.controller()->openGameView();
     }
 }
 
@@ -592,7 +592,7 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor: only the `window` view can be shot"));
     }
     if (view.empty()) {
-        shot->view = m_editor.m_sceneState == SceneState::PLAY ? ViewportKind::Game : ViewportKind::Scene;
+        shot->view = m_editor.isPlaying() ? ViewportKind::Game : ViewportKind::Scene;
     } else if (view == "scene") {
         shot->view = ViewportKind::Scene;
     } else if (view == "game") {
@@ -600,7 +600,7 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
     } else if (view == "window") {
         shot->window = true;
     } else if (view == "settings") {
-        if (m_editor.m_editorUI.auxiliaryWindow() == nullptr) {
+        if (m_editor.ui().auxiliaryWindow() == nullptr) {
             return Mcp::ready(Mcp::ToolResult::error("The Settings window is closed: open it with `show` or the command settings.open"));
         }
         shot->window = true;
@@ -619,7 +619,7 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         shot->file = path_t(file);
         if (shot->file.is_relative()) {
             if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("file is an absolute path when no project is open")); }
-            shot->file = m_editor.m_loader.getOpenedProjectPath() / shot->file;
+            shot->file = m_editor.project().getOpenedProjectPath() / shot->file;
         }
         shot->file = shot->file.lexically_normal();
         if (shot->file.extension() != ".png") { return Mcp::ready(Mcp::ToolResult::error("file is a .png file")); }
@@ -627,7 +627,7 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         return Mcp::ready(Mcp::ToolResult::error("Nothing to answer with: image is false and there is no file"));
     }
     shot->notBefore = nowSeconds() + std::clamp(Mcp::numberArgument(arguments, "wait", 0.0), 0.0, 30.0);
-    if (hasProject()) { shot->shownBefore = m_editor.m_viewports.live(); }
+    if (hasProject()) { shot->shownBefore = m_editor.viewports().live(); }
     return [this, shot]() { return stepScreenshot(*shot); };
 }
 
@@ -648,7 +648,7 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
         if (!captureWindow(shot)) { return fail("The window of the editor has no size"); }
         return std::nullopt;
     }
-    const EditorViewports &viewports = m_editor.m_viewports;
+    const EditorViewports &viewports = m_editor.viewports();
     const ViewportSurface &surface = viewports.surface(shot.view);
     const bool live = viewports.live() == shot.view && surface.isReady() && surface.pixelWidth() > 0 && surface.pixelHeight() > 0;
     ++shot.frames;
@@ -688,7 +688,7 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
 }
 
 bool EditorMcp::captureWindow(Screenshot &shot) {
-    Fern::Window *window = shot.settings ? m_editor.m_editorUI.auxiliaryWindow() : m_editor.m_window;
+    Fern::Window *window = shot.settings ? m_editor.ui().auxiliaryWindow() : m_editor.window();
     if (window == nullptr) { return false; }
     const Fern::Size size = window->getSize();
     const Fern::Size dpi = window->getDpi();
@@ -718,9 +718,9 @@ bool EditorMcp::captureWindow(Screenshot &shot) {
     Miren::setViewClear(Views::CAPTURE_VIEW, 0x000000ff);
     Miren::setViewFrameBuffer(Views::CAPTURE_VIEW, m_windowCaptureBuffer);
     if (shot.settings) {
-        m_editor.m_editorUI.renderAuxiliaryTo(Views::CAPTURE_VIEW);
+        m_editor.ui().renderAuxiliaryTo(Views::CAPTURE_VIEW);
     } else {
-        m_editor.m_editorUI.renderTo(Views::CAPTURE_VIEW);
+        m_editor.ui().renderTo(Views::CAPTURE_VIEW);
     }
 
     shot.width = width;
@@ -854,7 +854,7 @@ Mcp::PendingResult EditorMcp::save(const rapidjson::Value &arguments) {
 
 Mcp::PendingResult EditorMcp::play() {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
-    if (m_editor.m_sceneState == SceneState::PLAY) { return Mcp::ready(textResult("The game is playing already.")); }
+    if (m_editor.isPlaying()) { return Mcp::ready(textResult("The game is playing already.")); }
     const uint64_t from = LogHistory::nextSequence();
     SystemTools::Unattended unattended;
     m_editor.play();
@@ -863,7 +863,7 @@ Mcp::PendingResult EditorMcp::play() {
 
 Mcp::PendingResult EditorMcp::stop() {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
-    if (m_editor.m_sceneState == SceneState::EDIT) { return Mcp::ready(textResult("The game is not playing.")); }
+    if (!m_editor.isPlaying()) { return Mcp::ready(textResult("The game is not playing.")); }
     const uint64_t from = LogHistory::nextSequence();
     SystemTools::Unattended unattended;
     m_editor.stop();
@@ -872,7 +872,7 @@ Mcp::PendingResult EditorMcp::stop() {
 
 Mcp::PendingResult EditorMcp::camera(const rapidjson::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
-    CameraController &controller = m_editor.m_viewports.cameraController();
+    CameraController &controller = m_editor.viewports().cameraController();
     double values[3];
     if (arguments.HasMember("position")) {
         if (!Mcp::numbersArgument(arguments, "position", values, 3)) {
@@ -894,7 +894,7 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     const std::string name = Mcp::stringArgument(arguments, "path");
     if (name.empty()) { return Mcp::ready(Mcp::ToolResult::error("path is the .world file to open")); }
     path_t file(name);
-    if (file.is_relative()) { file = m_editor.m_loader.getOpenedProjectPath() / file; }
+    if (file.is_relative()) { file = m_editor.project().getOpenedProjectPath() / file; }
     file = file.lexically_normal();
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error)) {
@@ -903,11 +903,11 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     const uint64_t from = LogHistory::nextSequence();
     SystemTools::Unattended unattended;
     // The game plays a copy of the active world: it ends before another world takes that place.
-    if (m_editor.m_sceneState != SceneState::EDIT) { m_editor.stop(); }
-    if (m_editor.m_documents.openWorld(file) == nullptr) {
+    m_editor.stop();
+    if (m_editor.documents().openWorld(file) == nullptr) {
         return Mcp::ready(Mcp::ToolResult::error("The world could not be opened: " + file.string() + "\n" + logSince(from)));
     }
-    if (m_editor.m_editorController) { m_editor.m_editorController->showSceneView(); }
+    if (m_editor.controller()) { m_editor.controller()->showSceneView(); }
     return Mcp::ready(textResult("Opened " + file.filename().string() + ".\n" + logSince(from)));
 }
 
@@ -997,13 +997,13 @@ namespace {
 // Input made in place of the user goes where the user's would: to the Settings window while it
 // is open (it is in front of the main one), to the main window otherwise.
 PandaUI::Context &EditorMcp::inputContext() const {
-    PandaUI::Context *settings = m_editor.m_editorUI.auxiliaryContext();
-    return settings != nullptr ? *settings : m_editor.m_editorUI.context();
+    PandaUI::Context *settings = m_editor.ui().auxiliaryContext();
+    return settings != nullptr ? *settings : m_editor.ui().context();
 }
 
 Fern::Window *EditorMcp::inputWindow() const {
-    Fern::Window *settings = m_editor.m_editorUI.auxiliaryWindow();
-    return settings != nullptr ? settings : m_editor.m_window;
+    Fern::Window *settings = m_editor.ui().auxiliaryWindow();
+    return settings != nullptr ? settings : m_editor.window();
 }
 
 std::string EditorMcp::pointerJson() const {
@@ -1036,13 +1036,13 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
     auto next = std::make_shared<size_t>(0);
     // The real mouse steps aside for the gesture and comes back when the call is over — however
     // it ends: a client that went away mid-gesture drops the pending answer, and the guard with it.
-    m_editor.m_editorUI.setPointerOverridden(true);
-    EditorUI *ui = &m_editor.m_editorUI;
+    m_editor.ui().setPointerOverridden(true);
+    EditorUI *ui = &m_editor.ui();
     std::shared_ptr<void> release(nullptr, [ui](void *) { ui->setPointerOverridden(false); });
     return [this, queue, next, release]() -> std::optional<Mcp::ToolResult> {
         PandaUI::Context &context = inputContext();
         if (*next >= queue->size()) {
-            m_editor.m_editorUI.setPointerOverridden(false);
+            m_editor.ui().setPointerOverridden(false);
             Mcp::ToolResult result;
             result.text = pointerJson();
             return result;
@@ -1253,7 +1253,7 @@ Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
 }
 
 Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
-    Editor::Commands &commands = m_editor.m_commands;
+    Editor::Commands &commands = m_editor.commands();
     const std::string id = Mcp::stringArgument(arguments, "id");
     if (id.empty()) {
         rapidjson::StringBuffer buffer;
@@ -1304,10 +1304,10 @@ Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
 }
 
 Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
-    if (!hasProject() || !m_editor.m_editorController) {
+    if (!hasProject() || !m_editor.controller()) {
         return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor"));
     }
-    Editor::EditorController &controller = *m_editor.m_editorController;
+    Editor::EditorController &controller = *m_editor.controller();
     SystemTools::Unattended unattended;
     const std::string panel = Mcp::stringArgument(arguments, "panel");
     const std::string settings = Mcp::stringArgument(arguments, "settings");
@@ -1337,9 +1337,9 @@ Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
         ));
     }
     if (!asset.empty()) {
-        auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());
+        auto *handler = AssetHandlerEditor::current();
         path_t file(asset);
-        if (file.is_relative()) { file = m_editor.m_loader.getOpenedProjectPath() / file; }
+        if (file.is_relative()) { file = m_editor.project().getOpenedProjectPath() / file; }
         const AssetId id = handler != nullptr ? handler->getAssetId(file.lexically_normal()) : AssetId(0);
         if (!id) {
             return Mcp::ready(Mcp::ToolResult::error(
@@ -1350,7 +1350,7 @@ Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
         return Mcp::ready(textResult("The asset is selected: its tab is open."));
     }
     if (!entity.empty()) {
-        Entity found = m_editor.m_currentWorld->findByTag(entity.c_str());
+        Entity found = m_editor.shownWorld()->findByTag(entity.c_str());
         if (!found.isValid()) { return Mcp::ready(Mcp::ToolResult::error("No entity is named " + entity)); }
         controller.selectEntity(found.getId());
         return Mcp::ready(textResult("The entity is selected: its tab is open."));

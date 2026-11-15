@@ -67,7 +67,8 @@ documentation site (`context/infrastructure.md`, section 4).
   built on it).
 - The scripting ABI stays compact: large subsystems (PandaUI) are SDK libraries; only frame
   data, events and handles cross the ABI.
-- New `StaticResources` ids are appended to the end of the sequence only (a contract with the
-  cooked assets of projects). The engine blocks (`PANDA_*`, `ShaderBlocks.hpp`) and the
+- The id of a built-in asset is named (`BuiltinAsset::…` in `StaticResources.hpp`) and means one
+  thing forever — a contract with the files of projects: a new asset takes a new number, a
+  retired one leaves its number unused. The engine blocks (`PANDA_*`, `ShaderBlocks.hpp`) and the
   `MATERIAL_FIELDS` of shader templates take new fields at the end only; a block, a field, a
   feature or a system texture is never renamed (`shader-features.md`).

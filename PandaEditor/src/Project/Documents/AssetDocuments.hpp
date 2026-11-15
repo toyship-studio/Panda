@@ -28,19 +28,12 @@ public:
     // --- Dirty state and saving (editor tabs, Cmd+S, close gates) ---
     bool isAssetChanged(AssetId id);
     bool saveAsset(AssetId id);
-    bool hasUnsavedAssets();
-    int saveChangedAssets();
-    std::vector<AssetId> collectChangedAssets(); // for the adaptive texts of the save dialogs
 
     // --- Undo stack of a document (one per document; the world has its own in World). Lives for
     // the project session; reload and operations that recreate the data reset it — the history
     // describes the previous data. ---
     CommandHistory &undoStackFor(AssetId id) {
         return m_undoStacks[id];
-    }
-    CommandHistory *undoStackIfExists(AssetId id) {
-        auto it = m_undoStacks.find(id);
-        return it != m_undoStacks.end() ? &it->second : nullptr;
     }
     void clearUndoStack(AssetId id) {
         m_undoStacks.erase(id);

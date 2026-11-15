@@ -44,7 +44,7 @@ struct ModuleRef final : public Rain::Codable {
 // EditorSettingsTypes registers these). Paths are relative to the project, with forward slashes.
 
 // "world": the main world of the project. The editor opens it when the session has no worlds;
-// the scene list and the start world of the export are ahead (context/roadmap.md).
+// the list of worlds and the start world of the export are ahead (context/roadmap.md).
 struct ProjectWorldSettings final : public Rain::Codable {
     std::string startWorld;
 

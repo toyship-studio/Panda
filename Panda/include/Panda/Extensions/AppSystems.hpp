@@ -36,9 +36,6 @@ public:
     // Driven by Application: live on construction (starts the registered systems, in order), not
     // live on destruction (stops them, in reverse order).
     void setLive(bool live);
-    bool isLive() const {
-        return m_live;
-    }
     void tick(double deltaTime);
 
 private:

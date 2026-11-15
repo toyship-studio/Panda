@@ -1,7 +1,3 @@
-//
-// Created by Admin on 22.07.2023.
-//
-
 #pragma once
 
 #include "Panda/Renderer/Tonemap.hpp"

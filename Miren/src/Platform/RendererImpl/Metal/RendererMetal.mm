@@ -50,7 +50,7 @@ RendererMetal::RendererMetal(Fern::GraphicsContext *ctx)
     , m_depthStateNone(nullptr) {
     PND_ASSERT(m_device != nullptr, "Metal renderer requires a Metal drawing context");
     m_frameSemaphore = (void *)dispatch_semaphore_create(METAL_FRAMES_IN_FLIGHT);
-    LOG_INFO("METAL RENDERER CREATED");
+    LOG_INFO("METAL: Renderer created");
 }
 
 RendererMetal::~RendererMetal() {
@@ -338,7 +338,7 @@ void RendererMetal::addInput(ProgramHandle program, const PassInput &input) {
         case RenderPassInputType::Count:
             return;
     }
-    LOG_ERROR("PASS INPUT TYPE IS UNDEFINED");
+    LOG_ERROR("METAL: A view input of an unknown type is ignored");
 }
 
 void RendererMetal::endEncoder() {

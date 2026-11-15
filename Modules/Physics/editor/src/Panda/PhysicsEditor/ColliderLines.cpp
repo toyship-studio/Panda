@@ -1,6 +1,6 @@
 #include "Panda/PhysicsEditor/ColliderLines.hpp"
 
-#include <Panda/GameLogic/SelectionContext.hpp>
+#include <PandaEditorKit/Selection.hpp>
 #include <Panda/GameLogic/Systems/RenderSystem.hpp>
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Physics/MeshColliderGeometry.hpp>
@@ -243,7 +243,7 @@ void appendColliderLines(World &world, std::vector<HelperLine> &lines, const glm
             if (!entity.isValid()) { return; }
             Physics::MeshColliderSource source;
             if (!Physics::meshColliderSource(entity, collider, source)) { return; }
-            const bool selected = SelectionContext::isEntitySelected(idc.id);
+            const bool selected = Editor::selection().isSelected(idc.id);
             const MeshOutline *outline = meshOutlineOf(source, selected && collider.convex);
             if (outline == nullptr) { return; }
             const glm::mat4 matrix = world.getWorldSpaceTransformMatrix(entity);

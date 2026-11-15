@@ -1,5 +1,8 @@
 #pragma once
 
+#include <Foundation/Foundation.hpp>
+#include <Panda/Extensions/Settings.hpp>
+#include <Panda/WorldCommands/WorldCommand.hpp>
 #include <PandaEditorKit/Document.hpp>
 #include <PandaUI/PandaUI.hpp>
 
@@ -8,7 +11,13 @@
 #include <string>
 #include <vector>
 
+namespace Panda {
+class EditorLayer;
+}
+
 namespace Editor {
+
+class Commands;
 
 // The content of the Settings window (a second window of the editor, over the main one): the
 // pages on the left — the editor settings, the project settings, the keymap — and the document
@@ -27,9 +36,6 @@ public:
     SettingsWindowView(std::vector<Page> pages, std::function<void()> onClose);
 
     void selectPage(int index);
-    int selectedPage() const {
-        return m_selected;
-    }
     Document *selectedDocument() const;
 
     void update(double deltaTime) override; // the footer follows the dirty state of the document
@@ -53,6 +59,59 @@ private:
     int m_selected = -1;
     bool m_footerShown = false;
     std::vector<bool> m_dirtyShown;
+};
+
+enum class SettingsPage { Editor, Project, Keymap }; // the order of the pages
+
+// The Settings window: a second window of the editor over the main one, with the editor settings,
+// the project settings and the keymap as its pages. What is edited there shows in the viewport
+// behind it at once. The window itself is the application's (EditorLayer::openSettingsWindow);
+// its content and the documents of its pages are made here and live while it is open: the project
+// settings — a document of project.json with its own undo stack, dirty until saved; the editor
+// settings and the keymap — applied and written by every edit.
+class SettingsWindow final {
+public:
+    SettingsWindow(Panda::EditorLayer &app, Commands &commands);
+    ~SettingsWindow();
+
+    // The window on the page: opened, or brought forward. false — the window could not be made.
+    bool show(SettingsPage page);
+    // The same with a section of the page in view (the pages of settings; empty — as is).
+    void show(SettingsPage page, const std::string &section);
+    void close();
+    // Escape arrives from inside the key dispatch of the window's own UI, which closing destroys:
+    // the owner closes the window on the next frame.
+    void requestClose();
+    bool isCloseRequested() const;
+
+    // The window got or lost the keyboard. While it has it, Save and Undo of the editor mean the
+    // document of the page in front (focusedDocument; nullptr — the keyboard is elsewhere).
+    void setFocused(bool focused);
+    bool isFocused() const;
+    Document *focusedDocument() const;
+    bool owns(const Document *document) const; // one of the documents of the open window
+
+    // What changed outside the window, for the pages that show it.
+    void settingsFileReloaded(Panda::SettingsScope scope); // settings.json / project.json was reread
+    void storesChanged(); // the pages of settings read their stores again (the parts of modules were loaded)
+    void keymapChanged();
+    // An edit of the project scope as an undo step of its page. false — the window is closed:
+    // nothing keeps a history, the caller applies the command as it is.
+    bool commitProjectSettings(Foundation::Shared<Panda::WorldCommand> command);
+
+private:
+    Document *document(SettingsPage page) const; // nullptr — the window is closed
+
+    struct Open {
+        std::unique_ptr<Document> editor, project, keymap;
+        std::shared_ptr<SettingsWindowView> view;
+        bool focused = false;
+        bool closeRequested = false;
+    };
+
+    Panda::EditorLayer &m_app;
+    Commands &m_commands;
+    std::unique_ptr<Open> m_open; // while the window is open
 };
 
 } // namespace Editor

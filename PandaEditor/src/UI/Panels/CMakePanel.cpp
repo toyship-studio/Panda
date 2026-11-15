@@ -1,7 +1,5 @@
 #include "UI/Panels/CMakePanel.hpp"
 
-#include "Project/Build/ProjectBuilder.hpp"
-#include "Project/Export/ExportProjectTarget.hpp"
 #include <PandaEditorKit/Widgets/Icons.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -69,11 +67,16 @@ private:
     std::shared_ptr<Label> m_text;
 };
 
-CMakePanelView::CMakePanelView(CMakePanelOutput *output)
-    : m_output(output) {
+CMakePanelView::CMakePanelView(Panda::ProjectBuilds &builds)
+    : m_builds(builds) {
     addSubviews();
     setupLayout();
     setupStyle();
+    m_builds.setOutput(this);
+}
+
+CMakePanelView::~CMakePanelView() {
+    m_builds.setOutput(nullptr);
 }
 
 void CMakePanelView::addSubviews() {
@@ -100,11 +103,9 @@ void CMakePanelView::addSubviews() {
                                                      ? Panda::ScriptsBuildConfig::Release
                                                      : Panda::ScriptsBuildConfig::Debug;
         if (kind == Panda::BuildTargetKind::Export) {
-            m_output->cmakeDidRequestExportBuild(
-                action, static_cast<Panda::ExportProjectTarget>(m_exportPreset->selectedIndex())
-            );
+            m_builds.startExport(action, static_cast<Panda::ExportProjectTarget>(m_exportPreset->selectedIndex()));
         } else {
-            m_output->cmakeDidRequestScriptsBuild(action, config);
+            m_builds.startScripts(action, config);
         }
     };
     m_configureButton = makeRailButton(Ic::CMakeConfigure, "Configure");
@@ -117,7 +118,7 @@ void CMakePanelView::addSubviews() {
 
     m_stopButton = makeRailButton(Ic::Stop, "Stop Build");
     m_stopButton->setEnabled(false);
-    m_stopButton->setOnClick([this] { m_output->cmakeDidTapStop(); });
+    m_stopButton->setOnClick([this] { m_builds.cancel(); });
     rail->addSubview(m_stopButton);
 
     auto railSpacer = std::make_shared<Panel>();
@@ -127,7 +128,7 @@ void CMakePanelView::addSubviews() {
 
     // Utilities at the bottom of the rail: the active tab's project folder and clearing the output.
     auto reveal = makeRailButton(Ic::FolderOpen, "Show Project Folder");
-    reveal->setOnClick([this] { m_output->cmakeDidRequestShowProjectFolder(kindOfTab(m_activeTab)); });
+    reveal->setOnClick([this] { m_builds.showFolder(kindOfTab(m_activeTab)); });
     rail->addSubview(reveal);
 
     auto clear = makeRailButton(Ic::Clear, "Clear Output");
@@ -204,7 +205,7 @@ void CMakePanelView::addSubviews() {
     setActiveTab(0);
 }
 
-void CMakePanelView::appendLines(Panda::BuildTargetKind kind, const std::vector<std::string> &lines) {
+void CMakePanelView::buildOutput(Panda::BuildTargetKind kind, const std::vector<std::string> &lines) {
     std::vector<Line> &buffer = m_lines[tabIndex(kind)];
     for (const std::string &text : lines) {
         buffer.push_back({text, classify(text)});

@@ -66,7 +66,6 @@ set(PANDA_RUNTIME_PACKAGE_TARGETS
     stb_image
     bc7decomp
     yogacore
-    yaml-cpp
 )
 
 if(PLATFORM_LINUX)
@@ -91,7 +90,6 @@ set(PANDA_RUNTIME_PACKAGE_LIB_NAMES
     stb_image
     bc7decomp
     yogacore
-    yaml-cpp
 )
 
 if(PLATFORM_LINUX)

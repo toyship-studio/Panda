@@ -1,10 +1,8 @@
-//
-// Created by Michael Andreichev on 06.02.2024.
-//
-
 #include "Panda/Math/Math.hpp"
 
 #include <Foundation/Foundation.hpp>
+
+#include <algorithm>
 
 namespace Panda {
 
@@ -27,7 +25,7 @@ namespace Math {
         float output_z = 0.f;
 
         // Based on Game Programming Gems 4 Chapter 1.10
-        smoothTime = Foundation::max(0.0001F, smoothTime);
+        smoothTime = std::max(0.0001F, smoothTime);
         float omega = 2.F / smoothTime;
 
         float x = omega * deltaTime;

@@ -34,9 +34,6 @@ using namespace PandaUI;
 
 namespace {
 
-    Panda::AssetHandlerEditor *assetHandler() {
-        return static_cast<Panda::AssetHandlerEditor *>(Panda::GameContext::getAssetHandler());
-    }
 
     void invalidateThumbnail(Panda::AssetId id) {
         if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->invalidate(id); }
@@ -55,7 +52,7 @@ namespace {
             const Panda::AssetId id = m_context.asset;
             auto section = makeFormSection("IMPORT");
             Panda::AssetInfo::TextureSettings textureMeta;
-            if (Panda::AssetHandlerEditor *handler = assetHandler()) {
+            if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) {
                 const auto &registry = handler->getRegistry();
                 auto infoIt = registry.find(id);
                 if (infoIt != registry.end() && infoIt->second.type == Panda::AssetType::TEXTURE) {
@@ -69,7 +66,7 @@ namespace {
                 textureMeta.magFiltering == Miren::NEAREST ? 0 : 1
             );
             const auto applyFiltering = [id, filters] {
-                Panda::AssetHandlerEditor *handler = assetHandler();
+                Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
                 if (!handler) { return; }
                 const Miren::TextureFiltering minModes[] = {Miren::NEAREST, Miren::LINEAR, Miren::LINEAR_MIPMAP_LINEAR};
                 const Miren::TextureFiltering magModes[] = {Miren::NEAREST, Miren::LINEAR};
@@ -92,17 +89,17 @@ namespace {
                 ->setHelp("How the texture is read where it is drawn larger than it is. Nearest keeps the pixels of pixel art sharp");
             addToggleRow(*section, "Generate Mips", textureMeta.numMips > 0, [id](bool on) {
                 // 16 is a full pyramid (backends clamp it to the actual size).
-                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureMips(id, on ? 16 : 0); }
+                if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) { handler->import().setTextureMips(id, on ? 16 : 0); }
                 invalidateThumbnail(id);
             })->setHelp("Smaller copies of the texture for where it is far away: no shimmer, a third more memory");
             // sRGB: color textures are decoded to linear on sampling, data textures (normals,
             // masks) must stay linear.
             addToggleRow(*section, "Color (sRGB)", textureMeta.srgb, [id](bool on) {
-                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureSrgb(id, on); }
+                if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) { handler->import().setTextureSrgb(id, on); }
                 invalidateThumbnail(id);
             })->setHelp("On for a picture of colors (base color, emissive, UI). Off for data: normals, roughness, metallic, occlusion, masks");
             addToggleRow(*section, "Compressed", textureMeta.compressed, [id](bool on) {
-                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureCompressed(id, on); }
+                if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) { handler->import().setTextureCompressed(id, on); }
                 invalidateThumbnail(id);
             })->setHelp("BC7: a quarter of the video memory and of the file, with a small loss. Off for what must be exact: pixel art, a lookup table");
             container.addSubview(section);
@@ -124,7 +121,7 @@ namespace {
 
         void build(View &container) override {
             const Panda::AssetId id = m_context.asset;
-            Panda::AssetHandlerEditor *handler = assetHandler();
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             if (!handler) { return; }
             const auto &registry = handler->getRegistry();
             auto infoIt = registry.find(id);
@@ -311,7 +308,7 @@ namespace {
 
     private:
         void setShader(Panda::AssetId id, Panda::AssetId shaderId) {
-            Panda::AssetHandlerEditor *handler = assetHandler();
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             if (!handler) { return; }
             if (!handler->documents().setMaterialShader(id, shaderId)) { return; } // already set
             invalidateThumbnail(id);
@@ -331,7 +328,7 @@ namespace {
             Panda::EditMaterialFieldCommand command(
                 id, fieldName, asset->getInputs().getField(fieldName).value, std::move(value)
             );
-            editorHost().assetUndoStack(id).SAVE(command);
+            editorHost().assetUndoStack(id).execute(command);
             invalidateThumbnail(id);
             if (m_context.edited) { m_context.edited(); }
         }
@@ -492,7 +489,7 @@ namespace {
             // An undo command into the document stack (the edits are discrete — each is its own
             // history step); execute applies it to the live asset.
             Panda::EditPostprocessingCommand command(id, postprocessing->getPasses(), std::move(after));
-            editorHost().assetUndoStack(id).SAVE(command);
+            editorHost().assetUndoStack(id).execute(command);
             if (m_context.edited) { m_context.edited(); }
             // The list changes structurally (add/remove/move) → rebuild the form deferred.
             if (m_context.rebuild) { m_context.rebuild(); }
@@ -512,7 +509,7 @@ namespace {
 
         void build(View &container) override {
             const Panda::AssetId id = m_context.asset;
-            Panda::AssetHandlerEditor *handler = assetHandler();
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             if (!handler) { return; }
             const auto &registry = handler->getRegistry();
             auto infoIt = registry.find(id);
@@ -551,7 +548,7 @@ namespace {
             const Panda::AssetId before = asset->getSlotMaterials()[slot].getId();
             if (before == materialId) { return; }
             Panda::SetMeshSlotMaterialCommand command(meshId, slot, before, materialId);
-            editorHost().assetUndoStack(meshId).SAVE(command); // execute applies it and marks the asset
+            editorHost().assetUndoStack(meshId).execute(command); // execute applies it and marks the asset
             if (m_context.edited) { m_context.edited(); }
         }
 
@@ -570,7 +567,7 @@ namespace {
 
         void build(View &container) override {
             const Panda::AssetId id = m_context.asset;
-            Panda::AssetHandlerEditor *handler = assetHandler();
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             if (!handler) { return; }
             const std::filesystem::path file = handler->getProjectPath() / handler->assetPath(id);
             const std::vector<Fern::Fonts::Face> faces = Fern::Fonts::facesOf(file);
@@ -639,12 +636,17 @@ namespace {
 } // namespace
 
 void registerCoreAssetKinds(EditorExtensions &extensions) {
-    // The kind names are the editor's type strings (EditorModelHelper::assetTypeString); the icons
-    // and colors are the ones of the Content Browser.
+    // By the name of the kind in the registry of the engine (Extensions::assetKinds). What a kind
+    // looks like anywhere in the editor — a cell of the Content Browser, a tab, a row of a picker
+    // — is read here and nowhere else; a kind without a form of its own has no editor.
     extensions.assetKinds.add({"texture", Ic::FilePng, Color(0x12B69DFF), createTextureEditor});
+    extensions.assetKinds.add({"cubemap", Ic::Globe, Color(0x12B69DFF), nullptr});
+    extensions.assetKinds.add({"shader", Ic::FileCpp, Color(0xC98B5FFF), nullptr});
     extensions.assetKinds.add({"material", Ic::Material, Color(0x57B894FF), createMaterialEditor});
-    extensions.assetKinds.add({"postfx", Ic::Sprite, Color(0xD16FA8FF), createPostprocessingEditor});
     extensions.assetKinds.add({"mesh", Ic::Mesh, Color(0x8B7FD1FF), createMeshEditor});
+    extensions.assetKinds.add({"runtimeMesh", Ic::Mesh, Color(0x8B7FD1FF), nullptr});
+    extensions.assetKinds.add({"world", Ic::AssetWorld, Color(0x6FC1FFFF), nullptr});
+    extensions.assetKinds.add({"postfx", Ic::Sprite, Color(0xD16FA8FF), createPostprocessingEditor});
     extensions.assetKinds.add({"font", Ic::FileFont, Color(0xE0B35AFF), createFontEditor});
 }
 

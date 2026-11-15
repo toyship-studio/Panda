@@ -51,11 +51,11 @@ void GameContext::setWorldLoadRequestHandler(WorldLoadRequestHandler handler) {
 
 void GameContext::requestWorldLoad(AssetId worldAssetId) {
     if (!worldAssetId) {
-        LOG_ERROR("WORLD LOAD REQUEST HAS EMPTY WORLD HANDLE");
+        LOG_ERROR("A world load was requested with an empty world reference.");
         return;
     }
     if (!s_worldLoadRequestHandler) {
-        LOG_ERROR("WORLD LOAD REQUEST HANDLER IS NOT SET");
+        LOG_ERROR("A world load was requested, but nothing handles the request.");
         return;
     }
     s_worldLoadRequestHandler(worldAssetId);

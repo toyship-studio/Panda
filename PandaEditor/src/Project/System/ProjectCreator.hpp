@@ -1,7 +1,3 @@
-//
-// Created by Michael Andreichev on 08.09.2024.
-//
-
 #pragma once
 
 #include "SystemTools.hpp"

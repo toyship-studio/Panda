@@ -169,8 +169,11 @@ void CollectionView::scrollToBottom() {
     if (!m_layout) { return; }
     const Size viewport = getFrame().size;
     const int count = m_dataSource.numberOfItems ? m_dataSource.numberOfItems() : m_itemCount;
-    const float contentHeight = m_layout->contentSize(count, viewport).height;
-    setContentOffset(Point(0.f, std::max(0.f, contentHeight - viewport.height)));
+    // The rows added since the last update count already: an offset is clamped to the content
+    // size, and the one of the previous reload would stop a row short of the end.
+    const Size content = m_layout->contentSize(count, viewport);
+    setContentSize(content);
+    setContentOffset(Point(0.f, std::max(0.f, content.height - viewport.height)));
 }
 
 bool CollectionView::isSelected(int index) const {

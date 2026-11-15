@@ -1,7 +1,3 @@
-//
-// Created by Admin on 25.01.2022.
-//
-
 #pragma once
 
 #include "Panda/Base/TypeContext.hpp"

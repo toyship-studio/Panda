@@ -1,24 +1,15 @@
 #pragma once
 
 #include "Panda/Assets/Base/Asset.hpp"
-#include "Panda/Assets/Base/Path.hpp"
-
-#include <utility>
 
 namespace Panda {
 
+// A world as an asset: the handle a reference to a world file resolves to (a script field, the
+// start world of the project). The world itself is read from the file by whoever opens it.
 class WorldAsset final : public Asset {
 public:
-    explicit WorldAsset(path_t worldPath = {})
-        : Asset(AssetType::WORLD)
-        , m_worldPath(std::move(worldPath)) {}
-
-    const path_t &getWorldPath() const {
-        return m_worldPath;
-    }
-
-private:
-    path_t m_worldPath;
+    WorldAsset()
+        : Asset(AssetType::WORLD) {}
 };
 
 } // namespace Panda

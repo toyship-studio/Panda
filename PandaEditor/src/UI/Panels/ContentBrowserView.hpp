@@ -12,7 +12,7 @@
 
 namespace Editor {
 
-// Intents of the content browser (implemented by the coordinator). The identity of registered
+// Intents of the content browser (implemented by Editor::AssetActions). The identity of registered
 // assets is the engine AssetId; new (not yet registered) files are addressed by paths.
 class ContentBrowserOutput {
 public:
@@ -23,7 +23,7 @@ public:
     // The file items of an asset's context menu (the path, the external editor, the file manager).
     virtual void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) = 0;
     virtual void contentDidRequestRefresh() = 0; // Refresh: registry rescan + panel rebuild
-    virtual void contentDidRequestAddToScene(const std::vector<Panda::AssetId> &assets) = 0; // mesh instance in world
+    virtual void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) = 0; // a model becomes entities
     virtual void contentDidRequestOpenWorld(Panda::AssetId assetId) = 0; // open the .world as the current world
     // The assets that can be created in the directory (RMB on the grid background): the same list
     // as in File → New.
@@ -32,7 +32,7 @@ public:
     virtual void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) = 0;
     // A new folder in the directory, named by the user.
     virtual void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) = 0;
-    // A folder goes with everything in it; the coordinator asks first.
+    // A folder goes with everything in it; the user is asked first.
     virtual void contentDidRequestDeleteFolder(const Panda::path_t &folder) = 0;
 };
 
@@ -46,6 +46,7 @@ public:
 
     void refresh();             // rescan Assets (the current folder is preserved by path)
     void clearAssetSelection(); // clear the selection in the grid (e.g. when an entity is selected)
+    std::vector<Panda::AssetId> selectedAssets() const; // the assets among the selected cells of the grid
     // Opens the folder of the asset and blinks its cell; the selection of the editor stays.
     void revealAsset(Panda::AssetId asset);
     // The folder the browser shows: where File → New puts an asset. Empty without a project.
@@ -68,7 +69,6 @@ private:
     // the editor is not cleared.
     void setCurrentFolder(Folder *folder, bool notify = true);
     void emitSelection();
-    std::vector<Panda::AssetId> selectedAssets() const;         // the registered ones from the selection
     void rebuildBreadcrumb();
     void updateStatus();
     void showGridContextMenu(int index, PandaUI::Point position);

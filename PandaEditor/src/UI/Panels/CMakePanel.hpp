@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Project/Build/ProjectBuilds.hpp"
+
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 
 #include <array>
@@ -8,42 +10,26 @@
 #include <string>
 #include <vector>
 
-namespace Panda {
-enum class BuildAction; // Project/Build/ProjectBuilder.hpp
-enum class ScriptsBuildConfig;
-enum class BuildTargetKind;
-enum class ExportProjectTarget; // Project/Export/ExportProjectTarget.hpp
-} // namespace Panda
-
 namespace Editor {
 
 class IconButton;
 
-// Intents of the CMake panel → coordinator (the actual build is run by EditorLayer via EngineBridge).
-class CMakePanelOutput {
+// VIEW: the panel of the builds of the project (Panda::ProjectBuilds), which it starts and whose
+// output it shows. On the left — a vertical rail of actions (Configure / Build / Stop … Show
+// Project Folder / Clear), on top — the tabs of the two cmake projects (Scripts | Export), each
+// with its own choice (Debug / Release, the export preset), below — the output of cmake, a buffer
+// per tab.
+class CMakePanelView final : public EditorView, public Panda::ProjectBuildsOutput {
 public:
-    virtual ~CMakePanelOutput() = default;
-    virtual void cmakeDidRequestScriptsBuild(Panda::BuildAction action, Panda::ScriptsBuildConfig config) = 0;
-    virtual void cmakeDidRequestExportBuild(Panda::BuildAction action, Panda::ExportProjectTarget target) = 0;
-    virtual void cmakeDidTapStop() = 0;
-    // Show the project folder of the ACTIVE tab in the file manager (Scripts/<name>, Export).
-    virtual void cmakeDidRequestShowProjectFolder(Panda::BuildTargetKind kind) = 0;
-};
-
-// VIEW: the project build panel (CLion-like, v2). On the left — a vertical action mini toolbar
-// (Configure/Build/Stop/Clear), on top — target tabs (Scripts | Export) with their own
-// configuration selector, below — the cmake output log (a separate buffer per tab). Display only —
-// the lines are pushed by the coordinator through Input methods, the build is run by EditorLayer.
-class CMakePanelView final : public EditorView {
-public:
-    explicit CMakePanelView(CMakePanelOutput *output);
-
-    // Input (from the coordinator). kind routes the output to the buffer of the corresponding tab.
-    void appendLines(Panda::BuildTargetKind kind, const std::vector<std::string> &lines);
-    void buildStarted(Panda::BuildTargetKind kind);
-    void buildFinished(Panda::BuildTargetKind kind, bool success, bool canceled);
+    explicit CMakePanelView(Panda::ProjectBuilds &builds);
+    ~CMakePanelView() override;
 
 private:
+    // Panda::ProjectBuildsOutput. kind — the tab the lines belong to.
+    void buildStarted(Panda::BuildTargetKind kind) override;
+    void buildOutput(Panda::BuildTargetKind kind, const std::vector<std::string> &lines) override;
+    void buildFinished(Panda::BuildTargetKind kind, bool success, bool canceled) override;
+
     // The log line kind determines the color: command, plain output, diagnostics, final status.
     enum class LineKind { Command, Plain, Warning, Error, StatusOk, StatusFail };
 
@@ -66,7 +52,7 @@ private:
     void reloadOutput();
     static LineKind classify(const std::string &text);
 
-    CMakePanelOutput *m_output = nullptr;
+    Panda::ProjectBuilds &m_builds;
     std::array<std::vector<Line>, kTargetCount> m_lines; // output buffer per tab
     int m_activeTab = 0;
     std::optional<int> m_runningKind; // index of the target being built (one build at a time)

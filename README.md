@@ -42,7 +42,7 @@ both need version 14 or newer on Apple Silicon. iOS is an export target; Android
 | `Foundation` | the bottom layer: logging, asserts, the allocator and the memory blob, the profiler, platform and graphics API detection |
 | `Fern` | platform layer: windows, OS events, input, graphics context |
 | `Miren`, `MirenTools` | rendering backend library and the shader tools |
-| `Rain` | field reflection and serialization (JSON, YAML, binary) |
+| `Rain` | field reflection and serialization (JSON, binary) |
 | `PandaAsync` | worker pool, priority queues, main-thread completions |
 | `PandaUI` | retained-mode UI library for games and tools; `PandaUI/examples/gallery` shows every element |
 | `Panda` | the engine: world, assets, renderer, physics, script host |
