@@ -30,6 +30,9 @@ class RendererD3D11 final : public RendererI {
 public:
     RendererD3D11(Fern::GraphicsContext *ctx);
     ~RendererD3D11() override;
+    bool supportsCompressedTextures() override {
+        return true; // BC7 is a part of feature level 11_0
+    }
     void createFrameBuffer(FrameBufferHandle handle, FrameBufferSpecification specification) override;
     void readFrameBuffer(FrameBufferHandle handle, int attachIndex, int x, int y, int width, int height, void *data)
         override;

@@ -87,6 +87,10 @@ namespace {
                 return {DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_D32_FLOAT};
             case RG8:
                 return {DXGI_FORMAT_R8G8_UNORM, DXGI_FORMAT_R8G8_UNORM, DXGI_FORMAT_UNKNOWN};
+            case BC7:
+                return {DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_UNKNOWN};
+            case BC7_SRGB:
+                return {DXGI_FORMAT_BC7_UNORM_SRGB, DXGI_FORMAT_BC7_UNORM_SRGB, DXGI_FORMAT_UNKNOWN};
         }
         return {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN};
     }
@@ -335,12 +339,17 @@ void D3D11Texture::createTextureAndViews(
     // numMips > 0 allocates the levels even WITHOUT data (render target: mip 0 is drawn, the chain
     // is built later by generateTextureMipmaps); generation at creation — only with data.
     const bool wantsMips = m_create.m_numMips > 0 && !isDepth();
-    const bool generateMips = wantsMips && hasData;
+    // Levels that came with the data are uploaded as they are; nothing is generated then (a
+    // compressed texture cannot be: it always brings its levels).
+    const bool compressed = m_create.isCompressed();
+    const bool ownLevels = compressed || (hasData && m_create.m_dataMips > 0);
+    const uint32_t dataMips = hasData ? std::min<uint32_t>(m_create.m_dataMips, m_create.m_numMips) : 0;
+    const bool generateMips = wantsMips && hasData && !ownLevels;
 
     D3D11_TEXTURE2D_DESC desc = {};
     desc.Width = m_create.m_width;
     desc.Height = m_create.m_height;
-    desc.MipLevels = wantsMips ? 0 : 1;
+    desc.MipLevels = ownLevels ? dataMips + 1 : (wantsMips ? 0 : 1);
     desc.ArraySize = faces;
     desc.Format = info.resource;
     desc.SampleDesc.Count = 1;
@@ -348,12 +357,13 @@ void D3D11Texture::createTextureAndViews(
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     if (isDepth()) {
         desc.BindFlags |= D3D11_BIND_DEPTH_STENCIL;
-    } else {
-        // Render-target binding also covers mip generation requirements.
+    } else if (!compressed) {
+        // Render-target binding also covers mip generation requirements. A block format is
+        // never a render target.
         desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
     }
     if (m_create.m_isCubeMap) { desc.MiscFlags |= D3D11_RESOURCE_MISC_TEXTURECUBE; }
-    if (wantsMips) { desc.MiscFlags |= D3D11_RESOURCE_MISC_GENERATE_MIPS; }
+    if (wantsMips && !ownLevels) { desc.MiscFlags |= D3D11_RESOURCE_MISC_GENERATE_MIPS; }
 
     if (FAILED(device->CreateTexture2D(&desc, nullptr, &m_texture))) {
         LOG_ERROR("D3D11: Failed to create texture %ux%u", m_create.m_width, m_create.m_height);
@@ -363,7 +373,23 @@ void D3D11Texture::createTextureAndViews(
     m_texture->GetDesc(&createdDesc); // MipLevels=0 above resolves to the full chain
 
     // Upload initial data per face; RGB8 sources are expanded to RGBA8.
-    if (hasData) {
+    if (hasData && ownLevels) {
+        // The levels follow each other in the data, each with all its faces.
+        const uint8_t *levelData = static_cast<const uint8_t *>(data.data);
+        for (uint32_t level = 0; level <= m_create.m_dataMips; level++) {
+            const size_t levelSize = m_create.levelBytes(level);
+            if (level < createdDesc.MipLevels) {
+                for (uint32_t face = 0; face < faces; face++) {
+                    const UINT subresource = D3D11CalcSubresource(level, face, createdDesc.MipLevels);
+                    deviceContext->UpdateSubresource(
+                        m_texture, subresource, nullptr, levelData + face * levelSize,
+                        static_cast<UINT>(m_create.levelRowBytes(level)), 0
+                    );
+                }
+            }
+            levelData += levelSize * faces;
+        }
+    } else if (hasData) {
         const size_t texelCount = static_cast<size_t>(m_create.m_width) * m_create.m_height;
         const bool expand = m_create.m_format == RGB8;
         const uint32_t rowPitch = m_create.m_width * (expand ? 4u : static_cast<uint32_t>(m_create.bytesPerTexel()));
@@ -409,7 +435,7 @@ void D3D11Texture::createTextureAndViews(
     if (FAILED(device->CreateShaderResourceView(m_texture, &srvDesc, &m_shaderResourceView))) {
         LOG_ERROR("D3D11: Failed to create shader resource view");
     }
-    if (!m_create.m_isCubeMap) {
+    if (!m_create.m_isCubeMap && !compressed) {
         if (FAILED(device->CreateRenderTargetView(m_texture, nullptr, &m_renderTargetView))) {
             LOG_ERROR("D3D11: Failed to create render target view");
         }
@@ -489,7 +515,10 @@ void D3D11Texture::resize(ID3D11Device *device, ID3D11DeviceContext *deviceConte
 }
 
 void D3D11Texture::generateMipmaps(ID3D11DeviceContext *deviceContext) {
-    if (m_shaderResourceView == nullptr || m_create.m_numMips == 0 || isDepth() || m_create.is3D()) { return; }
+    if (m_shaderResourceView == nullptr || m_create.m_numMips == 0 || isDepth() || m_create.is3D() ||
+        m_create.isCompressed()) {
+        return;
+    }
     deviceContext->GenerateMips(m_shaderResourceView);
 }
 

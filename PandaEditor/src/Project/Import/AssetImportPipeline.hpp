@@ -29,7 +29,9 @@ public:
 
     // Cooks the texture if necessary (missing/outdated). The cook is a property of the source, not
     // of the meta: the cooked path is derived from the location (getCookedTextureAssetPath).
-    bool ensureTextureIsCooked(const path_t &sourceRelPath, bool forceRecook = false);
+    bool ensureTextureIsCooked(
+        const path_t &sourceRelPath, const AssetInfo::TextureSettings &settings, bool forceRecook = false
+    );
     // Rebuilds the mesh meta from the gltf (reimport); slot bindings survive BY NAME.
     bool refreshMeshSettings(AssetId assetId);
     // Imports the textures of glTF materials with sRGB/linear roles per the spec.
@@ -41,6 +43,7 @@ public:
     // Texture import settings: applied immediately (no document dirty state), persisted
     // into the sidecar and reload the asset.
     void setTextureSrgb(AssetId id, bool srgb);
+    void setTextureCompressed(AssetId id, bool compressed);
     void setTextureFiltering(AssetId id, Miren::TextureFiltering minFiltering, Miren::TextureFiltering magFiltering);
     void setTextureMips(AssetId id, uint32_t numMips);
 

@@ -145,8 +145,6 @@ Fern::WindowFlags normalizeWindowFlags(Fern::WindowType windowType, Fern::Window
         flags &= ~(FERN_WINDOW_FLAG_RESIZABLE | FERN_WINDOW_FLAG_CLOSABLE | FERN_WINDOW_FLAG_MINIMIZABLE |
                    FERN_WINDOW_FLAG_MAXIMIZABLE);
         flags |= FERN_WINDOW_FLAG_ALWAYS_ON_TOP;
-    } else if (windowType == Fern::WindowType::Modal) {
-        flags |= FERN_WINDOW_FLAG_ALWAYS_ON_TOP;
     }
     return flags;
 }
@@ -173,7 +171,8 @@ NSWindowCollectionBehavior collectionBehaviorForWindow(Fern::WindowType windowTy
 }
 
 NSWindowLevel levelForWindow(Fern::WindowType windowType, Fern::WindowFlags flags) {
-    if (windowType == Fern::WindowType::Modal) { return NSModalPanelWindowLevel; }
+    // A modal window stays above its parent as a child window of it (the constructor), at the
+    // level of the parent: a window level is global, and a raised one would cover other applications.
     if (windowType == Fern::WindowType::Popup || Fern::hasWindowFlag(flags, FERN_WINDOW_FLAG_ALWAYS_ON_TOP)) {
         return NSFloatingWindowLevel;
     }
@@ -273,6 +272,18 @@ CocoaWindow::CocoaWindow(
     if ([window respondsToSelector:@selector(setTabbingMode:)]) {
         [window setTabbingMode:NSWindowTabbingModeDisallowed];
     }
+    // A modal window belongs to the window that was main when it opened: it stays above that
+    // window, moves with it and goes with it, and is centered over it.
+    NSWindow *parent = windowType == Fern::WindowType::Modal ? [NSApp mainWindow] : nil;
+    if (parent != nil) {
+        const NSRect parentFrame = [parent frame];
+        NSRect frame = [window frame];
+        frame.origin.x = NSMidX(parentFrame) - frame.size.width * 0.5;
+        frame.origin.y = NSMidY(parentFrame) - frame.size.height * 0.5;
+        [window setFrame:frame display:NO];
+        [window setHasShadow:YES];
+        [parent addChildWindow:window ordered:NSWindowAbove];
+    }
     [window makeKeyAndOrderFront:nil];
     m_menuTargets = [[NSMutableArray alloc] init];
 #ifdef PANDA_GRAPHICS_METAL
@@ -287,6 +298,7 @@ CocoaWindow::CocoaWindow(
 CocoaWindow::~CocoaWindow() {
     delete m_graphicsContext;
     m_graphicsContext = nullptr;
+    if (NSWindow *parent = [m_handle parentWindow]) { [parent removeChildWindow:m_handle]; }
     [m_handle orderOut:nil];
     [m_handle setDelegate:nil];
     [m_handle close];

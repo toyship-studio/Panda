@@ -31,7 +31,11 @@ const static TextureFormatInfo s_textureFormat[] = {
     {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8}, // DEPTH24STENCIL8
     {GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE},                  // RGBA8_SRGB (hardware decode on sample)
     {GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT},         // DEPTH32F (shadow map)
-    {GL_RG8, GL_RG, GL_UNSIGNED_BYTE}                              // RG8
+    {GL_RG8, GL_RG, GL_UNSIGNED_BYTE},                             // RG8
+    // BC7, BC7_SRGB: this backend does not create them (RendererI::supportsCompressedTextures
+    // answers false, a cooked texture arrives decoded); the rows keep the table as long as the enum.
+    {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE},
+    {GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE}
 };
 
 static GLint openGLFiltering(TextureFiltering filtering) {

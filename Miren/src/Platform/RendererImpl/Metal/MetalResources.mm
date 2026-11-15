@@ -57,6 +57,18 @@ namespace {
                 return MTLPixelFormatDepth32Float;
             case RG8:
                 return MTLPixelFormatRG8Unorm;
+#    if defined(PLATFORM_IOS)
+            // No BC formats on the GPUs of iOS: a texture is decoded before it gets here
+            // (Miren::isTextureFormatSupported).
+            case BC7:
+            case BC7_SRGB:
+                return MTLPixelFormatInvalid;
+#    else
+            case BC7:
+                return MTLPixelFormatBC7_RGBAUnorm;
+            case BC7_SRGB:
+                return MTLPixelFormatBC7_RGBAUnorm_sRGB;
+#    endif
         }
         return MTLPixelFormatInvalid;
     }
@@ -337,7 +349,15 @@ void MetalTexture::createTexture(void *devicePtr, Foundation::Memory data) {
     // the chain is built later by the generateTextureMipmaps command); immediate generation
     // at creation — only when there is something to fill it with. A volume has no mips.
     const bool wantsMips = m_create.m_numMips > 0 && !isDepth() && !volume;
-    const bool generateMips = wantsMips && hasData;
+    // Levels that came with the data are uploaded as they are; nothing is generated then (a
+    // compressed texture cannot be: it always brings its levels).
+    const bool compressed = m_create.isCompressed();
+    const uint32_t dataMips = hasData ? std::min<uint32_t>(m_create.m_dataMips, m_create.m_numMips) : 0;
+    const bool generateMips = wantsMips && hasData && dataMips == 0 && !compressed;
+    if (format == MTLPixelFormatInvalid) {
+        LOG_ERROR("METAL: the texture format %d is not supported by this device", static_cast<int>(m_create.m_format));
+        return;
+    }
 
     MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
     descriptor.textureType =
@@ -353,6 +373,10 @@ void MetalTexture::createTexture(void *devicePtr, Foundation::Memory data) {
         1 + static_cast<NSUInteger>(std::floor(std::log2(std::max(m_create.m_width, m_create.m_height))));
     descriptor.mipmapLevelCount =
         wantsMips ? std::min<NSUInteger>(static_cast<NSUInteger>(m_create.m_numMips) + 1, fullChain) : 1;
+    if (compressed || (hasData && m_create.m_dataMips > 0)) {
+        descriptor.mipmapLevelCount = std::min<NSUInteger>(static_cast<NSUInteger>(dataMips) + 1, fullChain);
+    }
+    const uint32_t uploadedLevels = static_cast<uint32_t>(descriptor.mipmapLevelCount);
     if (isDepth()) {
         descriptor.storageMode = MTLStorageModePrivate;
         descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
@@ -364,8 +388,9 @@ void MetalTexture::createTexture(void *devicePtr, Foundation::Memory data) {
         // Managed: CPU uploads through replaceRegion; on Apple silicon it is treated as shared.
         descriptor.storageMode = MTLStorageModeManaged;
 #    endif
-        // A volume is shader-read only: it is never a render target.
-        descriptor.usage = volume ? MTLTextureUsageShaderRead : (MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+        // A volume and a compressed texture are shader-read only: never a render target.
+        descriptor.usage =
+            volume || compressed ? MTLTextureUsageShaderRead : (MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
     }
     m_texture = (void *)[device newTextureWithDescriptor:descriptor];
     [descriptor release];
@@ -391,6 +416,27 @@ void MetalTexture::createTexture(void *devicePtr, Foundation::Memory data) {
             m_create.m_width * (expand ? 4u : static_cast<uint32_t>(m_create.bytesPerTexel()));
         const size_t faceSize = texelCount * m_create.bytesPerTexel();
         const MTLRegion region = MTLRegionMake2D(0, 0, m_create.m_width, m_create.m_height);
+        if (compressed || m_create.m_dataMips > 0) {
+            // The levels follow each other in the data, each with all its faces.
+            const uint8_t *levelData = static_cast<const uint8_t *>(data.data);
+            for (uint32_t level = 0; level <= m_create.m_dataMips; level++) {
+                const size_t levelSize = m_create.levelBytes(level);
+                if (level < uploadedLevels) {
+                    const NSUInteger levelWidth = std::max<NSUInteger>(m_create.m_width >> level, 1);
+                    const NSUInteger levelHeight = std::max<NSUInteger>(m_create.m_height >> level, 1);
+                    for (uint32_t face = 0; face < faces; face++) {
+                        [texture replaceRegion:MTLRegionMake2D(0, 0, levelWidth, levelHeight)
+                                   mipmapLevel:level
+                                         slice:face
+                                     withBytes:levelData + face * levelSize
+                                   bytesPerRow:m_create.levelRowBytes(level)
+                                 bytesPerImage:0];
+                    }
+                }
+                levelData += levelSize * faces;
+            }
+            return;
+        }
         for (uint32_t face = 0; face < faces; face++) {
             const uint8_t *faceData = static_cast<const uint8_t *>(data.data) + face * faceSize;
             std::vector<uint8_t> expanded;
@@ -421,7 +467,7 @@ void MetalTexture::createTexture(void *devicePtr, Foundation::Memory data) {
 
 void MetalTexture::generateMipmaps(void *queue) {
     id<MTLTexture> texture = (id<MTLTexture>)m_texture;
-    if (texture == nil || isDepth() || texture.mipmapLevelCount <= 1) { return; }
+    if (texture == nil || isDepth() || m_create.isCompressed() || texture.mipmapLevelCount <= 1) { return; }
     @autoreleasepool {
         id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)queue commandBuffer];
         id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];

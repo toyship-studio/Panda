@@ -54,8 +54,11 @@ The order of a frame (Miren executes views by descending id, `MirenViewDistribut
 1. Bakes that the scene reads: the light atlas of the environment map, impostors.
 2. The shadow tiles of the lamps, the shadow cascades of the sun.
 3. The scene: color (RGBA16F, linear light, not clamped) and emissive (RGBA16F), depth.
-4. `PostprocessingPipeline`: auto exposure → bloom (from the emissive target) → the chain of the
-   camera (linear HDR) → the Tonemap → the antialiasing. The last two are the engine's:
+4. `PostprocessingPipeline`: the fog of the world (`FogRenderer`, `context/lighting.md`, "Fog";
+   a world without fog runs no pass) → auto exposure → bloom (from the emissive target) → the
+   chain of the camera (linear HDR) → the Tonemap → the antialiasing. What the pipeline takes
+   from the world of the frame is set in one place, `PostprocessingFrameInputs::setWorld`. The
+   last two passes are the engine's:
    - the Tonemap (`tonemap.frag`) multiplies by the exposure of the camera (`2^exposure`),
      applies its curve (`Panda::Tonemap`: AgX — the default, ACES, Khronos PBR Neutral,
      Reinhard, none; `tonemapParams` of `PANDA_POST`), encodes sRGB and adds a dither of one
@@ -161,6 +164,40 @@ a 4×4×4 RGBA8 volume whose texel (x, y, z) is (40 + 50x, 40 + 50y, 40 + 50z); 
 - the midpoint between the slices z = 1..2: trilinear filtering;
 - a 2×2×2 box written with `updateTextureRegion3D` changes only itself;
 - a full re-upload with `updateTexture`.
+
+## Compressed textures
+
+A texture of a project lives in video memory block-compressed: BC7, 8 bits a texel — a quarter
+of RGBA8 — for color and for data alike (RGB and RGBA, the alpha kept).
+
+- **The setting.** `compressed` of the texture settings (`AssetInfo::TextureSettings`, the
+  sidecar `.pmeta`; the Compressed row of the texture tab), on by default. Off for what must be
+  exact: pixel art, a lookup table, a mask read by its exact values. An HDR map (`.hdr`,
+  RGBA16F) and a cube are never compressed.
+- **The cook.** The cooked file of a texture (`.Panda/Textures/<path>.ptex`,
+  `AssetImporterBase::saveCookedTexture`) is a header and creation data: RGBA8 of mip 0, or BC7
+  with every mip level after it (`TextureCreate::m_dataMips`). The editor compresses when it
+  cooks (`TextureCompressor`, `Project/Import`): the levels are filtered on the CPU — a block
+  format cannot have them generated on the device — in linear light for a color texture, and
+  each level is encoded by `bc7enc` (`Vendor/bc7enc`, modes 6 and 1 with 16 partitions) with its
+  rows of blocks shared out among the cores. The cook is derived data: it is redone when the
+  source is newer, when the file is of another version of the format, when `compressed`
+  changed, and for a compressed texture when `srgb` changed (the mips depend on it). The first
+  opening of a project compresses its textures once; the export copies the cooked files as they
+  are.
+- **The device.** `Miren::TextureFormat::BC7` / `BC7_SRGB`: Metal on macOS and D3D11 create
+  them (`MTLPixelFormatBC7_RGBAUnorm`, `DXGI_FORMAT_BC7_UNORM`) and upload the levels of the
+  data; such a texture is shader-read only — never a render target, not updated, not read back.
+  `Miren::isTextureFormatSupported` answers for the device: the OpenGL backend and the GPUs of
+  iOS have no BC7 here, and there `TextureCodec::applySettings` (`Panda/Assets/Base`) decodes
+  the texture to RGBA8 before it is created (`bc7decomp`) — the same file runs everywhere, at
+  the old cost in memory. `applySettings` is the one place that turns a cooked texture and the
+  settings of its asset into creation data, for the editor and for the runtime.
+- **Pixels on the CPU.** `AssetHandler::readTexturePixelsRGBA8` (the script API behind the
+  images of the game UI) decodes a compressed texture: it works, with the loss of the format
+  in the pixels — an image that must be exact has `compressed` off.
+- **Ahead.** ASTC for iOS and Android instead of the decode; BC5 for normal maps (two channels
+  at the same size, the third from the shader) and BC6H for HDR maps; a quality setting.
 
 ## Shader toolchain
 
@@ -429,24 +466,23 @@ occlusion, glass, bloom, exposure, a tonemap; what is listed is what stands next
 
 Before anything else (each changes what every scene looks like or costs):
 
-1. **Skinned meshes and animation.** There is no skeleton: a character cannot move. Import of
+1. **Compressed textures.** `Miren::TextureFormat` has no block-compressed format: every color
+   texture is RGBA8 in video memory (a scene of five scanned props takes 0.9 GB). BC7/BC5 on
+   desktop and ASTC on Apple and mobile GPUs, encoded at cook time, with the mips in the file.
+2. **Antialiasing of geometry** (low priority). FXAA smooths edges that exist; a wire or a far
+   railing thinner than a pixel still crawls. Either MSAA (multisampled targets and a resolve
+   in the three backends; the forward pass makes it natural) or a temporal resolve (motion
+   vectors, a history buffer, a jitter), which would also take the grain of the soft shadows and
+   of the occlusion and let both run with a smaller budget. One of the two, not both.
+3. **Skinned meshes and animation.** There is no skeleton: a character cannot move. Import of
    skins and clips from glTF, a pose at run time, skinning in the vertex stage of the scene and
    of the depth passes (`context/roadmap.md`, item 10). The largest hole, and not a rendering
    one alone.
-2. **Compressed textures.** `Miren::TextureFormat` has no block-compressed format: every color
-   texture is RGBA8 in video memory (a scene of five scanned props takes 0.9 GB). BC7/BC5 on
-   desktop and ASTC on Apple and mobile GPUs, encoded at cook time, with the mips in the file.
-3. **Anisotropic filtering.** A floor seen at a low angle blurs a few meters away; it is a
-   sampler state in the three backends and a number in the texture settings.
-4. **Antialiasing of geometry.** FXAA smooths edges that exist; a wire or a far railing thinner
-   than a pixel still crawls. Either MSAA (multisampled targets and a resolve in the three
-   backends; the forward pass makes it natural) or a temporal resolve (motion vectors, a history
-   buffer, a jitter), which would also take the grain of the soft shadows and of the occlusion
-   and let both run with a smaller budget. One of the two, not both.
-5. **Fog and the air.** The distance has no haze, so a large world ends in a hard line against
-   the sky. `context/atmosphere.md` plans one model for the color of the sun, the light of the
-   sky and the haze; the first step that pays alone is a height fog in the lit shaders that
-   takes its color from the environment light.
+
+Done from this list: the fog (`FogRenderer`: a height fog lit by the world; the physical model
+of the air of `context/atmosphere.md` is still ahead). Not planned until a scene asks for it:
+anisotropic filtering (a sampler state in the three backends and a number in the texture
+settings; a floor seen at a low angle blurs a few meters away without it).
 
 Then (each widens what kind of scene works):
 

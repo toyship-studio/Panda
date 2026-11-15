@@ -58,6 +58,8 @@ TextureHandle createTexture(TextureCreate create) {
         create.m_width > 0 && create.m_height > 0, "INVALID TEXTURE SIZE w: %d, h: %d", create.m_width, create.m_height
     );
     PND_ASSERT(!(create.is3D() && create.m_isCubeMap), "TEXTURE CANNOT BE BOTH 3D AND CUBE");
+    PND_ASSERT(!create.isCompressed() || create.m_data.data != nullptr, "A COMPRESSED TEXTURE IS CREATED WITH ITS DATA");
+    PND_ASSERT(!(create.is3D() && create.m_dataMips > 0), "3D TEXTURE HAS NO MIPS");
     PND_ASSERT(!(create.is3D() && create.m_numMips > 0), "3D TEXTURE HAS NO MIPS");
     PND_ASSERT(!(create.is3D() && create.isDepthFormat()), "3D TEXTURE CANNOT BE DEPTH");
     return s_context->createTexture(create);
@@ -182,6 +184,11 @@ bool renderFrame() {
 
 GpuStats getGpuStats() {
     return s_context ? s_context->getGpuStats() : GpuStats{};
+}
+
+bool isTextureFormatSupported(TextureFormat format) {
+    if (!TextureCreate::isCompressedFormat(format)) { return true; }
+    return s_context != nullptr && s_context->supportsCompressedTextures();
 }
 
 uint32_t frame() {

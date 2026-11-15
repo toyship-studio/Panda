@@ -33,6 +33,15 @@ Large directions that are still ahead. Finished work is one line with a pointer 
   plugins (`context/plugins.md`).
 - **Scene and Game tabs**: the editor's view and the game's frame as two viewport tabs over one
   world render per frame; Simulate is gone (`context/architecture.md`, "The Scene and the Game").
+- **Commands and the keymap**: one registry of the commands of the editor, the keys in one table
+  with a user `keymap.json`, the command palette, the Keymap page
+  (`context/architecture.md`, "Commands").
+- **The Settings window**: the editor settings, the project settings and the keymap in a second
+  native window over the editor (`context/architecture.md`, "The Settings window").
+- **Fog**: a height fog lit by the world, one pass before the postprocessing
+  (`context/lighting.md`, "Fog").
+- **Compressed textures**: BC7 at cook time with the mips in the file, decoded where the device
+  has no block formats (`context/rendering.md`, "Compressed textures").
 
 ## Ahead (order is open to discussion)
 

@@ -26,6 +26,7 @@ public:
     RendererMetal(Fern::GraphicsContext *ctx);
     ~RendererMetal() override;
     GpuStats getGpuStats() override;
+    bool supportsCompressedTextures() override;
     void createFrameBuffer(FrameBufferHandle handle, FrameBufferSpecification specification) override;
     void readFrameBuffer(FrameBufferHandle handle, int attachIndex, int x, int y, int width, int height, void *data)
         override;

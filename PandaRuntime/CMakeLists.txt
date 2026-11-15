@@ -64,6 +64,7 @@ set(PANDA_RUNTIME_PACKAGE_TARGETS
     miniaudio
     glad
     stb_image
+    bc7decomp
     yogacore
     yaml-cpp
 )
@@ -88,6 +89,7 @@ set(PANDA_RUNTIME_PACKAGE_LIB_NAMES
     miniaudio
     glad
     stb_image
+    bc7decomp
     yogacore
     yaml-cpp
 )

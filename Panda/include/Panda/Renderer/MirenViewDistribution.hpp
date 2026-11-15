@@ -15,6 +15,9 @@ namespace Views {
     // in the editor on top of the viewport's output texture (the EDITOR_VIEWPORT_VIEW composite).
     extern Miren::ViewId GAME_UI_VIEW;
     extern Miren::ViewId SCENE_VIEW;
+    // The fog of the world (FogRenderer): one pass over the scene color and depth, after the
+    // scene and before the rest of the postprocessing.
+    extern Miren::ViewId FOG_VIEW;
     extern Miren::ViewId EDITOR_VIEWPORT_VIEW;
     extern Miren::ViewId SELECTED_GEOMETRY_VIEW;
     extern Miren::ViewId IDS_VIEW;
@@ -50,6 +53,9 @@ namespace Views {
     // A copy of what the window shows drawn into a texture (the editor: a screenshot of the whole
     // window for the MCP server); nothing is submitted into it otherwise.
     extern Miren::ViewId CAPTURE_VIEW;
+    // The UI of a second window of the editor (the Settings window): drawn into the context of
+    // that window; nothing is submitted into it while the window is closed.
+    extern Miren::ViewId AUXILIARY_WINDOW_VIEW;
     // Finalization of previews/thumbnails (tonemap of the HDR scratch target into the display
     // texture) — after the render views above.
     extern Miren::ViewId PREVIEW_TONEMAP_VIEW;

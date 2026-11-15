@@ -3,7 +3,8 @@
 The editor is a tool over the files of a project: every edit made here lands in a text file
 (`.world`, `.mat`, `.Panda/project.json`) that reads and diffs like code. This page is what the
 hands need to know — the keys and the gestures. Every command of the editor is also in the
-command palette, by name, with its keys.
+command palette, by name, with its keys; the keys on this page are the defaults, and every one
+of them can be changed ([Keymap](#keymap)).
 
 ## Finding things
 
@@ -12,6 +13,8 @@ command palette, by name, with its keys.
 | ⇧⌘P | **Command palette**: every command of the editor and every item of the menus by name. Type, ↑ ↓, Enter |
 | ⌘P | **Go to**: an entity of the open world or an asset of the project by name — it becomes the selection |
 | ⌘F | **Find in Hierarchy**: the entities whose name has the text, as a flat list; Escape brings the tree back |
+| ⌘, | **Settings**: a window over the editor — the editor, the project and the keymap. Escape closes it |
+| ⌘K | **Keymap**: the same window on its Keymap page |
 
 On Windows and Linux ⌘ is Ctrl.
 
@@ -31,7 +34,7 @@ Hierarchy (a click there gives it):
 | ⌘C, ⌘X, ⌘V | Copy, Cut, Paste. The clipboard holds text — a fragment of a world file — so entities paste into another world, another project, a text editor |
 | F2 | Rename |
 | ⌘A, Escape | Select all, deselect |
-| F (or Z) | The camera goes to the selection. A double click on a row of the Hierarchy does the same |
+| F | The camera goes to the selection. A double click on a row of the Hierarchy does the same |
 | 1, 2, 3 | The tool of the gizmo: move, rotate, scale |
 | F5, ⇧F5 | Play, Stop |
 | ⌘Z, ⇧⌘Z | Undo, Redo — of the document whose tab has the keyboard |
@@ -42,6 +45,11 @@ Hierarchy (a click there gives it):
 With the keyboard in the viewport W A S D fly the camera; a drag with the right button (two
 fingers on a trackpad) looks around, the wheel moves forward and back. A drag with the left
 button on empty space selects by a rectangle.
+
+A click on a world file in the Content Browser shows that world in the preview tab (its title
+is in italics): the next world clicked takes the same tab. A double click on the file or on the
+tab keeps it open, and so does the first edit. The tabs of the worlds can be dragged into
+another order.
 
 Play needs the scripts of the project. In a project where they were never built, Play offers to
 build them; the CMake panel shows the build and the editor loads the result.
@@ -70,13 +78,53 @@ The inspector, the settings and the asset tabs are made of the same rows.
 
 Every edit is a step of Undo; a drag is one step.
 
+## Settings
+
+File → Settings → Open Settings (⌘,) opens the Settings window. It stays over the editor without
+covering the viewport's meaning: what is changed shows in the scene behind it.
+
+- **Editor** — this machine: the theme, the fonts, the viewport, the external editor. Applied
+  and saved at once.
+- **Project** — `.Panda/project.json`: the start world, the rendering features, the modules.
+  Applied when saved: a bar with Save and Revert appears while there are unsaved changes, and
+  ⌘S and ⌘Z act on this page while the window has the keyboard.
+- **Keymap** — the keys.
+
+The settings of a world are not here: they belong to the world file and live in the sidebar of
+the viewport (the World button).
+
+## Keymap
+
+The Keymap page lists every command with its keys, where the key works (the entity commands —
+only with the keyboard in the viewport or the Hierarchy) and whether the binding is the default
+or yours. Type in the search field to find a command by its name or by a key. A double click on
+a command (or Change Keys…) opens the recorder: press the keys, then Enter. If the keys already
+run another command, the recorder says which; both stay bound, and the one that applies takes
+the key. Reset returns the default.
+
+The changes are a text file, `keymap.json`, next to the editor's `settings.json` (File →
+Settings → Open Keymap File): a command id and its chords, only what differs from the defaults.
+
+```json
+{
+    "camera.focusSelection": ["f", "z"],
+    "world.play": ["cmd-enter"],
+    "entity.rename": []
+}
+```
+
+A chord is modifiers and a key joined by `-`: `cmd`, `ctrl`, `alt`, `shift`, then a letter, a
+digit, `f1`…`f25`, `space`, `enter`, `escape`, `tab`, `backspace`, `delete`, `up`, `down`,
+`left`, `right`, `home`, `end`, `pageup`, `pagedown` or a punctuation key. Several chords for
+one command are alternatives; an empty list unbinds it. The ids are the ones the Keymap page
+and the command palette show next to the names (`command` of the MCP server lists them).
+
 ## The files behind it
 
 - A world is `Assets/*.world`; its settings sidebar (the World button of the viewport) edits
   the `lighting`, `graphics` and `wind` sections of the file ([the format](world-format.md)).
-- The settings of the project are `.Panda/project.json` (File → Settings → Open Project
-  Settings); the settings of the editor are a JSON file of the user (Open Settings File shows
-  it).
+- The settings of the project are `.Panda/project.json`; the settings of the editor and the
+  keymap are JSON files of the user (File → Settings → Open Settings File, Open Keymap File).
 - The Output panel says what the editor did and what went wrong, in sentences that name the
   file. The same lines reach a coding agent through the `logs` tool
   ([Working with Zed and coding agents](zed-and-agents.md)).

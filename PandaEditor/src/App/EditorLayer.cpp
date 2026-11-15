@@ -109,11 +109,13 @@ EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
     , m_loader(m_documents, this)
     , m_pendingWorldLoad(0)
     , m_window(window)
-    , m_menuBar(window, this)
+    , m_menuBar(window, this, m_commands)
     , m_pandaUI(window)
     , m_viewports() {
     m_launch = std::move(launch);
     m_currentWorld = &editingWorld();
+    registerCommands();
+    m_commands.addKeymapListener([this] { m_menuBar.rebuild(); }); // the menu shows the keys
 }
 
 EditorLayer::~EditorLayer() = default; // EditorController and EditorMcp are complete here (see the includes) — for unique_ptr
@@ -152,7 +154,9 @@ void EditorLayer::onAttach() {
     // fields (windStrength/windGustiness), not the default.
     SceneWind::apply(editingWorld().getWindSettings());
     if (!m_loader.hasOpenedProject()) { updateWindowState(); }
-    m_menuBar.rebuild();
+    // The user's keys, next to the editor's settings.json; the menu is rebuilt by the listener.
+    const path_t settingsPath = m_documents.editorSettingsFile().path();
+    m_commands.loadKeymap(settingsPath.empty() ? path_t() : settingsPath.parent_path() / "keymap.json");
 
     // PandaUI host of the editor chrome (renders on GLOBAL_VIEW). Fonts and icons go BEFORE the
     // controller is created (panels take icons from the global registry while being built). The
@@ -177,7 +181,7 @@ void EditorLayer::onAttach() {
         std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), this);
     m_startScreenController->setNewProjectDefaults("UntitledGame", defaultProjectParentPath().string());
     syncStartScreenModel();
-    m_editorController = std::make_unique<Editor::EditorController>();
+    m_editorController = std::make_unique<Editor::EditorController>(m_commands);
     m_editorController->setWorld(m_currentWorld); // panels read the real engine world directly
     m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
     // A ready thumbnail → targeted update of the visible grid cell (cells are configured once).
@@ -187,7 +191,7 @@ void EditorLayer::onAttach() {
     m_editorUI.context().setUnhandledKeyDownHandler(
         [this](const PandaUI::KeyEvent &event) {
             if (!m_loader.hasOpenedProject() || !m_editorController) { return false; }
-            return m_editorController->handleShortcut(event);
+            return m_commands.handleKey(event);
         }
     );
     m_editorController->setBridge(this); // save / play-simulate-stop / reload / gizmo / rect-select — a single seam
@@ -696,8 +700,8 @@ void EditorLayer::reloadFromDisk() {
 
 std::vector<Editor::EngineBridge::MenuCommand> EditorLayer::menuCommands() {
     std::vector<Editor::EngineBridge::MenuCommand> result;
-    for (MenuCommandInfo &command : m_menuBar.commands()) {
-        result.push_back({std::move(command.menu), std::move(command.title), std::move(command.shortcut), command.id});
+    for (MenuCommandInfo &item : m_menuBar.dynamicItems()) {
+        result.push_back({std::move(item.menu), std::move(item.title), item.id});
     }
     return result;
 }
@@ -708,6 +712,14 @@ void EditorLayer::runMenuCommand(uint32_t id) {
 
 void EditorLayer::exportGame() {
     cookRuntimeData();
+}
+
+bool EditorLayer::openSettingsWindow(std::shared_ptr<PandaUI::View> root) {
+    return m_editorUI.openAuxiliaryWindow("Settings", PandaUI::Size(900.f, 640.f), std::move(root)) != nullptr;
+}
+
+void EditorLayer::closeSettingsWindow() {
+    m_editorUI.closeAuxiliaryWindow();
 }
 
 bool EditorLayer::reopenProjectForModules() {
@@ -965,6 +977,27 @@ void EditorLayer::drivePandaUIGizmo() {
 
 void EditorLayer::onEvent(Fern::Event *event) {
     if (m_menuBar.handleEvent(event, m_editorUI.context().modals().isPresenting())) { return; }
+
+    // The Settings window: its own UI tree takes its input; closing it is the controller's (the
+    // documents of the window are its).
+    if (m_editorUI.auxiliaryWindow() != nullptr && event->getWindow() == m_editorUI.auxiliaryWindow()) {
+        switch (event->type) {
+            case Fern::EventType::WindowCloseRequest:
+                if (m_editorController) { m_editorController->closeSettingsWindow(); }
+                break;
+            case Fern::EventType::WindowFocus:
+                if (m_editorController) { m_editorController->settingsWindowFocusChanged(true); }
+                break;
+            case Fern::EventType::WindowLostFocus:
+                if (m_editorController) { m_editorController->settingsWindowFocusChanged(false); }
+                break;
+            default:
+                m_editorUI.handleEvent(event);
+                break;
+        }
+        event->isHandled = true;
+        return;
+    }
 
     // The focus and the minimizing of the editor window: the game's focus follows them
     // (updateGameInput), a minimized editor pauses the playing world's scripts.
@@ -1293,6 +1326,83 @@ void EditorLayer::documentsSetEditorCamera(const EditorCameraSettings &camera) {
 #pragma endregion
 
 #pragma region Menu bar output
+
+// The commands of the application and of the project: what the menu bar shows and the palette
+// lists. Their keys are the keymap's (UI/DefaultKeymap.cpp). A command of a project answers
+// false without one.
+void EditorLayer::registerCommands() {
+    auto command = [this](const char *id, const char *group, const char *label, std::function<void()> run, bool needsProject = true) {
+        m_commands.add(id, group, label, [this, run = std::move(run), needsProject] {
+            if (needsProject && !m_loader.hasOpenedProject()) { return false; }
+            run();
+            return true;
+        });
+    };
+    const bool anywhere = false;
+    command("file.newWorld", "File", "New World", [this] { menuBarNewWorld(); });
+    command("file.newWindow", "File", "New Window", [this] { menuBarNewWindow(); }, anywhere);
+    command("file.openProject", "File", "Open Project", [this] { menuBarOpenProject(); }, anywhere);
+    command("file.save", "File", "Save", [this] { menuBarSave(); });
+    command("file.saveAll", "File", "Save All", [this] { menuBarSaveAll(); });
+    command("file.reload", "File", "Reload", [this] { menuBarReload(); });
+#ifdef PLATFORM_MACOS
+    command("file.showCppProject", "File", "Show C++ Project", [this] { menuBarShowCppProject(); });
+#endif
+    command("file.closeProject", "File", "Close Project", [this] { menuBarCloseProject(); });
+    command("export.cook", "Export Game", "Cook Runtime Data", [this] { menuBarExportGame(); });
+#ifdef PLATFORM_MACOS
+    command("export.xcodeMacOS", "Export Game", "Open Xcode: macOS", [this] { menuBarOpenExportProject(ExportProjectTarget::XcodeMacOS); });
+    command("export.xcodeIOSSimulator", "Export Game", "Open Xcode: iOS Simulator", [this] {
+        menuBarOpenExportProject(ExportProjectTarget::XcodeIOSSimulator);
+    });
+    command("export.xcodeIOSDevice", "Export Game", "Open Xcode: iOS Device", [this] {
+        menuBarOpenExportProject(ExportProjectTarget::XcodeIOSDevice);
+    });
+#endif
+#ifdef PLATFORM_WINDOWS
+    command("export.visualStudio", "Export Game", "Open Visual Studio", [this] {
+        menuBarOpenExportProject(ExportProjectTarget::VisualStudioWindows);
+    });
+#endif
+    command("settings.open", "Settings", "Open Settings", [this] { menuBarOpenEditorSettings(); });
+    command("settings.openFile", "Settings", "Open Settings File", [this] { menuBarShowEditorSettingsFile(); }, anywhere);
+    command("settings.openProject", "Settings", "Open Project Settings", [this] { menuBarOpenProjectSettings(); });
+    command("settings.openProjectFile", "Settings", "Open Project Settings File", [this] { menuBarShowProjectSettingsFile(); });
+    command("keymap.open", "Settings", "Open Keymap", [this] {
+        if (m_editorController) { m_editorController->openKeymap(); }
+    });
+    command("keymap.openFile", "Settings", "Open Keymap File", [this] { showKeymapFile(); }, anywhere);
+    command("app.exit", "File", "Exit", [this] { menuBarCloseApp(); }, anywhere);
+    command("edit.undo", "Edit", "Undo", [this] { menuBarUndo(); });
+    command("edit.redo", "Edit", "Redo", [this] { menuBarRedo(); });
+    command("window.worldSettings", "Window", "World Settings", [this] { menuBarOpenWorldSettings(); });
+    command("window.game", "Window", "Game", [this] { menuBarOpenGameView(); });
+    command("window.plugins", "Window", "Plugins", [this] { menuBarOpenPlugins(); });
+    command("help.checkForUpdates", "Help", "Check for Updates", [this] { menuBarCheckForUpdates(); }, anywhere);
+    m_commands.add("help.restartToUpdate", "Help", "Restart to Update", [this] {
+        if (!menuBarUpdateReady()) { return false; }
+        menuBarRestartToUpdate();
+        return true;
+    });
+    command("help.releaseNotes", "Help", "Release Notes", [this] { menuBarViewReleaseNotes(); }, anywhere);
+    command("help.uiGallery", "Help", "UI Gallery", [this] { menuBarOpenUiGallery(); });
+    command("help.about", "Help", "About", [this] { menuBarAbout(); }, anywhere);
+}
+
+// The keymap file in the external editor. A file that was never written gets an empty object, so
+// there is something to open; what a row holds is in PandaSDK/docs/editor.md.
+void EditorLayer::showKeymapFile() {
+    const path_t &path = m_commands.keymapPath();
+    if (path.empty()) {
+        LOG_ERROR_EDITOR("No user data directory: the keymap is not persisted");
+        return;
+    }
+    if (!std::filesystem::exists(path)) {
+        std::ofstream file(path);
+        file << "{\n}\n";
+    }
+    openInExternalEditor(path);
+}
 
 void EditorLayer::menuBarUndo() {
     if (m_editorController) { m_editorController->undo(); } // undo — coordinator domain (content edit, editing world)
@@ -1940,6 +2050,7 @@ void EditorLayer::updateWindowState() {
 }
 
 void EditorLayer::closeProject() {
+    if (m_editorController) { m_editorController->closeSettingsWindow(); } // its pages are the project's
     saveOpenedProjectWindowState();
     m_thumbnails->clear(); // project assets die — previews/thumbnails must not hold ids
     m_loader.closeProject();

@@ -99,6 +99,11 @@ public:
     // per frame (SceneBlocks) and given to the view of the pass — every draw into that view reads
     // them, a Renderer2D or a module drawing into the same view included.
     void setLighting(const WorldLightingData &lighting);
+    // The scene blocks of the last frame (setLighting): what a pass over the finished frame —
+    // the fog — reads the light of the world from.
+    const SceneBlocks &sceneBlocks() const {
+        return m_scene;
+    }
 
     Renderer3D &operator=(Renderer3D &&other);
 

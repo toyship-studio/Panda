@@ -31,8 +31,20 @@ public:
     static bool loadHeightmapSamples(
         const path_t &absolutePath, std::vector<float> &outSamples, uint32_t &outWidth, uint32_t &outHeight
     );
+    // A cooked texture (.ptex): a header and the creation data — RGBA8 (RGBA16F for an HDR map)
+    // of mip 0, or a block-compressed format with its mip levels (TextureCreate::m_dataMips).
+    // The asset settings are applied by TextureCodec::applySettings.
+    struct CookedTextureInfo {
+        Miren::TextureFormat format = Miren::TextureFormat::RGBA8;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint32_t dataMips = 0;
+        bool srgbMips = false; // the mip levels were filtered as sRGB color (they depend on the color space)
+    };
+    // The header alone: what a cook has made (false — no file, or a file of another version).
+    static bool readCookedTextureInfo(const path_t &path, CookedTextureInfo &info);
     static Miren::TextureCreate loadCookedTexture(const path_t &path);
-    static bool saveCookedTexture(const path_t &path, const Miren::TextureCreate &create);
+    static bool saveCookedTexture(const path_t &path, const Miren::TextureCreate &create, bool srgbMips = false);
     static path_t getCookedTextureAssetPath(const path_t &sourcePath);
     // Shader include root (`#include "panda/…"`): default-shaders/include in Resources —
     // the editor and export expand project shaders with it (MirenTools::expandHlslIncludes).

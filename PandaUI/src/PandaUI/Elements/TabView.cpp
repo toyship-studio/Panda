@@ -33,10 +33,10 @@ namespace {
 // the shared drag-and-drop (prepareDrag); a plain click in the cross zone closes, otherwise it selects.
 class TabView::Tab final : public Control {
 public:
-    Tab(TabView *owner, std::string title, bool closable, std::uint64_t id, bool draggable, TextureHandle icon)
+    Tab(TabView *owner, std::string title, bool closable, std::uint64_t id, TabDrag drag, TextureHandle icon)
         : m_owner(owner)
         , m_closable(closable)
-        , m_draggable(draggable)
+        , m_drag(drag)
         , m_id(id)
         , m_title(title)
         , m_label(std::make_shared<Label>(std::move(title))) {
@@ -171,10 +171,11 @@ protected:
         return true;
     }
     bool prepareDrag(DragPayload &payload, Point) override {
-        if (!m_draggable) { return false; } // a pinned tab (the viewport) cannot be dragged
+        if (m_drag == TabDrag::None) { return false; }
         payload.type = TAB_DRAG_TYPE;
         payload.source = m_owner; // the owner bar: identity (reorder/transfer) + group check
-        payload.items = {m_id};
+        // The second item: the tab stays in its bar (canAcceptDrop of the other bars).
+        payload.items = {m_id, m_drag == TabDrag::WithinBar ? std::uint64_t(1) : std::uint64_t(0)};
         payload.ghostText = m_title;
         return true;
     }
@@ -242,7 +243,7 @@ private:
 
     TabView *m_owner;
     bool m_closable;
-    bool m_draggable;
+    TabDrag m_drag;
     std::uint64_t m_id;
     std::string m_title;
     std::shared_ptr<Label> m_label;
@@ -319,7 +320,7 @@ void TabView::applyAppearance() {
 TabView::~TabView() = default;
 
 int TabView::addTab(
-    std::string title, std::shared_ptr<View> content, bool closable, std::uint64_t id, bool draggable,
+    std::string title, std::shared_ptr<View> content, bool closable, std::uint64_t id, TabDrag drag,
     TextureHandle icon
 ) {
     if (id == 0) {
@@ -327,7 +328,7 @@ int TabView::addTab(
     } else {
         m_nextTabId = std::max(m_nextTabId, id + 1); // never hand out an auto id that matches an explicit one
     }
-    auto tab = std::make_shared<Tab>(this, std::move(title), closable, id, draggable, icon);
+    auto tab = std::make_shared<Tab>(this, std::move(title), closable, id, drag, icon);
 
     content->layout().setFlexGrow(1.f);
     content->setHidden(true);
@@ -528,6 +529,7 @@ bool TabView::canAcceptDrop(const DragInfo &drag) {
     if (drag.payload.type != TAB_DRAG_TYPE) { return false; }
     if (drag.payload.source == this) { return true; } // reorder within its own bar
     if (m_dragGroup.empty()) { return false; }         // transfer between bars — only within a shared group
+    if (drag.payload.items.size() > 1 && drag.payload.items[1] != 0) { return false; } // the tab stays in its bar
     auto *src = static_cast<TabView *>(drag.payload.source);
     return src && src->m_dragGroup == m_dragGroup;
 }

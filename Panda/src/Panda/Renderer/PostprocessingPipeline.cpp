@@ -4,6 +4,7 @@
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/GameLogic/Components/BaseComponents.hpp"
+#include "Panda/GameLogic/World.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
@@ -64,6 +65,17 @@ void PostprocessingFrameInputs::setCamera(const CameraComponent &camera) {
     tonemap.antialiasing = camera.antialiasing;
     cameraNear = camera.camera.getNear();
     cameraFar = camera.camera.getFar();
+}
+
+void PostprocessingFrameInputs::setWorld(World &world) {
+    sunScreen = world.getFrameSunScreen();
+    projection = world.getFrameProjection();
+    viewProj = world.getFrameViewProj();
+    const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
+    ssao = graphics.ssao;
+    fog.settings = graphics.fog;
+    fog.viewProj = viewProj;
+    fog.scene = &world.getRenderer3D().sceneBlocks();
 }
 
 namespace {
@@ -149,6 +161,9 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
                             : SsaoData{};
     // The order of the engine part: exposure → bloom (the pipeline: HDR → luminance → adaptation →
     // bloom; everything after bloom is the user chain + the fallback tonemap).
+    // The fog is a part of the scene: the exposure measures the frame with it, the bloom glows
+    // through it.
+    input = m_fog.apply(input, depth, width, height, inputs.fog, m_quad);
     input = m_exposure.apply(input, width, height, inputs.exposure, time, m_quad);
     // The built-in camera bloom goes before the chain: the passes (and originalTexture) see the
     // frame already with the glow.

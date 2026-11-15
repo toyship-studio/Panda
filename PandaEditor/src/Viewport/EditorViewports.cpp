@@ -115,10 +115,7 @@ Miren::TextureHandle EditorViewports::runPostprocessing(
     inputs.depth = m_targets.depth();
     inputs.cameraNear = m_editorCamera.getNear();
     inputs.cameraFar = m_editorCamera.getFar();
-    inputs.sunScreen = world.getFrameSunScreen(); // glare for bloom_apply
-    inputs.projection = world.getFrameProjection();
-    inputs.viewProj = world.getFrameViewProj();
-    inputs.ssao = world.getGraphicsSettings().ssao;
+    inputs.setWorld(world);
     if (cameraEntity.isValid()) {
         CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
         if (showChain && camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }

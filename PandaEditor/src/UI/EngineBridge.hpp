@@ -72,17 +72,20 @@ public:
     virtual void setGizmoSpace(bool worldSpace) = 0;  // world / local
     virtual void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) = 0; // seam #2
     virtual void resetCamera() = 0;    // camera → origin
-    virtual void focusSelection() = 0; // camera → center of the selected entities (F, Z)
-    // The items of the menu bar for the command palette (the menus by name), and what choosing
-    // one does.
+    virtual void focusSelection() = 0; // camera → center of the selected entities (the command camera.focusSelection)
+    // The items of the menu bar that are not commands of the registry (File → New → an entity,
+    // a recent project) for the command palette, and what choosing one does.
     struct MenuCommand final {
-        std::string menu;     // "File"
-        std::string title;    // "Save"
-        std::string shortcut; // "⌘S"; empty — none
+        std::string menu;  // "File"
+        std::string title; // "New: Camera"
         uint32_t id = 0;
     };
     virtual std::vector<MenuCommand> menuCommands() = 0;
     virtual void runMenuCommand(uint32_t id) = 0;
+    // The Settings window: a second window of the editor over the main one, with this tree. An
+    // open one comes to the front. false — the window could not be made.
+    virtual bool openSettingsWindow(std::shared_ptr<PandaUI::View> root) = 0;
+    virtual void closeSettingsWindow() = 0;
     // File → Export Game → Cook Runtime Data: the data of the game is cooked into the Export project.
     virtual void exportGame() = 0;
     // Project build (the CMake panel): an asynchronous cmake for the script project or the Export project;

@@ -226,6 +226,52 @@ namespace {
         (*refresh)();
     }
 
+    // Fog: the air between the camera and what it sees (FogRenderer). No feature of the project
+    // behind it: a world without fog runs no pass.
+    void buildFog(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::WorldGraphicsSettings>(store.get<Panda::WorldGraphicsSettings>());
+        auto emit = [data] { commitSettings<Panda::WorldGraphicsSettings>(SettingsScope::World, *data); };
+        addToggleRow(section, "Enabled", data->fog.enabled, [data, emit](bool on) {
+            data->fog.enabled = on;
+            emit();
+        });
+        auto density = addNumberRow(section, "Density", 0.f, 1.f, data->fog.density, [data, emit](float value) {
+            data->fog.density = value;
+            emit();
+        });
+        density->setHelp("The light a meter of air takes away at the base height: 0.002 — a hazy day, 0.01 — a misty one, 0.1 — a thick fog");
+        if (auto *field = dynamic_cast<NumberField *>(density->editor().get())) { field->setStep(0.001f); }
+        addNumberRow(section, "Height Falloff", 0.f, 2000.f, data->fog.heightFalloff, [data, emit](float value) {
+            data->fog.heightFalloff = value;
+            emit();
+        })->setHelp("Every this many meters up the fog is half as dense; 0 — the same at every height");
+        addNumberRow(section, "Base Height", -10000.f, 10000.f, data->fog.baseHeight, [data, emit](float value) {
+            data->fog.baseHeight = value;
+            emit();
+        })->setHelp("The height the density is given at, m");
+        addNumberRow(section, "Start Distance", 0.f, 10000.f, data->fog.startDistance, [data, emit](float value) {
+            data->fog.startDistance = value;
+            emit();
+        })->setHelp("The air closer than this to the camera is clear, m");
+        addNumberRow(section, "Max Opacity", 0.f, 1.f, data->fog.maxOpacity, [data, emit](float value) {
+            data->fog.maxOpacity = value;
+            emit();
+        })->setHelp("The most the fog hides: below 1 the far things stay visible through it");
+        addColorRow(section, "Tint", data->fog.tint, [data, emit](const Panda::Color &color) {
+            data->fog.tint = color;
+            emit();
+        })->setHelp("Multiplies the light the fog takes from the sky of the world; white — the color of the sky near the horizon");
+        addNumberRow(section, "Sun Scatter", 0.f, 4.f, data->fog.sunScatter, [data, emit](float value) {
+            data->fog.sunScatter = value;
+            emit();
+        })->setHelp("The glow of the fog around the sun; 0 — none");
+        addToggleRow(section, "Affect Sky", data->fog.affectSky, [data, emit](bool on) {
+            data->fog.affectSky = on;
+            emit();
+        })->setHelp("The sky is behind all the air of its direction: the horizon dissolves in the fog, the zenith stays");
+        section.addContent(makeFormHint("The fog is lit by the world: its color follows the environment map and the sun."));
+    }
+
     // Occlusion Volume: sky visibility and sun transmittance from the flora scattering.
     void buildOcclusion(CollapsibleSection &section, Panda::TypeContext &store) {
         auto data = std::make_shared<Panda::WorldGraphicsSettings>(store.get<Panda::WorldGraphicsSettings>());
@@ -559,6 +605,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::World, "WORLD", buildLighting});
     extensions.settingsSections.push_back({SettingsScope::World, "SHADOWS", buildShadows});
     extensions.settingsSections.push_back({SettingsScope::World, "AMBIENT OCCLUSION", buildSsao});
+    extensions.settingsSections.push_back({SettingsScope::World, "FOG", buildFog});
     extensions.settingsSections.push_back({SettingsScope::World, "OCCLUSION VOLUME", buildOcclusion});
     extensions.settingsSections.push_back({SettingsScope::World, "WIND", buildWind});
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});

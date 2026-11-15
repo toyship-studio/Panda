@@ -226,7 +226,7 @@ bool HierarchyPanelView::pointerDown(PointerEvent &) {
 }
 
 // The keys of the entities (Delete, Duplicate, Copy, Cut, Paste, Rename) are commands of the
-// editor (EditorController::registerShortcuts): they act on the selection with the keyboard in
+// editor (EditorController::registerCommands): they act on the selection with the keyboard in
 // the Hierarchy or in the viewport alike. A key the tree does not use goes on to them.
 bool HierarchyPanelView::keyDown(KeyEvent &event) {
     // Escape in the search field empties it and hands the keyboard back to the tree.

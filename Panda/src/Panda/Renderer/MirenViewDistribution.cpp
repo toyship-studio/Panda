@@ -20,24 +20,28 @@ namespace Views {
     Miren::ViewId SSAO_VIEW = 7; // after the frame is on its way to the display: the result is for the next one
     Miren::ViewId SSAO_BLUR_VIEW = 6;
     Miren::ViewId CAPTURE_VIEW = 4;
-    Miren::ViewId SCENE_VIEW = 30;
+    Miren::ViewId AUXILIARY_WINDOW_VIEW = 92; // a window of its own: the order against the other views means nothing
+    // The fog of the world (FogRenderer): the air over the finished scene, before the exposure
+    // measures the frame.
+    Miren::ViewId FOG_VIEW = 30;
+    Miren::ViewId SCENE_VIEW = 31;
     // The emissive pass of the Lab preview: the sun disc into a separate texture with the SHARED
-    // depth of the preview scene — after PREVIEW_RENDER_VIEW (39), before the bloom pyramid (29..22).
-    Miren::ViewId PREVIEW_EMISSIVE_VIEW = 31;
-    Miren::ViewId SELECTED_GEOMETRY_VIEW = 32;
-    Miren::ViewId SHADOW_VIEWS_BEGIN = 36; // CSM cascades 36..33 — before the scene (it reads the atlas)
-    Miren::ViewId PREVIEW_TONEMAP_VIEW = 37; // finalization of previews/thumbnails: HDR scratch → display texture
-    Miren::ViewId THUMBNAIL_TONEMAP_VIEW = 38;
-    Miren::ViewId PREVIEW_RENDER_VIEW = 39;
-    Miren::ViewId THUMBNAIL_RENDER_VIEW = 40;
-    Miren::ViewId FLORA_IMPOSTER_COLOR_VIEW = 41;
-    Miren::ViewId FLORA_IMPOSTER_NORMAL_VIEW = 42;
-    Miren::ViewId SHOOT_BAKE_VIEWS_BEGIN = 60;
-    Miren::ViewId SHOOT_BAKE_VIEWS_END = 43;
-    Miren::ViewId BRANCH_BAKE_VIEWS_BEGIN = 80; // 80..61: geometry, seed, ≤16 JFA, finish
-    Miren::ViewId BRANCH_BAKE_VIEWS_END = 61;
-    Miren::ViewId LAMP_SHADOW_VIEWS_BEGIN = 90; // lamp shadow tiles 90..83 — before the scene
-    Miren::ViewId ENVIRONMENT_BAKE_VIEW = 81; // before everything: the scene, the previews and the bakes read the atlas
+    // depth of the preview scene — after PREVIEW_RENDER_VIEW, before the bloom pyramid.
+    Miren::ViewId PREVIEW_EMISSIVE_VIEW = 32;
+    Miren::ViewId SELECTED_GEOMETRY_VIEW = 33;
+    Miren::ViewId SHADOW_VIEWS_BEGIN = 37; // CSM cascades 37..34 — before the scene (it reads the atlas)
+    Miren::ViewId PREVIEW_TONEMAP_VIEW = 38; // finalization of previews/thumbnails: HDR scratch → display texture
+    Miren::ViewId THUMBNAIL_TONEMAP_VIEW = 39;
+    Miren::ViewId PREVIEW_RENDER_VIEW = 40;
+    Miren::ViewId THUMBNAIL_RENDER_VIEW = 41;
+    Miren::ViewId FLORA_IMPOSTER_COLOR_VIEW = 42;
+    Miren::ViewId FLORA_IMPOSTER_NORMAL_VIEW = 43;
+    Miren::ViewId SHOOT_BAKE_VIEWS_BEGIN = 61;
+    Miren::ViewId SHOOT_BAKE_VIEWS_END = 44;
+    Miren::ViewId BRANCH_BAKE_VIEWS_BEGIN = 81; // 81..62: geometry, seed, ≤16 JFA, finish
+    Miren::ViewId BRANCH_BAKE_VIEWS_END = 62;
+    Miren::ViewId LAMP_SHADOW_VIEWS_BEGIN = 91; // lamp shadow tiles 91..84 — before the scene
+    Miren::ViewId ENVIRONMENT_BAKE_VIEW = 82; // before everything: the scene, the previews and the bakes read the atlas
 
 } // namespace Views
 

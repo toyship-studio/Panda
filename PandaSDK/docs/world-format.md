@@ -11,7 +11,7 @@ shows an error and does not touch the current world.
 ```json
 {
     "lighting": { "ambientColor": {"x":1,"y":1,"z":1,"w":1}, "ambientIntensity": 0.12, "environmentMap": 0, "environmentIntensity": 1 },
-    "graphics": { "shadows": { ... }, "occlusion": { ... }, "ssao": { ... } },
+    "graphics": { "shadows": { ... }, "occlusion": { ... }, "ssao": { ... }, "fog": { ... } },
     "wind": { "strength": 0.4, "speed": 1, "gustiness": 0.5, "directionDegrees": 0 },
     "terrain": { "lod1": 120, "lod2": 240, "drawDistance": 0, "ring2Width": 4, "ring3Width": 16, "ring4Width": 32 },
     "flora": { "grass": 80, "grassDissolve": 0, "tree": 80, "imposter": 4000 },
@@ -33,7 +33,12 @@ shadow atlas in texels, 512), `slopeBias`, `normalOffset`, `receiverBias`;
 (m), `intensity`, and what the occlusion may cost: `slices` (directions around a pixel, 1–8,
 default 3), `steps` (depth samples along a direction each way, 1–12, default 4),
 `fullResolution` (the resolution of the frame instead of half of it, default false) — the
-Quality list of the editor is a name for a set of the three
+Quality list of the editor is a name for a set of the three; `graphics.fog` — `enabled` (default
+false), `density` (the light a meter of air takes away at `baseHeight`: 0.002 — a hazy day,
+0.01 — a misty one, 0.1 — a thick fog), `heightFalloff` (every this many meters up the density
+halves; 0 — the same at every height), `baseHeight` (m), `startDistance` (m), `maxOpacity`
+(0–1), `tint` (multiplies the light the fog takes from the sky of the world), `sunScatter` (the
+glow around the sun, 0 — none), `affectSky`
 (`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
 A single component has the same text outside a world file: an object with the name of its type
 as the key, `{"pointLightComponent": {"color": {...}, "intensity": 10.0, ...}}`. Copy Values in

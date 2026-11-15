@@ -21,6 +21,11 @@ public:
     virtual GpuStats getGpuStats() {
         return {};
     }
+    // Whether the device samples the block-compressed formats (BC7): a property of the device,
+    // decided when the renderer is made and read from the main thread.
+    virtual bool supportsCompressedTextures() {
+        return false;
+    }
     virtual void createFrameBuffer(FrameBufferHandle handle, FrameBufferSpecification specification) = 0;
     virtual void
     readFrameBuffer(FrameBufferHandle handle, int attachIndex, int x, int y, int width, int height, void *data) = 0;

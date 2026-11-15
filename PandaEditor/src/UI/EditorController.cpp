@@ -8,7 +8,9 @@
 
 #include "Preview/ThumbnailsManager.hpp"
 #include "UI/Documents/CoreAssetEditors.hpp"
+#include "UI/Documents/KeymapDocument.hpp"
 #include "UI/Documents/PluginsDocument.hpp"
+#include "UI/SettingsWindow.hpp"
 #include "UI/Documents/SettingsDocuments.hpp"
 #include "UI/Documents/UiGalleryDocument.hpp"
 #include "UI/EditorDialogs.hpp"
@@ -97,8 +99,6 @@ namespace {
     // (the registry holds plain callables, the coordinator is created once).
     EditorController *s_controller = nullptr;
 
-    constexpr const char *PROJECT_SETTINGS_DOCUMENT = "projectSettings";
-    constexpr const char *EDITOR_SETTINGS_DOCUMENT = "editorSettings";
     constexpr const char *PLUGINS_DOCUMENT = "plugins";
     constexpr const char *UI_GALLERY_DOCUMENT = "uiGallery";
     constexpr const char *GAME_DOCUMENT = "game";
@@ -224,7 +224,7 @@ private:
 
 /* ------------------------------ Coordinator ------------------------------ */
 
-EditorController::EditorController()
+EditorController::EditorController(Commands &commands)
     : m_hostBinding(this)
     , m_hierarchyView(std::make_shared<HierarchyPanelView>(this))
     , m_contentView(std::make_shared<ContentBrowserView>(this))
@@ -232,7 +232,8 @@ EditorController::EditorController()
     , m_outputView(std::make_shared<OutputPanelView>())
     , m_cmakeView(std::make_shared<CMakePanelView>(this))
     , m_statisticsView(std::make_shared<StatisticsPanelView>())
-    , m_profilerView(std::make_shared<ProfilerPanelView>()) {
+    , m_profilerView(std::make_shared<ProfilerPanelView>())
+    , m_commands(commands) {
     s_controller = this;
     // The core goes through the same registries as the modules (context/plugins.md, decision 2):
     // the settings sections, the asset editors and the document types — once per process, before
@@ -245,54 +246,110 @@ EditorController::EditorController()
         registerDocumentTypes();
     }
     buildLayout();
-    registerShortcuts();
+    registerCommands();
+    m_toolbarView->setKeyHints(m_commands);
+    m_commands.addKeymapListener([] {
+        if (s_controller == nullptr) { return; }
+        s_controller->m_toolbarView->setKeyHints(s_controller->m_commands);
+        if (Document *keymap = s_controller->settingsDocument(SettingsPage::Keymap)) { keymap->refresh(); }
+    });
     pushSelectionToPanels(); // initial state: empty → status "-"
     refreshStatistics();
 }
 
 
 EditorController::~EditorController() {
+    closeSettingsWindow(); // the tree leaves the window before its documents go
     if (s_controller == this) { s_controller = nullptr; }
 } // m_hostBinding unbinds the host last
 
+// The documents of the Settings window (showSettingsWindow): the project settings — a document of
+// project.json with its own undo stack, dirty until saved; the editor settings and the keymap —
+// applied and written by every edit.
+std::unique_ptr<Document> EditorController::makeProjectSettingsDocument() {
+    ProjectSettingsDocument::Host host;
+    host.store = []() -> Panda::TypeContext & { return s_controller->settings(Panda::SettingsScope::Project); };
+    host.isDirty = [] { return s_controller->m_bridge && s_controller->m_bridge->isProjectSettingsDirty(); };
+    host.markDirty = [] {
+        if (s_controller->m_bridge) { s_controller->m_bridge->projectSettingsEdited(); }
+    };
+    host.save = [] { return s_controller->m_bridge ? s_controller->m_bridge->saveProjectSettings() : false; };
+    host.filePath = [] {
+        return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Project)
+                                      : std::filesystem::path();
+    };
+    host.revert = [] {
+        if (s_controller->m_bridge) { s_controller->m_bridge->revertProjectSettings(); }
+    };
+    return std::make_unique<ProjectSettingsDocument>(std::move(host));
+}
+
+std::unique_ptr<Document> EditorController::makeEditorSettingsDocument() {
+    return std::make_unique<EditorSettingsDocument>(settings(Panda::SettingsScope::Editor), [] {
+        return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Editor)
+                                      : std::filesystem::path();
+    });
+}
+
+// The Settings window: a second window of the editor over the main one, with the editor
+// settings, the project settings and the keymap as its pages. What is edited there shows in the
+// viewport behind it at once. The window is the application layer's (the bridge), its content
+// and its documents are built here and live while it is open.
+bool EditorController::showSettingsWindow(SettingsPage page) {
+    if (!m_bridge) { return false; }
+    if (!m_settingsWindow) {
+        auto window = std::make_unique<SettingsWindow>();
+        window->editor = makeEditorSettingsDocument();
+        window->project = makeProjectSettingsDocument();
+        window->keymap = std::make_unique<KeymapDocument>(m_commands, [] {
+            if (s_controller) { s_controller->m_commands.run("keymap.openFile"); }
+        });
+        std::vector<SettingsWindowView::Page> pages = {
+            {"Editor", Ic::Configure, "This machine: the look, the viewport, the external editor. Applied at once.", window->editor.get()},
+            {"Project", Ic::Folder, "project.json: what the game is built from. Applied when saved.", window->project.get()},
+            {"Keymap", Ic::Script, "The keys of every command. Applied at once.", window->keymap.get()},
+        };
+        // Escape arrives from inside the key dispatch of the window's own UI context, which
+        // closing destroys: the window goes on the next frame (updateChromeFromState).
+        window->view = std::make_shared<SettingsWindowView>(std::move(pages), [] {
+            if (s_controller && s_controller->m_settingsWindow) { s_controller->m_settingsWindow->closeRequested = true; }
+        });
+        if (!m_bridge->openSettingsWindow(window->view)) { return false; }
+        window->focused = true;
+        m_settingsWindow = std::move(window);
+    } else {
+        m_bridge->openSettingsWindow(m_settingsWindow->view); // an open one comes to the front
+    }
+    m_settingsWindow->view->selectPage(static_cast<int>(page));
+    return true;
+}
+
+void EditorController::closeSettingsWindow() {
+    if (!m_settingsWindow) { return; }
+    if (m_lastUndoDocument == m_settingsWindow->editor.get() || m_lastUndoDocument == m_settingsWindow->project.get() ||
+        m_lastUndoDocument == m_settingsWindow->keymap.get()) {
+        m_lastUndoDocument = nullptr;
+    }
+    // The tree leaves the window before its documents go: the views are theirs.
+    if (m_bridge) { m_bridge->closeSettingsWindow(); }
+    m_settingsWindow.reset();
+}
+
+void EditorController::settingsWindowFocusChanged(bool focused) {
+    if (m_settingsWindow) { m_settingsWindow->focused = focused; }
+}
+
+Document *EditorController::settingsDocument(SettingsPage page) {
+    if (!m_settingsWindow) { return nullptr; }
+    switch (page) {
+        case SettingsPage::Editor: return m_settingsWindow->editor.get();
+        case SettingsPage::Project: return m_settingsWindow->project.get();
+        case SettingsPage::Keymap: return m_settingsWindow->keymap.get();
+    }
+    return nullptr;
+}
+
 void EditorController::registerDocumentTypes() {
-    DocumentType project;
-    project.id = PROJECT_SETTINGS_DOCUMENT;
-    project.title = "Project Settings";
-    project.icon = Ic::Configure;
-    project.create = [] {
-        ProjectSettingsDocument::Host host;
-        host.store = []() -> Panda::TypeContext & { return s_controller->settings(Panda::SettingsScope::Project); };
-        host.isDirty = [] { return s_controller->m_bridge && s_controller->m_bridge->isProjectSettingsDirty(); };
-        host.markDirty = [] {
-            if (s_controller->m_bridge) { s_controller->m_bridge->projectSettingsEdited(); }
-        };
-        host.save = [] { return s_controller->m_bridge ? s_controller->m_bridge->saveProjectSettings() : false; };
-        host.filePath = [] {
-            return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Project)
-                                          : std::filesystem::path();
-        };
-        host.revert = [] {
-            if (s_controller->m_bridge) { s_controller->m_bridge->revertProjectSettings(); }
-        };
-        return std::unique_ptr<Document>(std::make_unique<ProjectSettingsDocument>(std::move(host)));
-    };
-    editorExtensions().documentTypes.add(std::move(project));
-
-    DocumentType editor;
-    editor.id = EDITOR_SETTINGS_DOCUMENT;
-    editor.title = "Editor Settings";
-    editor.icon = Ic::Configure;
-    editor.create = [] {
-        return std::unique_ptr<Document>(
-            std::make_unique<EditorSettingsDocument>(s_controller->settings(Panda::SettingsScope::Editor), [] {
-                return s_controller->m_bridge ? s_controller->m_bridge->settingsFilePath(Panda::SettingsScope::Editor)
-                                              : std::filesystem::path();
-            })
-        );
-    };
-    editorExtensions().documentTypes.add(std::move(editor));
-
     // The Plugins tab: the store and the theme live in the application layer, behind the bridge.
     DocumentType plugins;
     plugins.id = PLUGINS_DOCUMENT;
@@ -423,6 +480,19 @@ void EditorController::syncWorldTabs() {
             opened = true;
         }
         m_dockManager->setPanelTitle(tabId, world.name); // a no-op while the name stands (Save As changes it)
+    }
+    // The preview tab of a world stops being one when the user pinned it (a double click on the
+    // tab), when the world is gone, and when the world was edited: an edit is not thrown away by
+    // a click on another file.
+    if (m_previewWorldId != 0) {
+        const OpenWorld *previewWorld = openWorld(m_previewWorldId);
+        const std::string previewTab = worldTabId(m_previewWorldId);
+        if (previewWorld == nullptr || !m_dockManager->isPanelPreview(previewTab)) {
+            m_previewWorldId = 0;
+        } else if (previewWorld->dirty) {
+            m_dockManager->setPanelPreview(previewTab, false);
+            m_previewWorldId = 0;
+        }
     }
     // The active world and the selected tab follow each other.
     const uint32_t activeId = m_bridge->activeWorldId();
@@ -587,19 +657,17 @@ void EditorController::addFileItems(Menu &menu, const std::filesystem::path &fil
 }
 
 void EditorController::settingsFileReloaded(Panda::SettingsScope scope) {
-    if (!m_editorTabs) { return; }
     if (scope == Panda::SettingsScope::Project) {
-        auto *project = dynamic_cast<ProjectSettingsDocument *>(m_editorTabs->documentOfType(PROJECT_SETTINGS_DOCUMENT));
+        auto *project = static_cast<ProjectSettingsDocument *>(settingsDocument(SettingsPage::Project));
         if (project) { project->fileReloaded(); }
-    } else if (Document *editor = m_editorTabs->documentOfType(EDITOR_SETTINGS_DOCUMENT)) {
+    } else if (Document *editor = settingsDocument(SettingsPage::Editor)) {
         editor->refresh();
     }
 }
 
 void EditorController::refreshSettingsDocuments() {
-    if (!m_editorTabs) { return; }
-    for (const char *typeId : {PROJECT_SETTINGS_DOCUMENT, EDITOR_SETTINGS_DOCUMENT}) {
-        if (Document *document = m_editorTabs->documentOfType(typeId)) { document->refresh(); }
+    for (SettingsPage page : {SettingsPage::Project, SettingsPage::Editor}) {
+        if (Document *document = settingsDocument(page)) { document->refresh(); }
     }
 }
 
@@ -673,7 +741,15 @@ void EditorController::pushSelectionToPanels() {
         entities.empty() ? count : std::to_string(entities.size()) + " of " + count + " selected"
     );
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
-    if (m_editorTabs) { m_editorTabs->showSelection(entities, entities.empty() ? m_selectedAssets : std::vector<Panda::AssetId>{}); }
+    // A selected world is shown by its own tab (openWorldTab), not by a tab of asset parameters.
+    std::vector<Panda::AssetId> shownAssets;
+    if (entities.empty()) {
+        auto *handler = assetHandler();
+        for (Panda::AssetId asset : m_selectedAssets) {
+            if (handler == nullptr || handler->getInfo(asset).type != Panda::AssetType::WORLD) { shownAssets.push_back(asset); }
+        }
+    }
+    if (m_editorTabs) { m_editorTabs->showSelection(entities, shownAssets); }
 }
 
 void EditorController::selectEntitiesByIds(const std::vector<Panda::UUID> &ids) {
@@ -708,6 +784,7 @@ void EditorController::syncSelectionFromEngine() {
 }
 
 void EditorController::updateChromeFromState(bool isEditMode) {
+    if (m_settingsWindow && m_settingsWindow->closeRequested) { closeSettingsWindow(); }
     if (!m_toolbarView) { return; }
     syncWorldTabs();
     // The undo/redo buttons show the stack state of the ACTIVE document (just like Cmd+Z itself).
@@ -1313,7 +1390,7 @@ void EditorController::viewportDidDropAssets(const std::vector<std::uint32_t> &a
         return;
     }
     // A world dropped onto the viewport opens, as a double click on it in the Content Browser does.
-    if (kind == "scene" && m_bridge && !assetIds.empty()) { m_bridge->openWorldAsset(assetIds.front()); }
+    if (kind == "scene" && !assetIds.empty()) { openWorldTab(Panda::AssetId(assetIds.front()), /*preview*/ false); }
 }
 
 // gltf mesh → an entity subtree (one root per asset): the engine builds the nodes/transforms/submeshes
@@ -1386,6 +1463,46 @@ void EditorController::deleteAssets(const std::vector<Panda::AssetId> &ids) {
 
 void EditorController::contentDidSelectAssets(const std::vector<Panda::AssetId> &assets) {
     selectAssets(assets, false);
+    // A world is a document, not an asset with parameters: a click shows it the way a click on a
+    // file shows it in a code editor — in the preview tab.
+    auto *handler = assetHandler();
+    if (assets.size() == 1 && handler && handler->getInfo(assets.front()).type == Panda::AssetType::WORLD) {
+        openWorldTab(assets.front(), /*preview*/ true);
+    }
+}
+
+// A world of the project in a tab. preview — the unpinned tab (the title in italics): there is
+// one, the next world shown this way takes its place; a double click on the file or on the tab,
+// or an edit of the world, keeps the tab. A world that is open already only comes forward.
+void EditorController::openWorldTab(Panda::AssetId asset, bool preview) {
+    if (!m_bridge || !m_editorTabs) { return; }
+    // The game plays a copy of the active world: a click only selects the file (a double click
+    // stops the game and opens the world, as it always did).
+    if (preview && !m_bridge->canActivateWorld()) { return; }
+    const std::vector<uint32_t> before = m_worldTabs;
+    const uint32_t previousPreview = m_previewWorldId;
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    View *focused = context ? context->getFocusedView() : nullptr;
+    m_bridge->openWorldAsset(asset);
+    syncWorldTabs();
+    // A click in the Content Browser leaves the keyboard there (the arrows walk on over the files).
+    if (preview && context && focused) { context->setFocusedView(focused); }
+    const uint32_t opened = m_bridge->activeWorldId();
+    const bool isNew = std::find(before.begin(), before.end(), opened) == before.end();
+    if (!preview) {
+        if (opened == m_previewWorldId) {
+            m_dockManager->setPanelPreview(worldTabId(opened), false);
+            m_previewWorldId = 0;
+        }
+        return;
+    }
+    if (!isNew) { return; }
+    m_previewWorldId = opened;
+    m_dockManager->setPanelPreview(worldTabId(opened), true);
+    if (previousPreview != 0 && previousPreview != opened && openWorld(previousPreview) != nullptr) {
+        m_editorTabs->closeTab(worldTabId(previousPreview)); // not edited: an edit pins the tab (syncWorldTabs)
+        syncWorldTabs();
+    }
 }
 
 void EditorController::contentDidRequestDelete(const std::vector<Panda::AssetId> &assets) {
@@ -1432,7 +1549,7 @@ void EditorController::contentDidRequestAddToScene(const std::vector<Panda::Asse
 }
 
 void EditorController::contentDidRequestOpenWorld(Panda::AssetId assetId) {
-    if (m_bridge) { m_bridge->openWorldAsset(assetId); }
+    openWorldTab(assetId, /*preview*/ false);
 }
 
 CreateActions EditorController::contentCreateActions(const Panda::path_t &directory) {
@@ -1630,11 +1747,9 @@ void EditorController::commitSettings(Panda::SettingsScope scope, Foundation::Sh
             return;
         }
         case Panda::SettingsScope::Project: {
-            // An undo step of the project settings document (its tab is the only place that edits
-            // the scope); without the document — applied as is.
-            auto *document = m_editorTabs
-                                 ? dynamic_cast<ProjectSettingsDocument *>(m_editorTabs->documentOfType(PROJECT_SETTINGS_DOCUMENT))
-                                 : nullptr;
+            // An undo step of the project settings document (its page of the Settings window is the
+            // only place that edits the scope); without the document — applied as is.
+            auto *document = static_cast<ProjectSettingsDocument *>(settingsDocument(SettingsPage::Project));
             if (document == nullptr) {
                 command->execute();
                 return;
@@ -1656,6 +1771,10 @@ void EditorController::openPlugins() {
     if (m_editorTabs) { m_editorTabs->openDocumentType(PLUGINS_DOCUMENT, Dock::Center); }
 }
 
+void EditorController::openKeymap() {
+    showSettingsWindow(SettingsPage::Keymap);
+}
+
 void EditorController::openUiGallery() {
     if (m_editorTabs) { m_editorTabs->openDocumentType(UI_GALLERY_DOCUMENT, Dock::Center); }
 }
@@ -1666,15 +1785,14 @@ void EditorController::openSettings(Panda::SettingsScope scope, const std::strin
             setWorldSettingsVisible(true);
             if (m_worldSettingsView && !section.empty()) { m_worldSettingsView->revealSection(section); }
             return;
-        case Panda::SettingsScope::Project:
+        case Panda::SettingsScope::Project: {
+            if (!showSettingsWindow(SettingsPage::Project) || section.empty()) { return; }
+            static_cast<ProjectSettingsDocument *>(settingsDocument(SettingsPage::Project))->revealSection(section);
+            return;
+        }
         case Panda::SettingsScope::Editor: {
-            if (!m_editorTabs) { return; }
-            const char *typeId = scope == Panda::SettingsScope::Project ? PROJECT_SETTINGS_DOCUMENT : EDITOR_SETTINGS_DOCUMENT;
-            m_editorTabs->openDocumentType(typeId, Dock::Center);
-            if (section.empty()) { return; }
-            Document *document = m_editorTabs->documentOfType(typeId);
-            if (auto *project = dynamic_cast<ProjectSettingsDocument *>(document)) { project->revealSection(section); }
-            if (auto *editor = dynamic_cast<EditorSettingsDocument *>(document)) { editor->revealSection(section); }
+            if (!showSettingsWindow(SettingsPage::Editor) || section.empty()) { return; }
+            static_cast<EditorSettingsDocument *>(settingsDocument(SettingsPage::Editor))->revealSection(section);
             return;
         }
     }
@@ -1706,6 +1824,10 @@ Document *EditorController::activeDocument() {
     // The focus moves with every click (Context) — "where the user is" is reliable. The selected
     // document tab of the dock with the focus — its document; a side dock without one (Hierarchy)
     // — the world.
+    // The Settings window has the keyboard: Save and Undo mean the document of its page.
+    if (m_settingsWindow && m_settingsWindow->focused) {
+        if (Document *document = m_settingsWindow->view->selectedDocument()) { return document; }
+    }
     Context *context = m_root ? m_root->getContext() : nullptr;
     View *focused = context ? context->getFocusedView() : nullptr;
     Dock dock;
@@ -1809,7 +1931,7 @@ void EditorController::entityDidRequestMaximize() {
     m_dockManager->maximize(Dock::Right); // fallback: tabs zoom THEIR OWN dock through tabsRequestMaximize
 }
 
-/* ----------------------------- Shortcuts --------------------------------- */
+/* ----------------------------- Commands ---------------------------------- */
 
 namespace {
 
@@ -1840,83 +1962,79 @@ std::vector<Panda::UUID> EditorController::selectedEntityIds() {
     return ids;
 }
 
-void EditorController::registerShortcuts() {
-    using Chord = KeyChord;
-    auto command = [this](const char *id, const char *group, const char *label, Chord chord, std::function<bool()> run,
-                          Chord alternate = {}) {
-        m_shortcuts.registerCommand(id, group, label, chord, std::move(run), alternate);
+// The commands of the workspace. Their keys are the keymap's (UI/DefaultKeymap.cpp): nothing
+// here names one.
+void EditorController::registerCommands() {
+    auto command = [this](const char *id, const char *group, const char *label, std::function<bool()> run) {
+        m_commands.add(id, group, label, std::move(run));
     };
-    // An entity command by a key: only where the world has the keyboard. The palette runs the
-    // same handler with its own field in focus, so it asks nothing of the focus.
-    auto entityCommand = [this, &command](const char *id, const char *label, Chord chord, std::function<bool()> run,
-                                          Chord alternate = {}) {
-        command(id, "Entity", label, chord, [this, run = std::move(run)] {
-            if (!m_paletteRuns && !worldHasKeyboard()) { return false; }
-            return run();
-        }, alternate);
+    // An entity command: its key works only where the world has the keyboard.
+    auto entityCommand = [this](const char *id, const char *label, std::function<bool()> run) {
+        m_commands.add(id, "Entity", label, std::move(run), CommandScope::World);
     };
+    m_commands.setWorldScopeTest([this] { return worldHasKeyboard(); });
 
-    command("palette.show", "Editor", "Command Palette", Chord::primary(Key::P, /*shift*/ true), [this] {
+    command("palette.show", "Editor", "Command Palette", [this] {
         showCommandPalette();
         return true;
     });
-    command("goto.show", "Editor", "Go to Asset or Entity", Chord::primary(Key::P), [this] {
+    command("goto.show", "Editor", "Go to Asset or Entity", [this] {
         showGoTo();
         return true;
     });
-    command("hierarchy.search", "Editor", "Find in Hierarchy", Chord::primary(Key::F), [this] {
+    command("hierarchy.search", "Editor", "Find in Hierarchy", [this] {
         if (!showPanel("hierarchy")) { return false; }
         m_hierarchyView->focusSearch();
         return true;
     });
-    command("dock.toggleFullscreen", "Window", "Toggle Fullscreen of the Panel", Chord::plain(Key::Space, /*shift*/ true),
+    command("dock.toggleFullscreen", "Window", "Toggle Fullscreen of the Panel",
             [this] { return maximizeFocusedDock(); });
-    command("camera.focusSelection", "View", "Focus Selection", Chord::plain(Key::F), [this] {
+    command("camera.focusSelection", "View", "Focus Selection", [this] {
         if (m_bridge) { m_bridge->focusSelection(); }
         return true;
-    }, Chord::plain(Key::Z));
-    command("camera.reset", "View", "Reset Camera", {}, [this] {
+    });
+    command("camera.reset", "View", "Reset Camera", [this] {
         if (m_bridge) { m_bridge->resetCamera(); }
         return true;
     });
 
-    entityCommand("entity.delete", "Delete", Chord::plain(Key::Backspace), [this] {
+    entityCommand("entity.delete", "Delete", [this] {
         const std::vector<Panda::UUID> ids = selectedEntityIds();
         if (ids.empty()) { return false; }
         hierarchyDidRequestDelete(ids);
         return true;
-    }, Chord::plain(Key::Delete));
-    entityCommand("entity.duplicate", "Duplicate", Chord::primary(Key::D), [this] {
+    });
+    entityCommand("entity.duplicate", "Duplicate", [this] {
         const std::vector<Panda::UUID> ids = selectedEntityIds();
         if (ids.empty()) { return false; }
         hierarchyDidRequestDuplicate(ids);
         return true;
     });
-    entityCommand("entity.copy", "Copy", Chord::primary(Key::C), [this] {
+    entityCommand("entity.copy", "Copy", [this] {
         const std::vector<Panda::UUID> ids = selectedEntityIds();
         if (ids.empty()) { return false; }
         hierarchyDidRequestCopy(ids);
         return true;
     });
-    entityCommand("entity.cut", "Cut", Chord::primary(Key::X), [this] {
+    entityCommand("entity.cut", "Cut", [this] {
         const std::vector<Panda::UUID> ids = selectedEntityIds();
         if (ids.empty()) { return false; }
         hierarchyDidRequestCopy(ids); // the text goes to the clipboard, the entities go
         hierarchyDidRequestDelete(ids);
         return true;
     });
-    entityCommand("entity.paste", "Paste", Chord::primary(Key::V), [this] {
+    entityCommand("entity.paste", "Paste", [this] {
         if (!m_panelsWorld) { return false; }
         hierarchyDidRequestPaste();
         return true;
     });
-    entityCommand("entity.rename", "Rename", Chord::plain(Key::F2), [this] {
+    entityCommand("entity.rename", "Rename", [this] {
         Panda::Entity entity = primaryEntity();
         if (!entity.isValid()) { return false; }
         hierarchyDidRequestRename(entity.getId());
         return true;
     });
-    entityCommand("entity.selectAll", "Select All", Chord::primary(Key::A), [this] {
+    entityCommand("entity.selectAll", "Select All", [this] {
         if (!m_panelsWorld) { return false; }
         std::vector<Panda::UUID> ids;
         for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {
@@ -1926,7 +2044,7 @@ void EditorController::registerShortcuts() {
         selectEntitiesByIds(ids);
         return true;
     });
-    entityCommand("entity.deselect", "Deselect All", Chord::plain(Key::Escape), [this] {
+    entityCommand("entity.deselect", "Deselect All", [this] {
         if (selectedEntities().empty()) { return false; }
         selectEntitiesByIds({});
         return true;
@@ -1936,19 +2054,18 @@ void EditorController::registerShortcuts() {
     static const char *const TOOLS[] = {"Move Tool", "Rotate Tool", "Scale Tool"};
     static const char *const TOOL_IDS[] = {"gizmo.move", "gizmo.rotate", "gizmo.scale"};
     for (int mode = 0; mode < 3; ++mode) {
-        command(TOOL_IDS[mode], "Tools", TOOLS[mode], Chord::plain(static_cast<Key>(static_cast<int>(Key::Key1) + mode)),
-                [this, mode] {
-                    if (!m_viewportView) { return false; }
-                    m_viewportView->setGizmoMode(mode);
-                    return true;
-                });
+        command(TOOL_IDS[mode], "Tools", TOOLS[mode], [this, mode] {
+            if (!m_viewportView) { return false; }
+            m_viewportView->setGizmoMode(mode);
+            return true;
+        });
     }
 
-    command("world.play", "World", "Play", Chord::plain(Key::F5), [this] {
+    command("world.play", "World", "Play", [this] {
         toolbarDidPickSceneState(SceneState::Play);
         return true;
     });
-    command("world.stop", "World", "Stop", Chord::plain(Key::F5, /*shift*/ true), [this] {
+    command("world.stop", "World", "Stop", [this] {
         toolbarDidPickSceneState(SceneState::Edit);
         return true;
     });
@@ -1959,40 +2076,33 @@ void EditorController::registerShortcuts() {
     };
     for (const auto &[panelId, title] : PANELS) {
         const std::string panel = panelId;
-        command(("panel." + panel).c_str(), "Window", (std::string("Show ") + title).c_str(), {}, [this, panel] {
+        command(("panel." + panel).c_str(), "Window", (std::string("Show ") + title).c_str(), [this, panel] {
             return showPanel(panel);
         });
     }
 }
 
-bool EditorController::handleShortcut(const KeyEvent &event) {
-    return m_shortcuts.handleKey(event);
-}
-
-// The command palette (⇧⌘P): every command of the editor by name — its own (ShortcutManager) and
-// the items of the menu bar — with the keys that run it. Enter or a click runs.
+// The command palette: every command of the editor by name with the keys that run it, and the
+// lists of the menu bar (File → New, the recent projects). Enter or a click runs.
 void EditorController::showCommandPalette() {
     Context *context = m_root ? m_root->getContext() : nullptr;
     if (context == nullptr) { return; }
     std::vector<PickerItem> items;
     // What choosing a row does, by the index of the row.
     auto actions = std::make_shared<std::vector<std::function<void()>>>();
-    for (const ShortcutManager::Command &command : m_shortcuts.commands()) {
+    for (const Commands::Command &command : m_commands.all()) {
         if (command.id == "palette.show") { continue; }
-        items.push_back({command.label, command.group, {}, command.chord.text()});
+        items.push_back({command.label, command.group, {}, m_commands.keys(command.id)});
         const std::string id = command.id;
         actions->push_back([this, id] {
-            m_paletteRuns = true;
-            const bool ran = m_shortcuts.run(id);
-            m_paletteRuns = false;
-            if (!ran) {
+            if (!m_commands.run(id)) {
                 m_outputView->appendLog(OutputPanelView::LogLevel::Info, "The command does not apply now: nothing to act on");
             }
         });
     }
     if (m_bridge) {
         for (const EngineBridge::MenuCommand &command : m_bridge->menuCommands()) {
-            items.push_back({command.title, command.menu, {}, command.shortcut});
+            items.push_back({command.title, command.menu, {}, {}});
             const uint32_t id = command.id;
             actions->push_back([this, id] {
                 if (m_bridge) { m_bridge->runMenuCommand(id); }
@@ -2180,3 +2290,4 @@ void EditorController::tabsHistoryChanged(bool canGoBack, bool canGoForward) {
 }
 
 } // namespace Editor
+

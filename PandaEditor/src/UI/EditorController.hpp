@@ -14,7 +14,7 @@
 #include <PandaEditorKit/Widgets/EditorView.hpp>
 #include "UI/DockManager.hpp"
 #include "UI/EditorTabs.hpp"
-#include "UI/Shortcuts.hpp"
+#include "UI/Commands.hpp"
 #include "UI/EngineBridge.hpp"
 
 #include <PandaEditorKit/Document.hpp>
@@ -53,6 +53,8 @@ struct ViewportSurfaces {
 // commands and pushes updates to the panels. It is also the host of the editor parts of packages
 // (Editor::EditorHost, PandaEditorKit) and the owner of the world document (the document model:
 // the viewport tab with the world settings sidebar; the other documents live in EditorTabs).
+class SettingsWindowView;
+
 class EditorController final : public Editor::EditorHost,
                                public HierarchyPanelOutput,
                                public EntityEditorOutput,
@@ -70,7 +72,7 @@ public:
     void addFileItems(PandaUI::Menu &menu, const std::filesystem::path &file);
     // A settings file was reread from disk: its open tab follows.
     void settingsFileReloaded(Panda::SettingsScope scope);
-    EditorController();
+    explicit EditorController(Commands &commands);
     ~EditorController() override; // unbinds the process host (Editor::setEditorHost(nullptr))
 
     std::shared_ptr<PandaUI::View> rootView() const {
@@ -281,7 +283,12 @@ public:
     void cmakeDidTapStop() override;
     void cmakeDidRequestShowProjectFolder(Panda::BuildTargetKind kind) override;
 
-    bool handleShortcut(const PandaUI::KeyEvent &event);
+    void openWorldTab(Panda::AssetId asset, bool preview);
+    void openKeymap(); // the Keymap page of the Settings window: the keys of every command, editable
+    // The Settings window (a second window of the editor): the layer tells when the user closed
+    // it and when it got or lost the keyboard.
+    void closeSettingsWindow();
+    void settingsWindowFocusChanged(bool focused);
 
     // EditorTabsHost: editor tabs edit THEIR OWN targets — for the duration of an edit the global
     // selection is substituted with the tab's targets (selectedEntities returns them).
@@ -308,7 +315,7 @@ private:
     friend class GameDocument;
     void buildLayout();
     void registerDocumentTypes(); // the settings of the project and of the editor in the "+" menu
-    void registerShortcuts();
+    void registerCommands();
     void showCommandPalette();
     void showGoTo(); // the palette of the entities of the world and the assets of the project
     bool worldHasKeyboard() const; // the focus is in the viewport or the Hierarchy (or nowhere)
@@ -383,6 +390,7 @@ private:
     std::vector<uint32_t> m_closedWorldTabs; // the user closed their tabs: they leave the list on the next sync
     uint32_t m_shownWorldId = 0;             // the active world the tabs were last synced to
     bool m_inWorldSync = false;              // the sync changes the active world itself: no nested sync
+    uint32_t m_previewWorldId = 0;           // the world of the preview tab (openWorldTab); 0 — none
     bool m_closingWorldTab = false;          // the sync closes the tab of a world that is gone: not a request
     std::shared_ptr<SettingsSectionsView> m_worldSettingsView;
     // The active target of an edit from a tab (RAII through tabsBegin/EndEntityTarget): selectedEntities
@@ -393,8 +401,19 @@ private:
     // the session document is the target of Undo from the viewport.
     std::function<void()> m_viewportEditingStop;
     Panda::AssetId m_viewportEditingDocument = 0;
-    ShortcutManager m_shortcuts;
-    bool m_paletteRuns = false; // a command is being run by name, not by its key
+    enum class SettingsPage { Editor, Project, Keymap }; // the order of the pages
+    struct SettingsWindow {
+        std::unique_ptr<Document> editor, project, keymap;
+        std::shared_ptr<SettingsWindowView> view;
+        bool focused = false; // the window has the keyboard: Save and Undo mean its page
+        bool closeRequested = false; // Escape in the window: it closes on the next frame
+    };
+    std::unique_ptr<SettingsWindow> m_settingsWindow; // while the window is open
+    bool showSettingsWindow(SettingsPage page);
+    Document *settingsDocument(SettingsPage page); // nullptr — the window is closed
+    std::unique_ptr<Document> makeProjectSettingsDocument();
+    std::unique_ptr<Document> makeEditorSettingsDocument();
+    Commands &m_commands; // the registry of the editor: the workspace adds its commands to it
     int m_nextEntity = 1; // counter for the names of new entities
 };
 

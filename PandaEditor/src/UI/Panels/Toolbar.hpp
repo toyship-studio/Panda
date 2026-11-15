@@ -9,6 +9,8 @@
 
 namespace Editor {
 
+class Commands;
+
 // Scene state: Edit (editing) or Play (the world runs; the Scene tab looks at it with the editor
 // camera, the Game tab shows the game).
 enum class SceneState { Edit, Play };
@@ -36,6 +38,7 @@ public:
 class ToolbarPanelView final : public EditorView, public UpdateIndicatorOutput {
 public:
     explicit ToolbarPanelView(ToolbarOutput *output);
+    void setKeyHints(const Commands &commands); // the tooltips with the keys of the keymap
     void setUpdateStatus(const UpdateIndicatorModel &model); // the updater state, driven by the coordinator
 
     // Input: button availability according to the editor state (driven by the coordinator every frame).
@@ -60,6 +63,7 @@ private:
     std::shared_ptr<IconButton> m_forward;
     std::shared_ptr<IconButton> m_redo;
     std::shared_ptr<IconButton> m_reload;
+    std::shared_ptr<IconButton> m_save;
     std::shared_ptr<IconButton> m_play;
     std::shared_ptr<IconButton> m_stop;
     std::shared_ptr<UpdateIndicatorView> m_update;

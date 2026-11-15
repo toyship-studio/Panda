@@ -84,6 +84,16 @@ public:
         return m_context;
     }
 
+    // A second window of the editor with a UI tree of its own (the Settings window): a modal
+    // window of Fern over the main one, its own Context over the renderer, the fonts and the
+    // theme of the chrome. One at a time; opening while one is open answers its context.
+    PandaUI::Context *openAuxiliaryWindow(const char *title, PandaUI::Size size, std::shared_ptr<PandaUI::View> root);
+    // The UI tree goes at once, the native window a few frames later: frames in flight draw into it.
+    void closeAuxiliaryWindow();
+    Fern::Window *auxiliaryWindow() const; // nullptr — none is open
+    PandaUI::Context *auxiliaryContext();
+    void renderAuxiliaryTo(Miren::ViewId viewId); // like renderTo, the tree of the second window
+
     // Wrap an engine FBO texture (scene color attachment) as a PandaUI texture for the viewport ImageView
     // (migration seam #1). The handle is stable across resizes, so wrap once. Ownership stays with the engine.
     PandaUI::TextureHandle wrapNativeTexture(Miren::TextureHandle native, PandaUI::Size size) {
@@ -108,6 +118,18 @@ private:
     PandaUIImplMiren m_renderer;
     PandaUIImplFern m_platform;
     PandaUI::Context m_context;
+    struct AuxiliaryWindow {
+        Fern::Window *window = nullptr;
+        PandaUIImplFern platform;
+        PandaUI::Context context;
+    };
+    std::unique_ptr<AuxiliaryWindow> m_auxiliary;
+    struct RetiredWindow {
+        Fern::Window *window = nullptr;
+        uint32_t frame = 0; // the frame after which nothing in flight draws into it
+    };
+    std::vector<RetiredWindow> m_retiredWindows;
+    void updateAuxiliary(double deltaTime);
     Miren::ViewId m_viewId = 0;
     bool m_initialized = false;
     bool m_pointerOverridden = false;
@@ -132,7 +154,8 @@ private:
     void loadBundledFonts();
     void loadCustomFamily(FontRole &role, const std::string &family);
     void rasterizeFonts(std::vector<FontJob> &jobs); // on the scheduler; blocks until the atlases exist
-    void bindFonts();                                 // the roles into the Context, the text scale
+    void bindFonts();                                 // the roles into the contexts, the text scale
+    void bindFonts(PandaUI::Context &context);
 
     // All PNGs of the folders (absolute paths) → a library: decoding on the scheduler, textures on
     // the main thread; blocks until ready.

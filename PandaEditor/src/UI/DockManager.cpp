@@ -284,6 +284,11 @@ void DockManager::setPanelPreview(const std::string &id, bool preview) {
     if (tv && index >= 0) { tv->setTabPreview(index, preview); }
 }
 
+bool DockManager::isPanelPreview(const std::string &id) const {
+    const DockPanel *p = findPanel(id);
+    return p != nullptr && p->preview;
+}
+
 bool DockManager::panelExists(const std::string &id) const {
     return findPanel(id) != nullptr;
 }
@@ -557,12 +562,11 @@ void DockManager::rebuild() {
     m_center->removeAllTabs(); // the center is re-laid out too (scenes + center panels from the specification)
     for (const DockPanel &p : m_panels) {
         if (!p.open) { continue; }
-        // Fixed panels (closable=false) and the tabs that stay in their dock (movable=false: the
-        // worlds) cannot be dragged.
+        // Fixed panels (closable=false) cannot be dragged; the tabs that stay in their dock
+        // (movable=false: the worlds) are reordered in it.
         if (auto dock = dockTabView(p.dock)) {
-            const int idx = dock->addTab(
-                p.title, p.content, p.closable, tabIdForPanel(p.id), p.closable && p.movable, icons().get(p.icon)
-            );
+            const TabDrag drag = !p.closable ? TabDrag::None : p.movable ? TabDrag::Free : TabDrag::WithinBar;
+            const int idx = dock->addTab(p.title, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon));
             if (p.preview) { dock->setTabPreview(idx, true); } // preview lives in the specification, style in the tab
         }
     }

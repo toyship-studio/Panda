@@ -128,6 +128,7 @@ namespace {
 // scaled and packed.
 struct EditorMcp::Screenshot {
     bool window = false; // the whole window of the editor, not a viewport
+    bool settings = false; // window: the Settings window, not the main one
     ViewportKind view = ViewportKind::Scene;
     ViewportKind shownBefore = ViewportKind::Scene; // the viewport that rendered when the shot was asked for
     bool switched = false;                          // another tab was brought forward for the shot: it goes back
@@ -280,7 +281,7 @@ void EditorMcp::registerTools() {
         "`window`: the editor itself — its panels, tabs and dialogs with the viewport inside (the menu bar and the "
         "title of the system are not part of it). Takes a few frames.",
         R"({"type":"object","properties":{)"
-        R"("view":{"type":"string","enum":["scene","game","window"],"description":"Default: game while playing, scene while editing."},)"
+        R"("view":{"type":"string","enum":["scene","game","window","settings"],"description":"Default: game while playing, scene while editing. settings: the Settings window while it is open."},)"
         R"("width":{"type":"integer","description":"The picture is scaled down to this width in pixels when the viewport is wider. Default 1280."},)"
         R"("wait":{"type":"number","description":"Seconds to wait before the shot: assets still loading, a moment of the game to reach. Default 0, at most 30."},)"
         R"("file":{"type":"string","description":"Also write the PNG to this file: an absolute path, or one relative to the project folder."},)"
@@ -340,12 +341,12 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "show",
         "Brings a part of the editor in front, as a click of the user would, so that a `screenshot` of the "
-        "`window` shows it. One of: `panel` — a panel by its id; `settings` — a settings tab; `asset` — selects "
+        "`window` shows it. One of: `panel` — a panel by its id; `settings` — the settings; `asset` — selects "
         "an asset: its tab opens (a material with its preview, a texture, a mesh); `entity` — selects an entity "
         "of the active world by its name: its inspector tab opens.",
         R"({"type":"object","properties":{)"
         R"("panel":{"type":"string","enum":["hierarchy","contentBrowser","output","cmake","statistics","profiler"]},)"
-        R"("settings":{"type":"string","enum":["world","project","editor"]},)"
+        R"("settings":{"type":"string","enum":["world","project","editor","keymap","close"],"description":"world: the sidebar of the viewport. project, editor, keymap: a page of the Settings window (a window of its own). close: closes that window."},)"
         R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
         R"("entity":{"type":"string","description":"The name of the entity."}}})",
         [this](const rapidjson::Value &arguments) { return show(arguments); },
@@ -358,7 +359,8 @@ void EditorMcp::registerTools() {
         "releases; `drag` presses at x, y, moves to toX, toY over a few frames and releases; `down`, `move`, `up` "
         "make a gesture in parts, with a screenshot in between; `scroll` turns the wheel by dx, dy. Answers with "
         "what is under the pointer afterwards: the views from the innermost out, the cursor, the view in focus. "
-        "The viewport's own tools (the gizmo, the camera) read the real mouse and do not follow.",
+        "The viewport's own tools (the gizmo, the camera) read the real mouse and do not follow. While the Settings "
+        "window is open the gesture goes to it (it is in front): the coordinates are those of a `settings` screenshot.",
         R"({"type":"object","properties":{)"
         R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll"],"description":"Default: click."},)"
         R"("x":{"type":"number"},"y":{"type":"number"},)"
@@ -375,11 +377,24 @@ void EditorMcp::registerTools() {
         "Keys and text into the editor window, to the view in focus (click a field with `pointer` first): `text` "
         "is typed character by character, `key` is pressed and released — a letter or a digit, or Enter, Escape, "
         "Tab, Backspace, Delete, Space, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1..F12. With both, the "
-        "text goes first. Answers like `pointer`.",
+        "text goes first. Answers like `pointer`. While the Settings window is open the keys go to it.",
         R"({"type":"object","properties":{)"
         R"("key":{"type":"string"},"text":{"type":"string"},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
         [this](const rapidjson::Value &arguments) { return key(arguments); },
+    });
+    m_server.addTool({
+        "command",
+        "The commands of the editor (what the menus, the command palette and the keys run). Without arguments: "
+        "the list — id, group, name, the keys, where the key works. With `id`: runs the command the way the "
+        "palette does, whatever has the keyboard (`file.save`, `world.play`, `entity.duplicate`, `keymap.open`, "
+        "…) — prefer it to pressing keys. With `id` and `keys` (chords as keymap.json writes them: \"cmd-shift-p\", "
+        "\"f5\"; an empty array unbinds) or `reset`: changes the keymap instead of running.",
+        R"({"type":"object","properties":{)"
+        R"("id":{"type":"string"},)"
+        R"("keys":{"type":"array","items":{"type":"string"},"description":"Bind these chords to the command."},)"
+        R"("reset":{"type":"boolean","description":"Return the command to its default keys."}}})",
+        [this](const rapidjson::Value &arguments) { return command(arguments); },
     });
     m_server.addTool({
         "restart",
@@ -578,8 +593,14 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         shot->view = ViewportKind::Game;
     } else if (view == "window") {
         shot->window = true;
+    } else if (view == "settings") {
+        if (m_editor.m_editorUI.auxiliaryWindow() == nullptr) {
+            return Mcp::ready(Mcp::ToolResult::error("The Settings window is closed: open it with `show` or the command settings.open"));
+        }
+        shot->window = true;
+        shot->settings = true;
     } else {
-        return Mcp::ready(Mcp::ToolResult::error("view is \"scene\", \"game\" or \"window\""));
+        return Mcp::ready(Mcp::ToolResult::error("view is \"scene\", \"game\", \"window\" or \"settings\""));
     }
     shot->maxWidth = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "width", SCREENSHOT_DEFAULT_WIDTH), 64.0, 8192.0));
     shot->returnImage = Mcp::boolArgument(arguments, "image", true);
@@ -657,8 +678,10 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
 }
 
 bool EditorMcp::captureWindow(Screenshot &shot) {
-    const Fern::Size size = m_editor.m_window->getSize();
-    const Fern::Size dpi = m_editor.m_window->getDpi();
+    Fern::Window *window = shot.settings ? m_editor.m_editorUI.auxiliaryWindow() : m_editor.m_window;
+    if (window == nullptr) { return false; }
+    const Fern::Size size = window->getSize();
+    const Fern::Size dpi = window->getDpi();
     const uint32_t width = static_cast<uint32_t>(size.width * dpi.width);
     const uint32_t height = static_cast<uint32_t>(size.height * dpi.height);
     if (width == 0 || height == 0) { return false; }
@@ -684,7 +707,11 @@ bool EditorMcp::captureWindow(Screenshot &shot) {
     Miren::setViewport(Views::CAPTURE_VIEW, Miren::Rect(0, 0, width, height));
     Miren::setViewClear(Views::CAPTURE_VIEW, 0x000000ff);
     Miren::setViewFrameBuffer(Views::CAPTURE_VIEW, m_windowCaptureBuffer);
-    m_editor.m_editorUI.renderTo(Views::CAPTURE_VIEW);
+    if (shot.settings) {
+        m_editor.m_editorUI.renderAuxiliaryTo(Views::CAPTURE_VIEW);
+    } else {
+        m_editor.m_editorUI.renderTo(Views::CAPTURE_VIEW);
+    }
 
     shot.width = width;
     shot.height = height;
@@ -756,7 +783,7 @@ Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
     JsonWriter writer(buffer);
     writer.StartObject();
     writer.Key("view");
-    writer.String(shot.window ? "window" : viewName(shot.view));
+    writer.String(shot.settings ? "settings" : shot.window ? "window" : viewName(shot.view));
     writer.Key("width");
     writer.Uint64(outWidth);
     writer.Key("height");
@@ -957,8 +984,20 @@ namespace {
 
 } // namespace
 
+// Input made in place of the user goes where the user's would: to the Settings window while it
+// is open (it is in front of the main one), to the main window otherwise.
+PandaUI::Context &EditorMcp::inputContext() const {
+    PandaUI::Context *settings = m_editor.m_editorUI.auxiliaryContext();
+    return settings != nullptr ? *settings : m_editor.m_editorUI.context();
+}
+
+Fern::Window *EditorMcp::inputWindow() const {
+    Fern::Window *settings = m_editor.m_editorUI.auxiliaryWindow();
+    return settings != nullptr ? settings : m_editor.m_window;
+}
+
 std::string EditorMcp::pointerJson() const {
-    PandaUI::Context &context = m_editor.m_editorUI.context();
+    PandaUI::Context &context = inputContext();
     rapidjson::StringBuffer buffer;
     JsonWriter writer(buffer);
     writer.StartObject();
@@ -991,7 +1030,7 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
     EditorUI *ui = &m_editor.m_editorUI;
     std::shared_ptr<void> release(nullptr, [ui](void *) { ui->setPointerOverridden(false); });
     return [this, queue, next, release]() -> std::optional<Mcp::ToolResult> {
-        PandaUI::Context &context = m_editor.m_editorUI.context();
+        PandaUI::Context &context = inputContext();
         if (*next >= queue->size()) {
             m_editor.m_editorUI.setPointerOverridden(false);
             Mcp::ToolResult result;
@@ -1067,9 +1106,10 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
 }
 
 Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
-    if (m_editor.m_window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
-    const Fern::Size size = m_editor.m_window->getSize();
-    const Fern::Size dpi = m_editor.m_window->getDpi();
+    Fern::Window *window = inputWindow();
+    if (window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
+    const Fern::Size size = window->getSize();
+    const Fern::Size dpi = window->getDpi();
     if (size.width <= 0.f || size.height <= 0.f) { return Mcp::ready(Mcp::ToolResult::error("The window of the editor has no size")); }
     // The coordinates are those of a screenshot of the window: its pixels, scaled down to `of`
     // when the window is wider.
@@ -1182,6 +1222,57 @@ Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
     return playInput(std::move(steps));
 }
 
+Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
+    Editor::Commands &commands = m_editor.m_commands;
+    const std::string id = Mcp::stringArgument(arguments, "id");
+    if (id.empty()) {
+        rapidjson::StringBuffer buffer;
+        JsonWriter writer(buffer);
+        writer.StartArray();
+        for (const Editor::Commands::Command &entry : commands.all()) {
+            writer.StartObject();
+            writer.Key("id");
+            writeText(writer, entry.id);
+            writer.Key("name");
+            writeText(writer, entry.group + ": " + entry.label);
+            writer.Key("keys");
+            writer.StartArray();
+            for (const Editor::KeyChord &chord : entry.chords) { writeText(writer, chord.name()); }
+            writer.EndArray();
+            if (entry.scope == Editor::CommandScope::World) {
+                writer.Key("where");
+                writeText(writer, "scene, hierarchy");
+            }
+            if (entry.customized) {
+                writer.Key("user");
+                writer.Bool(true);
+            }
+            writer.EndObject();
+        }
+        writer.EndArray();
+        return Mcp::ready(textResult(takeText(buffer)));
+    }
+    if (commands.find(id) == nullptr) { return Mcp::ready(Mcp::ToolResult::error("No such command: " + id)); }
+    if (Mcp::boolArgument(arguments, "reset", false)) {
+        commands.resetBinding(id);
+        return Mcp::ready(textResult("The default keys: " + commands.keys(id)));
+    }
+    if (arguments.IsObject() && arguments.HasMember("keys") && arguments["keys"].IsArray()) {
+        std::vector<Editor::KeyChord> chords;
+        for (const auto &item : arguments["keys"].GetArray()) {
+            const Editor::KeyChord chord = item.IsString() ? Editor::KeyChord::parse(item.GetString()) : Editor::KeyChord();
+            if (!chord.isSet()) { return Mcp::ready(Mcp::ToolResult::error("Not a key chord: write it as \"cmd-shift-p\", \"f5\"")); }
+            chords.push_back(chord);
+        }
+        commands.bind(id, std::move(chords));
+        return Mcp::ready(textResult("Bound and written to " + commands.keymapPath().string()));
+    }
+    SystemTools::Unattended unattended;
+    if (!commands.run(id)) { return Mcp::ready(Mcp::ToolResult::error("The command does not apply now: nothing to act on")); }
+    // What the command set off (a tab, a dialog) is laid out and drawn before the answer.
+    return playInput({InputStep{}, InputStep{}});
+}
+
 Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
     if (!hasProject() || !m_editor.m_editorController) {
         return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor"));
@@ -1203,10 +1294,17 @@ Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
             controller.openSettings(SettingsScope::Project);
         } else if (settings == "editor") {
             controller.openSettings(SettingsScope::Editor);
+        } else if (settings == "keymap") {
+            controller.openKeymap();
+        } else if (settings == "close") {
+            controller.closeSettingsWindow();
+            return Mcp::ready(textResult("The Settings window is closed."));
         } else {
-            return Mcp::ready(Mcp::ToolResult::error("settings is \"world\", \"project\" or \"editor\""));
+            return Mcp::ready(Mcp::ToolResult::error("settings is \"world\", \"project\", \"editor\", \"keymap\" or \"close\""));
         }
-        return Mcp::ready(textResult("The settings are in front."));
+        return Mcp::ready(textResult(
+            settings == "world" ? "The world settings are open in the viewport." : "The Settings window is open: shoot it with the `settings` view."
+        ));
     }
     if (!asset.empty()) {
         auto *handler = static_cast<AssetHandlerEditor *>(GameContext::getAssetHandler());

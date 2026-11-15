@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panda/Renderer/FogRenderer.hpp"
 #include "Panda/Renderer/SsaoRenderer.hpp"
 #include "Panda/Assets/Base/AssetRef.hpp"
 #include "Panda/Renderer/CascadedShadowMap.hpp"
@@ -33,7 +34,7 @@ struct WorldLightingSettings final : public Rain::Codable {
 };
 
 // World graphics: the core's frame lighting — shadows, the occlusion volume, the screen-space
-// ambient occlusion.
+// ambient occlusion, the fog.
 struct WorldGraphicsSettings final : public Rain::Codable {
     // Cascaded sun shadows: cascades/atlas tile/distance, strength and the biases against acne.
     CascadedShadowMap::Settings shadows;
@@ -42,11 +43,14 @@ struct WorldGraphicsSettings final : public Rain::Codable {
     OcclusionVolume::Settings occlusion;
     // Screen-space ambient occlusion: the contact darkening of the ambient light.
     SsaoSettings ssao;
+    // Fog: the air between the camera and what it sees.
+    FogSettings fog;
 
     RAIN_FIELDS_BEGIN(WorldGraphicsSettings)
     RAIN_FIELD(shadows)
     RAIN_FIELD(occlusion)
     RAIN_FIELD(ssao)
+    RAIN_FIELD(fog)
     RAIN_FIELDS_END
 };
 

@@ -26,12 +26,17 @@ struct AssetInfo : public Rain::Codable {
         // Color texture in sRGB: created in an sRGB format, sampling decodes to linear.
         // Data textures (normals, metallic/roughness, occlusion, masks) — false.
         bool srgb = true;
+        // Block compression (BC7) in the cooked file and in video memory: a quarter of RGBA8,
+        // with a small loss. Off for what must be exact — pixel art, a lookup table, a mask
+        // read by its exact values.
+        bool compressed = true;
 
         RAIN_FIELDS_BEGIN(TextureSettings)
         RAIN_FIELD(minFiltering)
         RAIN_FIELD(magFiltering)
         RAIN_FIELD(numMips)
         RAIN_FIELD(srgb)
+        RAIN_FIELD(compressed)
         RAIN_FIELDS_END
     };
 

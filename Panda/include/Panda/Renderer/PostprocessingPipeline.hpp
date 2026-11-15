@@ -5,6 +5,7 @@
 #include "Panda/Assets/PostprocessingAsset.hpp"
 #include "Panda/Renderer/BloomRenderer.hpp"
 #include "Panda/Renderer/ExposureRenderer.hpp"
+#include "Panda/Renderer/FogRenderer.hpp"
 #include "Panda/Renderer/FullscreenQuad.hpp"
 #include "Panda/Renderer/SsaoRenderer.hpp"
 #include "Panda/Renderer/Tonemap.hpp"
@@ -38,6 +39,9 @@ struct PostprocessingFrameInputs {
     glm::mat4 projection = glm::mat4(1.f);
     glm::mat4 viewProj = glm::mat4(1.f);
     SsaoSettings ssao = disabledSsao();
+    // The fog of the world over the scene, before everything else of the pipeline (FogRenderer).
+    // Disabled by default.
+    FogFrame fog;
     // The exposure compensation and the curve of the final Tonemap pass. A chain with
     // handlesTonemap develops the frame itself: it reads the same values from PANDA_POST.
     TonemapSettings tonemap;
@@ -45,6 +49,10 @@ struct PostprocessingFrameInputs {
     // The look of a camera: its bloom, auto exposure, tonemap and clip planes. The one place that
     // maps a camera to the pipeline — the editor and the runtime call it.
     void setCamera(const struct CameraComponent &camera);
+    // What the frame takes from the world it was drawn from: the camera matrices of its last
+    // update, the sun on screen, the ambient occlusion and the fog. The one place that maps a
+    // world to the pipeline — the editor and the runtime call it after the world is drawn.
+    void setWorld(class World &world);
 
 private:
     static SsaoSettings disabledSsao() {
@@ -121,6 +129,7 @@ private:
     // Created lazily — only for the divisors that actually occur in the chain.
     Target m_targets[4][2];
     FullscreenQuad m_quad; // the single quad of the post effects (bloom/exposure get the same one)
+    FogRenderer m_fog;     // the fog of the world: first, the rest sees the frame with the air in it
     ExposureRenderer m_exposure;
     BloomRenderer m_bloom; // built-in bloom: the pyramid before the user chain
     Miren::ProgramHandle m_antialiasing; // fxaa.frag: the pass after the Tonemap

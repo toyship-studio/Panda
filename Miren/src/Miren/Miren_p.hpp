@@ -67,6 +67,10 @@ struct Context {
         return m_renderer ? m_renderer->getGpuStats() : GpuStats{};
     }
 
+    bool supportsCompressedTextures() {
+        return m_renderer && m_renderer->supportsCompressedTextures();
+    }
+
     // Main thread
     void shutdown() {
         destroyTransientVertexBuffer(m_submit->m_transientVb);

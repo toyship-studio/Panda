@@ -4,6 +4,7 @@
 #include "Project/Assets/ShaderCook.hpp"
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
+#include <Panda/Assets/Base/TextureCodec.hpp>
 #include <Panda/Assets/Fallback/FallbackAssets.hpp>
 #include <Panda/Assets/MaterialAsset.hpp>
 #include <Panda/Assets/StaticResources.hpp>
@@ -60,24 +61,6 @@ namespace {
         }
     }
 
-    bool copyTexturePixelsRGBA8(
-        const Miren::TextureCreate &create, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
-    ) {
-        if (create.m_format != Miren::TextureFormat::RGBA8 || create.m_isCubeMap || !create.m_data.data ||
-            create.m_width == 0 || create.m_height == 0) {
-            return false;
-        }
-
-        const size_t dataSize = static_cast<size_t>(create.bytesPerTexel()) * create.m_width * create.m_height;
-        if (dataSize == 0 || dataSize > UINT32_MAX) { return false; }
-
-        if (width) { *width = create.m_width; }
-        if (height) { *height = create.m_height; }
-        pixels.resize(dataSize);
-        std::memcpy(pixels.data(), create.m_data.data, dataSize);
-        return true;
-    }
-
 } // namespace
 
 AssetHandlerEditor::AssetHandlerEditor()
@@ -123,16 +106,12 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
     const AssetType loadedType = assetInfo.type;
     if (loadedType == AssetType::TEXTURE) {
         auto meta = std::get<AssetInfo::TextureSettings>(assetInfo.settings);
-        if (m_import.ensureTextureIsCooked(relativePath, forcedReload)) {
+        // The cook itself knows when its file is stale (a newer source, other settings): a
+        // reload of the asset — a changed filter — does not compress the texture again.
+        if (m_import.ensureTextureIsCooked(relativePath, meta)) {
             const path_t cookedPath = AssetImporterBase::getCookedTextureAssetPath(relativePath);
             Miren::TextureCreate create = AssetImporterBase::loadCookedTexture(m_projectPath / cookedPath);
-            create.m_minFiltering = meta.minFiltering;
-            create.m_magFiltering = meta.magFiltering;
-            create.m_numMips = meta.numMips;
-            // The cook stores pixels as RGBA8; the color space is a property of the meta settings.
-            if (meta.srgb && create.m_format == Miren::TextureFormat::RGBA8) {
-                create.m_format = Miren::TextureFormat::RGBA8_SRGB;
-            }
+            TextureCodec::applySettings(create, meta);
             asset = F_NEW(m_allocator, TextureAsset)(create);
             LOG_TRACE("Loaded texture %s (asset %u)", relativePath.string().c_str(), id);
             removeMissingFiles(id);
@@ -459,7 +438,7 @@ void AssetHandlerEditor::updateInfo(AssetId id, const AssetInfo &assetInfo) {
     PND_ASSERT(prevInfo.type == assetInfo.type, "CAN'T CHANGE ASSET TYPE");
     m_registry[id] = assetInfo;
     if (assetInfo.type == AssetType::TEXTURE) {
-        m_import.ensureTextureIsCooked(assetPath(id), true);
+        m_import.ensureTextureIsCooked(assetPath(id), std::get<AssetInfo::TextureSettings>(assetInfo.settings), true);
     }
     savePmeta(id);
 }
@@ -588,7 +567,9 @@ void AssetHandlerEditor::adoptPmeta(const path_t &dataPath) {
         registerPath(info.id, relative);
     }
     if (info.type == AssetType::TEXTURE) {
-        if (!m_import.ensureTextureIsCooked(relative)) { markMissingFiles(info.id); }
+        if (!m_import.ensureTextureIsCooked(relative, std::get<AssetInfo::TextureSettings>(info.settings))) {
+            markMissingFiles(info.id);
+        }
     } else if (info.type == AssetType::SHADER) {
         ensureShaderSourceFilesExist(info.id, relative);
     } else if (const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);
@@ -679,11 +660,11 @@ bool AssetHandlerEditor::readTexturePixelsRGBA8(
     if (assetInfo.type != AssetType::TEXTURE) { return false; }
 
     const path_t sourcePath = assetPath(id);
-    if (!m_import.ensureTextureIsCooked(sourcePath)) { return false; }
+    if (!m_import.ensureTextureIsCooked(sourcePath, std::get<AssetInfo::TextureSettings>(assetInfo.settings))) { return false; }
 
     Miren::TextureCreate create =
         AssetImporterBase::loadCookedTexture(m_projectPath / AssetImporterBase::getCookedTextureAssetPath(sourcePath));
-    const bool copied = copyTexturePixelsRGBA8(create, width, height, pixels);
+    const bool copied = TextureCodec::readPixelsRGBA8(create, width, height, pixels);
     create.m_data.release();
     if (!copied) {
         LOG_ERROR_EDITOR("Texture %s has no RGBA8 pixels to read (asset %u).", sourcePath.string().c_str(), id);

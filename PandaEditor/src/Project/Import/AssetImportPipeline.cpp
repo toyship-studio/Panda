@@ -1,4 +1,5 @@
 #include "AssetImportPipeline.hpp"
+#include "Project/Import/TextureCompressor.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include <Panda/Assets/StaticResources.hpp>
 
@@ -147,6 +148,17 @@ void AssetImportPipeline::setTextureSrgb(AssetId id, bool srgb) {
     if (m_handler.isLoaded(id)) { m_handler.loadInternal(id, true); }
 }
 
+void AssetImportPipeline::setTextureCompressed(AssetId id, bool compressed) {
+    if (!m_handler.m_registry.contains(id)) { return; }
+    AssetInfo &info = m_handler.m_registry.at(id);
+    if (info.type != AssetType::TEXTURE) { return; }
+    AssetInfo::TextureSettings &meta = std::get<AssetInfo::TextureSettings>(info.settings);
+    if (meta.compressed == compressed) { return; }
+    meta.compressed = compressed;
+    m_handler.savePmeta(id);
+    if (m_handler.isLoaded(id)) { m_handler.loadInternal(id, true); } // the cook follows the setting
+}
+
 void AssetImportPipeline::setTextureFiltering(
     AssetId id, Miren::TextureFiltering minFiltering, Miren::TextureFiltering magFiltering
 ) {
@@ -285,26 +297,46 @@ bool AssetImportPipeline::refreshMeshSettings(AssetId assetId) {
     return true;
 }
 
-bool AssetImportPipeline::ensureTextureIsCooked(const path_t &sourceRelPath, bool forceRecook) {
+// The cooked file of a texture (.Panda/Textures/<path>.ptex) is derived from the source image
+// and from the settings that change its bytes: `compressed` (BC7 with its mips, or RGBA8) and,
+// for a compressed one, `srgb` (the mips of a color texture are filtered in linear light). It is
+// cooked again when the source is newer, when the file is of another version of the format and
+// when it is not what the settings ask for.
+bool AssetImportPipeline::ensureTextureIsCooked(
+    const path_t &sourceRelPath, const AssetInfo::TextureSettings &settings, bool forceRecook
+) {
     if (sourceRelPath.empty()) { return false; }
     const path_t cookedPath = m_handler.m_projectPath / AssetImporterBase::getCookedTextureAssetPath(sourceRelPath);
     const path_t sourcePath = m_handler.m_projectPath / sourceRelPath;
     const bool sourceExists = std::filesystem::exists(sourcePath);
-    bool cookedExists = std::filesystem::exists(cookedPath);
+    AssetImporterBase::CookedTextureInfo cooked;
+    bool cookedExists = AssetImporterBase::readCookedTextureInfo(cookedPath, cooked);
 
     bool shouldRecook = forceRecook && sourceExists;
     if (!shouldRecook && sourceExists) {
         if (!cookedExists) {
             shouldRecook = true;
+        } else if (std::filesystem::last_write_time(sourcePath) > std::filesystem::last_write_time(cookedPath)) {
+            shouldRecook = true;
         } else {
-            shouldRecook = std::filesystem::last_write_time(sourcePath) > std::filesystem::last_write_time(cookedPath);
+            // What can be compressed (an 8-bit image) is, when the settings say so.
+            const bool isCompressed = Miren::TextureCreate::isCompressedFormat(cooked.format);
+            const bool compressible = isCompressed || cooked.format == Miren::RGBA8;
+            shouldRecook = compressible && (isCompressed != settings.compressed || (isCompressed && cooked.srgbMips != settings.srgb));
         }
     }
 
     if (shouldRecook) {
         Miren::TextureCreate create = AssetImporterBase::load2DTexture(sourcePath);
         if (!create.m_data.data) { return cookedExists; }
-        cookedExists = AssetImporterBase::saveCookedTexture(cookedPath, create);
+        if (settings.compressed && create.m_format == Miren::RGBA8) {
+            Miren::TextureCreate compressed = TextureCompressor::compress(create, settings.srgb);
+            if (compressed.m_data.data != nullptr) {
+                create.m_data.release();
+                create = compressed;
+            }
+        }
+        cookedExists = AssetImporterBase::saveCookedTexture(cookedPath, create, create.isCompressed() && settings.srgb);
         create.m_data.release();
     }
 

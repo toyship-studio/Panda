@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Project/Export/ExportProjectTarget.hpp"
 #include "Project/Settings/RecentProject.hpp"
 
 #include <Fern/Window/Menu.hpp>
@@ -9,6 +8,10 @@
 #include <string>
 #include <vector>
 
+namespace Editor {
+class Commands;
+}
+
 namespace Fern {
 struct Event;
 class Window;
@@ -16,73 +19,42 @@ class Window;
 
 namespace Panda {
 
+// What the menu bar asks besides commands: the lists that change with the project. Every other
+// item is a command of the editor (UI/Commands.hpp) by its id — the menu names no key and no
+// handler of its own.
 class EditorMenuBarOutput {
 public:
     virtual ~EditorMenuBarOutput() = default;
     virtual bool menuBarHasOpenedProject() = 0;
-    virtual void menuBarOpenProject() = 0;
     virtual void menuBarOpenProject(const RecentProject &project) = 0;
-    virtual void menuBarNewWorld() = 0;
     // File → New: what the open project can create besides a world — the entities of the open
     // world and the assets (the core's and the modules'). Titles for the menu, the index to create.
     virtual std::vector<std::string> menuBarNewEntityTitles() = 0;
     virtual std::vector<std::string> menuBarNewAssetTitles() = 0;
     virtual void menuBarNewEntity(size_t index) = 0;
     virtual void menuBarNewAsset(size_t index) = 0;
-    virtual void menuBarUndo() = 0;
-    virtual void menuBarRedo() = 0;
-    // The settings (the document model): the world sidebar of the viewport (Window menu); the
-    // editor and the project settings documents and their files (the Settings submenu of the
-    // File menu, the Zed layout: Open … opens the document, Show … File reveals the JSON in the
-    // file manager — the editor has no text editor of its own).
-    virtual void menuBarOpenWorldSettings() = 0;
-    virtual void menuBarOpenProjectSettings() = 0;
-    virtual void menuBarOpenEditorSettings() = 0;
-    virtual void menuBarShowProjectSettingsFile() = 0;
-    virtual void menuBarShowEditorSettingsFile() = 0;
     virtual const std::vector<RecentProject> &menuBarGetRecentProjectsList() = 0;
     virtual const path_t &menuBarGetOpenedProjectPath() = 0;
-    virtual void menuBarCloseApp() = 0;
-    virtual void menuBarShowCppProject() = 0;
-    virtual void menuBarSave() = 0;    // the document of the tab with the focus
-    virtual void menuBarSaveAll() = 0; // every unsaved file document
-    virtual void menuBarNewWindow() = 0; // a second instance of the editor, on the start screen
-    virtual void menuBarReload() = 0;
-    virtual void menuBarCloseProject() = 0;
-    virtual void menuBarAbout() = 0;
-    // The editor updater (App/EditorUpdater): a check on demand, the restart into a ready update
-    // (the item exists only while one is ready), the release notes of the channel in the browser.
-    virtual void menuBarCheckForUpdates() = 0;
-    virtual void menuBarRestartToUpdate() = 0;
-    virtual void menuBarViewReleaseNotes() = 0;
+    // "Restart to Update" exists only while a downloaded update waits.
     virtual bool menuBarUpdateReady() = 0;
-    virtual void menuBarExportGame() = 0;
-    virtual void menuBarOpenExportProject(ExportProjectTarget target) = 0;
-    // The Plugins tab (Window → Plugins): installing, updating and removing plugins, applying themes.
-    virtual void menuBarOpenPlugins() = 0;
-    // The UI Gallery tab (Help → UI Gallery): every PandaUI element with a live example under the
-    // theme in use — what a theme author looks at.
-    virtual void menuBarOpenUiGallery() = 0;
-    // The Game tab (Window → Game): the frame of the game — the main camera, the game UI and input.
-    virtual void menuBarOpenGameView() = 0;
 };
 
-// An item of the menu bar as the command palette lists it.
+// An item of the menu bar that is not a command of the registry (File → New → an entity, a
+// recent project), as the command palette lists it.
 struct MenuCommandInfo final {
-    std::string menu;     // "File"
-    std::string title;    // "Save"; an item of a submenu — "Settings: Open Settings"
-    std::string shortcut; // "⌘S"; empty — none
-    uint32_t id = 0;      // what EditorMenuBar::run takes
+    std::string menu;  // "File"
+    std::string title; // "New: Camera"
+    uint32_t id = 0;   // what EditorMenuBar::run takes
 };
 
 class EditorMenuBar final {
 public:
-    EditorMenuBar(Fern::Window *window, EditorMenuBarOutput *output);
+    EditorMenuBar(Fern::Window *window, EditorMenuBarOutput *output, Editor::Commands &commands);
 
     void rebuild();
-    // The enabled command items of the menus as they were last built, flattened: the command
-    // palette shows the menus by name. run does what choosing the item does.
-    std::vector<MenuCommandInfo> commands() const;
+    // The enabled items that are not commands of the registry, flattened: the command palette
+    // shows them by name. run does what choosing the item does.
+    std::vector<MenuCommandInfo> dynamicItems() const;
     void run(uint32_t commandId) {
         processCommand(commandId);
     }
@@ -96,7 +68,9 @@ private:
 
     Fern::Window *m_window;
     EditorMenuBarOutput *m_output;
-    Fern::MenuBar m_menuBar; // as last built
+    Editor::Commands &m_commands;
+    Fern::MenuBar m_menuBar;              // as last built
+    std::vector<std::string> m_commandIds; // the command of a menu item: Fern id - 1 → command id
 };
 
 } // namespace Panda

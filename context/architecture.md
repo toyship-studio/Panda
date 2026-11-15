@@ -248,8 +248,8 @@ for the system default; `SystemTools::openInEditor`); a binary asset opens its t
 
 A tab that edits a file of the project is titled with the name of that file (`world.world`,
 `bark.mat`): the title answers "what will Save write". The tabs that are views or tools keep
-the name of what they show — an entity tab the entity, the settings tabs "Project Settings" and
-"Editor Settings", the Game and the Plugins tabs — and their file is one right-click away.
+the name of what they show — an entity tab the entity, the Game and the Plugins tabs — and
+their file is one right-click away.
 
 The tab documents:
 
@@ -317,15 +317,38 @@ Content Browser show the same lists. A module's `AssetCreator` joins the asset l
 menu opens with what begins something — New, New Window — and the rest follows the separator.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
-double click or an edit). The documents of `EditorExtensions::documentTypes` (the two settings
-documents and the Plugins tab; modules may add theirs) open from the "+" of any dock and from the
-menu bar, one instance per type, and are restored with the layout. The menu follows Zed: File → Settings holds
-Open Settings (Cmd+,) and Open Project Settings — the documents — and Open Settings File / Open
-Project Settings File, which open `settings.json` and `.Panda/project.json` in the external
-editor (the editor has no text editor of its own; a file never written is written first). Window → World Settings
-toggles the viewport sidebar, Window → Plugins opens the Plugins tab. Undo/redo go to the document of the tab
-with the focus; a side dock without a document (Hierarchy) means the world; a viewport editing
-session (the terrain brush) means the document of its asset.
+double click or an edit). A world is a document, not an asset with parameters: a click on a
+`.world` in the Content Browser shows it in the preview tab of the center (`openWorldTab`, the
+title in italics; there is one such tab, the next world shown this way takes its place), a
+double click on the file or on the tab keeps it, and so does an edit of the world; a world that
+is open only comes forward, and while the game plays a click only selects the file. A world tab
+is dragged to another place of its bar, not to another dock (`TabDrag::WithinBar`): the one
+viewport lives in the center. The documents of `EditorExtensions::documentTypes` (the Plugins
+tab; modules may add theirs) open from the "+" of any dock and from the menu bar, one instance
+per type, and are restored with the layout.
+
+**The Settings window.** The editor settings, the project settings and the keymap are not tabs:
+they are the pages of one window over the main one (`SettingsWindowView`, `UI/SettingsWindow`),
+so the scene stays in view behind what is being set. It is a second native window: a modal
+window of Fern (`WindowType::Modal` — on macOS a child of the main window: above it, moving and
+going with it, not blocking it) with a UI tree of its own — `EditorUI::openAuxiliaryWindow`
+gives it a `PandaUI::Context` over the renderer, the fonts and the theme of the chrome, drawn
+into the graphics context of that window through its own Miren view
+(`Views::AUXILIARY_WINDOW_VIEW`); the events of Fern carry their window, and each context
+takes its own. The coordinator builds the content and owns the three documents while the
+window is open (`showSettingsWindow`); the window is closed by its button, by Escape and with
+the project. The project settings page is the document of `project.json` (its own undo stack,
+dirty until saved): a footer with Save and Revert appears while it has unsaved changes, and
+while the window has the keyboard Save and Undo of the menu mean the document of its page
+(`activeDocument`). Closing the window keeps unsaved project settings unsaved — Save All and
+the question at exit still cover them. The menu follows Zed: File → Settings holds Open
+Settings (Cmd+,), Open Project Settings and Open Keymap — the pages — and Open Settings File /
+Open Project Settings File / Open Keymap File, which open `settings.json`,
+`.Panda/project.json` and `keymap.json` in the external editor (the editor has no text editor
+of its own; a file never written is written first). Window → World Settings toggles the
+viewport sidebar, Window → Plugins opens the Plugins tab. Undo/redo go to the document of the
+tab with the focus; a side dock without a document (Hierarchy) means the world; a viewport
+editing session (the terrain brush) means the document of its asset.
 
 Limits: an asset form is built only for a single selected asset. With several entities selected
 the inspector shows the primary entity, marks the fields that differ as "mixed" and applies an
@@ -438,25 +461,43 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 - A form must not be destroyed from the callback of its own control: the rebuild is deferred
   (`Context::postDeferred`; `AssetEditorView` rebuilds through it with a lifetime token of the
   view, which is what `AssetEditorContext::rebuild` of the Kit does).
-- **Commands.** What the user can ask of the editor by a key or by name is a command of
-  `ShortcutManager` (`UI/Shortcuts.hpp`): an id (`entity.duplicate`), the group and the name the
-  palette shows, the chords, a handler that answers whether it did something.
-  `EditorController::registerShortcuts` is the list: the entity commands (Delete, Duplicate,
-  Copy, Cut, Paste, Rename, Deselect), the tools of the gizmo, Play and Stop, the panels, the
-  camera. A key no view used reaches them through `Context::setUnhandledKeyDownHandler` — never
-  while a text field has the focus or an overlay is open. The entity commands act on the
-  selection only while the world has the keyboard — the Scene surface or the Hierarchy
-  (`worldHasKeyboard`); with the focus in the Content Browser, a settings tab or nowhere the
-  same keys are not theirs. The Hierarchy and the viewport do not handle these keys themselves.
-  A selection that opens a tab does not take the keyboard away: `DockManager::rebuild` puts the
-  tabs back and returns the focus to the view that had it.
-- **The command palette** (⇧⌘P, `showCommandPalette`) lists every command by name with its
-  keys: the commands of `ShortcutManager` and the items of the menu bar
-  (`EditorMenuBar::commands()` flattens the menus as they were last built;
-  `EngineBridge::menuCommands` / `runMenuCommand`). A new menu item or command is in the palette
-  without more code. The native menu keeps the chords with a modifier (the system dispatches
-  them); a command on a bare key lives in `ShortcutManager` only, so that it never takes a key
-  away from a text field.
+- **Commands.** Everything the user can ask of the editor by a key, a menu item or by name is
+  a command of one registry, `Editor::Commands` (`UI/Commands.hpp`), owned by the application
+  layer: a stable id (`entity.duplicate`), the group and the name the palette shows, a scope
+  and a handler that answers whether it did something. The layer registers the commands of the
+  application and the project (`file.*`, `edit.*`, `settings.*`, `help.*`), the coordinator
+  those of the workspace (`EditorController::registerCommands`: the entity commands, the tools
+  of the gizmo, Play and Stop, the panels, the camera, the palettes). The menu bar is built
+  from command ids and has no handlers of its own; the lists that change with the project
+  (File → New, the recent projects) are the only items that are not commands.
+- **The keys live in one place.** No command, menu, tooltip or view names a key. The default
+  chord of every command is a row of `UI/DefaultKeymap.cpp` — a table of command ids and chords
+  in the text of the keymap file (`primary-shift-p`, `f5`; `primary` is ⌘ on macOS and Ctrl
+  elsewhere), several rows of a command being its alternatives. The user's changes are
+  `keymap.json` next to the editor's `settings.json`: an object of command id → array of
+  chords, only what differs from the defaults, an empty array to unbind; entries of commands
+  this build does not know are kept. Menus and tooltips ask the registry (`chord`, `hint`) and
+  are rebuilt when the keymap changes (`addKeymapListener`). What stays in a view is what is
+  not a command: text editing, the navigation inside a list, the held flight keys of the
+  viewport camera. The Keymap page of the Settings window (`KeymapDocument`) lists the
+  commands with their keys, where the key works and whether the binding is the user's; a
+  double click records a chord (`ChordRecorder`), shows what else the chord runs, and writes
+  the file at once. A chord of the menu bar never reaches the UI — the system gives it to the
+  menu — so while a chord is recorded the menu reports the command instead of running it
+  (`Commands::setCapture`).
+- **Where a key works.** A key no view used reaches the registry through
+  `Context::setUnhandledKeyDownHandler` — never while a text field has the focus or an overlay
+  is open. A command of `CommandScope::World` (the entity commands) runs by its key only while
+  the world has the keyboard — the Scene surface or the Hierarchy (`worldHasKeyboard`); with
+  the focus in the Content Browser or nowhere the same keys are not theirs. The palette, a menu
+  and the MCP server run a command by id whatever has the keyboard. Two commands on one chord
+  are allowed: the first whose handler applies takes the key. A selection that opens a tab
+  does not take the keyboard away: `DockManager::rebuild` puts the tabs back and returns the
+  focus to the view that had it.
+- **The command palette** (`palette.show`, `showCommandPalette`) lists every command of the
+  registry by name with its keys, and the lists of the menu bar (`EditorMenuBar::dynamicItems`).
+  A new command is in the palette, in the Keymap and in the `command` tool of the MCP server
+  without more code.
 - **An edit of the world is a command of its history**, the name of an entity included
   (`renameEntities` commits the tag component) and a drop onto the root of the Hierarchy
   (`HierarchyCommand` with no parent): what the user did, Undo takes back. When the world
@@ -923,10 +964,13 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `pointer`,
-  `key`, `restart`, `quit`. `show` brings a panel, a settings tab, the tab of an asset or the
-  inspector of an entity in front — a click, not an edit: with the `window` screenshot it is how
-  an agent looks at the editor's own UI. A
+  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `command`,
+  `pointer`, `key`, `restart`, `quit`. `show` brings a panel, the settings, the tab of an asset
+  or the inspector of an entity in front — a click, not an edit: with the `window` screenshot
+  (`settings` for the Settings window) it is how an agent looks at the editor's own UI.
+  `command` lists the commands of the registry, runs one by id and rebinds its keys: what the
+  editor can be asked to do is asked by name, and a new ability of the editor an agent needs
+  becomes a command or a tool — pressed keys and clicks are for testing the UI itself. A
   tool acts as the user does, through the same functions of `EditorLayer` (`reloadFromDisk`,
   `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
 - `pointer` and `key` are the hands for that look: when the editor itself is the work, an agent

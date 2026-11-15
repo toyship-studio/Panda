@@ -40,8 +40,8 @@ struct DockPanel {
     // not get into the strip and "+", and closing REMOVES it (does not switch it to open=false).
     bool transient = false;
     bool preview = false; // unpinned (the title is dimmed); a double click on the tab pins it
-    // false — the tab stays in its dock: it is not dragged and has no "Dock ..." items (a world
-    // tab: the viewport lives in the center).
+    // false — the tab stays in its dock: it is dragged to another place of the bar only and has
+    // no "Dock ..." items (a world tab: the viewport lives in the center).
     bool movable = true;
     // false — a transient tab its owner reopens itself (the worlds of the project session): it
     // is not saved among the pinned tabs of the layout.
@@ -115,6 +115,7 @@ public:
     void setPanelPreview(const std::string &id, bool preview);
     bool panelExists(const std::string &id) const;
     // A tab was closed (close button/menu) — a transient is REMOVED by it; a double click cleared preview.
+    bool isPanelPreview(const std::string &id) const; // an unpinned tab (setPanelPreview, a double click pins)
     void setOnTransientClosed(std::function<void(const std::string &id)> callback);
     void setOnPanelPinned(std::function<void(const std::string &id)> callback);
     // Close gate of a transient tab (unsaved changes): false — the close is cancelled.

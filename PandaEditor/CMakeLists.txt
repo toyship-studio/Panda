@@ -209,6 +209,9 @@ target_link_libraries(PandaEditor nfd)
 # Dependencies - miniz (Vendor/miniz, added by the root): zip archives (Project/System/ZipArchive)
 target_link_libraries(PandaEditor miniz)
 
+# Dependencies - bc7enc: the texture cook compresses with it (Project/Import/TextureCompressor)
+target_link_libraries(PandaEditor bc7enc)
+
 if (PLATFORM_LINUX)
     # The blocking save changes dialog uses GTK3 independently of the nfd backend (GTK or portal).
     find_package(PkgConfig REQUIRED)

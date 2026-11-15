@@ -26,7 +26,10 @@ really have to, keep ids unique and keep each sidecar next to its file.
 ## Import by extension
 
 `.png/.jpg/.jpeg` — textures (sRGB by default; for data maps — normal/roughness/noise — switch
-sRGB off in the texture inspector). `.hdr` — textures with linear data (environment maps).
+sRGB off in the texture inspector). A texture is compressed for the GPU when the editor first
+sees it (BC7: a quarter of the video memory, with a small loss); switch Compressed off in the
+texture inspector for what must be exact — pixel art, a lookup table, an image of the game UI
+that shows banding. `.hdr` — textures with linear data (environment maps), never compressed.
 `.gltf` — meshes: textures are imported according to their roles in the glTF spec, and for every
 glTF material a file `<material-name>.mat` on the PBR shader is created next to the mesh
 (materials are shared by name within a folder — LOD variants of one object share one `.mat`).

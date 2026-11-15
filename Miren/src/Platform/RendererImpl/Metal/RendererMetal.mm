@@ -636,6 +636,16 @@ void RendererMetal::submit(RenderPass *draw, RenderPassInputs &viewInputs) {
                  indexBufferOffset:static_cast<NSUInteger>(draw->m_indicesOffset)];
 }
 
+bool RendererMetal::supportsCompressedTextures() {
+#    if defined(PLATFORM_IOS)
+    return false;
+#    else
+    // Every Mac GPU Metal runs on has the BC formats, the Apple silicon ones since macOS 11.
+    if (@available(macOS 11.0, *)) { return [(id<MTLDevice>)m_device supportsBCTextureCompression]; }
+    return true;
+#    endif
+}
+
 GpuStats RendererMetal::getGpuStats() {
     GpuStats stats;
     stats.frameMs = m_gpuFrameMs.load();

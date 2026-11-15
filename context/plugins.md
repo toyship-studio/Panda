@@ -230,8 +230,8 @@ Registries of `EditorExtensions` (`editorExtensions()`; contributions are never 
 | `assetCreators` | `AssetCreator {title, create(directory) -> path}`: what File → New and the Content Browser menu offer to create; `title` is the noun ("Terrain"); the core registers the file |
 | `viewportTools` | `ViewportTool {update(ViewportToolFrame), isDriving, appendHelperLines}`: runs before the world update, can capture the left mouse button (rect select and gizmo are off), draws lines over the viewport |
 | `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the Scene tab shows (the editing world in EDIT, the playing copy in PLAY), once a frame while the Scene renders, with the editor camera (the collider outlines of the Physics module); the overlay reads its own editor-scope setting |
-| `settingsSections` | `SettingsSection {scope, title, build(section, TypeContext&)}`: the form of a settings section over the store of its scope (the world's context, the project or editor store); the core registers its sections first (`CoreSettingsSections`), the world ones are the viewport sidebar, the project and editor ones the settings documents. Edits go through the Kit's `commitSettings<T>(scope, value)` |
-| `documentTypes` | `DocumentType {id, title, icon, create}` (`Document.hpp`): a document the "+" of any dock and the menu bar open (the settings documents from File → Settings), one instance per type, restored with the layout; the core registers the project and editor settings documents |
+| `settingsSections` | `SettingsSection {scope, title, build(section, TypeContext&)}`: the form of a settings section over the store of its scope (the world's context, the project or editor store); the core registers its sections first (`CoreSettingsSections`), the world ones are the viewport sidebar, the project and editor ones the pages of the Settings window. Edits go through the Kit's `commitSettings<T>(scope, value)` |
+| `documentTypes` | `DocumentType {id, title, icon, create}` (`Document.hpp`): a document the "+" of any dock and the menu bar open, one instance per type, restored with the layout; the core registers the Plugins, the Game and the UI Gallery tabs (the settings are not tabs: `context/architecture.md`, "The Settings window") |
 | `statistics` | `StatisticsSection {title, rows, collect(values)}`: a section of the Statistics panel, polled once per frame |
 | `iconFolders` | folders of PNG icons relative to the application resources; loaded into the shared icon library when the part registers |
 | `materialPreviews` | `MaterialPreview {matches, vertexColor, vertexLayout, packVertices, bindInputs}`: the preview sphere for materials on the contribution's shaders |
@@ -246,7 +246,7 @@ closing its tab calls `onStop`), `refreshFromWorld`, `refreshAssetEditors`, `log
 `settings(scope)` (the store of a scope), `commitSettings(scope, command)` (the world scope — an
 undo step of the world; the project scope — of the project settings document; the editor scope —
 applied and saved at once) and `openSettings(scope, section)` (the world sidebar, the project or
-editor settings document at a section). Dialogs use PandaUI `Dialog` directly. The document
+editor page of the Settings window at a section). Dialogs use PandaUI `Dialog` directly. The document
 model of the tabs is described in `context/architecture.md`, "Editor UI".
 
 ## Plugins (data)

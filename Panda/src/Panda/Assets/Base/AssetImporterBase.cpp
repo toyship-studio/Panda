@@ -17,7 +17,7 @@ namespace Panda {
 namespace {
 
     constexpr uint32_t COOKED_TEXTURE_MAGIC = 0x50544558; // PTEX
-    constexpr uint32_t COOKED_TEXTURE_VERSION = 1;
+    constexpr uint32_t COOKED_TEXTURE_VERSION = 2; // 2: the mip levels of the data, the flags
 
     struct CookedTextureHeader {
         uint32_t magic = COOKED_TEXTURE_MAGIC;
@@ -26,8 +26,15 @@ namespace {
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t isCubeMap = 0;
+        uint32_t dataMips = 0; // the mip levels in the data after mip 0
+        uint32_t flags = 0;    // CookedTextureInfo::srgbMips — bit 0
         uint32_t dataSize = 0;
     };
+
+    bool readCookedTextureHeader(std::ifstream &file, CookedTextureHeader &header) {
+        file.read(reinterpret_cast<char *>(&header), sizeof(header));
+        return file && header.magic == COOKED_TEXTURE_MAGIC && header.version == COOKED_TEXTURE_VERSION;
+    }
 
     FileData loadFileDataInternal(const path_t &path, bool nullTerminate) {
         const path_t fullPath = Fern::getStaticResourcesPath() / path;
@@ -152,6 +159,18 @@ Miren::TextureCreate AssetImporterBase::load2DTextureFile(const path_t &fullPath
     return texture;
 }
 
+bool AssetImporterBase::readCookedTextureInfo(const path_t &path, CookedTextureInfo &info) {
+    std::ifstream file(path, std::ios::binary);
+    CookedTextureHeader header;
+    if (!file.is_open() || !readCookedTextureHeader(file, header)) { return false; }
+    info.format = static_cast<Miren::TextureFormat>(header.format);
+    info.width = header.width;
+    info.height = header.height;
+    info.dataMips = header.dataMips;
+    info.srgbMips = (header.flags & 1u) != 0;
+    return true;
+}
+
 Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -160,8 +179,7 @@ Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     }
 
     CookedTextureHeader header;
-    file.read(reinterpret_cast<char *>(&header), sizeof(header));
-    if (!file || header.magic != COOKED_TEXTURE_MAGIC || header.version != COOKED_TEXTURE_VERSION) {
+    if (!readCookedTextureHeader(file, header)) {
         LOG_ERROR("INVALID COOKED TEXTURE HEADER %s", path.string().c_str());
         return {};
     }
@@ -171,6 +189,11 @@ Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     texture.m_width = static_cast<uint16_t>(header.width);
     texture.m_height = static_cast<uint16_t>(header.height);
     texture.m_isCubeMap = header.isCubeMap != 0;
+    texture.m_dataMips = static_cast<uint8_t>(header.dataMips);
+    if (texture.dataBytes() != header.dataSize) {
+        LOG_ERROR("COOKED TEXTURE %s: THE DATA DOES NOT FIT ITS HEADER", path.string().c_str());
+        return {};
+    }
     texture.m_data = Foundation::Memory::alloc(header.dataSize);
 
     file.read(reinterpret_cast<char *>(texture.m_data.data), static_cast<std::streamsize>(header.dataSize));
@@ -183,11 +206,10 @@ Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
     return texture;
 }
 
-bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::TextureCreate &create) {
+bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::TextureCreate &create, bool srgbMips) {
     std::filesystem::create_directories(path.parent_path());
 
-    const uint32_t numSides = create.m_isCubeMap ? 6u : 1u;
-    const size_t dataSize = static_cast<size_t>(create.bytesPerTexel()) * create.m_width * create.m_height * numSides;
+    const size_t dataSize = create.dataBytes();
     if (!create.m_data.data || dataSize == 0 || dataSize > UINT32_MAX) {
         LOG_ERROR("INVALID COOKED TEXTURE DATA %s", path.string().c_str());
         return false;
@@ -198,6 +220,8 @@ bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::Textu
     header.width = create.m_width;
     header.height = create.m_height;
     header.isCubeMap = create.m_isCubeMap ? 1u : 0u;
+    header.dataMips = create.m_dataMips;
+    header.flags = srgbMips ? 1u : 0u;
     header.dataSize = static_cast<uint32_t>(dataSize);
 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);

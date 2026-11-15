@@ -103,7 +103,8 @@ Text has its own decorations on `Label`: `setTextOutline(TextOutline(1.5f, color
 `Bamboo::UI::createTextureRGBA8(pixels, width, height)` (`Bamboo/UI/TextureAPI.hpp`) makes a UI
 texture from pixels; `Bamboo::TextureAPI::readPixelsRGBA8` (`Bamboo/Assets/TextureAPI.hpp`) reads
 the pixels of a texture asset, so a plate drawn in an image editor and dropped into `Assets/`
-becomes a nine-slice through a `TextureHandle` field. `destroyTexture` frees one; everything goes
+becomes a nine-slice through a `TextureHandle` field (the pixels of a compressed texture carry
+the loss of the compression: switch Compressed off in the inspector of such an image). `destroyTexture` frees one; everything goes
 with the scripts on Stop.
 
 ## The gallery

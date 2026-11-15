@@ -101,6 +101,10 @@ namespace {
                 if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureSrgb(id, on); }
                 invalidateThumbnail(id);
             })->setHelp("On for a picture of colors (base color, emissive, UI). Off for data: normals, roughness, metallic, occlusion, masks");
+            addToggleRow(*section, "Compressed", textureMeta.compressed, [id](bool on) {
+                if (Panda::AssetHandlerEditor *handler = assetHandler()) { handler->import().setTextureCompressed(id, on); }
+                invalidateThumbnail(id);
+            })->setHelp("BC7: a quarter of the video memory and of the file, with a small loss. Off for what must be exact: pixel art, a lookup table");
             container.addSubview(section);
         }
 

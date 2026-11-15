@@ -128,6 +128,10 @@ bool renderFrame();
 uint32_t frame();
 // GPU metrics for status indicators (process VRAM, GPU frame time); zeros before initialization.
 GpuStats getGpuStats();
+// Whether a texture of this format can be created on this device. The block-compressed formats
+// (BC7) are a capability of desktop GPUs; without it a cooked texture is decoded to RGBA8 before
+// it is created (Panda::TextureCodec).
+bool isTextureFormatSupported(TextureFormat format);
 /// Current frame number. Need
 uint32_t getFrameNumber();
 

@@ -428,6 +428,40 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
   not occlude; the normal is geometric, so a low-poly curved mesh shows its facets in the
   occlusion; transparent surfaces take the occlusion of what is behind them.
 
+## Fog
+
+The air between the camera and what it sees: `FogRenderer` (`Panda/Renderer/FogRenderer`,
+`fog.frag`), the `graphics.fog` section of a world, Settings → FOG. Not a shader feature: it is
+one pass of the engine over the finished scene, and a world without fog does not run it.
+
+- **Where.** The first step of `PostprocessingPipeline`, in linear HDR, before the auto
+  exposure and the bloom (the exposure measures the frame with the air in it, a lamp glows
+  through the fog) and before the chain of the project. The pass reads the scene color and
+  depth and writes an RGBA16F target of its own (`Views::FOG_VIEW`, between the scene and the
+  exposure).
+- **How much.** An exponential height fog: the density at the height `h` is
+  `density · 2^(−(h − baseHeight) / heightFalloff)`, so the air along the view ray has a closed
+  form — `d₀ · e^(−k·h₀) · L · (1 − e^(−k·dy·L)) / (k·dy·L)` for a ray of length `L` that
+  starts at the height `h₀` above the base and climbs `dy` per meter (`k = ln 2 /
+  heightFalloff`). No ray march and no noise. `heightFalloff` 0 is a uniform fog;
+  `startDistance` leaves the air near the camera clear; `maxOpacity` below 1 keeps the far
+  things visible. The sky is behind all the air of its direction (`affectSky`): the horizon
+  dissolves, the zenith stays, and the ground meets the sky without a line.
+- **What color.** The fog has no color setting of its own: it scatters the light of the world.
+  From the sky — the widest lobe of the baked environment light (tile 4 of `environmentLighting`)
+  low over the horizon in the direction of the view, so the fog meets the horizon of the sky
+  map by construction and follows the map and its exposure; without the `environment` feature —
+  the flat ambient of the world. From the sun — its color through a Henyey-Greenstein phase
+  (g = 0.6) scaled by `sunScatter`: a glow around the sun. `tint` multiplies the sky part. The
+  pass gets the light of the frame as every scene view does: `SceneBlocks::bind` on its view
+  (`Renderer3D::sceneBlocks`, through `FogFrame`).
+- **Limits.** The fog is not shadowed: no light shafts, the air under a roof is as bright as
+  outside. Transparent surfaces are fogged as what is behind them (they write no depth). The
+  helpers of the editor drawn into the scene (lamp icons, the grid) are in the fog too. The
+  lamps do not light it. The model of the air of `context/atmosphere.md` (stage B) replaces
+  the phase and the color terms when the sky becomes physical; the settings and the place of
+  the pass stay.
+
 ## Environment map
 
 An equirectangular texture of the world: the default sky draws it and every lit surface is lit

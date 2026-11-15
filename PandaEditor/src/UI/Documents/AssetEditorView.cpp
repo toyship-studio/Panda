@@ -135,6 +135,15 @@ void AssetEditorView::bind() {
                 if (texture && texture->getSize().width > 0) {
                     subtitle += " · " + std::to_string(static_cast<int>(texture->getSize().width)) + " × " +
                                 std::to_string(static_cast<int>(texture->getSize().height));
+                    // What it takes in video memory: a block-compressed texture a quarter of RGBA8.
+                    const Miren::TextureFormat format = texture->getFormat();
+                    const bool compressed = Miren::TextureCreate::isCompressedFormat(format);
+                    const auto &settings = std::get<Panda::AssetInfo::TextureSettings>(it->second.settings);
+                    const double texels = static_cast<double>(texture->getSize().width) * texture->getSize().height;
+                    const double bytes = texels * (compressed ? 1.0 : format == Miren::RGBA16F ? 8.0 : 4.0) *
+                                         (settings.numMips > 0 ? 4.0 / 3.0 : 1.0);
+                    subtitle += std::string(" · ") + (compressed ? "BC7" : format == Miren::RGBA16F ? "RGBA16F" : "RGBA8") +
+                                " · " + formatByteSize(static_cast<uint64_t>(bytes)) + " of video memory";
                 }
             } else if (it->second.type == Panda::AssetType::IMPORTED_MESH) {
                 Panda::AssetRef<Panda::ImportedMeshAsset> mesh{it->first};
@@ -177,7 +186,7 @@ void AssetEditorView::rebuildProperties() {
         label->setTextRole(TextRole::Secondary);
         auto section = makeFormSection(kind == "scene" ? "WORLD" : "ASSET");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));
-        if (kind == "scene") { section->addContent(makeFormHint("A double click in the Content Browser opens the world in a tab.")); }
+        if (kind == "scene") { section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab.")); }
         m_props->addSubview(section);
         setNeedsLayout();
         return;

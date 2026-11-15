@@ -68,7 +68,14 @@ enum TextureFormat {
     DEPTH32F,
     // Two 8-bit channels (crown occlusion volume: sky visibility + sun transmittance);
     // when sampled, b = 0, a = 1.
-    RG8
+    RG8,
+    // Block-compressed RGBA (BC7: 4×4 blocks of 16 bytes, 8 bits a texel — a quarter of RGBA8),
+    // the format of a cooked color or data texture; the _SRGB one is decoded to linear when
+    // sampled. The creation data holds the mip levels (TextureCreate::m_dataMips): a compressed
+    // texture has no generated mips, is never a render target, is not updated and not read
+    // back. Desktop GPUs only (isTextureFormatSupported).
+    BC7,
+    BC7_SRGB
 };
 
 // CLAMP_TO_BORDER — white (1,1,1,1) beyond the texture edge: the shadow map outside the atlas
@@ -111,6 +118,10 @@ struct TextureCreate {
     // has no mips, is not resized and is not read by readTexture.
     uint16_t m_depth;
     uint8_t m_numMips;
+    // The mip levels the creation data holds after mip 0, one after another (each level: every
+    // face). 0 — mip 0 alone: the levels of m_numMips are generated from it. With levels in the
+    // data nothing is generated, and the texture has min(m_numMips, m_dataMips) of them.
+    uint8_t m_dataMips;
     bool m_isCubeMap;
     Foundation::Memory m_data;
 
@@ -124,6 +135,7 @@ struct TextureCreate {
         , m_height(1)
         , m_depth(0)
         , m_numMips(0)
+        , m_dataMips(0)
         , m_isCubeMap(false)
         , m_data(nullptr) {}
 
@@ -135,6 +147,31 @@ struct TextureCreate {
         return m_depth > 0;
     }
 
+    static bool isCompressedFormat(TextureFormat format) {
+        return format == BC7 || format == BC7_SRGB;
+    }
+    bool isCompressed() const {
+        return isCompressedFormat(m_format);
+    }
+
+    // The bytes of one face of a mip level and of one row of it as the data holds them (a row of
+    // a compressed format is a row of blocks).
+    size_t levelRowBytes(uint32_t level) const {
+        const size_t width = m_width >> level > 0 ? m_width >> level : 1;
+        return isCompressed() ? (width + 3) / 4 * 16 : width * bytesPerTexel();
+    }
+    size_t levelBytes(uint32_t level) const {
+        const size_t height = m_height >> level > 0 ? m_height >> level : 1;
+        return levelRowBytes(level) * (isCompressed() ? (height + 3) / 4 : height);
+    }
+    // The bytes of the creation data of a 2D or cube texture: mip 0 and the m_dataMips levels.
+    size_t dataBytes() const {
+        size_t bytes = 0;
+        for (uint32_t level = 0; level <= m_dataMips; ++level) { bytes += levelBytes(level); }
+        return bytes * (m_isCubeMap ? 6 : 1);
+    }
+
+    // Uncompressed formats only: a block format has no bytes per texel (levelBytes).
     size_t bytesPerTexel() const {
         switch (m_format) {
             case R8:
@@ -156,6 +193,9 @@ struct TextureCreate {
                 return 4;
             case RG8:
                 return 2;
+            case BC7:
+            case BC7_SRGB:
+                return 1;
         }
         return 4;
     }

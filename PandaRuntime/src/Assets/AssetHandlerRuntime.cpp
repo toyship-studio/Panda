@@ -1,5 +1,6 @@
 #include "Assets/AssetHandlerRuntime.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/Assets/Base/TextureCodec.hpp"
 #include "Panda/Assets/Fallback/FallbackAssets.hpp"
 #include "Panda/Assets/TextureAsset.hpp"
 #include "Panda/Assets/ShaderAsset.hpp"
@@ -25,24 +26,6 @@ Panda::path_t stripPandaPrefix(const Panda::path_t &path) {
         result /= *it;
     }
     return result;
-}
-
-bool copyTexturePixelsRGBA8(
-    const Miren::TextureCreate &create, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
-) {
-    if (create.m_format != Miren::TextureFormat::RGBA8 || create.m_isCubeMap || !create.m_data.data ||
-        create.m_width == 0 || create.m_height == 0) {
-        return false;
-    }
-
-    const size_t dataSize = static_cast<size_t>(create.bytesPerTexel()) * create.m_width * create.m_height;
-    if (dataSize == 0 || dataSize > UINT32_MAX) { return false; }
-
-    if (width) { *width = create.m_width; }
-    if (height) { *height = create.m_height; }
-    pixels.resize(dataSize);
-    std::memcpy(pixels.data(), create.m_data.data, dataSize);
-    return true;
 }
 
 } // namespace
@@ -110,9 +93,9 @@ bool AssetHandlerRuntime::readTexturePixelsRGBA8(
     }
 
     Miren::TextureCreate create = AssetImporterBase::loadCookedTexture(cookedPath);
-    const bool copied = copyTexturePixelsRGBA8(create, width, height, pixels);
+    const bool copied = TextureCodec::readPixelsRGBA8(create, width, height, pixels);
     create.m_data.release();
-    if (!copied) { LOG_ERROR("RUNTIME: Texture %u is not readable RGBA8", (uint32_t)id); }
+    if (!copied) { LOG_ERROR("RUNTIME: Texture %u has no RGBA8 pixels to read", (uint32_t)id); }
     return copied;
 }
 
@@ -131,13 +114,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         path_t cookedPath = m_runtimeDataPath / entryPath;
         if (std::filesystem::exists(cookedPath)) {
             Miren::TextureCreate create = AssetImporterBase::loadCookedTexture(cookedPath);
-            create.m_minFiltering = meta.minFiltering;
-            create.m_magFiltering = meta.magFiltering;
-            create.m_numMips = meta.numMips;
-            // Cooked data stores pixels as RGBA8; the color space is a property of the meta settings.
-            if (meta.srgb && create.m_format == Miren::TextureFormat::RGBA8) {
-                create.m_format = Miren::TextureFormat::RGBA8_SRGB;
-            }
+            TextureCodec::applySettings(create, meta);
             asset = F_NEW(m_allocator, TextureAsset)(create);
             LOG_INFO("RUNTIME: Loaded texture %u from %s", (uint32_t)id, entryPath.string().c_str());
         } else {

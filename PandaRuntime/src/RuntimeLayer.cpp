@@ -113,10 +113,7 @@ void RuntimeLayer::updatePostprocessing() {
     inputs.emissive = m_sceneEmissive;
     inputs.depth = m_sceneDepth;
     if (m_world) {
-        inputs.sunScreen = m_world->getFrameSunScreen(); // bloom_apply flares
-        inputs.projection = m_world->getFrameProjection();
-        inputs.viewProj = m_world->getFrameViewProj();
-        inputs.ssao = m_world->getGraphicsSettings().ssao;
+        inputs.setWorld(*m_world);
         Entity cameraEntity = m_world->findMainCameraEntity();
         if (cameraEntity.isValid()) {
             CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();

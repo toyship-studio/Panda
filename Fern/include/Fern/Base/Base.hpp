@@ -128,6 +128,9 @@ enum class WindowState {
     WindowStateFullScreen
 };
 
+// Normal — a window of its own. Modal — a window over the main one (settings, a tool): it stays
+// above the window that was main when it opened and goes with it; it does not block that window.
+// Popup — a borderless window above everything (a menu, a tooltip).
 enum class WindowType { Normal, Modal, Popup };
 
 using WindowFlags = uint32_t;

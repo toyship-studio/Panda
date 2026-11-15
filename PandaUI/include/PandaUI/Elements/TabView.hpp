@@ -47,6 +47,13 @@ struct TabViewAppearance {
     ThemeColor dropLine = ThemeColor::accent;
 };
 
+// How a tab is dragged.
+enum class TabDrag {
+    None,      // not at all
+    WithinBar, // reordered in its bar; other bars do not take it
+    Free,      // reordered, and moved to the other bars of the drag group
+};
+
 class TabView : public Panel {
 public:
     using SelectionChangedCallback = std::function<void(TabView &)>;
@@ -71,12 +78,13 @@ public:
     }
 
     // closable=true → the tab has a close button. id — a stable identifier (for transfer between
-    // bars); 0 → auto id. draggable=false — the tab cannot be dragged (pinned, e.g. the viewport).
+    // bars); 0 → auto id. drag — whether the tab is dragged at all, only to another place of its
+    // own bar, or to any bar of the drag group.
     // icon (optional, valid handle) — a tintable icon to the left of the title (docking: the panel icon
     // from the strip).
     int addTab(
         std::string title, std::shared_ptr<View> content, bool closable = true, std::uint64_t id = 0,
-        bool draggable = true, TextureHandle icon = {}
+        TabDrag drag = TabDrag::Free, TextureHandle icon = {}
     );
 
     void setSelectedIndex(int index);

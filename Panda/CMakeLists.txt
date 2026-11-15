@@ -53,6 +53,9 @@ target_include_directories(Panda SYSTEM PUBLIC ${VENDOR_DIRECTORY}/glm)
 # Dependencies - stb_image
 target_link_libraries(Panda stb_image)
 
+# Dependencies - bc7decomp: decodes a cooked BC7 texture (Assets/Base/TextureCodec)
+target_link_libraries(Panda bc7decomp)
+
 # Dependencies - entt
 target_link_libraries(Panda EnTT)
 target_include_directories(Panda SYSTEM PUBLIC ${VENDOR_DIRECTORY}/entt/src)

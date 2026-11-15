@@ -1,6 +1,6 @@
 #include "UI/Panels/Toolbar.hpp"
 
-#include "UI/Shortcuts.hpp"
+#include "UI/Commands.hpp"
 
 #include <optional>
 
@@ -63,26 +63,22 @@ void ToolbarPanelView::addSubviews() {
     left->addSubview(makeDivider());
 
     m_undo = std::make_shared<IconButton>(Ic::Undo, Ic::ToolbarSize, ACTION_SIZE);
-    m_undo->setTooltip("Undo  " + KeyChord::primary(Key::Z).text());
     m_undo->setOnClick([this] { m_output->toolbarDidUndo(); });
     left->addSubview(m_undo);
 
     m_redo = std::make_shared<IconButton>(Ic::Redo, Ic::ToolbarSize, ACTION_SIZE);
-    m_redo->setTooltip("Redo  " + KeyChord::primary(Key::Z, /*shift*/ true).text());
     m_redo->setOnClick([this] { m_output->toolbarDidRedo(); });
     left->addSubview(m_redo);
 
     left->addSubview(makeDivider());
 
     m_reload = std::make_shared<IconButton>(Ic::Reload, Ic::ToolbarSize, ACTION_SIZE);
-    m_reload->setTooltip("Reload: take what changed on disk  " + KeyChord::primary(Key::R).text());
     m_reload->setOnClick([this] { m_output->toolbarDidTapReload(); });
     left->addSubview(m_reload);
 
-    auto save = std::make_shared<IconButton>(Ic::Save, Ic::ToolbarSize, ACTION_SIZE);
-    save->setTooltip("Save All  " + KeyChord::primary(Key::S, /*shift*/ false, /*alt*/ true).text());
-    save->setOnClick([this] { m_output->toolbarDidSave(); });
-    left->addSubview(save);
+    m_save = std::make_shared<IconButton>(Ic::Save, Ic::ToolbarSize, ACTION_SIZE);
+    m_save->setOnClick([this] { m_output->toolbarDidSave(); });
+    left->addSubview(m_save);
 
     auto exportButton = std::make_shared<IconButton>(Ic::Export, Ic::ToolbarSize, ACTION_SIZE);
     exportButton->setTooltip("Export Game: cook the runtime data");
@@ -111,12 +107,10 @@ void ToolbarPanelView::addSubviews() {
     };
 
     m_play = makeTransport(Ic::Play, ThemeColor::success);
-    m_play->setTooltip("Play  " + KeyChord::plain(Key::F5).text());
     m_play->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Play); });
     capsule->addSubview(m_play);
 
     m_stop = makeTransport(Ic::Stop, ThemeColor::danger);
-    m_stop->setTooltip("Stop  " + KeyChord::plain(Key::F5, /*shift*/ true).text());
     m_stop->setOnClick([this] { m_output->toolbarDidPickSceneState(SceneState::Edit); });
     capsule->addSubview(m_stop);
 
@@ -137,6 +131,16 @@ void ToolbarPanelView::addSubviews() {
     m_update->layout().setMargin(Edge::Horizontal, 8.f);
     right->addSubview(m_update);
     addSubview(right);
+}
+
+// The tooltips name the keys of the commands the buttons run: the keymap's, whatever it is now.
+void ToolbarPanelView::setKeyHints(const Commands &commands) {
+    m_undo->setTooltip(commands.hint("Undo", "edit.undo"));
+    m_redo->setTooltip(commands.hint("Redo", "edit.redo"));
+    m_reload->setTooltip(commands.hint("Reload: take what changed on disk", "file.reload"));
+    m_save->setTooltip(commands.hint("Save All", "file.saveAll"));
+    m_play->setTooltip(commands.hint("Play", "world.play"));
+    m_stop->setTooltip(commands.hint("Stop", "world.stop"));
 }
 
 void ToolbarPanelView::setUpdateStatus(const UpdateIndicatorModel &model) {

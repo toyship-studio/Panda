@@ -9,6 +9,14 @@
 #include <string>
 #include <vector>
 
+namespace Fern {
+class Window;
+}
+
+namespace PandaUI {
+class Context;
+}
+
 namespace Panda {
 
 class EditorLayer;
@@ -65,6 +73,7 @@ private:
     Mcp::PendingResult show(const rapidjson::Value &arguments);
     Mcp::PendingResult pointer(const rapidjson::Value &arguments);
     Mcp::PendingResult key(const rapidjson::Value &arguments);
+    Mcp::PendingResult command(const rapidjson::Value &arguments);
     Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.
@@ -77,6 +86,8 @@ private:
     // Plays the steps of a gesture, one a frame, and answers with what is under the pointer.
     Mcp::PendingResult playInput(std::vector<InputStep> steps);
     std::string pointerJson() const;
+    PandaUI::Context &inputContext() const;
+    Fern::Window *inputWindow() const;
 
     bool hasProject() const;
     std::string cameraJson() const;

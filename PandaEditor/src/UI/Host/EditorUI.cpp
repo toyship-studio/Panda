@@ -8,6 +8,7 @@
 #include <Foundation/Logger.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
+#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <PandaUI/Core/View.hpp>
 
 #include <filesystem>
@@ -34,6 +35,10 @@ void EditorUI::initialize(Fern::Window *window, Miren::ViewId viewId) {
 
 void EditorUI::shutdown() {
     if (!m_initialized) { return; }
+    closeAuxiliaryWindow();
+    for (const RetiredWindow &retired : m_retiredWindows) { Fern::disposeWindow(retired.window); }
+    m_retiredWindows.clear();
+    Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, nullptr);
     m_platform.shutdown();
     m_renderer.shutdown();
     m_initialized = false;
@@ -50,6 +55,72 @@ void EditorUI::update(double deltaTime) {
     // through the UI).
     m_context.update(deltaTime);
     m_renderer.render(m_context.getDrawList(), m_viewId);
+    updateAuxiliary(deltaTime);
+}
+
+PandaUI::Context *EditorUI::openAuxiliaryWindow(const char *title, PandaUI::Size size, std::shared_ptr<PandaUI::View> root) {
+    if (!m_initialized) { return nullptr; }
+    if (m_auxiliary) { return &m_auxiliary->context; }
+    Fern::Window *window = Fern::createWindow(
+        title, Fern::Rect(0, 0, size.width, size.height), Fern::WindowState::WindowStateNormal, Fern::WindowType::Modal,
+        FERN_WINDOW_FLAG_RESIZABLE | FERN_WINDOW_FLAG_CLOSABLE
+    );
+    if (window == nullptr) { return nullptr; }
+    m_auxiliary = std::make_unique<AuxiliaryWindow>();
+    m_auxiliary->window = window;
+    m_auxiliary->platform.init(window, m_auxiliary->context);
+    bindFonts(m_auxiliary->context);
+    m_auxiliary->context.setRootView(std::move(root));
+    return &m_auxiliary->context;
+}
+
+void EditorUI::closeAuxiliaryWindow() {
+    if (!m_auxiliary) { return; }
+    m_auxiliary->context.setRootView(nullptr);
+    m_auxiliary->platform.shutdown();
+    m_retiredWindows.push_back({m_auxiliary->window, Miren::getFrameNumber() + 2});
+    m_auxiliary.reset();
+}
+
+Fern::Window *EditorUI::auxiliaryWindow() const {
+    return m_auxiliary ? m_auxiliary->window : nullptr;
+}
+
+PandaUI::Context *EditorUI::auxiliaryContext() {
+    return m_auxiliary ? &m_auxiliary->context : nullptr;
+}
+
+void EditorUI::renderAuxiliaryTo(Miren::ViewId viewId) {
+    if (m_auxiliary) { m_renderer.render(m_auxiliary->context.getDrawList(), viewId); }
+}
+
+void EditorUI::updateAuxiliary(double deltaTime) {
+    if (m_auxiliary) {
+        Fern::Window *window = m_auxiliary->window;
+        Fern::GraphicsContext *graphics = window->getDrawingContext();
+        if (graphics != nullptr) { graphics->update(); } // the drawable follows the size of the window
+        const Fern::Size size = window->getSize();
+        const Fern::Size dpi = window->getDpi();
+        Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, graphics);
+        Miren::setViewport(
+            Views::AUXILIARY_WINDOW_VIEW,
+            Miren::Rect(0, 0, static_cast<int>(size.width * dpi.width), static_cast<int>(size.height * dpi.height))
+        );
+        Miren::setViewClear(Views::AUXILIARY_WINDOW_VIEW, 0x000000ff);
+        m_auxiliary->platform.syncViewport();
+        m_auxiliary->context.update(deltaTime);
+        m_renderer.render(m_auxiliary->context.getDrawList(), Views::AUXILIARY_WINDOW_VIEW);
+    }
+    const uint32_t frame = Miren::getFrameNumber();
+    for (auto it = m_retiredWindows.begin(); it != m_retiredWindows.end();) {
+        if (it->frame > frame) {
+            ++it;
+            continue;
+        }
+        if (!m_auxiliary) { Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, nullptr); }
+        Fern::disposeWindow(it->window);
+        it = m_retiredWindows.erase(it);
+    }
 }
 
 void EditorUI::renderTo(Miren::ViewId viewId) {
@@ -68,6 +139,9 @@ bool EditorUI::handleEvent(Fern::Event *event) {
             default:
                 break;
         }
+    }
+    if (m_auxiliary && event != nullptr && event->getWindow() == m_auxiliary->window) {
+        return m_auxiliary->platform.handleEvent(event);
     }
     return m_platform.handleEvent(event);
 }
@@ -121,6 +195,7 @@ void EditorUI::applyFonts(const FontSettings &settings) {
     m_fontSettings = settings;
     bindFonts();
     m_context.fontsChanged(); // every text re-measures and redraws
+    if (m_auxiliary) { m_auxiliary->context.fontsChanged(); }
 }
 
 void EditorUI::rasterizeFonts(std::vector<FontJob> &jobs) {
@@ -254,13 +329,18 @@ bool EditorUI::loadInstalledFace(const std::string &installedFamily, int weightC
 }
 
 void EditorUI::bindFonts() {
+    bindFonts(m_context);
+    if (m_auxiliary) { bindFonts(m_auxiliary->context); }
+}
+
+void EditorUI::bindFonts(PandaUI::Context &context) {
     for (int w = 0; w < kWeightCount; ++w) {
         const std::shared_ptr<PandaUI::FontAtlas> &sans = m_sansRole.custom[w] ? m_sansRole.custom[w] : m_sansRole.bundled[w];
         const std::shared_ptr<PandaUI::FontAtlas> &mono = m_monoRole.custom[w] ? m_monoRole.custom[w] : m_monoRole.bundled[w];
-        m_context.setFontAtlas(sans, kWeights[w], PandaUI::FontFamily::Sans);
-        m_context.setFontAtlas(mono, kWeights[w], PandaUI::FontFamily::Mono);
+        context.setFontAtlas(sans, kWeights[w], PandaUI::FontFamily::Sans);
+        context.setFontAtlas(mono, kWeights[w], PandaUI::FontFamily::Mono);
     }
-    m_context.setTextScale(m_fontSettings.uiSize > 0.f ? m_fontSettings.uiSize / 16.f : 1.f);
+    context.setTextScale(m_fontSettings.uiSize > 0.f ? m_fontSettings.uiSize / 16.f : 1.f);
 }
 
 void EditorUI::loadEditorIcons() {

@@ -4,6 +4,7 @@
 #include "UI/Panels/UpdateIndicator.hpp"
 #include "App/SceneState.hpp"
 #include "Preview/ThumbnailsManager.hpp"
+#include "UI/Commands.hpp"
 #include "UI/EditorMenuBar.hpp"
 #include "Viewport/EditorViewports.hpp"
 #include "UI/EngineBridge.hpp"
@@ -142,6 +143,8 @@ private:
     std::vector<Editor::EngineBridge::MenuCommand> menuCommands() override;
     void runMenuCommand(uint32_t id) override;
     void exportGame() override;
+    bool openSettingsWindow(std::shared_ptr<PandaUI::View> root) override;
+    void closeSettingsWindow() override;
     void restartEditor() override;
     void updateIndicatorAction() override;
     void updateIndicatorDismiss() override;
@@ -184,39 +187,39 @@ private:
     void pumpProjectBuild(); // once per frame: output lines → CMake panel; on scripts Build success — reload dylib
     void updateViewportHelperLines(); // once per frame: wireframe collider outlines → viewport overlay
     bool menuBarHasOpenedProject() override;
-    void menuBarOpenProject() override;
+    void menuBarOpenProject();
     void menuBarOpenProject(const RecentProject &project) override;
-    void menuBarNewWorld() override;
+    void menuBarNewWorld();
     std::vector<std::string> menuBarNewEntityTitles() override;
     std::vector<std::string> menuBarNewAssetTitles() override;
     void menuBarNewEntity(size_t index) override;
     void menuBarNewAsset(size_t index) override;
-    void menuBarUndo() override;
-    void menuBarRedo() override;
-    void menuBarOpenWorldSettings() override;
-    void menuBarOpenProjectSettings() override;
-    void menuBarOpenEditorSettings() override;
-    void menuBarShowProjectSettingsFile() override;
-    void menuBarShowEditorSettingsFile() override;
+    void menuBarUndo();
+    void menuBarRedo();
+    void menuBarOpenWorldSettings();
+    void menuBarOpenProjectSettings();
+    void menuBarOpenEditorSettings();
+    void menuBarShowProjectSettingsFile();
+    void menuBarShowEditorSettingsFile();
     const std::vector<RecentProject> &menuBarGetRecentProjectsList() override;
     const path_t &menuBarGetOpenedProjectPath() override;
-    void menuBarCloseApp() override;
-    void menuBarShowCppProject() override;
-    void menuBarSave() override;
-    void menuBarSaveAll() override;
-    void menuBarNewWindow() override;
-    void menuBarReload() override;
-    void menuBarCloseProject() override;
-    void menuBarAbout() override;
-    void menuBarCheckForUpdates() override;
-    void menuBarRestartToUpdate() override;
-    void menuBarViewReleaseNotes() override;
+    void menuBarCloseApp();
+    void menuBarShowCppProject();
+    void menuBarSave();
+    void menuBarSaveAll();
+    void menuBarNewWindow();
+    void menuBarReload();
+    void menuBarCloseProject();
+    void menuBarAbout();
+    void menuBarCheckForUpdates();
+    void menuBarRestartToUpdate();
+    void menuBarViewReleaseNotes();
     bool menuBarUpdateReady() override;
-    void menuBarExportGame() override;
-    void menuBarOpenExportProject(ExportProjectTarget target) override;
-    void menuBarOpenPlugins() override;
-    void menuBarOpenUiGallery() override;
-    void menuBarOpenGameView() override;
+    void menuBarExportGame();
+    void menuBarOpenExportProject(ExportProjectTarget target);
+    void menuBarOpenPlugins();
+    void menuBarOpenUiGallery();
+    void menuBarOpenGameView();
 
     void startScreenDidRequestOpenProjectDialog() override;
     void startScreenDidRequestOpenRecentProject(size_t index) override;
@@ -268,6 +271,11 @@ private:
     EditorLaunch m_launch;
     std::string m_windowTitle;     // what syncWindowIdentity has set: "<project> — <world file>"
     std::string m_iconLabel;       // the project name on the application icon (empty — none)
+    // The commands of the editor and their keys (UI/Commands.hpp): the layer registers what
+    // belongs to the application and the project, the controller what belongs to the workspace.
+    Editor::Commands m_commands;
+    void registerCommands();
+    void showKeymapFile();
     EditorMenuBar m_menuBar;
     PandaUIImpl m_pandaUI;
     // The Scene and Game viewports: the targets, the editor camera, the gizmo and the selection, the

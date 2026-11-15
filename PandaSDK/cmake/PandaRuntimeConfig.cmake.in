@@ -68,6 +68,7 @@ _panda_sdk_add_static_library(PandaSDK::cgltf cgltf)
 _panda_sdk_add_static_library(PandaSDK::miniaudio miniaudio)
 _panda_sdk_add_static_library(PandaSDK::glad glad)
 _panda_sdk_add_static_library(PandaSDK::stb_image stb_image)
+_panda_sdk_add_static_library(PandaSDK::bc7decomp bc7decomp)
 _panda_sdk_add_static_library(PandaSDK::yogacore yogacore)
 _panda_sdk_add_static_library(PandaSDK::yaml-cpp yaml-cpp)
 
@@ -90,6 +91,7 @@ set(_PANDA_RUNTIME_LINK_LIBRARIES
     PandaSDK::cgltf
     PandaSDK::glad
     PandaSDK::stb_image
+    PandaSDK::bc7decomp
     PandaSDK::yogacore
 )
 
