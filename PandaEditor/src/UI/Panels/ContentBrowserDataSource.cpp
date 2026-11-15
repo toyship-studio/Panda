@@ -1,6 +1,6 @@
 #include "UI/Panels/ContentBrowserDataSource.hpp"
 
-#include "Preview/ThumbnailsManager.hpp"
+#include "Preview/AssetPreviews.hpp"
 #include "UI/EditorModelHelper.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 
@@ -75,7 +75,7 @@ void ContentBrowserDataSource::rebuild() {
     }
     m_currentFolder = findFolder(m_root.get(), previousPath);
     if (!m_currentFolder) { m_currentFolder = m_root.get(); }
-    if (auto *thumbnails = Panda::ThumbnailsManager::shared()) { thumbnails->cancelPending(); }
+    if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->cancelPending(); }
 }
 
 void ContentBrowserDataSource::setCurrentFolder(Folder *folder) {
@@ -83,7 +83,7 @@ void ContentBrowserDataSource::setCurrentFolder(Folder *folder) {
     m_currentFolder = folder;
     // Outstanding thumbnail requests are about the previous folder; configureCell/prefetch will
     // request new ones.
-    if (auto *thumbnails = Panda::ThumbnailsManager::shared()) { thumbnails->cancelPending(); }
+    if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->cancelPending(); }
 }
 
 ContentBrowserDataSource::Folder *
@@ -124,10 +124,9 @@ Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
     if (!handler) { return 0; }
     const auto &registry = handler->getRegistry();
     auto it = registry.find(file->assetId);
-    // ThumbnailsManager can draw thumbnails: a material as a sphere, a texture as a blit into a square.
-    if (it == registry.end()) { return 0; }
-    const Panda::AssetType type = it->second.type;
-    if (type != Panda::AssetType::MATERIAL && type != Panda::AssetType::TEXTURE) { return 0; }
+    // The kinds that have a picture of their own (a material, a model, a texture); the rest
+    // keep the icon of their kind.
+    if (it == registry.end() || !Panda::AssetPreviews::hasPreview(it->second.type)) { return 0; }
     return file->assetId;
 }
 
@@ -140,15 +139,23 @@ int ContentBrowserDataSource::indexOfAsset(Panda::AssetId assetId) const {
     return -1;
 }
 
+int ContentBrowserDataSource::indexOfFolder(const Panda::path_t &path) const {
+    if (!m_currentFolder) { return -1; }
+    for (int i = 0; i < static_cast<int>(m_currentFolder->children.size()); ++i) {
+        if (m_currentFolder->children[static_cast<size_t>(i)]->path == path) { return i; }
+    }
+    return -1;
+}
+
 PandaUI::TextureHandle ContentBrowserDataSource::thumbnailFor(int index) const {
     const Panda::AssetId assetId = thumbnailAssetAt(index);
     if (!assetId) { return PandaUI::TextureHandle(); }
-    auto *thumbnails = Panda::ThumbnailsManager::shared();
+    auto *thumbnails = Panda::AssetPreviews::shared();
     return thumbnails ? thumbnails->thumbnailFor(assetId) : PandaUI::TextureHandle();
 }
 
 void ContentBrowserDataSource::prefetchItems(const std::vector<int> &indices) const {
-    auto *thumbnails = Panda::ThumbnailsManager::shared();
+    auto *thumbnails = Panda::AssetPreviews::shared();
     if (!thumbnails) { return; }
     for (int index : indices) {
         if (const Panda::AssetId assetId = thumbnailAssetAt(index)) { thumbnails->prefetch(assetId); }
@@ -157,7 +164,7 @@ void ContentBrowserDataSource::prefetchItems(const std::vector<int> &indices) co
 
 void ContentBrowserDataSource::cancelPrefetching(const std::vector<int> &) const {
     // Targeted cancellation is not needed: the thumbnail queue is reset as a whole on a folder
-    // change, while the already built ones stay in the ThumbnailsManager cache.
+    // change, while the already built ones stay in the cache of AssetPreviews.
 }
 
 } // namespace Editor

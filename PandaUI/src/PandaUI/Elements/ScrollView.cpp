@@ -148,6 +148,7 @@ bool ScrollView::pointerUp(PointerEvent &event) {
 
 bool ScrollView::scroll(ScrollEvent &event) {
     if (!m_scrollEnabled) { return false; }
+    if (event.magnification != 0.f) { return false; } // a pinch scrolls nothing
     if (event.isMomentum) {
         m_isScrollGestureActive = false;
     } else if (event.isTrackpad) {

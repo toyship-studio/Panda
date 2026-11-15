@@ -57,6 +57,17 @@ public:
     // Additional world pass in a rendering mode into a view (editor: IDS picking) — after
     // update of the same frame, with the same frame.
     void renderPass(RenderingMode mode, Miren::ViewId view, const WorldFrame &frame);
+    // A frame of a world outside the frame of the viewport (a preview of the editor): what the
+    // world shows is collected and drawn in one DEFAULT pass into `view`. Nothing is simulated
+    // and no shadow pass runs — the shadow views belong to the world that is `update`d this
+    // frame, so a world drawn this way keeps its shadows, its occlusion volume and its screen
+    // occlusion off in its settings.
+    void draw(Miren::ViewId view, const WorldFrame &frame);
+    // The box around the meshes the last frame collected (update or draw) — all of them, or
+    // those of the given entities: what a camera frames. false — nothing with bounds.
+    bool getMeshBounds(glm::vec3 &outMin, glm::vec3 &outMax, const std::vector<UUID> *entities = nullptr) const {
+        return m_meshes.bounds(outMin, outMax, entities);
+    }
     Entity instantiateEntity();
     // Entity with a known id (loading the world from a file — WorldMapper).
     Entity instantiateEntity(UUID id);
@@ -215,8 +226,12 @@ public:
     // Tombstones (DeletedComponent): an entity deleted by a command lives in the registry for undo.
     bool needToDestroy(Entity entity);
     bool isDeleted(entt::entity handle); // itself or any ancestor
-    // Entity order for the Hierarchy: those with children first, then by name; children — the same.
-    void sort();
+    // The order of siblings — of the entities without a parent (parent 0), or of the children of
+    // an entity: the ones with children first, then by name, then by id (two entities of one
+    // name keep their places). It is the order of the Hierarchy and of the world file. Deleted
+    // entities are left out. The order is derived when asked: nothing stores it, so nothing has
+    // to keep it up when an entity is added, renamed or moved.
+    std::vector<UUID> orderedChildren(UUID parent);
     // The links of the hierarchy against the entities that exist, after a load: a child id without
     // an entity or whose parent is another entity leaves the list, a child the parent does not
     // list is added, a parent id without an entity and a cycle make the entity a root. The parent

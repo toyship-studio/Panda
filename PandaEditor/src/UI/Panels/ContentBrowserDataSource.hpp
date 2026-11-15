@@ -12,7 +12,7 @@
 namespace Editor {
 
 // MODEL of ContentBrowser: the tree of the real file system <project>/Assets + the grid data of the
-// current folder + thumbnails of its items (via ThumbnailsManager: the cache — immediately, the rest
+// current folder + thumbnails of its items (via AssetPreviews: the cache — immediately, the rest
 // is prefetched). On a folder change/rescan it cancels its own outstanding thumbnail requests and
 // serves the new data from then on. The View stays thin: cells/menus/breadcrumbs read everything
 // from here.
@@ -51,6 +51,8 @@ public:
 
     // Thumbnail of a grid item (so far materials only): cache → a valid handle, otherwise built
     // asynchronously.
+    // The index of a subfolder of the current folder by its path; -1 — not here (any more).
+    int indexOfFolder(const Panda::path_t &path) const;
     PandaUI::TextureHandle thumbnailFor(int index) const;
     // Index of a current-folder item by asset (-1 — not in this folder); for a targeted cell update.
     int indexOfAsset(Panda::AssetId assetId) const;

@@ -466,8 +466,8 @@ UUID AssetImporterBase::addGltfSceneToWorld(const path_t &path, AssetRef<Importe
         world.setParent(nodeEntity, rootEntity, false);
         processGltfNodeRecurse(data, node, nodeEntity, world, asset, path);
     }
-    LOG_INFO("MESH %s ADDED TO WORLD. TOTAL %d NODES", path.filename().string().c_str(), data->nodes_count);
-    LOG_INFO_EDITOR("MESH %s ADDED TO WORLD. TOTAL %d NODES", path.filename().string().c_str(), data->nodes_count);
+    // No log line: the caller says what it did (the editor adds a model to a scene, and puts one
+    // on the stage of every preview).
     cgltf_free(data);
     return rootEntity.getId();
 }

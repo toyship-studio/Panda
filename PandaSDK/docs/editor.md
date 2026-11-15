@@ -34,13 +34,18 @@ Hierarchy (a click there gives it):
 | ⌘C, ⌘X, ⌘V | Copy, Cut, Paste. The clipboard holds text — a fragment of a world file — so entities paste into another world, another project, a text editor |
 | F2 | Rename |
 | ⌘A, Escape | Select all, deselect |
-| F | The camera goes to the selection. A double click on a row of the Hierarchy does the same |
+| F | The camera goes to where the selection fits the frame. A double click on a row of the Hierarchy does the same |
 | 1, 2, 3 | The tool of the gizmo: move, rotate, scale |
 | F5, ⇧F5 | Play, Stop |
 | ⌘Z, ⇧⌘Z | Undo, Redo — of the document whose tab has the keyboard |
 | ⌘S, ⌥⌘S | Save the document of the tab, Save All |
 | ⌘R | Reload: the editor takes what changed on disk |
 | ⇧Space | The panel under the keyboard takes the whole window, and back |
+| ⌘W | Close the tab the keyboard is in |
+
+The Hierarchy lists the entities of a level — the roots, the children of an entity — the ones
+with children first, then by name: there is no order to arrange by hand, and the world file is
+written in the same order.
 
 With the keyboard in the viewport W A S D fly the camera; a drag with the right button (two
 fingers on a trackpad) looks around, the wheel moves forward and back. A drag with the left
@@ -49,10 +54,32 @@ button on empty space selects by a rectangle.
 A click on a world file in the Content Browser shows that world in the preview tab (its title
 is in italics): the next world clicked takes the same tab. A double click on the file or on the
 tab keeps it open, and so does the first edit. The tabs of the worlds can be dragged into
-another order.
+another order. A world tab closes like any other tab; with the last one closed the center is
+empty — the "+" in the middle makes a new world, a click on a world file opens one.
+
+The Content Browser shows the `Assets` folder of the project as it is on disk. A right click on
+the empty space makes a folder or an asset in the folder shown; a right click on a folder opens
+it, makes something inside it (New), or deletes it with everything in it — the editor asks
+first, and the files do not come back with Undo.
 
 Play needs the scripts of the project. In a project where they were never built, Play offers to
 build them; the CMake panel shows the build and the editor loads the result.
+
+## Previews
+
+The tab of a material or a model has a little viewport at its top. It is turned the way the
+Scene is:
+
+- a two-finger swipe of the trackpad, or a drag with a mouse button, orbits the camera around
+  the thing;
+- the wheel, or a pinch, moves closer and farther;
+- a double click returns to the first view.
+
+A swipe that begins over the preview turns it; one that begins over the form scrolls the form,
+also when the preview passes under the fingers. A material is shown on a sphere; the menu in the
+corner of its preview puts it on a cube, a cylinder, a capsule or a plane. The Content Browser
+and the asset fields show the same pictures small: a material, a model and a texture have a
+thumbnail of their own.
 
 ## Forms
 

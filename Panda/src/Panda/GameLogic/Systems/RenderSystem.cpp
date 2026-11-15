@@ -149,6 +149,28 @@ void MeshList::collect(World &world) {
     }
 }
 
+bool MeshList::bounds(glm::vec3 &outMin, glm::vec3 &outMax, const std::vector<UUID> *entities) const {
+    bool found = false;
+    for (const Item &item : m_items) {
+        if (!item.bounded) { continue; }
+        if (entities != nullptr && std::find(entities->begin(), entities->end(), item.id) == entities->end()) { continue; }
+        // The box of the transformed local box: its center and its extents through abs(M).
+        const glm::vec3 center = glm::vec3(item.transform * glm::vec4((item.boundsMin + item.boundsMax) * 0.5f, 1.f));
+        const glm::vec3 half = (item.boundsMax - item.boundsMin) * 0.5f;
+        const glm::mat3 axes(item.transform);
+        const glm::vec3 extents = glm::abs(axes[0]) * half.x + glm::abs(axes[1]) * half.y + glm::abs(axes[2]) * half.z;
+        if (!found) {
+            outMin = center - extents;
+            outMax = center + extents;
+            found = true;
+        } else {
+            outMin = glm::min(outMin, center - extents);
+            outMax = glm::max(outMax, center + extents);
+        }
+    }
+    return found;
+}
+
 void MeshList::submitItem(Renderer3D &renderer, const Item &item) const {
     glm::mat4 transform = item.transform;
     if (item.imported) {

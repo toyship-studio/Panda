@@ -353,7 +353,21 @@ bool Context::handleScroll(ScrollEvent event) {
     if (!m_rootView) { return false; }
     hideTooltip(); // scrolling hides the tooltip
     layoutIfNeeded();
-    dispatchScroll(hitTest(event.position), event);
+    if (!event.isTrackpad) {
+        m_scrollGestureView = nullptr;
+        dispatchScroll(hitTest(event.position), event);
+        return event.isHandled;
+    }
+    // The swipe in progress goes on to the view that took it (see m_scrollGestureView); a new
+    // one starts where the pointer is.
+    constexpr double GESTURE_GAP = 0.2; // seconds without an event: the fingers were lifted and the momentum ended
+    // The fingers went down again while the last swipe still coasted: that is another swipe.
+    const bool startsAnother = m_scrollGestureCoasting && !event.isMomentum;
+    const bool continues =
+        m_scrollGestureView != nullptr && !startsAnother && m_clock - m_scrollGestureTime < GESTURE_GAP;
+    m_scrollGestureView = dispatchScroll(continues ? m_scrollGestureView : hitTest(event.position), event);
+    m_scrollGestureTime = m_clock;
+    m_scrollGestureCoasting = event.isMomentum || event.isGestureEnded;
     return event.isHandled;
 }
 
@@ -515,6 +529,7 @@ void Context::forgetView(View *view) {
         }
     }
     if (isViewOrDescendantOf(m_mouseCaptureView, view)) { m_mouseCaptureView = nullptr; }
+    if (isViewOrDescendantOf(m_scrollGestureView, view)) { m_scrollGestureView = nullptr; }
     if (isViewOrDescendantOf(m_focusedView, view)) { setFocusedView(nullptr); }
     if (isViewOrDescendantOf(m_tooltipTargetView, view)) {
         m_tooltipTargetView = nullptr;
@@ -839,8 +854,16 @@ void Context::dispatchPointerMove(View *target, PointerEvent &event) {
     ResponderChain(target).dispatch(event, [](View *view, PointerEvent &e) { return view->pointerMove(e); });
 }
 
-void Context::dispatchScroll(View *target, ScrollEvent &event) {
-    ResponderChain(target).dispatch(event, [](View *view, ScrollEvent &e) { return view->scroll(e); });
+View *Context::dispatchScroll(View *target, ScrollEvent &event) {
+    View *taker = nullptr;
+    const ResponderChain chain(target); // holds the views until the taker is looked at below
+    chain.dispatch(event, [&taker](View *view, ScrollEvent &e) {
+        if (!view->scroll(e)) { return false; }
+        taker = view;
+        return true;
+    });
+    // The view may have left the tree with what it did: the swipe is nobody's then.
+    return taker != nullptr && taker->getContext() == this ? taker : nullptr;
 }
 
 void Context::dispatchKeyDown(View *target, KeyEvent &event) {

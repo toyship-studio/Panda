@@ -19,7 +19,10 @@ class SeverityChip; // clickable severity filter chip (defined in .cpp)
 
 // The Output panel: a virtualized list of log rows (time + level + text) with auto-scroll, a Clear
 // button and filter chips by level (a click hides/shows the level). Output only (no input —
-// hence not a "Console") — the rows are pushed from outside by the coordinator (appendLog).
+// hence not a "Console"). It is a view of the editor log and has no other source: whoever has a
+// word for the user — the editor, a package, the engine — writes LOG_INFO_EDITOR /
+// LOG_WARN_EDITOR / LOG_ERROR_EDITOR, and the line is here, in the history a tool reads (the
+// `logs` of the MCP server) and in the console of an application without an editor.
 class OutputPanelView final : public EditorView {
 public:
     enum class LogLevel { Info, Warning, Error };
@@ -28,11 +31,10 @@ public:
 
     ~OutputPanelView();
 
-    void appendLog(LogLevel level, std::string message); // Input: add a row (+auto-scroll)
     void clearLog();
     void copyAll(); // the whole log to the clipboard
 
-    // Sink for engine logs (Foundation::EditorLogger): LOG_*_EDITOR messages end up in this panel.
+    // The sink of the editor log (Foundation::EditorLogger::init).
     static void loggerCallback(std::string_view message, Foundation::EditorLogger::MessageType type);
 
 private:
@@ -40,7 +42,7 @@ private:
     void setupLayout() override;
     void setupStyle() override;
 
-    void seedDemoLogs();
+    void appendLog(LogLevel level, std::string message); // a row at the end (+auto-scroll)
     void rebuildVisible();          // rebuild the indices of visible rows by the level filter
     void toggleLevel(LogLevel level); // click on a chip — hide/show the level
     bool levelShown(LogLevel level) const;

@@ -60,6 +60,12 @@ void EventQueue::postScrollEvent(
     m_events.write(event);
 }
 
+void EventQueue::postMagnifyEvent(double magnification, bool isGestureEnded, Window *window, Modifiers modifiers) {
+    MouseScrolledEvent event(0.0, 0.0, true, false, isGestureEnded, window, modifiers);
+    event.magnification = magnification;
+    m_events.write(event);
+}
+
 void EventQueue::postWindowCloseRequest(Window *window) {
     WindowCloseRequestEvent event(window);
     m_events.write(event);

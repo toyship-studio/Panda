@@ -219,6 +219,7 @@ namespace PandaUIInternal {
                 outEvent.scroll.isTrackpad = scrollEvent->isTrackpad;
                 outEvent.scroll.isMomentum = scrollEvent->isMomentum;
                 outEvent.scroll.isGestureEnded = scrollEvent->isGestureEnded;
+                outEvent.scroll.magnification = static_cast<float>(scrollEvent->magnification);
                 return true;
             }
             case Fern::EventType::TouchBegan: {

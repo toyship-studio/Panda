@@ -21,7 +21,6 @@ public:
         for (auto entity : m_entities) {
             entity.getWorld()->setParent(entity, m_prevParents.at(entity.getId()));
         }
-        m_entities[0].sortWorld();
         m_entities[0].setWorldChanged();
         return true;
     }
@@ -30,7 +29,6 @@ public:
         for (auto entity : m_entities) {
             entity.getWorld()->setParent(entity, m_newParent);
         }
-        m_entities[0].sortWorld();
         m_entities[0].setWorldChanged();
         return true;
     }

@@ -152,6 +152,9 @@ void World::update(double deltaTime, WorldFrame frame) {
     // material fields, the modules): a world brings its own, nobody sets it from outside.
     SceneWind::apply(getWindSettings());
     m_renderer3d.resetStats();
+    // The frame is cleared also when the world draws nothing (a view without draw calls is not
+    // executed): an empty world is an empty frame, not the last frame of the world before it.
+    Miren::touch(Views::SCENE_VIEW);
     m_renderer2d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
     m_renderer3d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
     if (frame.simulate) {
@@ -202,6 +205,13 @@ void World::renderPass(RenderingMode mode, Miren::ViewId view, const WorldFrame 
     renderWorld(viewProj, skyViewProj, frame.cameraPosition);
     m_renderer2d.end();
     m_renderer3d.end();
+}
+
+void World::draw(Miren::ViewId view, const WorldFrame &frame) {
+    m_frameProjection = frame.projection;
+    m_frameViewProj = frame.viewProj;
+    m_meshes.collect(*this);
+    renderPass(RenderingMode::DEFAULT, view, frame);
 }
 
 void World::resolveMainCamera(WorldFrame &frame) {
@@ -548,7 +558,6 @@ World &World::operator=(World &other) {
             target->push(entityHandle, storage.value(entityHandle));
         }
     }
-    sort();
     return *this;
 }
 
@@ -652,31 +661,40 @@ void World::setWorldPose(Entity entity, glm::vec3 position, glm::quat rotation) 
     transformComponent.setRotation(rotation);
 }
 
-void World::sort() {
-    m_registry.sort<entt::entity>([this](auto l, auto r) {
-        Entity le = {l, this};
-        Entity re = {r, this};
-        bool lch = le.hasAnyChild();
-        bool rch = re.hasAnyChild();
-        if (lch == rch) { return le.getName() < re.getName(); }
-        return lch > rch;
-    });
-    auto view = m_registry.view<RelationshipComponent>();
-    for (auto entityId : view) {
-        auto &children = view.get<RelationshipComponent>(entityId).children;
-        std::sort(children.begin(), children.end(), [this](auto l, auto r) {
-            // A child id without an entity (a file the loader did not repair) sorts last, by id.
-            Entity le = getById(l);
-            Entity re = getById(r);
-            const bool lFound = le.m_handle != entt::null;
-            const bool rFound = re.m_handle != entt::null;
-            if (!lFound || !rFound) { return lFound == rFound ? l < r : lFound; }
-            bool lch = le.hasAnyChild();
-            bool rch = re.hasAnyChild();
-            if (lch == rch) { return le.getName() < re.getName(); }
-            return lch > rch;
-        });
+std::vector<UUID> World::orderedChildren(UUID parentId) {
+    struct Sibling {
+        UUID id;
+        bool group;
+        const std::string *name;
+    };
+    std::vector<Sibling> siblings;
+    const auto add = [&](entt::entity handle) {
+        if (handle == entt::null || !isValidEntt(handle)) { return; }
+        Entity entity(handle, this);
+        siblings.push_back({entity.getId(), entity.hasAnyChild(), &m_registry.get<TagComponent>(handle).tag});
+    };
+    if (parentId == UUID(0)) {
+        auto view = m_registry.view<IdComponent, RelationshipComponent, TagComponent>();
+        for (entt::entity handle : view) {
+            if (view.get<RelationshipComponent>(handle).parent == UUID(0)) { add(handle); }
+        }
+    } else {
+        const auto parent = m_entityIdMap.find(parentId);
+        if (parent == m_entityIdMap.end()) { return {}; }
+        for (UUID childId : m_registry.get<RelationshipComponent>(parent->second.m_handle).children) {
+            const auto child = m_entityIdMap.find(childId);
+            if (child != m_entityIdMap.end()) { add(child->second.m_handle); }
+        }
     }
+    std::sort(siblings.begin(), siblings.end(), [](const Sibling &l, const Sibling &r) {
+        if (l.group != r.group) { return l.group; }
+        const int names = l.name->compare(*r.name);
+        return names != 0 ? names < 0 : l.id < r.id;
+    });
+    std::vector<UUID> ordered;
+    ordered.reserve(siblings.size());
+    for (const Sibling &sibling : siblings) { ordered.push_back(sibling.id); }
+    return ordered;
 }
 
 size_t World::repairHierarchy() {

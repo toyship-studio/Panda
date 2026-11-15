@@ -1,6 +1,6 @@
 #include "UI/EditorTabs.hpp"
 
-#include "Preview/ThumbnailsManager.hpp"
+#include "Preview/AssetPreviews.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "UI/Documents/AssetEditorView.hpp"
@@ -264,7 +264,7 @@ public:
     void refresh() override {
         // Undo/redo and reloads change the live asset bypassing the form: the form rereads it,
         // the preview and the thumbnail are rendered again.
-        if (auto *thumbnails = Panda::ThumbnailsManager::shared()) {
+        if (auto *thumbnails = Panda::AssetPreviews::shared()) {
             for (Panda::AssetId id : assets()) { thumbnails->invalidate(id); }
         }
         m_view->rebuild();

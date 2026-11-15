@@ -5,6 +5,7 @@
 #include "Panda/Renderer/MirenViewDistribution.hpp"
 
 #include <cmath>
+#include <unordered_map>
 
 namespace Panda {
 
@@ -68,10 +69,40 @@ const EnvironmentLighting::Tiles &EnvironmentLighting::tiles() {
     return instance;
 }
 
-EnvironmentLighting::~EnvironmentLighting() {
-    if (m_frameBuffer.isValid()) { Miren::deleteFrameBuffer(m_frameBuffer); }
-    if (m_program.isValid()) { Miren::deleteProgram(m_program); }
-    delete m_quad;
+namespace {
+
+    // What every bake draws with: made with the first bake (Miren must be up), gone with the last.
+    struct BakeTools {
+        Miren::ProgramHandle program;
+        FullscreenQuad quad;
+
+        BakeTools()
+            : program(Miren::createProgram(AssetImporterBase::loadShaderProgram(
+                  "default-shaders/postprocess.vert", "default-shaders/environment_bake.frag"
+              ))) {}
+        ~BakeTools() {
+            if (program.isValid()) { Miren::deleteProgram(program); }
+        }
+    };
+
+    std::weak_ptr<BakeTools> s_tools;
+
+} // namespace
+
+struct EnvironmentLighting::Bake {
+    AssetRef<TextureAsset> atlas;
+    Miren::FrameBufferHandle frameBuffer;
+    std::shared_ptr<BakeTools> tools;
+    uint32_t source = 0; // the Miren texture of the map, + 1
+
+    ~Bake() {
+        if (frameBuffer.isValid()) { Miren::deleteFrameBuffer(frameBuffer); }
+    }
+};
+
+const AssetRef<TextureAsset> &EnvironmentLighting::atlas() const {
+    static const AssetRef<TextureAsset> none;
+    return m_bake ? m_bake->atlas : none;
 }
 
 void EnvironmentLighting::update(const AssetRef<TextureAsset> &map) {
@@ -79,30 +110,37 @@ void EnvironmentLighting::update(const AssetRef<TextureAsset> &map) {
     if (source == nullptr || !source->getMirenHandle().isValid()) { return; }
     // A reimported map is another Miren texture under the same asset: the atlas follows the texture.
     const uint32_t sourceId = source->getMirenHandle().id + 1;
-    if (sourceId == m_bakedMap) { return; }
-    // The bake view is one: a second world that needs a bake in the same frame takes the next one.
+    if (m_bake && m_bake->source == sourceId) { return; }
+    // The bakes alive in the process, by the Miren texture of their map.
+    static std::unordered_map<uint32_t, std::weak_ptr<Bake>> registry;
+    std::erase_if(registry, [](const auto &entry) { return entry.second.expired(); });
+    if (auto existing = registry.find(sourceId); existing != registry.end()) {
+        m_bake = existing->second.lock(); // another world is lit by the same map
+        return;
+    }
+    // The bake view is one: a second map that needs a bake in the same frame takes the next one.
     static uint32_t s_bakeFrame = ~0u;
     if (s_bakeFrame == Miren::getFrameNumber()) { return; }
     s_bakeFrame = Miren::getFrameNumber();
-    m_bakedMap = sourceId;
 
     const Layout &atlas = layout();
-    if (!m_atlas) {
-        Miren::TextureCreate create;
-        create.m_width = ATLAS_WIDTH;
-        create.m_height = atlas.height;
-        create.m_format = Miren::TextureFormat::RGBA16F;
-        create.m_minFiltering = Miren::LINEAR;
-        create.m_magFiltering = Miren::LINEAR;
-        create.m_wrap = Miren::CLAMP;
-        m_atlas = GameContext::getAssetHandler()->createRuntimeAsset<TextureAsset>(create);
-        Miren::FrameBufferAttachment attachments[] = {m_atlas->getMirenHandle()};
-        m_frameBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
-        m_program = Miren::createProgram(AssetImporterBase::loadShaderProgram(
-            "default-shaders/postprocess.vert", "default-shaders/environment_bake.frag"
-        ));
-        m_quad = new FullscreenQuad();
+    auto bake = std::make_shared<Bake>();
+    bake->source = sourceId;
+    bake->tools = s_tools.lock();
+    if (!bake->tools) {
+        bake->tools = std::make_shared<BakeTools>();
+        s_tools = bake->tools;
     }
+    Miren::TextureCreate create;
+    create.m_width = ATLAS_WIDTH;
+    create.m_height = atlas.height;
+    create.m_format = Miren::TextureFormat::RGBA16F;
+    create.m_minFiltering = Miren::LINEAR;
+    create.m_magFiltering = Miren::LINEAR;
+    create.m_wrap = Miren::CLAMP;
+    bake->atlas = GameContext::getAssetHandler()->createRuntimeAsset<TextureAsset>(create);
+    Miren::FrameBufferAttachment attachments[] = {bake->atlas->getMirenHandle()};
+    bake->frameBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
 
     const Size sourceSize = source->getSize();
     BakeUbo block{};
@@ -119,11 +157,13 @@ void EnvironmentLighting::update(const AssetRef<TextureAsset> &map) {
     const Miren::ViewId view = Views::ENVIRONMENT_BAKE_VIEW;
     Miren::setViewport(view, Miren::Rect(0, 0, ATLAS_WIDTH, atlas.height));
     Miren::setViewClear(view, 0x000000ff);
-    Miren::setViewFrameBuffer(view, m_frameBuffer);
+    Miren::setViewFrameBuffer(view, bake->frameBuffer);
     Miren::setState(0);
     Miren::addInputUniformBuffer("ENVIRONMENT_BAKE", &block, sizeof(block));
     Miren::addInputTexture("environmentMap", source->getMirenHandle());
-    m_quad->submit(view, m_program);
+    bake->tools->quad.submit(view, bake->tools->program);
+    registry[sourceId] = bake;
+    m_bake = std::move(bake);
 }
 
 } // namespace Panda

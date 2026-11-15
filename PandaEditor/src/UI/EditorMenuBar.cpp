@@ -103,6 +103,7 @@ void EditorMenuBar::rebuild() {
 #ifdef PLATFORM_MACOS
         item(fileMenu, "Show C++ Project", "file.showCppProject");
 #endif
+        item(fileMenu, "Close Tab", "tab.close");
         item(fileMenu, "Close Project", "file.closeProject");
         fileMenu.addSeparator();
 

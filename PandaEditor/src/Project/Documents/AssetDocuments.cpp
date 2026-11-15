@@ -193,7 +193,9 @@ AssetId AssetDocuments::createPostprocessingAsset(const path_t &directory) {
         encoder->encode(file, dataDto);
     }
     m_handler.registerAsset(path);
-    return m_handler.getAssetId(path);
+    const AssetId id = m_handler.getAssetId(path);
+    if (id) { LOG_INFO_EDITOR("Created %s.", path.filename().string().c_str()); }
+    return id;
 }
 
 AssetId AssetDocuments::registerCreatedAsset(const path_t &path) {

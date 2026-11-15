@@ -32,7 +32,14 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   one of the most important and complex parts of the library.
 - Input: pointer events that know their type (mouse, touch, pen), hover, scroll, key, text input,
   focus, pointer capture. Hit testing is in the core; the focus owner is in `Context`, with a Tab
-  chain; modifiers travel in `PointerEvent`.
+  chain; modifiers travel in `PointerEvent`. A `ScrollEvent` is a wheel, a two-finger swipe of a
+  trackpad (`isTrackpad`) or a pinch (`magnification`: the share the fingers moved apart by; the
+  delta is zero then). A swipe belongs to the view that took its first event
+  (`Context::handleScroll`): what moves under the pointer while it lasts — a form scrolling a
+  viewport under the fingers — does not take the rest of it.
+- TabView: `setEmptyView` is what the content area shows while there is no tab (a hint, a way
+  to open something). A tab is dragged within its bar, to any bar of its drag group, or not at
+  all (`TabDrag`).
 - ScrollView: a real `contentOffset` within bounds plus a separate `overscrollOffset` layer
   (drawOffset is the sum), nonlinear overscroll, a spring return, inertia → bounce. macOS momentum
   events must be told apart and muted where they break the bounce.

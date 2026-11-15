@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 namespace Panda {
 
@@ -23,7 +24,9 @@ namespace Panda {
 // seamless at the ±π seam and at the poles. The bake is one fullscreen pass on the GPU (the
 // source is sampled with filtered importance sampling: the mip follows the solid angle of a
 // sample, so the sun of an HDR map smears instead of sparkling); it runs when the map of the
-// world changes.
+// world changes. The atlas of a map is baked once for the process and shared by every world
+// that is lit by that map — the world being edited, its playing copy, the little worlds of the
+// editor's previews — and released with the last of them.
 class EnvironmentLighting final {
 public:
     static constexpr uint32_t LEVELS = 5;
@@ -31,27 +34,18 @@ public:
     // uv rect of a tile inside the atlas (without the gutter): xy — offset, zw — size.
     using Tiles = std::array<glm::vec4, TILES>;
 
-    EnvironmentLighting() = default;
-    ~EnvironmentLighting();
-    EnvironmentLighting(const EnvironmentLighting &) = delete;
-    EnvironmentLighting &operator=(const EnvironmentLighting &) = delete;
-
-    // Once per frame, before the scene is submitted: bakes the atlas when `map` is another
-    // texture than the atlas was baked from. An empty map releases nothing and bakes nothing:
-    // atlas() stays what it was, the caller does not bind it.
+    // Once per frame, before the scene is submitted: takes the atlas of `map`, baking it when no
+    // world has it yet. An empty map changes nothing: atlas() stays what it was, the caller
+    // does not bind it. The bake view is one, so a second map that needs a bake in the same
+    // frame gets it in the next one (atlas() keeps the previous map until then).
     void update(const AssetRef<TextureAsset> &map);
     // Empty until the first bake.
-    const AssetRef<TextureAsset> &atlas() const {
-        return m_atlas;
-    }
+    const AssetRef<TextureAsset> &atlas() const;
     static const Tiles &tiles();
 
 private:
-    AssetRef<TextureAsset> m_atlas;
-    Miren::FrameBufferHandle m_frameBuffer;
-    Miren::ProgramHandle m_program;
-    FullscreenQuad *m_quad = nullptr; // created with the first bake: Miren must be up
-    uint32_t m_bakedMap = 0;          // the Miren texture the atlas holds the light of (0 — none)
+    struct Bake; // the atlas of one map
+    std::shared_ptr<Bake> m_bake;
 };
 
 } // namespace Panda

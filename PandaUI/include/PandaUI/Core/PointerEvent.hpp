@@ -39,6 +39,10 @@ struct ScrollEvent {
     bool isTrackpad = false;
     bool isMomentum = false;
     bool isGestureEnded = false;
+    // A pinch of the trackpad: the share the fingers moved apart by since the last event (0.05 —
+    // 5% larger, negative — smaller); the delta is zero then. What shows something that can be
+    // looked at closer (a viewport, a preview) zooms by it; a scroll view has nothing to do with it.
+    float magnification = 0.f;
     bool isHandled = false;
 };
 

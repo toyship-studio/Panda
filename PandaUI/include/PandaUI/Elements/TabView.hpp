@@ -118,6 +118,9 @@ public:
 
     // Right accessory in the tab bar (pinned to the right edge) — e.g. the "+"/maximize buttons. Survives rebuild.
     void setTrailingAccessory(std::shared_ptr<View> accessory);
+    // What the content area shows while there is no tab (a hint, a way to open something);
+    // null — nothing. It fills the area and steps aside as soon as a tab is added.
+    void setEmptyView(std::shared_ptr<View> view);
 
     // Removes tab index and returns its content (for docking — transfer to another TabView). onClose is NOT called.
     std::shared_ptr<View> removeTab(int index);
@@ -170,6 +173,7 @@ private:
     bool m_pendingRevealSelected = false;
     std::shared_ptr<Panel> m_contentArea;
     std::shared_ptr<View> m_trailingAccessory; // right accessory of the tab bar; null — none
+    std::shared_ptr<View> m_emptyView;          // shown in the content area while there are no tabs; null — none
     std::shared_ptr<Panel> m_dropLine;          // vertical indicator line of the insertion position during a drag
     bool m_hidesTabBarWhenSingle = false;
     std::vector<TabItem> m_tabs;

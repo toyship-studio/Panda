@@ -67,6 +67,20 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_rightDock->setTrailingAccessory(makeDockTrailing(Dock::Right));
     m_bottomDock->setTrailingAccessory(makeDockTrailing(Dock::Bottom));
     m_center->setTrailingAccessory(makeDockTrailing(Dock::Center));
+    // The center without a tab (no world is open, every document is closed) is empty but for
+    // one quiet way to add something: the "+" of the dock, in the middle.
+    auto empty = std::make_shared<Panel>();
+    empty->setBackgroundColor(ThemeColor::windowBackground);
+    empty->layout().setJustifyContent(Justify::Center);
+    empty->layout().setAlignItems(Align::Center);
+    auto add = std::make_shared<IconButton>(Ic::Plus, 18.f, 40.f);
+    add->setCornerRadius(20.f);
+    add->setIconColor(ThemeColor::textDim);
+    add->setTooltip("New World, or a panel");
+    IconButton *addPtr = add.get();
+    add->setOnClick([this, addPtr] { showAddMenu(Dock::Center, addPtr); });
+    empty->addSubview(add);
+    m_center->setEmptyView(empty);
 
     // The center (viewport) is above the bottom dock; the work area is left dock | center | right dock.
     m_centerColumn = std::make_shared<SplitView>(SplitOrientation::Vertical);
@@ -331,6 +345,16 @@ void DockManager::closePanelInternal(const std::string &id) {
     if (m_onTransientClosed) { m_onTransientClosed(closedId); }
 }
 
+bool DockManager::closePanel(const std::string &idRef) {
+    const std::string id = idRef; // a copy: the panel list changes under the reference
+    const DockPanel *panel = findPanel(id);
+    if (panel == nullptr || !panel->open || !panel->closable) { return false; }
+    if (!allowClose(id)) { return false; } // a dirty document may cancel the close
+    closePanelInternal(id);
+    rebuild();
+    return true;
+}
+
 void DockManager::tabDoubleClicked(Dock dock, int tabIndex) {
     const auto tv = dockTabView(dock);
     if (!tv) { return; }
@@ -365,11 +389,7 @@ void DockManager::showTabMenu(Dock dock, int tabIndex, Point position) {
         if (!menu->empty()) { menu->addSeparator(); }
     }
     if (panel->closable) {
-        menu->addItem("Close", [this, id] {
-            if (!allowClose(id)) { return; } // a dirty transient may cancel the close
-            closePanelInternal(id);          // a transient is removed, a regular one — open=false
-            rebuild();
-        });
+        menu->addItem("Close", [this, id] { closePanel(id); });
     }
     bool hasOthers = false;
     for (const DockPanel &p : m_panels) {
@@ -464,7 +484,6 @@ void DockManager::applyLayout(const Panda::DockLayoutState &state) {
     std::vector<DockPanel> ordered;
     ordered.reserve(m_panels.size());
     for (Panda::DockPanelPlacement placement : state.panels) {
-        if (placement.id == "console") { placement.id = "output"; } // migration: the panel was renamed
         auto it = std::find_if(m_panels.begin(), m_panels.end(), [&](const DockPanel &p) {
             return p.id == placement.id;
         });

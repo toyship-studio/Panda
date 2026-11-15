@@ -467,6 +467,9 @@ int main(int argc, const char **argv) {
         delete restored;
         const std::map<uint32_t, std::string> firstEntities = entitiesJson(first);
         report("entities survive the round trip", firstEntities == entitiesJson(second) && !firstEntities.empty());
+        // The order of a world file depends on the world alone (World::orderedChildren), not on
+        // how the entities lie in memory: a world read and written again is the same text.
+        report("a world saved twice is the same file", first == second);
         report(
             "settings survive the round trip",
             memberJson(first, "lighting") == memberJson(second, "lighting") &&

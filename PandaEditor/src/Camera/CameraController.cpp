@@ -6,6 +6,9 @@
 
 #include <Panda/Math/Math.hpp>
 
+#include <algorithm>
+#include <cmath>
+
 namespace Panda {
 
 CameraController::CameraController()
@@ -111,16 +114,14 @@ void CameraController::lookAt(glm::vec3 target) {
     syncRotationFromAngles();
 }
 
-void CameraController::reset(glm::vec3 pos) {
-    TransformComponent newTransform;
-    newTransform.setPosition({pos.x + 1.5, pos.y + 1.5, pos.z + 1.5});
-    glm::quat r;
-    r.x = -0.2911117374897003;
-    r.y = 0.31903332471847534;
-    r.z = 0.10366018861532211;
-    r.w = 0.8959499597549438;
-    newTransform.setRotation(r);
-    animateTo(newTransform);
+void CameraController::frame(glm::vec3 center, float radius, float fieldOfView) {
+    // The view the editor has always looked at a thing from: from the front right, a little above.
+    const glm::quat rotation(0.8959499597549438f, -0.2911117374897003f, 0.31903332471847534f, 0.10366018861532211f);
+    const float distance = std::max(radius, 0.05f) / std::sin(std::clamp(fieldOfView, 0.1f, 3.f) * 0.5f) * 1.15f;
+    TransformComponent target;
+    target.setRotation(rotation);
+    target.setPosition(center - (rotation * glm::vec3(0.f, 0.f, -1.f)) * distance);
+    animateTo(target);
 }
 
 void CameraController::animateTo(TransformComponent transform) {

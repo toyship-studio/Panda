@@ -209,17 +209,25 @@ itself. Everything of the model is in one place, `PandaEditor/src/Project/Docume
 
 A file document exists without a tab (a loaded texture, the settings with their tab closed).
 
-**The open worlds.** A project has any number of worlds open, each a `WorldFile`. One of them
-is **active** (`FileDocuments::activeWorld`): the editor shows and edits it, Play plays its
-copy, the export cooks it. There is always one — without a project it is an empty world. Opening a
-world (`openWorld`) adds it next to the open ones and drops nothing, so there is no
-unsaved-changes question; an untouched new world gives its place to the file. `newWorld` adds a
-world with the starter content (not an edit: the world is clean until it is touched),
-`closeWorld` drops one and leaves a new world behind the last. `EditorLayer` follows the list
-through `documentsDidActivateWorld` (another world is shown: the selection, the entity tabs and
-the panels reset) and `documentsDidLoadWorld` (the active world got another content). The game plays a copy of the active world, so that world
-does not change while the game runs: a tab click is refused, a command that changes it (open,
-new, closing the active tab) stops the game first.
+**The open worlds.** A project has any number of worlds open, each a `WorldFile` — or none: a
+world is a document like any other, and its tab closes like any other. At most one is
+**active** (`FileDocuments::activeWorld`, null when no world is open): the editor shows and
+edits it, Play plays its copy, the export cooks it. Opening a world (`openWorld`) adds it next
+to the open ones and drops nothing, so there is no unsaved-changes question. `newWorld` adds a
+world with the starter content (not an edit: the world is clean until it is touched);
+`closeWorld` drops one — its neighbor becomes the active one, and after the last world none
+is. A project opens with the worlds of its session, else with its start world, else with none.
+With no world open the center of the editor is empty but for a quiet "+" (New World, the
+panels), the Hierarchy says so, Play is off, and the panels have no world to read
+(`EditorController::setActiveWorld(nullptr)`); the engine side of the editor points at an empty
+world that is not a document (`EditorLayer::editingWorld`), so nothing there needs to know the
+case. `EditorLayer` follows the list through `documentsDidActivateWorld` (another world is
+shown, or none: the selection, the entity tabs and the panels reset) and `documentsDidLoadWorld`
+(the active world got another content). A world shown for the first time brings no place for
+the editor camera: the editor looks at it from its main camera (`documentsLookAtWorld`). The
+game plays a copy of the active world, so that world does not change while the game runs: a tab
+click is refused, a command that changes it (open, new, closing the active tab) stops the game
+first.
 
 Three operations are written once over them, in `EditorLayer`, whatever the file is:
 
@@ -261,7 +269,8 @@ The tab documents:
   follows the selected tab (`EditorController::syncWorldTabs`, once a frame: a tab callback
   never rebuilds the docks it is called from). The editor has one viewport: it lives in the tab
   of the active world (the content of a world tab is a host panel, the viewport is re-parented
-  into the active one), so a world tab stays in the center (`DockPanel::movable`). World tabs
+  into the active one), so a world tab stays in the center (`DockPanel::movable`; it is dragged
+to another place of its bar only). World tabs
   are reopened from the project session, not from the saved layout (`DockPanel::restored`); the
   layout only remembers that a world was in front. The settings of the active world are the sidebar of
   the viewport (the N-panel of Blender): the sections of the world scope over the world's
@@ -315,6 +324,11 @@ noun). File → New shows both lists after World (entities to the root of the op
 into the folder the Content Browser shows); the context menus of the Hierarchy and of the
 Content Browser show the same lists. A module's `AssetCreator` joins the asset list. The File
 menu opens with what begins something — New, New Window — and the rest follows the separator.
+In the Content Browser the list begins with Folder: the menu of the background makes things in
+the folder shown, the New submenu of a folder makes them inside it. A folder is a directory of
+the disk and nothing else — it has no id and no sidecar; deleting one
+(`contentDidRequestDeleteFolder`) removes the assets under it through the asset database first,
+so the files derived from them and the loaded objects go too, and then the directory.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). A world is a document, not an asset with parameters: a click on a
@@ -409,28 +423,58 @@ Unity's Scene and Game views:
 
 #### Asset previews
 
-Code: `PandaEditor/src/Preview/` (`ThumbnailsManager`, `MaterialPreviewRenderer`, `AssetPreview`).
+Code: `PandaEditor/src/Preview/` (`AssetPreviews`, `PreviewStage`, `PreviewRenderer`,
+`AssetPreview`), the view — `UI/Documents/AssetPreviewView`.
 
-- The large preview of an asset form is a LEASE: `leasePreview(assetId)` returns
-  `shared_ptr<AssetPreview>` (`texture`, `flipVertical`, `plate`, `requested`). The form holds the
-  lease (`AssetEditorView`, one per asset tab), so every tab has its own preview texture. When the
-  form is rebound or closed the lease is released and the manager frees the resources one frame
-  later. There are no shared "current preview" slots: with them every tab showed the asset of the
-  form that was bound last.
-- A material preview is a live sphere in ITS OWN RGBA8 texture
-  (`MaterialPreviewRenderer::render(material, target)`; the HDR scratch target is shared). The form
-  sets `requested` every tick while it is visible (hidden tabs get no `update`). The texture is
-  published to the lease with the first rendered frame. An image preview is the asset itself
-  (pinned by an `AssetRef`); for an sRGB texture a display copy is made with a blit.
+- **A preview is a little world.** A material and a model are shown the same way: a
+  `PreviewStage` — a `World` of its own with the asset in it and a studio light (the built-in sky
+  as the environment, a key light, a little fill) — drawn by `World::draw` into the target of
+  the preview. A material stands there as an entity with a primitive (`PrimitiveMeshComponent`:
+  a sphere, a cube, a cylinder, a capsule, a plane); a model as the scene of its file
+  (`addGltfSceneToWorld`, the same call that puts it into a scene). So a preview shows what a
+  scene would — the same materials, node transforms and blended surfaces, the passes of the
+  modules — and whatever a world learns to show later (a skeleton in motion) needs no preview
+  code of its own. `World::draw(view, frame)` is the frame of a world outside the frame of the
+  viewport: the meshes are collected and drawn in one pass into the given view, nothing is
+  simulated and no shadow pass runs (the shadow views belong to the world that is `update`d), so
+  a stage keeps shadows, the occlusion volume and the screen occlusion off. A material on a
+  shader of a module that reads its vertices its own way (`EditorExtensions::materialPreviews`)
+  gets the primitive in those vertices as a runtime mesh of the stage, and the placeholder
+  inputs of the rule as inputs of the view.
+- **The camera orbits** (`PreviewOrbit`: yaw, pitch — the angles of the viewport camera — and a
+  zoom): it looks at the middle of what stands on the stage from a distance that fits its bounds
+  into the frame (`RenderSystem::MeshList::bounds`, the list every pass of a world culls from).
+- **The large preview of a form is a lease**: `AssetPreviews::lease(assetId)` returns
+  `shared_ptr<AssetPreview>`, the form holds it (`AssetPreviewView`, one per asset tab) and
+  talks to the renderer through it — it sets what it wants (`requested` every tick while on
+  screen, the size in pixels, the orbit, the shape), the renderer fills in the texture. Every
+  lease has a stage and a display texture of its own; the target follows the size the view shows
+  it at, like a viewport (the stage is drawn at twice that size and brought down by the Tonemap
+  pass in linear light: smooth edges without an antialiasing pass). When the form is rebound or closed
+  the lease is released and the resources go a frame later. A texture is its own picture: the
+  lease pins it and, for an sRGB format (RGBA8 or BC7), shows a display copy made by a blit.
+- **The view is a little viewport** (`AssetPreviewView`): a two-finger swipe of the trackpad or
+  a drag with a mouse button orbits, the wheel or a pinch zooms, a double click returns to the
+  first view; a material has the menu of primitives in the corner. The gestures are the Scene's:
+  the same angles, so the same hand turns both. A swipe belongs to the view it began over
+  (`Context::handleScroll`): a form scrolling a preview under the fingers does not start
+  turning it.
+- **Thumbnails** (the Content Browser, the asset fields) are one frame of a stage: the queue is
+  served one a frame on a stage of the manager, which lets go of the asset on the next frame —
+  a model with its textures is not kept loaded for the sake of a picture. A thumbnail of a
+  texture is a blit into a square. `AssetPreviews::hasPreview(type)` says which kinds have a
+  picture of their own (a material, a model, a texture); the rest keep the icon of their kind.
+  `invalidate(assetId)` redraws the thumbnail into the same texture and sets the open previews
+  up again (a reimport, other import settings).
 - **The state of a Miren view (FBO, viewport, clear) is a snapshot per frame**: the last
-  `setViewFrameBuffer` applies to ALL submits of that view in the frame. Therefore the GPU passes
-  of previews run only from `ThumbnailsManager::update()`, and at most one per pair of views per
-  frame: live previews take turns among the requested ones (`PREVIEW_RENDER_VIEW` /
-  `PREVIEW_TONEMAP_VIEW`), and a display copy and a thumbnail share `THUMBNAIL_TONEMAP_VIEW`, so
-  only one of them runs in a frame.
-- If the sphere did not reach the scratch target (the material or its shader is not ready), do
-  not finalize: the scratch target holds a frame of ANOTHER material, which would land in a
-  foreign preview or thumbnail (`renderToView` returns `bool` for this reason).
+  `setViewFrameBuffer` applies to ALL submits of that view in the frame. A frame has two pairs
+  of views for previews (`PreviewRenderer::Slot`: the stage in linear HDR, then the engine's
+  Tonemap into the display texture) — one preview of a form and one thumbnail — so everything
+  is drawn from `AssetPreviews::update()`: the visible previews take turns, one a frame, and a
+  display copy and a thumbnail share the display view of the thumbnail slot.
+- The light of the built-in sky is baked once for the process (`EnvironmentLighting` shares the
+  atlas of a map between the worlds lit by it), so a stage costs a world of a few entities and
+  nothing else.
 
 #### Dialogs
 
@@ -522,7 +566,12 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   with the frame.
 - **The Output panel is for what the user has to know.** A line of `LOG_*_EDITOR` is written
   as a sentence that names the file and, for an error, says what to do; a successful load of an
-  asset is not news (`LOG_TRACE` on the console). The panel is created with the chrome, after a
+  asset is not news (`LOG_TRACE` on the console). The editor log is the only source of the
+  panel: the editor itself, a package and the engine write the same macros, so a line the user
+  reads is also a line of `Foundation::LogHistory` (the `logs` tool of the MCP server) — nothing
+  is pushed into the panel past the log, and one event is reported once, by the code that did
+  the work (an asset made is named by `AssetDocuments`, not again by the controller that asked).
+  The panel is created with the chrome, after a
   project given on the command line (or the last one) has opened: it starts from the editor
   lines of `Foundation::LogHistory`, so what the opening of the project reported is the first
   thing it shows.
@@ -687,6 +736,12 @@ What follows from the rules:
   `finishRunning` carries out what is left, the requests of the scripts' `shutdown` included,
   before the world stops. The children go with the entity, and so do its bodies in the
   simulation.
+- **The order of siblings is derived, not stored**: `World::orderedChildren(parent)` — the roots
+  for parent 0 — gives the entities with children first, then by name, then by id. The
+  Hierarchy shows that order and `WorldMapper` writes the file in it, an entity and then its
+  subtree; nothing keeps an order up when an entity is added, renamed or moved. So the file
+  depends on the world alone, not on how its entities lie in the registry: a world saved twice
+  is the same text (a smoke check), and the Hierarchy is the same in Edit and in Play.
 - The template of a new world (camera, sun, sprite, sky) is `fillStarterContent` in
   `PandaEditor/src/Project/Documents/FileDocuments.cpp` (`FileDocuments::newWorld`).
 

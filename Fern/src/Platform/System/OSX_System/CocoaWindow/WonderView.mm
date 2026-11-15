@@ -362,6 +362,13 @@ static Fern::Modifiers modifiersOf(NSEvent *event) {
     );
 }
 
+- (void)magnifyWithEvent:(NSEvent *)event {
+    const bool isGestureEnded = event.phase == NSEventPhaseEnded || event.phase == NSEventPhaseCancelled;
+    getEventQueue()->postMagnifyEvent(
+        event.magnification, isGestureEnded, static_cast<Fern::Window *>(self.eventWindow), modifiersOf(event)
+    );
+}
+
 // MARK: - Keys
 
 - (void)keyDown:(NSEvent *)event {

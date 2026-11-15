@@ -56,7 +56,7 @@ void SceneRenderTargets::init(Size size) {
     m_ids = Miren::createTexture(renderTarget(size, Miren::TextureFormat::R32UI, true));
     m_idsDepth = Miren::createTexture(renderTarget(size, Miren::TextureFormat::DEPTH24STENCIL8, true));
     createFrameBuffers();
-    Miren::setViewClear(Views::SCENE_VIEW, 0x000000cff);
+    Miren::setViewClear(Views::SCENE_VIEW, 0x000000ff); // a world without a sky is black, as in the game
     Miren::setViewClear(Views::SELECTED_GEOMETRY_VIEW, 0);
     Miren::setViewClearAttachments(Views::IDS_VIEW, {Miren::Clear(0, 0)});
     Miren::setViewClear(Views::IDS_VIEW, 0);

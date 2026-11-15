@@ -6,7 +6,7 @@
 #include <sstream>
 #include <Foundation/GraphicsAPI.hpp>
 
-#include "Preview/ThumbnailsManager.hpp"
+#include "Preview/AssetPreviews.hpp"
 #include "UI/Documents/CoreAssetEditors.hpp"
 #include "UI/Documents/KeymapDocument.hpp"
 #include "UI/Documents/PluginsDocument.hpp"
@@ -104,11 +104,9 @@ namespace {
     constexpr const char *GAME_DOCUMENT = "game";
     constexpr const char *GAME_TAB_ID = "doc:game"; // EditorTabs names a document tab doc:<type>
     // The tab of an open world: world:<id of the open world>. The ids live for one run, so a saved
-    // layout only remembers that a world was in front of the center (WORLD_TAB_MARKER; "viewport"
-    // is how the layouts saved before the world tabs name it).
+    // layout only remembers that a world was in front of the center (WORLD_TAB_MARKER).
     constexpr const char *WORLD_TAB_PREFIX = "world:";
     constexpr const char *WORLD_TAB_MARKER = "world";
-    constexpr const char *LEGACY_SCENE_TAB_ID = "viewport";
 
     std::string worldTabId(uint32_t worldId) {
         return WORLD_TAB_PREFIX + std::to_string(worldId);
@@ -511,7 +509,7 @@ void EditorController::syncWorldTabs() {
             } else {
                 // The game plays a copy of the active world: the tabs do not switch until it stops.
                 m_dockManager->activateTransientPanel(activeTab);
-                m_outputView->appendLog(OutputPanelView::LogLevel::Warning, "Stop the game to switch to another world");
+                LOG_WARN_EDITOR("Stop the game to switch to another world");
             }
         }
     }
@@ -550,7 +548,7 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
         // Every restored tab selected itself as it opened: the active tabs of the session go back on
         // top, and the keyboard returns to the dock it was in (the active document of undo).
         m_dockManager->applySelection(state);
-        if (m_bridge && (state.selectedCenter == WORLD_TAB_MARKER || state.selectedCenter == LEGACY_SCENE_TAB_ID)) {
+        if (m_bridge && state.selectedCenter == WORLD_TAB_MARKER) {
             m_dockManager->activateTransientPanel(worldTabId(m_bridge->activeWorldId()));
         }
         if (state.focusedDock >= 0 && state.focusedDock <= 3) {
@@ -738,7 +736,9 @@ void EditorController::pushSelectionToPanels() {
     const int total = liveEntityCount();
     const std::string count = std::to_string(total) + (total == 1 ? " entity" : " entities");
     m_hierarchyView->setStatusText(
-        entities.empty() ? count : std::to_string(entities.size()) + " of " + count + " selected"
+        m_panelsWorld == nullptr ? std::string() // no world is open: nothing to count
+        : entities.empty()       ? count
+                                 : std::to_string(entities.size()) + " of " + count + " selected"
     );
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
     // A selected world is shown by its own tab (openWorldTab), not by a tab of asset parameters.
@@ -794,7 +794,7 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     const bool canRedo = stack && stack->CAN_REDO();
     // Play is there whenever the world is edited: without the scripts of the project it explains
     // what is missing (toolbarDidPickSceneState) instead of being a dead button.
-    const bool canPlay = isEditMode;
+    const bool canPlay = isEditMode && m_panelsWorld != nullptr; // nothing to play without a world
     const bool canStop = !isEditMode;                  // Stop: only while the world is running
 
     if (canUndo != m_tbCanUndo) { m_tbCanUndo = canUndo; m_toolbarView->setCanUndo(canUndo); }
@@ -850,6 +850,8 @@ void EditorController::buildLayout() {
     // of the editor, the documents of modules).
     m_dockManager->setAddMenuItemsProvider([this] {
         std::vector<DockManager::AddMenuItem> items;
+        // A world is the first thing to add: with none open it is what the empty center offers.
+        items.push_back({"New World", [this](Dock) { m_commands.run("file.newWorld"); }});
         for (const DocumentType &type : editorExtensions().documentTypes.types()) {
             const std::string id = type.id;
             items.push_back({type.title, [this, id](Dock dock) { m_editorTabs->openDocumentType(id, dock); }});
@@ -867,6 +869,7 @@ void EditorController::hierarchyDidSelectEntities(const std::vector<Panda::UUID>
 
 CreateActions EditorController::hierarchyCreateActions(Panda::UUID parentId) {
     CreateActions actions;
+    if (m_panelsWorld == nullptr) { return actions; } // no world is open: nothing to create in
     actions.push_back({"Empty Entity", [this, parentId] { createEntity(parentId); }});
     const std::pair<const char *, PrimitiveKind> primitives[] = {
         {"Cube", PrimitiveKind::Cube},       {"Sphere", PrimitiveKind::Sphere},     {"Capsule", PrimitiveKind::Capsule},
@@ -1016,9 +1019,7 @@ void EditorController::hierarchyDidRequestPaste() {
     std::istringstream stream(text);
     std::vector<Panda::Entity> added;
     if (!Panda::WorldMapper::loadEntities(*m_panelsWorld, decoder, stream, added) || added.empty()) {
-        m_outputView->appendLog(
-            OutputPanelView::LogLevel::Warning, "Paste — the clipboard holds no entities (a fragment of a world file)"
-        );
+        LOG_WARN_EDITOR("Paste — the clipboard holds no entities (a fragment of a world file)");
         return;
     }
     std::unordered_set<Panda::Entity> roots(added.begin(), added.end());
@@ -1273,7 +1274,7 @@ void EditorController::selectEntity(Panda::UUID id) {
 }
 
 PandaUI::TextureHandle EditorController::assetThumbnail(Panda::AssetId id) {
-    auto *thumbnails = Panda::ThumbnailsManager::shared();
+    auto *thumbnails = Panda::AssetPreviews::shared();
     return thumbnails ? thumbnails->thumbnailFor(id) : PandaUI::TextureHandle{};
 }
 
@@ -1293,17 +1294,6 @@ std::optional<Panda::path_t> EditorController::openFileDialog() {
 
 void EditorController::refreshAssetEditors(Panda::AssetId id) {
     if (m_editorTabs) { m_editorTabs->refreshTabsForAsset(id); }
-}
-
-void EditorController::log(Editor::HostLogLevel level, const std::string &message) {
-    if (!m_outputView) { return; }
-    OutputPanelView::LogLevel mapped = OutputPanelView::LogLevel::Info;
-    switch (level) {
-        case Editor::HostLogLevel::Info: mapped = OutputPanelView::LogLevel::Info; break;
-        case Editor::HostLogLevel::Warning: mapped = OutputPanelView::LogLevel::Warning; break;
-        case Editor::HostLogLevel::Error: mapped = OutputPanelView::LogLevel::Error; break;
-    }
-    m_outputView->appendLog(mapped, message);
 }
 
 void EditorController::entityDidAddScript(const std::string &className) {
@@ -1418,10 +1408,7 @@ void EditorController::instantiateMeshAssets(const std::vector<Panda::AssetId> &
     m_panelsWorld->setChanged();
     refreshFromWorld();
     selectEntitiesByIds(createdIds);
-    m_outputView->appendLog(
-        OutputPanelView::LogLevel::Info,
-        "Added " + std::to_string(createdIds.size()) + (createdIds.size() == 1 ? " mesh" : " meshes") + " to scene"
-    );
+    LOG_INFO_EDITOR("Added %zu %s to the world", createdIds.size(), createdIds.size() == 1 ? "mesh" : "meshes");
 }
 
 /* ------------------------------ Content browser: the asset domain ------------------------------ */
@@ -1437,26 +1424,43 @@ void EditorController::selectAssets(const std::vector<Panda::AssetId> &ids, bool
     pushSelectionToPanels();
 }
 
-// Dedup: asset deletion (confirm → removeAsset → refresh) is common to both panels.
+// What a confirmed deletion does. File = asset: the files go from disk (a rescan would bring the
+// asset back with a new id), and with them the files derived from the asset and the loaded
+// object. A world among them that is open is closed first — a tab does not outlive its file, and
+// the game that plays that world stops.
+void EditorController::removeAssets(const std::vector<Panda::AssetId> &ids) {
+    auto *assets = assetHandler();
+    if (!assets) { return; }
+    if (m_bridge) {
+        for (const OpenWorld &world : m_bridge->openWorlds()) {
+            if (world.path.empty()) { continue; }
+            const Panda::path_t file = world.path.lexically_normal();
+            for (Panda::AssetId id : ids) {
+                if ((assets->getProjectPath() / assets->assetPath(id)).lexically_normal() != file) { continue; }
+                m_bridge->closeWorld(world.id);
+                break;
+            }
+        }
+        syncWorldTabs();
+    }
+    for (Panda::AssetId id : ids) { assets->removeAsset(id); }
+    m_selectedAssets.clear();
+    refreshAssetPanels();
+    pushSelectionToPanels();
+}
+
+// Asset deletion (confirm → remove) is common to both panels.
 void EditorController::deleteAssets(const std::vector<Panda::AssetId> &ids) {
     auto *handler = assetHandler();
     if (!handler || ids.empty()) { return; }
-    // File = asset: deletion erases the files from disk (otherwise a rescan would resurrect the asset).
     const std::string title = ids.size() == 1 ? "Delete \"" + handler->getAssetName(ids.front()) + "\"?"
                                               : "Delete " + std::to_string(ids.size()) + " assets?";
     showConfirmDialog(
         m_root ? m_root->getContext() : nullptr, title, "Files will be removed from disk. This cannot be undone.",
         "Delete", /*destructive*/ true,
         [this, ids] {
-            auto *assets = assetHandler();
-            if (!assets) { return; }
-            for (Panda::AssetId id : ids) { assets->removeAsset(id); }
-            m_selectedAssets.clear();
-            refreshAssetPanels();
-            pushSelectionToPanels();
-            m_outputView->appendLog(
-                OutputPanelView::LogLevel::Info, "Deleted " + std::to_string(ids.size()) + " assets"
-            );
+            removeAssets(ids);
+            LOG_INFO_EDITOR("Deleted %zu %s", ids.size(), ids.size() == 1 ? "asset" : "assets");
         }
     );
 }
@@ -1533,9 +1537,11 @@ void EditorController::contentDidRequestImport(const std::vector<Panda::AssetId>
             continue;
         }
         handler->reload(id);
+        // The pictures of the asset are of what it was: its thumbnail and its open previews.
+        if (auto *previews = Panda::AssetPreviews::shared()) { previews->invalidate(id); }
     }
     refreshAssetPanels();
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Reimported " + std::to_string(assets.size()) + " assets");
+    LOG_INFO_EDITOR("Reimported %zu %s", assets.size(), assets.size() == 1 ? "asset" : "assets");
 }
 
 void EditorController::contentDidRequestRefresh() {
@@ -1573,12 +1579,11 @@ void EditorController::createMaterial(const Panda::path_t &directory, Panda::Ass
     if (!handler) { return; }
     const Panda::AssetId created = handler->documents().createMaterialAsset(directory, shaderId);
     if (!created) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to create material");
+        LOG_ERROR_EDITOR("Failed to create material");
         return;
     }
     refreshAssetPanels();
     selectAssets({created}, false); // open the form of the new material in the inspector right away
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created material");
 }
 
 void EditorController::createPostprocessing(const Panda::path_t &directory) {
@@ -1586,12 +1591,11 @@ void EditorController::createPostprocessing(const Panda::path_t &directory) {
     if (!handler) { return; }
     const Panda::AssetId created = handler->documents().createPostprocessingAsset(directory);
     if (!created) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to create postprocessing");
+        LOG_ERROR_EDITOR("Failed to create postprocessing");
         return;
     }
     refreshAssetPanels();
     selectAssets({created}, false);
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created postprocessing");
 }
 
 void EditorController::createAsset(const Panda::path_t &directory, const AssetCreator &creator) {
@@ -1602,34 +1606,77 @@ void EditorController::createAsset(const Panda::path_t &directory, const AssetCr
     const Panda::path_t path = creator.create(directory);
     const Panda::AssetId created = path.empty() ? Panda::AssetId(0) : handler->documents().registerCreatedAsset(path);
     if (!created) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to create " + creator.title);
+        LOG_ERROR_EDITOR("Failed to create %s", creator.title.c_str());
         return;
     }
     refreshAssetPanels();
     selectAssets({created}, false);
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created " + path.filename().string());
 }
 
 void EditorController::contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) {
     auto *handler = assetHandler();
     if (!handler) { return; }
     if (!handler->renameAsset(assetId, newName)) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to rename asset");
+        LOG_ERROR_EDITOR("Failed to rename asset");
         return;
     }
     refreshAssetPanels();
     pushSelectionToPanels(); // the name in the inspector/status may have changed
 }
 
-void EditorController::createPostprocessShader(const Panda::path_t &directory) {
-    auto *handler = assetHandler();
-    if (!handler) { return; }
-    if (!handler->documents().createPostprocessShader(directory)) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Error, "Failed to create postprocess shader");
+void EditorController::contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) {
+    if (directory.empty() || name.empty() || name.find_first_of("/\\:") != std::string::npos || name.front() == '.') {
+        LOG_ERROR_EDITOR("A folder name has no slashes or colons and does not begin with a dot");
+        return;
+    }
+    const Panda::path_t folder = directory / name;
+    std::error_code error;
+    if (std::filesystem::exists(folder, error)) {
+        LOG_ERROR_EDITOR("The folder %s already exists", name.c_str());
+        return;
+    }
+    if (!std::filesystem::create_directory(folder, error)) {
+        LOG_ERROR_EDITOR("The folder %s could not be made: %s", name.c_str(), error.message().c_str());
         return;
     }
     refreshAssetPanels();
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Created postprocess shader");
+}
+
+// A folder goes with everything in it: its assets the way any asset is deleted (removeAssets),
+// then the directory itself with what the editor does not know (files of other formats).
+void EditorController::contentDidRequestDeleteFolder(const Panda::path_t &folder) {
+    auto *handler = assetHandler();
+    if (!handler || folder.empty()) { return; }
+    std::vector<Panda::AssetId> inside;
+    for (const auto &[id, info] : handler->getRegistry()) {
+        const Panda::path_t relative = (handler->getProjectPath() / handler->assetPath(id)).lexically_relative(folder);
+        if (!relative.empty() && *relative.begin() != "..") { inside.push_back(id); }
+    }
+    const std::string name = folder.filename().string();
+    const std::string count = inside.empty()      ? "The folder"
+                              : inside.size() == 1 ? "The folder and the asset in it"
+                                                   : "The folder and the " + std::to_string(inside.size()) + " assets in it";
+    showConfirmDialog(
+        m_root ? m_root->getContext() : nullptr, "Delete \"" + name + "\"?", count + " will be removed from disk. This cannot be undone.",
+        "Delete", /*destructive*/ true,
+        [this, folder, inside, name] {
+            removeAssets(inside);
+            std::error_code error;
+            std::filesystem::remove_all(folder, error);
+            refreshAssetPanels(); // the directory is gone only now
+            if (error) {
+                LOG_ERROR_EDITOR("The folder %s could not be removed: %s", name.c_str(), error.message().c_str());
+            } else {
+                LOG_INFO_EDITOR("Deleted the folder %s", name.c_str());
+            }
+        }
+    );
+}
+
+void EditorController::createPostprocessShader(const Panda::path_t &directory) {
+    auto *handler = assetHandler();
+    if (!handler) { return; }
+    if (handler->documents().createPostprocessShader(directory)) { refreshAssetPanels(); }
 }
 
 /* ----------------------------- Toolbar output ---------------------------- */
@@ -1641,8 +1688,7 @@ void EditorController::toolbarDidPickSceneState(SceneState state) {
         Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine();
         if (engine == nullptr || !engine->isLoaded()) {
             showPanel("cmake");
-            m_outputView->appendLog(
-                OutputPanelView::LogLevel::Warning,
+            LOG_WARN_EDITOR(
                 "Play needs the scripts of the project. Build them here in the CMake panel (Scripts, Build), then press Play."
             );
             if (Context *context = m_root ? m_root->getContext() : nullptr) {
@@ -1661,13 +1707,12 @@ void EditorController::toolbarDidPickSceneState(SceneState state) {
         }
     }
     if (m_bridge) { m_bridge->setSceneState(state); } // the actual play/stop
-    const char *message = state == SceneState::Play ? "Entered Play mode" : "Returned to Edit mode";
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, message);
+    LOG_INFO_EDITOR("%s", state == SceneState::Play ? "Entered Play mode" : "Returned to Edit mode");
 }
 
 void EditorController::toolbarDidTapReload() {
     if (m_bridge) { m_bridge->reloadFromDisk(); } // assets/scripts/world by mtime
-    m_outputView->appendLog(OutputPanelView::LogLevel::Info, "Reloading from disk…");
+    LOG_INFO_EDITOR("Reloading from disk…");
 }
 
 void EditorController::toolbarDidSave() {
@@ -1863,7 +1908,7 @@ void EditorController::undo() {
     Document *document = activeDocument();
     Panda::CommandHistory *stack = document ? document->undoStack() : nullptr;
     if (!stack || !stack->CAN_UNDO()) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Warning, "Undo — nothing to undo");
+        LOG_WARN_EDITOR("Undo — nothing to undo");
         return;
     }
     stack->UNDO();
@@ -1881,7 +1926,7 @@ void EditorController::redo() {
     Document *document = activeDocument();
     Panda::CommandHistory *stack = document ? document->undoStack() : nullptr;
     if (!stack || !stack->CAN_REDO()) {
-        m_outputView->appendLog(OutputPanelView::LogLevel::Warning, "Redo — nothing to redo");
+        LOG_WARN_EDITOR("Redo — nothing to redo");
         return;
     }
     stack->REDO();
@@ -1987,6 +2032,7 @@ void EditorController::registerCommands() {
         m_hierarchyView->focusSearch();
         return true;
     });
+    command("tab.close", "Window", "Close Tab", [this] { return closeFocusedTab(); });
     command("dock.toggleFullscreen", "Window", "Toggle Fullscreen of the Panel",
             [this] { return maximizeFocusedDock(); });
     command("camera.focusSelection", "View", "Focus Selection", [this] {
@@ -2096,7 +2142,7 @@ void EditorController::showCommandPalette() {
         const std::string id = command.id;
         actions->push_back([this, id] {
             if (!m_commands.run(id)) {
-                m_outputView->appendLog(OutputPanelView::LogLevel::Info, "The command does not apply now: nothing to act on");
+                LOG_INFO_EDITOR("The command does not apply now: nothing to act on");
             }
         });
     }
@@ -2160,6 +2206,23 @@ void EditorController::showGoTo() {
     showPalette(context, "Go to an asset or an entity…", std::move(items), [actions](int index) {
         if (index >= 0 && index < static_cast<int>(actions->size())) { (*actions)[static_cast<size_t>(index)](); }
     });
+}
+
+// The tab the keyboard is in closes — the selected tab of the dock that has the focus, or of
+// the center when nothing has it — the way its close button closes it. The Settings window,
+// while it has the keyboard, is what closes.
+bool EditorController::closeFocusedTab() {
+    if (m_settingsWindow && m_settingsWindow->focused) {
+        m_settingsWindow->closeRequested = true;
+        return true;
+    }
+    if (!m_dockManager) { return false; }
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    View *focused = context ? context->getFocusedView() : nullptr;
+    Dock dock = Dock::Center;
+    if (focused != nullptr) { m_dockManager->dockContaining(focused, dock); }
+    const std::string id = m_dockManager->selectedPanelId(dock);
+    return !id.empty() && m_dockManager->closePanel(id);
 }
 
 bool EditorController::maximizeFocusedDock() {

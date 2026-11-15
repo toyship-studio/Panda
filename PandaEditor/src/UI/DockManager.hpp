@@ -104,6 +104,10 @@ public:
     void openTransientPanel(DockPanel panel, Dock dock);
     bool activateTransientPanel(const std::string &id); // shows/selects an existing one (false — no such panel)
     void closeTransientPanel(const std::string &id); // removes the tab entirely (the caller's replace policy)
+    // What the close button of a tab does: a document with unsaved changes asks first, then the
+    // tab goes (a panel stays available through the strip and "+"). false — no such open tab, a
+    // tab that does not close, or the close was cancelled.
+    bool closePanel(const std::string &id);
     // Changes the id of a transient tab (the preview shows another object: the id reflects the object,
     // the tab is the same).
     void renameTransientPanel(const std::string &oldId, const std::string &newId);

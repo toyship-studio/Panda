@@ -35,6 +35,8 @@ public:
         double xoffset, double yoffset, bool isTrackpad, bool isMomentum, bool isGestureEnded, Window *window,
         Modifiers modifiers = 0
     );
+    // A pinch of the trackpad: a scroll event without offsets that carries the magnification.
+    void postMagnifyEvent(double magnification, bool isGestureEnded, Window *window, Modifiers modifiers = 0);
     void postWindowCloseRequest(Window *window);
     void postWindowFocusEvent(bool focused, Window *window);       // WindowFocus / WindowLostFocus
     void postWindowMinimizedEvent(bool minimized, Window *window); // WindowMinimized / WindowRestored

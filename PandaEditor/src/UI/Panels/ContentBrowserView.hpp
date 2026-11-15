@@ -30,6 +30,10 @@ public:
     virtual CreateActions contentCreateActions(const Panda::path_t &directory) = 0;
     // Rename a single-file asset (material/postprocessing); newName is without the extension.
     virtual void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) = 0;
+    // A new folder in the directory, named by the user.
+    virtual void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) = 0;
+    // A folder goes with everything in it; the coordinator asks first.
+    virtual void contentDidRequestDeleteFolder(const Panda::path_t &folder) = 0;
 };
 
 // VIEW: the content browser — a view of the real file system <project>/Assets. The folder tree is

@@ -45,7 +45,9 @@ public:
     void setMoveSpeed(float metersPerSecond) {
         m_moveSpeed = metersPerSecond;
     }
-    void reset(glm::vec3 pos);
+    // Flies to the three-quarter view of a sphere, from as far as the sphere fits a frame of
+    // this vertical field of view: the selection (its bounds), a world shown for the first time.
+    void frame(glm::vec3 center, float radius, float fieldOfView);
     void animateTo(TransformComponent transform);
 
 private:

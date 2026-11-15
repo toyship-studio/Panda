@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Panda {
@@ -78,10 +79,14 @@ private:
     // The rows under the root of the tree, recomputed in reload(): the root entities, or — while
     // the search has text — every entity whose name has it, as a flat list by name.
     std::vector<std::uint32_t> m_rootChildren;
+    // The children of the entities the tree asked about, in the order of the world; cleared by reload.
+    std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> m_children;
+    const std::vector<std::uint32_t> &childrenOf(std::uint32_t uuid);
     std::string m_search; // lowercase; empty — the tree as it is
     std::shared_ptr<PandaUI::TextField> m_searchField;
     std::shared_ptr<PandaUI::TreeView> m_tree;
     std::shared_ptr<PandaUI::Label> m_status;
+    std::shared_ptr<PandaUI::Label> m_empty; // "No world is open", in place of the tree
 };
 
 } // namespace Editor

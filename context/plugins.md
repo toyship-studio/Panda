@@ -234,7 +234,7 @@ Registries of `EditorExtensions` (`editorExtensions()`; contributions are never 
 | `documentTypes` | `DocumentType {id, title, icon, create}` (`Document.hpp`): a document the "+" of any dock and the menu bar open, one instance per type, restored with the layout; the core registers the Plugins, the Game and the UI Gallery tabs (the settings are not tabs: `context/architecture.md`, "The Settings window") |
 | `statistics` | `StatisticsSection {title, rows, collect(values)}`: a section of the Statistics panel, polled once per frame |
 | `iconFolders` | folders of PNG icons relative to the application resources; loaded into the shared icon library when the part registers |
-| `materialPreviews` | `MaterialPreview {matches, vertexColor, vertexLayout, packVertices, bindInputs}`: the preview sphere for materials on the contribution's shaders |
+| `materialPreviews` | `MaterialPreview {matches, vertexColor, vertexLayout, packVertices, bindInputs(view)}`: what the primitive of a preview needs for a material on the contribution's shaders — its vertex color, its own vertex format, placeholder inputs of the view (`context/architecture.md`, "Asset previews") |
 
 `EditorHost` (`editorHost()`, implemented by `EditorController` and bound to its lifetime):
 `assetTitle`, `assetUndoStack` (the document stack), `clearAssetUndoStack`, `selectAsset`, `selectEntity`, `revealAsset` / `revealEntity` (show where
@@ -242,11 +242,13 @@ it is: the Content Browser or the Hierarchy blinks it, the selection stays — a
 field; a double click selects),
 `assetThumbnail`, `pickAsset`, `openFileDialog`, `beginViewportEditing(title, document, onStop)` /
 `endViewportEditing` (a viewport session: Undo from the viewport goes to the session document,
-closing its tab calls `onStop`), `refreshFromWorld`, `refreshAssetEditors`, `log`,
+closing its tab calls `onStop`), `refreshFromWorld`, `refreshAssetEditors`,
 `settings(scope)` (the store of a scope), `commitSettings(scope, command)` (the world scope — an
 undo step of the world; the project scope — of the project settings document; the editor scope —
 applied and saved at once) and `openSettings(scope, section)` (the world sidebar, the project or
-editor page of the Settings window at a section). Dialogs use PandaUI `Dialog` directly. The document
+editor page of the Settings window at a section). Dialogs use PandaUI `Dialog` directly; a word for
+the user is a line of the editor log (`LOG_INFO_EDITOR`, `LOG_WARN_EDITOR`, `LOG_ERROR_EDITOR`),
+which the Output panel shows. The document
 model of the tabs is described in `context/architecture.md`, "Editor UI".
 
 ## Plugins (data)

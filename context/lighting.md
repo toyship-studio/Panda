@@ -515,8 +515,10 @@ the same equirectangular layout, one under another.
   mip follows the angle a pixel covers (the derivatives of uv break at the seam of atan2) and
   grows with roughness to meet the blur of the first tile. Both are multiplied by the exposure
   of the map.
-- The material preview of the editor (`MaterialPreviewRenderer`) owns an atlas of the built-in
-  sky: a metal in a thumbnail has something to reflect.
+- The atlas of a map is baked once for the process and shared by every world lit by that map
+  (`EnvironmentLighting` keeps the bakes by the texture of the map): the world being edited and
+  its playing copy do not bake twice, and the stages of the editor's previews — little worlds
+  lit by the built-in sky — cost no bake of their own.
 - The reflectance is `panda/brdf.hlsli`: `environmentBrdf` (the analytic fit of the split-sum
   integral, no lookup texture) inside `shadeAmbient`, which keeps the energy of multiple
   scattering (a rough metal does not go dark) and occludes the specular part by

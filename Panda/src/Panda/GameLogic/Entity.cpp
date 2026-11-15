@@ -100,10 +100,6 @@ bool Entity::isDeleted() const {
     return m_world->isDeleted(m_handle);
 }
 
-void Entity::sortWorld() const {
-    m_world->sort();
-}
-
 void Entity::setDeleted(bool deleted) {
     if (deleted == hasComponent<DeletedComponent>()) { return; }
     if (deleted) {

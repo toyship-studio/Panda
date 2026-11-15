@@ -184,7 +184,7 @@ namespace {
         values[2] = stats.rebuilds;
     }
 
-    // ---- Terrain material previews: the sphere shows pure layer 1. The convention of a layered
+    // ---- Terrain material previews: the primitive shows pure layer 1. The convention of a layered
     // shader: the set of fields layer1..4Texture / layerNColor, the weights are the vertex color
     // (fragColor); it works both for built-in shaders (fields from the template) and for user ones
     // (from SPIRV reflection). For a 2D terrain the weights live in the splatmap, and the vertex
@@ -218,7 +218,7 @@ namespace {
     }
 
     // Splatmap placeholder: a single texel with the weight of layer 1 (lives until the process ends).
-    void bindSplatmapStub() {
+    void bindSplatmapStub(Miren::ViewId view) {
         static Miren::TextureHandle s_splatmap = [] {
             Foundation::Memory data = Foundation::Memory::alloc(sizeof(uint32_t));
             *static_cast<uint32_t *>(data.data) = 0x000000FF; // RGBA8: R=255 — layer 1
@@ -226,7 +226,7 @@ namespace {
             create.m_data = data;
             return Miren::createTexture(create);
         }();
-        Miren::addInputTexture("splatmap", s_splatmap);
+        Miren::addViewInputTexture(view, "splatmap", s_splatmap);
     }
 
     std::unique_ptr<AssetEditor> createEditor2D(const AssetEditorContext &context) {
@@ -280,7 +280,7 @@ void registerExtensions(EditorExtensions &extensions) {
 
     extensions.statistics.push_back({"FLORA", {"Blocks", "Plants", "Rebuilds"}, collectFloraStatistics});
 
-    // Preview: 2D — a thin sphere + the splatmap placeholder; the other layered ones — weights
+    // Preview: 2D — thin vertices + the splatmap placeholder; the other layered ones — weights
     // (1,0,0,0) in the vertex color.
     MaterialPreview thin;
     thin.matches = isThinTerrainMaterial;

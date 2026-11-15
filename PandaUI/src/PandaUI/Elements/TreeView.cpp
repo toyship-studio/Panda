@@ -393,7 +393,14 @@ void TreeView::update(double deltaTime) {
 
 void TreeView::updateVisibleRows(bool forceRebind) {
     const Size viewport = getFrame().size;
-    if (viewport.height <= 0.f) { return; } // not laid out yet
+    if (viewport.height <= 0.f) {
+        // Not laid out (the first frame of a panel, a tree that was hidden): the rows are bound
+        // when the tree gets its size. The size is remembered as none, so that getting the same
+        // size back counts as a change — otherwise a tree hidden and shown again would keep the
+        // rows of what it showed before.
+        m_lastViewport = viewport;
+        return;
+    }
 
     if (forceRebind) {
         setContentSize(Size(viewport.width, static_cast<float>(m_flat.size()) * m_rowHeight));

@@ -372,6 +372,7 @@ void TabView::removeAllTabs() {
     m_tabs.clear();
     m_selectedIndex = -1;
     rebuildTabBar(); // clears the bar (no tabs, only the trailing part remains)
+    applyContent();  // the empty view takes the area
     applyTabBarVisibility();
 }
 
@@ -670,7 +671,22 @@ void TabView::applyContent() {
         m_tabs[i].content->setHidden(!shown);
         m_tabs[i].content->layout().setDisplay(shown ? Display::Flex : Display::None);
     }
+    if (m_emptyView) {
+        const bool shown = m_tabs.empty();
+        m_emptyView->setHidden(!shown);
+        m_emptyView->layout().setDisplay(shown ? Display::Flex : Display::None);
+    }
     m_contentArea->setNeedsLayout();
+}
+
+void TabView::setEmptyView(std::shared_ptr<View> view) {
+    if (m_emptyView) { m_emptyView->removeFromSuperview(); }
+    m_emptyView = std::move(view);
+    if (m_emptyView) {
+        m_emptyView->layout().setFlexGrow(1.f);
+        m_contentArea->addSubview(m_emptyView);
+    }
+    applyContent();
 }
 
 void TabView::themeChanged() {

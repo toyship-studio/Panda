@@ -188,6 +188,7 @@ bool PandaUIImplFern::handleEvent(Fern::Event *event) {
             scrollEvent.isTrackpad = ev->isTrackpad;
             scrollEvent.isMomentum = ev->isMomentum;
             scrollEvent.isGestureEnded = ev->isGestureEnded;
+            scrollEvent.magnification = static_cast<float>(ev->magnification);
             return m_context->handleScroll(scrollEvent);
         }
         case Fern::EventType::TouchBegan: {

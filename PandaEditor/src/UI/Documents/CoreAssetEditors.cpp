@@ -1,6 +1,6 @@
 #include "UI/Documents/CoreAssetEditors.hpp"
 
-#include "Preview/ThumbnailsManager.hpp"
+#include "Preview/AssetPreviews.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "UI/EditorModelHelper.hpp"
 
@@ -39,7 +39,7 @@ namespace {
     }
 
     void invalidateThumbnail(Panda::AssetId id) {
-        if (auto *thumbnails = Panda::ThumbnailsManager::shared()) { thumbnails->invalidate(id); }
+        if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->invalidate(id); }
     }
 
     /* ------------------------------ Texture ------------------------------ */
@@ -315,7 +315,7 @@ namespace {
             if (!handler) { return; }
             if (!handler->documents().setMaterialShader(id, shaderId)) { return; } // already set
             invalidateThumbnail(id);
-            editorHost().log(HostLogLevel::Info, "Material shader updated");
+            LOG_INFO_EDITOR("Material shader updated");
             if (m_context.edited) { m_context.edited(); }
             // The field set has changed → rebuild the form (deferred: a widget must not be
             // destroyed from its own callback).

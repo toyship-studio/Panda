@@ -3,7 +3,7 @@
 #include "App/EditorUpdater.hpp"
 #include "UI/Panels/UpdateIndicator.hpp"
 #include "App/SceneState.hpp"
-#include "Preview/ThumbnailsManager.hpp"
+#include "Preview/AssetPreviews.hpp"
 #include "UI/Commands.hpp"
 #include "UI/EditorMenuBar.hpp"
 #include "Viewport/EditorViewports.hpp"
@@ -58,7 +58,7 @@ public:
 
 #pragma region Project loader output
     void loaderDidLoadProject(const std::string &name, const path_t &path) override;
-    std::string worldDisplayName(); // name of the open world for the UI (file stem / Untitled World)
+    std::string worldDisplayName(); // name of the open world for the UI (file stem / Untitled World); empty — none
     void syncWindowIdentity();      // the window title and the application icon label name the project
     // Layout passes of the chrome UI over a one-second window (Statistics panel).
     uint64_t m_lastUiLayoutCount = 0;
@@ -76,6 +76,7 @@ public:
     void documentsDidWriteSettings(SettingsScope scope) override;
     EditorCameraSettings documentsEditorCamera() override;
     void documentsSetEditorCamera(const EditorCameraSettings &camera) override;
+    void documentsLookAtWorld() override;
 #pragma endregion
 
 private:
@@ -94,9 +95,20 @@ private:
     void closeAppRequest();
     void closeApp();
     void saveOpenedProjectWindowState();
-    // The world the editor edits: the active one of the open worlds (FileDocuments).
+    // The world the editor edits: the active one of the open worlds (FileDocuments). With no
+    // world open it is m_noWorld — an empty world the engine has to draw and the panels to read,
+    // so that nothing of the editor needs to know the case; it is not a document and has no tab.
     World &editingWorld() {
-        return m_documents.activeWorld().world();
+        WorldFile *active = m_documents.activeWorld();
+        return active != nullptr ? active->world() : m_noWorld;
+    }
+    bool hasWorld() {
+        return m_documents.activeWorld() != nullptr;
+    }
+    // What the panels of the editor read and edit: the world on screen — the edited one, or the
+    // playing copy — and nothing while no world is open.
+    World *panelsWorld() {
+        return m_sceneState != SceneState::EDIT || hasWorld() ? m_currentWorld : nullptr;
     }
     // The editor shows another world, or the same one with another content: the selection, the
     // entity tabs and the panels follow.
@@ -236,6 +248,7 @@ private:
     Editor::UpdateIndicatorModel updateIndicatorModel() const;
     std::string updateStatusLine() const;
 
+    World m_noWorld;      // what the editor points at while no world is open: empty, never edited
     World m_playingWorld; // Play runs in a copy of the edited world
     World *m_currentWorld; // what the editor shows: the edited world, or the playing copy
     SceneState m_sceneState;
@@ -303,7 +316,7 @@ private:
 
     // Asset previews/thumbnails: the entire cache and rendering are in the manager, panels go through
     // shared().
-    std::unique_ptr<ThumbnailsManager> m_thumbnails;
+    std::unique_ptr<AssetPreviews> m_previews; // the pictures of assets: previews of the forms, thumbnails
 };
 
 } // namespace Panda

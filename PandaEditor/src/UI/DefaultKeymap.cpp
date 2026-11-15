@@ -25,6 +25,7 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         {"palette.show", "primary-shift-p"},
         {"goto.show", "primary-p"},
         {"hierarchy.search", "primary-f"},
+        {"tab.close", "primary-w"},
         {"dock.toggleFullscreen", "shift-space"},
         // View
         {"camera.focusSelection", "f"},

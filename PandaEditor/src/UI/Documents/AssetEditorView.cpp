@@ -1,6 +1,6 @@
 #include "UI/Documents/AssetEditorView.hpp"
 
-#include "Preview/ThumbnailsManager.hpp"
+#include "UI/Documents/AssetPreviewView.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "UI/EditorModelHelper.hpp"
 
@@ -78,16 +78,7 @@ void AssetEditorView::addSubviews() {
     m_subtitle->setNumberOfLines(0);
     m_body->addContentSubview(m_subtitle);
 
-    // Large asset preview: a material is a sphere from an FBO, an image is the texture itself on a
-    // plate.
-    m_preview = std::make_shared<ImageView>();
-    m_preview->setContentMode(ImageContentMode::Fit);
-    m_preview->setUserInteractionEnabled(false);
-    m_preview->layout().setSize({176.f, 176.f});
-    m_preview->layout().setAlignSelf(Align::Center);
-    m_preview->layout().setMargin(Edge::Vertical, 6.f);
-    m_preview->setHidden(true);
-    m_preview->layout().setDisplay(Display::None);
+    m_preview = std::make_shared<AssetPreviewView>();
     m_body->addContentSubview(m_preview);
 
     m_props = std::make_shared<Panel>();
@@ -104,11 +95,8 @@ void AssetEditorView::setAssets(const std::vector<Panda::AssetId> &assets) {
         m_editor.reset();
         m_editorAsset = 0;
     }
-    // The large preview is a lease of the form: every tab has its own, the previous one is
-    // released by the replacement.
-    auto *thumbnails = Panda::ThumbnailsManager::shared();
-    m_previewLease = thumbnails && assets.size() == 1 ? thumbnails->leasePreview(assets.front()) : nullptr;
-    applyPreview();
+    // The large preview belongs to the form: every tab has its own.
+    m_preview->setAsset(assets.size() == 1 ? assets.front() : Panda::AssetId(0));
     bind();
 }
 
@@ -213,31 +201,6 @@ void AssetEditorView::requestRebuild() {
     context->postDeferred([this, alive = std::weak_ptr<bool>(m_alive)] {
         if (alive.lock()) { rebuildProperties(); }
     });
-}
-
-void AssetEditorView::applyPreview() {
-    const Panda::AssetPreview none;
-    const Panda::AssetPreview &preview = m_previewLease ? *m_previewLease : none;
-    m_previewShown = preview.texture;
-    m_preview->setTexture(preview.texture);
-    m_preview->setFlipVertical(preview.flipVertical);
-    // Image plate: a square with a border (like the Content Browser preview slots). A material is
-    // a sphere on a transparent background, a plate would only get in its way.
-    m_preview->setBackgroundColor(preview.plate ? Theme::current().input : Color(0x00000000));
-    m_preview->surface().setCornerRadius(preview.plate ? Radius::md : Radius::none);
-    m_preview->surface().setBorderWidth(preview.plate ? 1.f : 0.f);
-    m_preview->surface().setBorderColor(preview.plate ? Theme::current().borderMed : Color(0x00000000));
-    const bool visible = preview.texture.isValid();
-    m_preview->setHidden(!visible);
-    m_preview->layout().setDisplay(visible ? Display::Flex : Display::None);
-}
-
-void AssetEditorView::update(double) {
-    if (!m_previewLease) { return; }
-    // The form is on screen (hidden tabs get no update) — the live preview needs to be redrawn.
-    m_previewLease->requested = true;
-    // The lease texture appears with the first rendered frame and goes away when the project closes.
-    if (!(m_previewLease->texture == m_previewShown)) { applyPreview(); }
 }
 
 void AssetEditorView::setupLayout() {

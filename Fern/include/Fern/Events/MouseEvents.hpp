@@ -41,6 +41,10 @@ struct MouseScrolledEvent : public Event {
     bool isMomentum;
     bool isGestureEnded;
     Modifiers modifiers;
+    // A pinch of the trackpad (EventQueue::postMagnifyEvent): the share the fingers moved apart
+    // by since the last event — 0.05 asks for 5% larger, negative for smaller. The offsets are
+    // zero then.
+    double magnification = 0.0;
 };
 
 struct MouseKeyEvent : public Event {

@@ -19,8 +19,6 @@ class CommandHistory;
 
 namespace Editor {
 
-enum class HostLogLevel { Info, Warning, Error };
-
 // Editor host for the editor parts of packages (context/plugins.md, stage 2): everything a
 // form, a tool or a dialog needs from the editor besides the engine (the engine is used directly:
 // World, AssetRef, GameContext registries). Implemented by the editor coordinator; one per process —
@@ -69,7 +67,6 @@ public:
     // --- Panels ---
     virtual void refreshFromWorld() = 0; // the data has been recreated structurally: the panels re-read the world
     virtual void refreshAssetEditors(Panda::AssetId id) = 0; // the asset's tab forms re-read the document
-    virtual void log(HostLogLevel level, const std::string &message) = 0; // the Output panel
 
     // --- Settings (the settings scopes, context/plugins.md) ---
     // The store of a scope: the context of the world the panels show, the project store, the

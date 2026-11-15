@@ -154,7 +154,6 @@ public:
     // Tombstone (DeletedComponent): a deleted entity lives in the registry for undo.
     bool needToDestroy() const;
     bool isDeleted() const; // itself or any ancestor
-    void sortWorld() const;
     void setDeleted(bool deleted = true);
 
 private:

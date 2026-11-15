@@ -80,6 +80,11 @@ public:
     }
     bool focusNextView();
     bool focusPreviousView();
+    // Pixels of the display per point (2 on a Retina display): what draws into a texture of its
+    // own takes the size of its target from it.
+    Size getDpiScale() const {
+        return m_dpiScale;
+    }
     Size getViewportSize() {
         return m_viewportSize;
     }
@@ -204,7 +209,7 @@ private:
     void dispatchPointerDown(View *target, PointerEvent &event);
     void dispatchPointerUp(View *target, PointerEvent &event);
     void dispatchPointerMove(View *target, PointerEvent &event);
-    void dispatchScroll(View *target, ScrollEvent &event);
+    View *dispatchScroll(View *target, ScrollEvent &event); // → the view that took the event, nullptr — none
     void dispatchKeyDown(View *target, KeyEvent &event);
     void dispatchKeyUp(View *target, KeyEvent &event);
     void dispatchTextInput(View *target, TextInputEvent &event);
@@ -244,6 +249,12 @@ private:
     // Drag and drop: the press position (for the start threshold), the active session, the payload,
     // the source and the current target, the "ghost" at the cursor.
     Point m_pointerDownPosition;
+    // A trackpad swipe belongs to the view that took its first event: what moves under the
+    // pointer while it lasts (a form that scrolls a preview under the fingers) does not take
+    // the rest of it. The swipe is over when no event came for a moment.
+    View *m_scrollGestureView = nullptr;
+    double m_scrollGestureTime = -100.0;
+    bool m_scrollGestureCoasting = false; // the fingers are off: what arrives is the momentum of the swipe
     double m_clock = 0.0;            // monotonic time (accumulated in update) — for double-click
     double m_lastClickTime = -100.0; // time of the previous mouse-down
     Point m_lastClickPosition;       // position of the previous mouse-down

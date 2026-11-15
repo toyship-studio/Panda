@@ -183,8 +183,9 @@ void AssetWell::refresh() {
 }
 
 bool AssetWell::wantsThumbnail() const {
-    // Kinds the manager can draw: a material — as a sphere, a texture — by a blit into a square.
-    return m_assetId != 0 && (m_kind == "material" || m_kind == "texture");
+    // The kinds that have a picture of their own: a material and a model as the editor draws
+    // them, a texture as its image.
+    return m_assetId != 0 && (m_kind == "material" || m_kind == "texture" || m_kind == "mesh");
 }
 
 void AssetWell::draw(float offsetX, float offsetY) {

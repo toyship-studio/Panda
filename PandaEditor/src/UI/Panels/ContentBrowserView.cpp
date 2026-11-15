@@ -404,8 +404,35 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
     if (!currentFolder) { return; }
     auto menu = std::make_shared<Menu>();
 
+    // What can be made in a directory: a folder (its name is asked where the menu was), then the
+    // assets the editor and the packages make. `prefix` is "New " in a menu that holds other
+    // things too.
+    const auto addCreateItems = [this, position](Menu &target, const Panda::path_t &directory, const std::string &prefix) {
+        target.addItem(prefix + "Folder", [this, position, directory] {
+            showNameDialog(getContext(), position, "New Folder", "New Folder", [this, directory](const std::string &name) {
+                if (m_output) { m_output->contentDidRequestNewFolder(directory, name); }
+            });
+        });
+        if (!m_output) { return; }
+        const auto actions = m_output->contentCreateActions(directory);
+        if (!actions.empty()) { target.addSeparator(); }
+        for (const CreateAction &action : actions) { target.addItem(prefix + action.title, action.run); }
+    };
     if (Folder *folder = m_dataSource.folderAt(index)) { // subfolder
-        menu->addItem("Open", [this, folder] { setCurrentFolder(folder); });
+        const Panda::path_t directory = folder->path;
+        menu->addItem("Open", [this, directory] {
+            // By path: the tree of folders may have been rebuilt while the menu was open.
+            if (Folder *target = m_dataSource.folderAt(m_dataSource.indexOfFolder(directory))) { setCurrentFolder(target); }
+        });
+        // What can be made inside it, without going in.
+        auto create = std::make_shared<Menu>();
+        addCreateItems(*create, directory, "");
+        menu->addSubmenu("New", create);
+        menu->addItem("Delete", [this, directory] {
+            if (m_output) { m_output->contentDidRequestDeleteFolder(directory); }
+        });
+        menu->addSeparator();
+        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::open(directory); });
     } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
         if (file->assetId == 0) { // a file of a format foreign to the engine — no operations
             return;
@@ -448,16 +475,12 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
                 if (m_output) { m_output->contentDidRequestDelete(targets); }
             });
         }
-    } else { // grid background: creating assets in the current folder + opening it in Finder
+    } else { // the background of the grid: the current folder itself
         const Panda::path_t directory = currentFolder->path;
         if (directory.empty()) { return; } // no project open
-        if (m_output) {
-            for (const CreateAction &action : m_output->contentCreateActions(directory)) {
-                menu->addItem("New " + action.title, action.run);
-            }
-        }
+        addCreateItems(*menu, directory, "New ");
         menu->addSeparator();
-        menu->addItem("Reveal in Finder", [directory] { Panda::SystemTools::open(directory); });
+        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::open(directory); });
     }
     presentMenu(menu, position);
 }

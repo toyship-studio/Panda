@@ -102,6 +102,16 @@ void HierarchyPanelView::addSubviews() {
     addSubview(m_tree);
     configureTree();
 
+    // No world is open: the panel says so in place of the tree.
+    m_empty = std::make_shared<Label>("No world is open");
+    m_empty->setFont(Typo::Caption);
+    m_empty->setTextRole(TextRole::Dim);
+    m_empty->setTextAlignment(TextAlignment::Center);
+    m_empty->layout().setFlexGrow(1.f);
+    m_empty->layout().setMargin(Edge::Top, 24.f);
+    m_empty->setCollapsed(true);
+    addSubview(m_empty);
+
     m_status = std::make_shared<Label>("");
     m_status->setFont(Typo::Caption);
     m_status->setTextRole(TextRole::Muted);
@@ -120,15 +130,13 @@ void HierarchyPanelView::configureTree() {
         const std::uint32_t uuid = toUuid(item);
         if (uuid == 0) { return static_cast<int>(m_rootChildren.size()); }
         if (!m_search.empty()) { return 0; } // the matches are a flat list
-        Panda::Entity entity = m_world->getById(Panda::UUID(uuid));
-        return entity.isValid() ? static_cast<int>(entity.getChildEntities().size()) : 0;
+        return static_cast<int>(childrenOf(uuid).size());
     };
     dataSource.childAt = [this](TreeItem item, int index) -> TreeItem {
         if (!m_world) { return toItem(0); }
         const std::uint32_t uuid = toUuid(item);
-        if (uuid == 0) { return toItem(m_rootChildren[index]); }
-        Panda::Entity entity = m_world->getById(Panda::UUID(uuid));
-        return toItem(static_cast<std::uint32_t>(entity.getChildEntities()[index]));
+        const std::vector<std::uint32_t> &children = uuid == 0 ? m_rootChildren : childrenOf(uuid);
+        return index >= 0 && index < static_cast<int>(children.size()) ? toItem(children[static_cast<size_t>(index)]) : toItem(0);
     };
     dataSource.cellForReuse = [] { return std::make_shared<EntityCell>(); };
     dataSource.configureCell = [this](View &cell, TreeItem item, int) {
@@ -249,6 +257,11 @@ void HierarchyPanelView::focusSearch() {
 
 void HierarchyPanelView::setWorld(Panda::World *world) {
     m_world = world;
+    // Without a world there is no tree to show and nothing to search.
+    const bool none = world == nullptr;
+    m_tree->setCollapsed(none);
+    m_searchField->setCollapsed(none);
+    m_empty->setCollapsed(!none);
     reload();
 }
 
@@ -259,17 +272,30 @@ void HierarchyPanelView::setRootTitle(std::string title) {
     reload();
 }
 
+// The children of an entity in the order of the world (World::orderedChildren), read once per
+// reload: the tree asks for them row by row.
+const std::vector<std::uint32_t> &HierarchyPanelView::childrenOf(std::uint32_t uuid) {
+    const auto cached = m_children.find(uuid);
+    if (cached != m_children.end()) { return cached->second; }
+    std::vector<std::uint32_t> &children = m_children[uuid];
+    if (m_world) {
+        for (Panda::UUID child : m_world->orderedChildren(Panda::UUID(uuid))) {
+            children.push_back(static_cast<std::uint32_t>(child));
+        }
+    }
+    return children;
+}
+
 void HierarchyPanelView::reload() {
     m_rootChildren.clear();
-    if (m_world && !m_world->isEmpty()) {
+    m_children.clear();
+    if (m_world && m_search.empty()) {
+        m_rootChildren = childrenOf(0);
+    } else if (m_world) {
         std::vector<std::pair<std::string, std::uint32_t>> matches; // the search: lowercase name → id
         m_world->getAllEntitiesWith<Panda::IdComponent>().each([&](Panda::IdComponent &idc) {
             Panda::Entity entity = m_world->getById(idc.id);
             if (!entity.isValid()) { return; }
-            if (m_search.empty()) {
-                if (!entity.getParent()) { m_rootChildren.push_back(static_cast<std::uint32_t>(idc.id)); }
-                return;
-            }
             std::string name = entity.getName();
             for (char &c : name) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
             if (name.find(m_search) != std::string::npos) { matches.emplace_back(std::move(name), static_cast<std::uint32_t>(idc.id)); }

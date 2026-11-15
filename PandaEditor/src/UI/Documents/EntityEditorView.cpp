@@ -390,7 +390,7 @@ void EntityEditorView::addComponentHeaderMenu(
                 Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
                 if (world == nullptr) { return; }
                 if (!commitComponentText(*world, m_entities, *type, getClipboardText())) {
-                    editorHost().log(HostLogLevel::Warning, "Paste Values: the clipboard does not hold the values of this component");
+                    LOG_WARN_EDITOR("Paste Values: the clipboard does not hold the values of this component");
                     return;
                 }
                 editorHost().refreshFromWorld();

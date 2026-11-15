@@ -31,6 +31,8 @@ public:
     // The pose of the editor camera: it stays with the world it was looking at.
     virtual EditorCameraSettings documentsEditorCamera() = 0;
     virtual void documentsSetEditorCamera(const EditorCameraSettings &camera) = 0;
+    // The active world was never shown and brings no camera: the editor finds a view of it.
+    virtual void documentsLookAtWorld() = 0;
 };
 
 // The documents of one pass of Save All, Reload or the unsaved-changes question, in the order of
@@ -76,13 +78,15 @@ public:
     }
 
     // ---- The open worlds ----
-    // In the order of their tabs. One is active: the editor shows and edits it, Play plays its
-    // copy, the export cooks it. There is always one — without a project, an empty world.
+    // In the order of their tabs. At most one is active: the editor shows and edits it, Play
+    // plays its copy, the export cooks it. A world is a document like any other: a project may
+    // have none open (the tabs were closed, the project has no world yet) — activeWorld() is
+    // null then and the editor shows nothing.
     const std::vector<std::unique_ptr<WorldFile>> &worlds() const {
         return m_worlds;
     }
-    WorldFile &activeWorld() {
-        return *m_activeWorld;
+    WorldFile *activeWorld() {
+        return m_activeWorld;
     }
     WorldFile *findWorld(uint32_t id);
     WorldFile *findWorld(const path_t &path); // the open world of this file
@@ -90,12 +94,11 @@ public:
     // The editor camera stays with the world it was looking at; the new active world brings its own.
     void activateWorld(WorldFile &world);
     // A world file in a tab of its own: an open one is activated, another one is read into a new
-    // document; an untouched new world gives its place to the file. nullptr — the file could not be
-    // read; nothing changes then.
+    // document. nullptr — the file could not be read; nothing changes then.
     WorldFile *openWorld(const path_t &path);
-    WorldFile &newWorld(); // a new world with the starter content, active
-    // Drops the world from memory (the unsaved-changes question is the caller's). The last one
-    // leaves a new world behind: the editor always has a world to show.
+    WorldFile &newWorld(); // a new world with the starter content in a tab of its own, active
+    // Drops the world from memory (the unsaved-changes question is the caller's). Its neighbor
+    // becomes the active one; after the last world none is.
     void closeWorld(WorldFile &world);
 
     // ---- The asset documents ----
@@ -108,11 +111,11 @@ public:
     // project.json of the project is read. The worlds come later (openWorlds), when the project is
     // ready for them: the modules, the asset registry, the script build.
     void openProject(const path_t &projectPath);
-    // The worlds of the session, else the start world of the project, else a new world.
+    // The worlds of the session, else the start world of the project, else none.
     void openWorlds(const ProjectSession &session);
     // The open worlds with the camera in each, for the session of the project.
     ProjectSession session();
-    // Every world goes (an empty one stays and is shown), the project scope is back to the defaults.
+    // Every world goes (the editor is told it shows none), the project scope is back to the defaults.
     void closeProject();
     // The same without a word to the editor: the exit, when the editor is gone (ProjectLoader's
     // destructor; the worlds go before the asset database closes).
@@ -131,13 +134,14 @@ private:
 
     // A new world document at the end of the list (not active): empty, or with the starter content.
     WorldFile &addWorld(bool starterContent);
-    // The document of the file: the open one, the untouched new active world, or a new document.
-    // Nothing is activated. nullptr — the file could not be read.
+    // The document of the file: the open one, or a new document. Nothing is activated.
+    // nullptr — the file could not be read.
     WorldFile *loadWorld(const path_t &path);
     bool readWorld(WorldFile &world, const path_t &path); // the file → the document; the active one is shown again
     bool saveWorldAs(WorldFile &world);
-    // The world becomes the active one and brings its camera (the previous one is not asked).
-    void showWorld(WorldFile &world);
+    // The world becomes the active one and brings its camera (the previous one is not asked);
+    // null — no world is active from now on.
+    void showWorld(WorldFile *world);
     // The first world of the project that gets a file becomes its start world.
     void syncStartWorld(const WorldFile &world);
     void registerWorldAsset(const path_t &path);
@@ -147,7 +151,7 @@ private:
     SettingsFile m_editorSettings;
     SettingsFile m_projectSettings;
     std::vector<std::unique_ptr<WorldFile>> m_worlds;
-    WorldFile *m_activeWorld = nullptr; // one of m_worlds, always
+    WorldFile *m_activeWorld = nullptr; // one of m_worlds; null — no world is open
     uint32_t m_nextWorldId = 1;
     path_t m_projectPath;
 };

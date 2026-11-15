@@ -52,6 +52,9 @@ namespace RenderSystem {
         void submit(
             Renderer3D &renderer, const Frustum &frustum, bool shadowPass, const glm::vec3 &cameraPosition
         ) const;
+        // The box of the world around the collected meshes — all of them, or those of the given
+        // entities. false — none of them has bounds (nothing to frame).
+        bool bounds(glm::vec3 &outMin, glm::vec3 &outMax, const std::vector<UUID> *entities = nullptr) const;
 
     private:
         struct Item {

@@ -6,7 +6,9 @@ Large directions that are still ahead. Finished work is one line with a pointer 
 
 - **PBR and materials**: built-in Unlit / Lit / PBR, creation from the Content Browser, dirty
   state and Cmd+S.
-- **Material preview**: `ThumbnailsManager`, live preview, asynchronous thumbnails.
+- **Asset previews**: a material and a model in a little viewport of the asset tab (a stage — a
+  small world — seen through an orbit camera), asynchronous thumbnails of materials, models and
+  textures (`context/architecture.md`, "Asset previews").
 - **Post-processing and HDR**: a `.postfx` chain on the camera, linear RGBA16F, implicit tonemap,
   built-in bloom.
 - **Joints 2D/3D**: Revolute, Distance, Spherical and Wheel components with test scenes; the

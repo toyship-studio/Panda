@@ -292,15 +292,6 @@ void OutputPanelView::updateCounts() {
     m_errorChip->setText("Errors " + std::to_string(error));
 }
 
-void OutputPanelView::seedDemoLogs() {
-    const std::string time = nowTimestamp();
-    m_entries.push_back({LogLevel::Info, "Editor initialized.", time});
-    m_entries.push_back({LogLevel::Info, "Loaded scene: Main.scene", time});
-    m_entries.push_back({LogLevel::Warning, "Material 'Glass' has no albedo texture.", time});
-    m_entries.push_back({LogLevel::Info, "Compiled 4 scripts in 0.3s.", time});
-    m_entries.push_back({LogLevel::Error, "NullReference in PlayerController.cs:42", time});
-}
-
 void OutputPanelView::setupLayout() {
     layout().setFlexDirection(FlexDirection::Column);
 }

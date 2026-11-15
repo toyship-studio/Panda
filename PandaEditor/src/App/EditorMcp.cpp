@@ -153,6 +153,8 @@ struct EditorMcp::InputStep {
     Kind kind = Kind::Idle;
     PandaUI::Point position;                                    // Move, Down, Up, Scroll (window points)
     PandaUI::Point delta;                                       // Scroll
+    bool trackpad = false;                                      // Scroll: a two-finger swipe, not a wheel
+    float magnification = 0.f;                                  // Scroll: a pinch of the trackpad
     PandaUI::PointerButton button = PandaUI::PointerButton::Left; // Down, Up
     PandaUI::Key key = PandaUI::Key::Unknown;                   // KeyDown, KeyUp
     uint32_t codepoint = 0;                                     // Text
@@ -357,16 +359,20 @@ void EditorMcp::registerTools() {
         "the thing to test — a button, a menu, a field, a drag. The coordinates are those of a `window` screenshot "
         "(of the default width; pass `of` when the screenshot was asked with another `width`). `click` presses and "
         "releases; `drag` presses at x, y, moves to toX, toY over a few frames and releases; `down`, `move`, `up` "
-        "make a gesture in parts, with a screenshot in between; `scroll` turns the wheel by dx, dy. Answers with "
+        "make a gesture in parts, with a screenshot in between; `scroll` turns the wheel by dx, dy (`trackpad` — a "
+        "two-finger swipe instead); `pinch` is the pinch of a trackpad. Answers with "
         "what is under the pointer afterwards: the views from the innermost out, the cursor, the view in focus. "
         "The viewport's own tools (the gizmo, the camera) read the real mouse and do not follow. While the Settings "
         "window is open the gesture goes to it (it is in front): the coordinates are those of a `settings` screenshot.",
         R"({"type":"object","properties":{)"
-        R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll"],"description":"Default: click."},)"
+        R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll","pinch"],"description":"Default: click."},)"
         R"("x":{"type":"number"},"y":{"type":"number"},)"
         R"("toX":{"type":"number","description":"drag: where it ends."},"toY":{"type":"number"},)"
+        R"("button":{"type":"string","enum":["left","right","middle"],"description":"drag, down, up: the button. Default left."},)"
         R"("dx":{"type":"number","description":"scroll: the wheel, in lines; dy > 0 scrolls the content down."},"dy":{"type":"number"},)"
-        R"("steps":{"type":"integer","description":"drag: the frames of the movement. Default 8."},)"
+        R"("trackpad":{"type":"boolean","description":"scroll: a two-finger swipe of the trackpad instead of a wheel (a viewport and a preview orbit by it)."},)"
+        R"("scale":{"type":"number","description":"pinch: the share the fingers move apart by, 0.2 — 20% larger, negative — smaller."},)"
+        R"("steps":{"type":"integer","description":"drag: the frames of the movement, default 8. scroll: the events of the swipe, each by dx, dy; default 1."},)"
         R"("of":{"type":"number","description":"The width of the screenshot the coordinates were read from. Default 1280."},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}},)"
         R"("required":["x","y"]})",
@@ -461,7 +467,7 @@ Mcp::PendingResult EditorMcp::status() {
         const path_t relative = world->path().empty() ? path_t() : std::filesystem::relative(world->path(), projectPath, error);
         writeText(writer, error ? world->path().string() : relative.generic_string());
         writer.Key("active");
-        writer.Bool(world.get() == &m_editor.m_documents.activeWorld());
+        writer.Bool(world.get() == m_editor.m_documents.activeWorld());
         writer.Key("unsaved");
         writer.Bool(world->isDirty());
         writer.Key("changedOnDisk");
@@ -601,6 +607,10 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         shot->settings = true;
     } else {
         return Mcp::ready(Mcp::ToolResult::error("view is \"scene\", \"game\", \"window\" or \"settings\""));
+    }
+    // A viewport shows a world: with none open there is nothing to shoot but the window.
+    if (!shot->window && !m_editor.hasWorld()) {
+        return Mcp::ready(Mcp::ToolResult::error("No world is open: open one with `open_world`, or shoot the `window`"));
     }
     shot->maxWidth = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "width", SCREENSHOT_DEFAULT_WIDTH), 64.0, 8192.0));
     shot->returnImage = Mcp::boolArgument(arguments, "image", true);
@@ -1075,6 +1085,8 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
                 PandaUI::ScrollEvent event;
                 event.position = step.position;
                 event.delta = step.delta;
+                event.isTrackpad = step.trackpad;
+                event.magnification = step.magnification;
                 context.handleScroll(event);
                 break;
             }
@@ -1133,14 +1145,19 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
         result.kind = kind;
         return result;
     };
+    // The button of a drag, a down and an up; a click names its button by its action.
+    const std::string buttonName = Mcp::stringArgument(arguments, "button", "left");
+    const PandaUI::PointerButton button = buttonName == "right"    ? PandaUI::PointerButton::Right
+                                          : buttonName == "middle" ? PandaUI::PointerButton::Middle
+                                                                   : PandaUI::PointerButton::Left;
     std::vector<InputStep> steps;
-    auto press = [&](PandaUI::PointerButton button, bool newClick) {
+    auto press = [&](PandaUI::PointerButton which, bool newClick) {
         InputStep down = step(InputStep::Kind::Down);
-        down.button = button;
+        down.button = which;
         down.newClick = newClick;
         steps.push_back(down);
         InputStep up = step(InputStep::Kind::Up);
-        up.button = button;
+        up.button = which;
         steps.push_back(up);
     };
     // The pointer arrives first: the hover of a frame is what the press of the next one meets.
@@ -1156,15 +1173,19 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
         // The move alone.
     } else if (action == "down") {
         InputStep down = step(InputStep::Kind::Down);
+        down.button = button;
         down.newClick = true;
         steps.push_back(down);
     } else if (action == "up") {
-        steps.push_back(step(InputStep::Kind::Up));
+        InputStep up = step(InputStep::Kind::Up);
+        up.button = button;
+        steps.push_back(up);
     } else if (action == "drag") {
         const PandaUI::Point to =
             toWindow(Mcp::numberArgument(arguments, "toX", 0.0), Mcp::numberArgument(arguments, "toY", 0.0));
         const int count = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 8.0), 1.0, 240.0));
         InputStep down = step(InputStep::Kind::Down);
+        down.button = button;
         down.newClick = true;
         steps.push_back(down);
         for (int i = 1; i <= count; ++i) {
@@ -1174,6 +1195,7 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
             steps.push_back(move);
         }
         InputStep up = step(InputStep::Kind::Up);
+        up.button = button;
         up.position = to;
         steps.push_back(up);
     } else if (action == "scroll") {
@@ -1182,9 +1204,17 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
             static_cast<float>(Mcp::numberArgument(arguments, "dx", 0.0)),
             static_cast<float>(-Mcp::numberArgument(arguments, "dy", 0.0))
         );
-        steps.push_back(scroll);
+        scroll.trackpad = Mcp::boolArgument(arguments, "trackpad", false);
+        // A swipe is many events in a row, a frame apart: `steps` of them, each by dx, dy.
+        const int count = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 1.0), 1.0, 240.0));
+        for (int i = 0; i < count; ++i) { steps.push_back(scroll); }
+    } else if (action == "pinch") {
+        InputStep pinch = step(InputStep::Kind::Scroll);
+        pinch.trackpad = true;
+        pinch.magnification = static_cast<float>(Mcp::numberArgument(arguments, "scale", 0.0));
+        steps.push_back(pinch);
     } else {
-        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag or scroll"));
+        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag, scroll or pinch"));
     }
     // What the gesture set off (a popover, a rebuilt form) is laid out and drawn before the answer.
     steps.push_back(step(InputStep::Kind::Idle));

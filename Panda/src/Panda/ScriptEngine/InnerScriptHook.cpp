@@ -150,9 +150,6 @@ namespace InternalCalls {
         if (!world) { return 0; }
         Entity entity = world->instantiateEntity();
         entity.setName(tag);
-#ifdef PND_EDITOR
-        entity.sortWorld();
-#endif
         return entity.getId();
     }
 

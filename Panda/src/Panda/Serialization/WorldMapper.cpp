@@ -4,6 +4,8 @@
 #include "Panda/Serialization/ComponentDtos.hpp"
 #include "Panda/Serialization/SettingsMapper.hpp"
 
+#include <algorithm>
+
 #include <set>
 
 namespace Panda {
@@ -23,9 +25,32 @@ namespace {
             if (document.settings) { SettingsMapper::encode(SettingsScope::World, world.context(), *encoder); }
             size_t droppedForeign = 0; // foreign components a coder without opaque values leaves out
             encoder->beginArray("entities");
+            // The file lists the entities the way the Hierarchy shows them (World::orderedChildren):
+            // an entity, then everything under it. The order depends on the world alone — not on
+            // how its entities happen to lie in memory — so saving a world twice writes the same
+            // file, and an edit is a small diff.
+            std::vector<UUID> pending = world.orderedChildren(UUID(0));
+            std::reverse(pending.begin(), pending.end()); // a stack: the first sibling on top
+            std::set<UUID> written;
+            // An entity the walk from the roots does not reach (a parent that lists it no more)
+            // is not lost: it is written after the tree, by id.
+            std::vector<UUID> unreached;
             for (auto entityHandle : world.getAllEntitiesWith<IdComponent>()) {
-                if (!world.isValidEntt(entityHandle)) { continue; }
-                Entity entity = world.entity(entityHandle);
+                if (world.isValidEntt(entityHandle)) { unreached.push_back(world.entity(entityHandle).getId()); }
+            }
+            std::sort(unreached.begin(), unreached.end(), [](UUID l, UUID r) { return r < l; }); // popped from the back: ascending
+            while (!pending.empty() || !unreached.empty()) {
+                if (pending.empty()) {
+                    const UUID id = unreached.back();
+                    unreached.pop_back();
+                    if (!written.contains(id)) { pending.push_back(id); }
+                    continue;
+                }
+                Entity entity = world.getById(pending.back());
+                pending.pop_back();
+                if (!entity.isValid() || !written.insert(entity.getId()).second) { continue; }
+                std::vector<UUID> children = world.orderedChildren(entity.getId());
+                pending.insert(pending.end(), children.rbegin(), children.rend());
                 encoder->beginObject(nullptr);
                 encoder->encode("id", entity.getId());
                 for (const ComponentType &type : types.types()) {
@@ -105,7 +130,6 @@ namespace {
                 LOG_WARN_EDITOR("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
             }
             world.setChanged(false);
-            world.sort();
             return true;
         }
     };

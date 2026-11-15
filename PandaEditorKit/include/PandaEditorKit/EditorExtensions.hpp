@@ -189,19 +189,25 @@ struct SettingsSection final {
     void (*build)(PandaUI::CollapsibleSection &section, Panda::TypeContext &store) = nullptr;
 };
 
-// ---- Material preview (the sphere of panels and thumbnails) for the contribution's shaders ----
+// ---- Material preview for the contribution's shaders ----
+// A preview shows a material on a primitive of the engine (the stage of the editor's previews
+// and thumbnails). A shader that reads its vertices differently says here what it needs.
 
 struct MaterialPreview final {
     // The material falls under the rule: by the id of the contribution's shader or by its field
     // convention. Rules are checked in registration order, the first matching one decides.
     bool (*matches)(Panda::MaterialAsset &material) = nullptr;
-    // Sphere vertex color: the contribution's shader may read it as data (terrain layer weights).
+    // The vertex color of the primitive: the contribution's shader may read it as data (terrain
+    // layer weights).
     Panda::Color vertexColor = Panda::Color(1.f, 1.f, 1.f, 1.f);
-    // Custom vertex format: the layout (lives with the static resources — taken when the sphere is
-    // built) and the packing of the sphere vertices into it; nullptr — the common Vertex layout.
+    // Custom vertex format: the layout (lives with the static resources — taken when the
+    // primitive is built) and the packing of its vertices into it, the position first; nullptr —
+    // the common Vertex layout.
     Miren::VertexLayoutHandle (*vertexLayout)() = nullptr;
     Foundation::Memory (*packVertices)(const std::vector<Panda::Vertex> &vertices, uint32_t &outSize) = nullptr;
-    void (*bindInputs)() = nullptr; // placeholder shader inputs before the sphere submit (splatmap)
+    // Placeholder inputs of the shader (a splatmap), as inputs of the view the stage is drawn
+    // into (Miren::addViewInputTexture): every frame, before the stage.
+    void (*bindInputs)(Miren::ViewId view) = nullptr;
 };
 
 // ---- Statistics panel section ----

@@ -172,20 +172,22 @@ void EditorLayer::onAttach() {
     loadPlugins();
     // Before the controller: panels read the theme while being built.
     applyTheme(m_documents.editorSettings().get<EditorAppearanceSettings>().theme);
-    // Asset previews/thumbnails: a single manager, panels go through ThumbnailsManager::shared().
-    m_thumbnails = std::make_unique<ThumbnailsManager>([this](Miren::TextureHandle native, PandaUI::Size size) {
-        return m_editorUI.wrapNativeTexture(native, size);
-    });
-    ThumbnailsManager::setShared(m_thumbnails.get());
+    // The pictures of assets (previews of the forms, thumbnails): a single owner, the panels go
+    // through AssetPreviews::shared().
+    m_previews = std::make_unique<AssetPreviews>(
+        [this](Miren::TextureHandle native, PandaUI::Size size) { return m_editorUI.wrapNativeTexture(native, size); },
+        [this](PandaUI::TextureHandle handle) { m_editorUI.destroyTexture(handle); }
+    );
+    AssetPreviews::setShared(m_previews.get());
     m_startScreenController =
         std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), this);
     m_startScreenController->setNewProjectDefaults("UntitledGame", defaultProjectParentPath().string());
     syncStartScreenModel();
     m_editorController = std::make_unique<Editor::EditorController>(m_commands);
-    m_editorController->setWorld(m_currentWorld); // panels read the real engine world directly
+    m_editorController->setWorld(panelsWorld()); // panels read the real engine world directly
     m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
     // A ready thumbnail → targeted update of the visible grid cell (cells are configured once).
-    m_thumbnails->setOnThumbnailReady([this](Panda::AssetId assetId) {
+    m_previews->setOnThumbnailReady([this](Panda::AssetId assetId) {
         if (m_editorController) { m_editorController->thumbnailDidBecomeReady(assetId); }
     });
     m_editorUI.context().setUnhandledKeyDownHandler(
@@ -230,8 +232,8 @@ void EditorLayer::onDetach() {
     m_loader.saveOnExit();
     m_mcp.reset();
     Fern::setCursorLocked(false);
-    ThumbnailsManager::setShared(nullptr);
-    m_thumbnails.reset();
+    AssetPreviews::setShared(nullptr);
+    m_previews.reset();
     m_editorUI.shutdown();
     m_pandaUI.shutdown();
     GameContext::setQuitRequestHandler(nullptr);
@@ -297,7 +299,7 @@ void EditorLayer::onUpdate(double deltaTime) {
             loadPendingWorldRequest();
         }
         updateViewportHelperLines(); // after the camera update — collider outlines without a one-frame lag
-        m_thumbnails->update();      // live material preview + one thumbnail from the queue
+        m_previews->update();        // one preview of a form + one thumbnail from the queue
         GameContext::getAssetHandler()->cleanup();
     }
 
@@ -371,8 +373,9 @@ void EditorLayer::syncViewports() {
     if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
     m_editorController->setGameViewportLive(m_viewports.isGameLive());
     m_editorController->setGameViewportMessage(
-        m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
-                                                                : ""
+        !hasWorld() && m_sceneState == SceneState::EDIT           ? "No world is open"
+        : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
+                                                                   : ""
     );
 }
 
@@ -467,7 +470,8 @@ std::vector<Editor::OpenWorld> EditorLayer::openWorlds() {
 }
 
 uint32_t EditorLayer::activeWorldId() {
-    return m_documents.activeWorld().id();
+    WorldFile *active = m_documents.activeWorld();
+    return active != nullptr ? active->id() : 0;
 }
 
 bool EditorLayer::canActivateWorld() {
@@ -491,7 +495,7 @@ void EditorLayer::closeWorld(uint32_t worldId) {
     WorldFile *world = m_documents.findWorld(worldId);
     if (world == nullptr) { return; }
     // The game plays a copy of the active world: it ends with that world.
-    if (world == &m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
+    if (world == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
     m_documents.closeWorld(*world);
 }
 
@@ -505,7 +509,8 @@ std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) 
     switch (scope) {
         case SettingsScope::Project: return m_documents.projectSettingsFile().path();
         case SettingsScope::Editor: return m_documents.editorSettingsFile().path();
-        case SettingsScope::World: return m_documents.activeWorld().path(); // the world settings live in the world file
+        case SettingsScope::World: // the world settings live in the world file
+            return hasWorld() ? m_documents.activeWorld()->path() : std::filesystem::path();
     }
     return {};
 }
@@ -640,7 +645,7 @@ bool EditorLayer::saveFile(FileDocument &file) {
     if (file.isChangedOnDisk()) { return resolveFileConflict(file) != FileResolution::Cancelled; }
     if (!file.save()) { return false; }
     LOG_INFO_EDITOR("Saved %s.", file.title().c_str());
-    if (&file == &m_documents.activeWorld() && m_sceneState != SceneState::EDIT) {
+    if (&file == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) {
         // Save writes the world being edited. Play runs on its copy: what the simulation and the
         // inspector change there lives until Stop.
         LOG_INFO_EDITOR("The changes made while playing are not saved: Stop discards them.");
@@ -753,11 +758,33 @@ void EditorLayer::setGizmoSpace(bool worldSpace) {
 }
 
 void EditorLayer::resetCamera() {
-    m_viewports.cameraController().reset({0.f, 0.f, 0.f});
+    m_viewports.cameraController().frame(glm::vec3(0.f), 1.5f, m_viewports.editorCamera().getFieldOfView());
 }
 
+// The camera flies to where the selection fits the frame: the box around the meshes of the
+// selected entities and of everything under them (a model is selected by its root), or a meter
+// around an entity that draws nothing (a light, an empty).
 void EditorLayer::focusSelection() {
-    if (!SelectionContext::isEmpty()) { m_viewports.cameraController().reset(SelectionContext::getMedianPosition()); }
+    if (SelectionContext::isEmpty() || m_currentWorld == nullptr) { return; }
+    std::vector<UUID> ids;
+    std::vector<UUID> pending;
+    for (UUID id : SelectionContext::getSelectedEntities()) { pending.push_back(id); }
+    while (!pending.empty()) {
+        const UUID id = pending.back();
+        pending.pop_back();
+        Entity entity = m_currentWorld->getById(id);
+        if (!entity.isValid()) { continue; }
+        ids.push_back(id);
+        for (UUID child : entity.getChildEntities()) { pending.push_back(child); }
+    }
+    glm::vec3 center = SelectionContext::getMedianPosition();
+    float radius = 1.f;
+    glm::vec3 boundsMin, boundsMax;
+    if (m_currentWorld->getMeshBounds(boundsMin, boundsMax, &ids)) {
+        center = (boundsMin + boundsMax) * 0.5f;
+        radius = std::max(glm::length(boundsMax - boundsMin) * 0.5f, 0.1f);
+    }
+    m_viewports.cameraController().frame(center, radius, m_viewports.editorCamera().getFieldOfView());
 }
 
 void EditorLayer::startScriptsBuild(BuildAction action, ScriptsBuildConfig config) {
@@ -1060,6 +1087,10 @@ void EditorLayer::windowSizeChanged(Size size) {
 
 void EditorLayer::play() {
     if (m_sceneState == SceneState::PLAY) { return; }
+    if (!hasWorld()) {
+        LOG_WARN_EDITOR("Nothing to play: no world is open (File \xE2\x86\x92 New \xE2\x86\x92 World, or open a world file).");
+        return;
+    }
     m_sceneState = SceneState::PLAY;
     m_playingWorld = editingWorld();
     m_currentWorld = &m_playingWorld;
@@ -1074,7 +1105,7 @@ void EditorLayer::play() {
     // the game are there; the Scene tab stays the editor's view of the playing world.
     if (m_editorController) {
         m_editorController->openGameView();
-        m_editorController->setActiveWorld(m_currentWorld); // panels → the live world
+        m_editorController->setActiveWorld(panelsWorld()); // panels → the live world
     }
     syncViewports();
     syncPandaUIViewportFrame();
@@ -1100,7 +1131,7 @@ void EditorLayer::stop() {
     SelectionContext::setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
     m_viewports.scene().setWorld(m_currentWorld);
     if (m_editorController) {
-        m_editorController->setActiveWorld(m_currentWorld); // panels → the editing world
+        m_editorController->setActiveWorld(panelsWorld()); // panels → the editing world
         m_editorController->showSceneView();                // back to editing: the Scene tab comes to the front
     }
     // Play is a simulation: its asset mutations (script ABI, e.g. terrain digging) do not
@@ -1225,7 +1256,7 @@ void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &pa
     updateWindowState();
     m_menuBar.rebuild();
     // The thumbnail cache belongs to the previous project: asset ids may coincide between projects.
-    if (m_thumbnails) { m_thumbnails->clear(); }
+    if (m_previews) { m_previews->clear(); }
     // Asset panels rescan the new project (at startup the controller does not exist yet —
     // then setWorld reads the registry right after creation).
     if (m_editorController) { m_editorController->refreshAssetPanels(); }
@@ -1241,9 +1272,8 @@ void EditorLayer::syncWindowIdentity() {
     std::string title = "Welcome";
     if (m_loader.hasOpenedProject()) {
         project = m_loader.getOpenedProjectPath().filename().string();
-        const path_t &worldPath = m_documents.activeWorld().path();
-        const std::string world = worldPath.empty() ? std::string("Untitled World") : worldPath.filename().string();
-        title = project + " \xE2\x80\x94 " + world; // an em dash, UTF-8
+        // The project and the world in front; the project alone while no world is open.
+        title = hasWorld() ? project + " \xE2\x80\x94 " + m_documents.activeWorld()->name() : project; // an em dash, UTF-8
     }
     if (title != m_windowTitle) {
         m_windowTitle = title;
@@ -1256,7 +1286,8 @@ void EditorLayer::syncWindowIdentity() {
 }
 
 std::string EditorLayer::worldDisplayName() {
-    const path_t &worldPath = m_documents.activeWorld().path();
+    if (!hasWorld()) { return {}; }
+    const path_t &worldPath = m_documents.activeWorld()->path();
     return worldPath.empty() ? "Untitled World" : worldPath.filename().stem().string();
 }
 
@@ -1270,7 +1301,7 @@ void EditorLayer::documentsDidActivateWorld() {
     SelectionContext::setWorld(m_currentWorld);
     if (m_editorController) {
         m_editorController->worldContextChanged(); // the entity tabs point into the previous world
-        m_editorController->setActiveWorld(m_currentWorld);
+        m_editorController->setActiveWorld(panelsWorld());
     }
     worldDidChange();
 }
@@ -1315,6 +1346,20 @@ EditorCameraSettings EditorLayer::documentsEditorCamera() {
     settings.position = m_viewports.cameraController().getPosition();
     settings.rotation = m_viewports.cameraController().getRotation();
     return settings;
+}
+
+// A world shown for the first time has no place for the editor camera yet: the editor looks at
+// it the way the game will, from its main camera. A world without one leaves the camera where
+// it is.
+void EditorLayer::documentsLookAtWorld() {
+    World &world = editingWorld();
+    Entity camera = world.findMainCameraEntity();
+    if (!camera.isValid()) { return; }
+    const glm::mat4 transform = world.getWorldSpaceTransformMatrix(camera);
+    glm::mat3 axes(transform);
+    for (int i = 0; i < 3; ++i) { axes[i] = glm::normalize(axes[i]); }
+    m_viewports.cameraController().setPosition(glm::vec3(transform[3]));
+    m_viewports.cameraController().setRotation(glm::quat_cast(axes));
 }
 
 void EditorLayer::documentsSetEditorCamera(const EditorCameraSettings &camera) {
@@ -1544,7 +1589,7 @@ void EditorLayer::reloadWorldAsset(uint32_t worldAssetId) {
     if (assetRelativePath.empty()) { return; }
     WorldFile *world = m_documents.findWorld(assetHandler->getProjectPath() / assetRelativePath);
     if (world == nullptr) { return; }
-    if (world == &m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
+    if (world == m_documents.activeWorld() && m_sceneState != SceneState::EDIT) { stop(); }
     takeDiskVersion(*world);
 }
 
@@ -1926,8 +1971,8 @@ bool EditorLayer::cookRuntimeData() {
     // a running game plays in); the start world of the project settings takes over with the
     // scene list (context/roadmap.md).
     std::string openWorld;
-    if (!m_documents.activeWorld().path().empty()) {
-        openWorld = std::filesystem::relative(m_documents.activeWorld().path(), m_loader.getOpenedProjectPath()).generic_string();
+    if (hasWorld() && !m_documents.activeWorld()->path().empty()) {
+        openWorld = std::filesystem::relative(m_documents.activeWorld()->path(), m_loader.getOpenedProjectPath()).generic_string();
     }
     std::vector<std::string> validationErrors =
         GameExporter::validate(m_loader.getOpenedProjectPath(), openWorld, *assetHandler);
@@ -2052,7 +2097,7 @@ void EditorLayer::updateWindowState() {
 void EditorLayer::closeProject() {
     if (m_editorController) { m_editorController->closeSettingsWindow(); } // its pages are the project's
     saveOpenedProjectWindowState();
-    m_thumbnails->clear(); // project assets die — previews/thumbnails must not hold ids
+    m_previews->clear(); // project assets die — previews/thumbnails must not hold ids
     m_loader.closeProject();
 }
 

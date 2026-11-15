@@ -241,7 +241,6 @@ public:
     void endViewportEditing() override;
     void refreshFromWorld() override; // rereads the panels after structural changes/undo
     void refreshAssetEditors(Panda::AssetId id) override;
-    void log(Editor::HostLogLevel level, const std::string &message) override;
     Panda::TypeContext &settings(Panda::SettingsScope scope) override;
     void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) override;
     void openSettings(Panda::SettingsScope scope, const std::string &section = {}) override;
@@ -263,6 +262,8 @@ public:
     void createPostprocessShader(const Panda::path_t &directory);
     void createAsset(const Panda::path_t &directory, const AssetCreator &creator);
     void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) override;
+    void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) override;
+    void contentDidRequestDeleteFolder(const Panda::path_t &folder) override;
 
 
     // ToolbarOutput.
@@ -324,6 +325,7 @@ private:
     // The name of entities as one undoable edit (the inspector field, Rename of the Hierarchy).
     void renameEntities(const std::vector<Panda::UUID> &ids, const std::string &name);
     bool maximizeFocusedDock();
+    bool closeFocusedTab();
     // The document that undo/redo is addressed to (the document model): the selected document tab
     // of the dock with the focus, the document of the active viewport session (brush strokes go
     // into its stack), else the world.
@@ -343,6 +345,7 @@ private:
     void setComponentPresence(ComponentType type, bool add); // add/remove of an engine component + command
     void selectAssets(const std::vector<Panda::AssetId> &ids, bool clearContentSelection); // asset selection dedup
     void deleteAssets(const std::vector<Panda::AssetId> &ids);  // asset deletion: confirm → remove → refresh
+    void removeAssets(const std::vector<Panda::AssetId> &ids);  // the removal itself; open worlds among them close
     void instantiateMeshAssets(const std::vector<Panda::AssetId> &ids); // gltf → entity subtree (D&D/menu)
     void refreshStatistics();                   // entity count → the statistics panel
 

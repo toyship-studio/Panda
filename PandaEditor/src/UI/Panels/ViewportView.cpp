@@ -141,7 +141,9 @@ bool ViewportView::pointerUp(PointerEvent &event) {
 }
 
 bool ViewportView::scroll(ScrollEvent &event) {
-    if (event.isTrackpad) {
+    if (event.magnification != 0.f) {
+        m_zoom += event.magnification * 12.f; // a pinch moves the camera like the wheel: a notch per 8% of it
+    } else if (event.isTrackpad) {
         // The two-finger gesture rotates (the scale of the former Input path: scroll units × 40).
         m_rotate.x += event.delta.x * 40.f;
         m_rotate.y += event.delta.y * 40.f;

@@ -85,6 +85,11 @@ Invariants:
   is the truth: an id without an entity leaves the lists, an entity its parent does not list is
   added, an unknown or cyclic parent makes the entity a root, each with a warning in the log.
 - The positions of children are in the parent's local space.
+- **The order of the entities in the file means nothing.** The Hierarchy shows siblings — the
+  roots, the children of an entity — the ones with children first, then by name; the editor
+  writes the file in that order, an entity and then everything under it. So a world saved twice
+  is the same text, an edit is a small diff, and an entity added by hand anywhere in the array
+  finds its place on the next save.
 
 ## Optional components (keys)
 
