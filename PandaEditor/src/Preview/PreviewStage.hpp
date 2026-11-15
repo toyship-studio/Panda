@@ -5,6 +5,7 @@
 #include <Panda/Assets/Base/AssetRef.hpp>
 #include <Panda/Assets/RuntimeMeshAsset.hpp>
 #include <Panda/GameLogic/World.hpp>
+#include <Panda/Renderer/WorldView.hpp>
 
 #include <Miren/Miren.hpp>
 
@@ -12,7 +13,7 @@ namespace Panda {
 
 // The stage of a preview: a little world of its own with one asset in it and a studio light. A
 // material stands there on a primitive, a model as the scene of its file. It is a world like
-// any other — World::draw draws it — so a preview shows what a scene would: the same materials
+// any other — a WorldView draws it — so a preview shows what a scene would: the same materials
 // and node transforms, the same passes of the modules, and whatever a world learns to show
 // later. The camera orbits the middle of what stands on the stage (PreviewOrbit).
 //
@@ -40,9 +41,13 @@ public:
         return m_shape;
     }
 
-    // One frame of the stage into the view (its target and viewport are the caller's), through
-    // the orbit, for a frame of this aspect.
-    void draw(Miren::ViewId view, const PreviewOrbit &orbit, float aspect);
+    // One frame of the stage through the view (its size is the caller's), seen through the
+    // orbit, for a picture of this aspect.
+    void draw(WorldView &view, const PreviewOrbit &orbit, float aspect);
+    // The world of the stage: what the look of its frame is taken from.
+    World &world() {
+        return m_world;
+    }
 
     // How a kind of asset is looked at first: a material from the front, a model from a
     // three-quarter view.

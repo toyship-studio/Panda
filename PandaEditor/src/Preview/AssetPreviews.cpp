@@ -75,8 +75,10 @@ void AssetPreviews::update() {
     for (PandaUI::TextureHandle handle : m_retiredHandles) { m_release(handle); }
     m_retiredHandles.clear();
     // The thumbnail shot in the last frame is drawn: its assets are not held any longer (a
-    // model with its textures does not stay in memory for the sake of a thumbnail).
+    // model with its textures does not stay in memory for the sake of a thumbnail) — neither by
+    // the stage nor by the views that drew the pictures of the last frame.
     if (m_thumbnailStage) { m_thumbnailStage->clear(); }
+    if (m_renderer) { m_renderer->forgetFrames(); }
     // Released leases (the form was rebound or closed).
     for (Preview &preview : m_previews) {
         if (preview.lease.expired()) { releasePreview(preview); }
@@ -84,7 +86,8 @@ void AssetPreviews::update() {
     std::erase_if(m_previews, [](const Preview &preview) { return preview.lease.expired(); });
     if (!m_renderer && (!m_previews.empty() || !m_queue.empty())) { m_renderer = std::make_unique<PreviewRenderer>(); }
     renderLivePreview();
-    if (!renderPendingDisplayCopy()) { renderNextThumbnail(); }
+    renderPendingDisplayCopy();
+    renderNextThumbnail();
 }
 
 std::shared_ptr<AssetPreview> AssetPreviews::lease(AssetId assetId) {
@@ -151,7 +154,7 @@ void AssetPreviews::renderLivePreview() {
             preview.width = width;
             preview.height = height;
         }
-        // The pass runs before the UI of the same frame (the order of the Miren views).
+        // The passes run before the UI of the same frame: the chrome is drawn after the previews.
         m_renderer->render(PreviewRenderer::Slot::Live, *preview.stage, lease->orbit, preview.frameBuffer, width, height);
         if (resized) { lease->texture = m_wrap(preview.color, PandaUI::Size(static_cast<float>(width), static_cast<float>(height))); }
         break;
@@ -162,7 +165,7 @@ void AssetPreviews::renderLivePreview() {
     }
 }
 
-bool AssetPreviews::renderPendingDisplayCopy() {
+void AssetPreviews::renderPendingDisplayCopy() {
     for (Preview &preview : m_previews) {
         if (!preview.displayCopyPending) { continue; }
         preview.displayCopyPending = false;
@@ -175,9 +178,8 @@ bool AssetPreviews::renderPendingDisplayCopy() {
             preview.displayCopy.isValid() ? preview.displayCopy : texture->getMirenHandle(),
             PandaUI::Size(size.width, size.height)
         );
-        return true;
+        return;
     }
-    return false;
 }
 
 void AssetPreviews::retireTexture(Miren::TextureHandle texture, PandaUI::TextureHandle ui) {
@@ -243,7 +245,10 @@ void AssetPreviews::clear() {
     m_thumbnails.clear();
 }
 
-void AssetPreviews::blit(Miren::TextureHandle source, const glm::vec4 &fit, bool encodeSrgb) {
+void AssetPreviews::blit(
+    Miren::TextureHandle source, const glm::vec4 &fit, bool encodeSrgb, Miren::FrameBufferHandle target, uint32_t width,
+    uint32_t height
+) {
     if (!m_blitProgram.isValid()) {
         m_blitProgram = Miren::createProgram(
             AssetImporterBase::loadShaderProgram("default-shaders/postprocess.vert", "editor-shaders/preview_blit.frag")
@@ -256,10 +261,17 @@ void AssetPreviews::blit(Miren::TextureHandle source, const glm::vec4 &fit, bool
     Miren::setState(0); // no depth/cull: a flat quad over the whole target
     Miren::addInputTexture("inputTexture", source);
     Miren::addInputUniformBuffer("BLIT_FIT", block.getData(), block.getSize());
-    m_blitQuad->submit(PreviewRenderer::displayView(PreviewRenderer::Slot::Thumbnail), m_blitProgram);
+    m_blitQuad->submit(
+        Miren::addView({
+            .frameBuffer = target,
+            .viewport = Miren::Rect(0, 0, static_cast<int>(width), static_cast<int>(height)),
+            .clearColor = 0x00000000,
+        }),
+        m_blitProgram
+    );
 }
 
-void AssetPreviews::renderTextureThumbnail(AssetId textureId) {
+void AssetPreviews::renderTextureThumbnail(AssetId textureId, Miren::FrameBufferHandle target) {
     // The AssetRef is local: after the pass the refcount drops and the full-size texture may be
     // unloaded — only the square thumbnail stays in the cache.
     AssetRef<TextureAsset> texture(textureId);
@@ -272,11 +284,12 @@ void AssetPreviews::renderTextureThumbnail(AssetId textureId) {
         const float inverse = 1.f / aspect;
         fit = glm::vec4(inverse, 1.f, -(inverse - 1.f) * 0.5f, 0.f);
     }
-    const Miren::ViewId view = PreviewRenderer::displayView(PreviewRenderer::Slot::Thumbnail);
-    Miren::setViewClear(view, 0x00000000);
-    Miren::setViewport(view, Miren::Rect(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE));
     const Miren::TextureFormat format = texture->getFormat();
-    blit(texture->getMirenHandle(), fit, format == Miren::TextureFormat::RGBA8_SRGB || format == Miren::TextureFormat::BC7_SRGB);
+    blit(
+        texture->getMirenHandle(), fit,
+        format == Miren::TextureFormat::RGBA8_SRGB || format == Miren::TextureFormat::BC7_SRGB, target, THUMBNAIL_SIZE,
+        THUMBNAIL_SIZE
+    );
 }
 
 Miren::TextureHandle AssetPreviews::renderDisplayCopy(TextureAsset &texture) {
@@ -286,12 +299,11 @@ Miren::TextureHandle AssetPreviews::renderDisplayCopy(TextureAsset &texture) {
     Miren::TextureHandle copy = createDisplayTexture(static_cast<uint32_t>(size.width), static_cast<uint32_t>(size.height));
     if (!copy.isValid()) { return {}; }
     Miren::FrameBufferHandle frameBuffer = createFrameBuffer(copy);
-    const Miren::ViewId view = PreviewRenderer::displayView(PreviewRenderer::Slot::Thumbnail);
-    Miren::setViewFrameBuffer(view, frameBuffer);
-    Miren::setViewClear(view, 0x00000000);
-    Miren::setViewport(view, Miren::Rect(0, 0, static_cast<int>(size.width), static_cast<int>(size.height)));
     // The frame 1:1, no letterbox; the caller knows the source is sRGB.
-    blit(source, glm::vec4(1.f, 1.f, 0.f, 0.f), true);
+    blit(
+        source, glm::vec4(1.f, 1.f, 0.f, 0.f), true, frameBuffer, static_cast<uint32_t>(size.width),
+        static_cast<uint32_t>(size.height)
+    );
     m_retiredFrameBuffers.push_back(frameBuffer); // needed only for the duration of the pass
     return copy;
 }
@@ -319,8 +331,7 @@ void AssetPreviews::renderNextThumbnail() {
     const Miren::TextureHandle color = isNew ? createDisplayTexture(THUMBNAIL_SIZE, THUMBNAIL_SIZE) : existing->second.native;
     const Miren::FrameBufferHandle frameBuffer = createFrameBuffer(color);
     if (isTexture) {
-        Miren::setViewFrameBuffer(PreviewRenderer::displayView(PreviewRenderer::Slot::Thumbnail), frameBuffer);
-        renderTextureThumbnail(assetId);
+        renderTextureThumbnail(assetId, frameBuffer);
     } else {
         m_renderer->render(
             PreviewRenderer::Slot::Thumbnail, *m_thumbnailStage, PreviewStage::defaultOrbit(type), frameBuffer,

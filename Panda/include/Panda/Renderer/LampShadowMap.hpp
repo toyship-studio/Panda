@@ -15,8 +15,8 @@ namespace Panda {
 // sampler, like the atlas of the sun): a spot takes one tile — its cone seen from the lamp — and
 // a point light six, the faces of a cube around it. A lamp that does not fit into the tiles left
 // casts no shadow this frame: the lamps come nearest to the camera first, so the shadows go to
-// those that matter. Owns the atlas and the FBO and fits the tiles every frame; World draws the
-// depth passes through tileView / tileViewProj.
+// those that matter. Owns the atlas and the FBO and fits the tiles every frame; the view of the
+// world draws the depth passes through addTileView / tileViewProj.
 class LampShadowMap final {
 public:
     ~LampShadowMap();
@@ -31,7 +31,9 @@ public:
     const glm::mat4 &tileViewProj(uint32_t tile) const {
         return m_tileViewProj[tile];
     }
-    Miren::ViewId tileView(uint32_t tile) const;
+    // The depth pass of a tile as a view of the frame being built: its square of the atlas. The
+    // tiles are added in their order — the first one clears the depth they share.
+    Miren::ViewId addTileView(uint32_t tile) const;
 
 private:
     void ensureAtlas(uint32_t tileSize);

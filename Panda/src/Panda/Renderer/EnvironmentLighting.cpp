@@ -2,7 +2,6 @@
 
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 
 #include <cmath>
 #include <unordered_map>
@@ -118,11 +117,6 @@ void EnvironmentLighting::update(const AssetRef<TextureAsset> &map) {
         m_bake = existing->second.lock(); // another world is lit by the same map
         return;
     }
-    // The bake view is one: a second map that needs a bake in the same frame takes the next one.
-    static uint32_t s_bakeFrame = ~0u;
-    if (s_bakeFrame == Miren::getFrameNumber()) { return; }
-    s_bakeFrame = Miren::getFrameNumber();
-
     const Layout &atlas = layout();
     auto bake = std::make_shared<Bake>();
     bake->source = sourceId;
@@ -154,10 +148,11 @@ void EnvironmentLighting::update(const AssetRef<TextureAsset> &map) {
         block.tileParams[index] = index < LEVELS ? glm::vec4(static_cast<float>(index + 1) / LEVELS, 0.f, 0.f, 0.f)
                                                   : glm::vec4(1.f, 1.f, 0.f, 0.f);
     }
-    const Miren::ViewId view = Views::ENVIRONMENT_BAKE_VIEW;
-    Miren::setViewport(view, Miren::Rect(0, 0, ATLAS_WIDTH, atlas.height));
-    Miren::setViewClear(view, 0x000000ff);
-    Miren::setViewFrameBuffer(view, bake->frameBuffer);
+    // One pass, made where the light of a frame is asked for — before the passes that read the atlas.
+    const Miren::ViewId view = Miren::addView({
+        .frameBuffer = bake->frameBuffer,
+        .viewport = Miren::Rect(0, 0, ATLAS_WIDTH, static_cast<int>(atlas.height)),
+    });
     Miren::setState(0);
     Miren::addInputUniformBuffer("ENVIRONMENT_BAKE", &block, sizeof(block));
     Miren::addInputTexture("environmentMap", source->getMirenHandle());

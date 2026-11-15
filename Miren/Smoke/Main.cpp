@@ -3,7 +3,7 @@
 //    foundation of the shadow map (CSM): an FBO with depth only and a depth-only PSO without color
 //    output; a comparison sampler (Metal: depth2d + sample_compare, GL: sampler2DShadow);
 //    CLAMP_TO_BORDER (beyond the map edge — light), MIREN_STATE_CULL_FRONT,
-//    MIREN_STATE_NO_COLOR_WRITE, setDepthBias, setViewClearDepth. Scene: the light and the camera
+//    MIREN_STATE_NO_COLOR_WRITE, setDepthBias, a view that clears its depth to a value. Scene: the light and the camera
 //    look straight down; a square occluder hangs above the receiver plane. The shadow map covers
 //    x,z ∈ [-1,1], the receiver is wider ([-2,2]) — beyond the map edge the border kicks in. The
 //    result is read from a 64×64 RGBA8 target and verified by regions (all of them are vertically
@@ -37,9 +37,6 @@ namespace {
 
 constexpr int TARGET_SIZE = 64;
 constexpr int SHADOW_SIZE = 256;
-constexpr Miren::ViewId SHADOW_VIEW = 2; // views execute in descending id order: shadow before scene
-constexpr Miren::ViewId MAIN_VIEW = 1;
-constexpr Miren::ViewId WINDOW_VIEW = 0;
 
 struct Mesh {
     Miren::VertexBufferHandle vertexBuffer;
@@ -241,15 +238,19 @@ int main(int argc, const char **argv) {
         glm::mat4 shadowMtx;
     } receiverUbo{cameraViewProj, shadowTextureMatrix(lightViewProj)};
 
-    Miren::setViewFrameBuffer(SHADOW_VIEW, shadowFrameBuffer);
-    Miren::setViewport(SHADOW_VIEW, Miren::Rect(0, 0, SHADOW_SIZE, SHADOW_SIZE));
-    Miren::setViewFrameBuffer(MAIN_VIEW, mainFrameBuffer);
-    Miren::setViewport(MAIN_VIEW, Miren::Rect(0, 0, TARGET_SIZE, TARGET_SIZE));
-    Miren::setViewClear(MAIN_VIEW, 0xff00ffff);
-    Miren::setViewClear(WINDOW_VIEW, 0x202020ff);
-
     auto encodeFrame = [&](const Variant &variant) {
-        Miren::setViewClearDepth(SHADOW_VIEW, true, variant.shadowClearDepth);
+        // The views of the frame in the order they are executed: the shadow map before what samples it.
+        const Miren::ViewId SHADOW_VIEW = Miren::addView({
+            .frameBuffer = shadowFrameBuffer,
+            .viewport = Miren::Rect(0, 0, SHADOW_SIZE, SHADOW_SIZE),
+            .clearDepth = variant.shadowClearDepth,
+        });
+        const Miren::ViewId MAIN_VIEW = Miren::addView({
+            .frameBuffer = mainFrameBuffer,
+            .viewport = Miren::Rect(0, 0, TARGET_SIZE, TARGET_SIZE),
+            .clearColor = 0xff00ffff,
+        });
+        const Miren::ViewId WINDOW_VIEW = Miren::addView({.clearColor = 0x202020ff});
         // The occluder — into the shadow map (depth-only).
         Miren::addInputUniformBuffer("UBO_VERT", &lightViewProj, sizeof(lightViewProj));
         Miren::setState(
@@ -348,6 +349,11 @@ int main(int argc, const char **argv) {
             createQuad(layout, {-1.f, -1.f, 0.5f}, {1.f, -1.f, 0.5f}, {1.f, 1.f, 0.5f}, {-1.f, 1.f, 0.5f});
         const glm::mat4 identity(1.f);
         auto encodeVolume = [&](const glm::vec4 &coord) {
+            const Miren::ViewId MAIN_VIEW = Miren::addView({
+                .frameBuffer = mainFrameBuffer,
+                .viewport = Miren::Rect(0, 0, TARGET_SIZE, TARGET_SIZE),
+                .clearColor = 0xff00ffff,
+            });
             Miren::addInputUniformBuffer("UBO_VERT", &identity, sizeof(identity));
             Miren::addInputUniformBuffer("UBO_FRAG", &coord, sizeof(coord));
             Miren::addInputTexture("volume", volume);

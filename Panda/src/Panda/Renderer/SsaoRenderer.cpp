@@ -1,7 +1,6 @@
 #include "Panda/Renderer/SsaoRenderer.hpp"
 
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
 #include <Foundation/Profile.hpp>
@@ -24,37 +23,8 @@ namespace {
 } // namespace
 
 SsaoRenderer::~SsaoRenderer() {
-    releaseTargets();
     if (m_program.isValid()) { Miren::deleteProgram(m_program); }
     if (m_blurProgram.isValid()) { Miren::deleteProgram(m_blurProgram); }
-}
-
-void SsaoRenderer::releaseTargets() {
-    for (Target *target : {&m_raw, &m_result}) {
-        if (!target->color.isValid()) { continue; }
-        Miren::deleteFrameBuffer(target->frameBuffer);
-        Miren::deleteTexture(target->color);
-        *target = Target{};
-    }
-}
-
-void SsaoRenderer::ensureTargets(uint32_t width, uint32_t height) {
-    if (m_raw.color.isValid() && m_width == width && m_height == height) { return; }
-    releaseTargets();
-    for (Target *target : {&m_raw, &m_result}) {
-        Miren::TextureCreate create;
-        create.m_width = width;
-        create.m_height = height;
-        create.m_format = Miren::TextureFormat::RGBA16F; // the depth of a point next to its occlusion
-        create.m_minFiltering = Miren::LINEAR;
-        create.m_magFiltering = Miren::LINEAR;
-        create.m_wrap = Miren::CLAMP;
-        target->color = Miren::createTexture(create);
-        Miren::FrameBufferAttachment attachments[] = {target->color};
-        target->frameBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
-    }
-    m_width = width;
-    m_height = height;
 }
 
 SsaoData SsaoRenderer::apply(
@@ -80,7 +50,6 @@ SsaoData SsaoRenderer::apply(
     const uint32_t scale = settings.fullResolution ? 1 : 2;
     const uint32_t targetWidth = std::max(1u, width / scale);
     const uint32_t targetHeight = std::max(1u, height / scale);
-    ensureTargets(targetWidth, targetHeight);
 
     // The clip planes from the projection, in doubles: the shader turns a depth into a distance
     // with their reciprocals.
@@ -107,25 +76,20 @@ SsaoData SsaoRenderer::apply(
         static_cast<float>(std::clamp(settings.steps, 1, SsaoSettings::MAX_STEPS)), static_cast<float>(scale), 0.f
     );
 
-    const Miren::Rect viewport(0, 0, targetWidth, targetHeight);
-    Miren::setViewport(Views::SSAO_VIEW, viewport);
-    Miren::setViewClear(Views::SSAO_VIEW, 0xffffffff);
-    Miren::setViewFrameBuffer(Views::SSAO_VIEW, m_raw.frameBuffer);
+    const Miren::ViewId integralView = m_raw.addView(targetWidth, targetHeight, 0xffffffff);
     Miren::setState(0);
     Miren::addInputUniformBuffer("SSAO_PASS", &block, sizeof(block));
     Miren::addInputTexture("depthTexture", depth);
-    quad.submit(Views::SSAO_VIEW, m_program);
+    quad.submit(integralView, m_program);
 
-    Miren::setViewport(Views::SSAO_BLUR_VIEW, viewport);
-    Miren::setViewClear(Views::SSAO_BLUR_VIEW, 0xffffffff);
-    Miren::setViewFrameBuffer(Views::SSAO_BLUR_VIEW, m_result.frameBuffer);
+    const Miren::ViewId blurView = m_result.addView(targetWidth, targetHeight, 0xffffffff);
     Miren::setState(0);
     Miren::addInputUniformBuffer("SSAO_PASS", &block, sizeof(block));
-    Miren::addInputTexture("inputTexture", m_raw.color);
-    quad.submit(Views::SSAO_BLUR_VIEW, m_blurProgram);
+    Miren::addInputTexture("inputTexture", m_raw.color());
+    quad.submit(blurView, m_blurProgram);
 
     SsaoData data;
-    data.map = m_result.color;
+    data.map = m_result.color();
     data.viewProj = viewProj;
     data.intensity = settings.intensity;
     return data;

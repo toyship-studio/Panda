@@ -12,7 +12,7 @@ bool SceneViewport::RectSelection::isEqualTo(IRect _rect) {
     return rect.size.width == _rect.size.width && rect.size.height == _rect.size.height;
 }
 
-SceneViewport::SceneViewport(CameraController *cameraController, SceneRenderTargets *targets)
+SceneViewport::SceneViewport(CameraController *cameraController, EditorPassTargets *targets)
     : m_targets(targets)
     , m_gizmos(nullptr)
     , m_camera(nullptr)

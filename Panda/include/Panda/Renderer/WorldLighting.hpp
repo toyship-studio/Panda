@@ -150,7 +150,7 @@ struct WorldLightingData final {
     LampShadowData lampShadows; // the shadows of the lamps of this frame
     OcclusionVolumeData occlusion;  // occlusion volume (assembled by World from flora scattering)
     EnvironmentData environment;    // environment map of the world (the world's lighting settings)
-    SsaoData ssao;                  // the ambient occlusion the last frame left (World::setScreenOcclusion)
+    SsaoData ssao;                  // the ambient occlusion the last frame of the view left (WorldView::develop)
 };
 
 } // namespace Panda

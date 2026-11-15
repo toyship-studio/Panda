@@ -55,6 +55,10 @@ public:
     void setSceneTexture(PandaUI::TextureHandle texture, bool flip) {
         m_scene->setSceneTexture(texture, flip);
     }
+    // false — the Game has the focus and renders: the Scene keeps its last frame under a veil.
+    void setSceneLive(bool live) {
+        m_scene->setLive(live);
+    }
     // On-screen frame (points) of the scene surface — engine sizes its FBO/camera from it.
     PandaUI::Rect sceneWorldFrame() const {
         return m_scene->getWorldFrame();

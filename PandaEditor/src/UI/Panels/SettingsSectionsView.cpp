@@ -77,14 +77,24 @@ void SettingsSectionsView::revealSection(const std::string &title) {
     const auto it = m_byTitle.find(title);
     if (it == m_byTitle.end()) { return; }
     it->second->setExpanded(true);
-    // The sections above it make up the offset; the frames are ready after the next layout.
+    // The sections above it make up the offset, and their frames are known after a layout: update
+    // scrolls.
+    m_pendingReveal = title;
+    setNeedsLayout();
+}
+
+void SettingsSectionsView::update(double deltaTime) {
+    EditorView::update(deltaTime);
+    if (m_pendingReveal.empty() || m_sections->getFrame().size.height <= 0.f) { return; }
+    const auto it = m_byTitle.find(m_pendingReveal);
+    m_pendingReveal.clear();
+    if (it == m_byTitle.end()) { return; }
     float offset = 0.f;
     for (const auto &child : m_sections->getSubviews()) {
         if (child == it->second) { break; }
         offset += child->getFrame().size.height;
     }
     m_body->setContentOffset(Point(0.f, offset));
-    setNeedsLayout();
 }
 
 void SettingsSectionsView::setupLayout() {

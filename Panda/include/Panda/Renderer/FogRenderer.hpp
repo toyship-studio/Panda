@@ -2,6 +2,7 @@
 
 #include "Panda/Base/Base.hpp"
 #include "Panda/Renderer/FullscreenQuad.hpp"
+#include "Panda/Renderer/PassTarget.hpp"
 
 #include <Miren/Miren.hpp>
 #include <Rain/Rain.hpp>
@@ -46,7 +47,8 @@ struct FogSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-// What the fog pass needs of a frame besides its color and depth (World::getFrameFog).
+// What the fog pass needs of a frame besides its color and depth
+// (PostprocessingFrameInputs::setView).
 struct FogFrame final {
     FogSettings settings;
     glm::mat4 viewProj = glm::mat4(1.f);
@@ -78,13 +80,8 @@ public:
     );
 
 private:
-    void ensureTarget(uint32_t width, uint32_t height);
-
     Miren::ProgramHandle m_program;
-    Miren::TextureHandle m_color;
-    Miren::FrameBufferHandle m_frameBuffer;
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
+    PassTarget m_target;
 };
 
 } // namespace Panda

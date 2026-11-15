@@ -197,39 +197,9 @@ uint32_t getFrameNumber() {
     return s_context->getFrameNumber();
 }
 
-void setViewClear(ViewId id, uint32_t color) {
+ViewId addView(const ViewDescription &description) {
     PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewClear(id, color);
-}
-
-void setViewClearEnabled(ViewId id, bool enabled) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewClearEnabled(id, enabled);
-}
-
-void setViewClearAttachments(ViewId id, std::vector<Clear> clear) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewClearAttachments(id, clear);
-}
-
-void setViewClearDepth(ViewId id, bool enabled, float depth) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewClearDepth(id, enabled, depth);
-}
-
-void setViewport(ViewId id, Rect rect) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewport(id, rect);
-}
-
-void setViewGraphicsContext(ViewId id, Fern::GraphicsContext *ctx) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewGraphicsContext(id, ctx);
-}
-
-void setViewFrameBuffer(ViewId id, FrameBufferHandle frameBuffer) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->setViewFrameBuffer(id, frameBuffer);
+    return s_context->addView(description);
 }
 
 void setState(uint32_t state) {
@@ -295,12 +265,6 @@ void discard() {
 void submit(ViewId id, ProgramHandle program) {
     PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
     s_context->submit(id, program);
-}
-
-void touch(ViewId id) {
-    PND_ASSERT(s_context != nullptr, "MIREN NOT INITIALIZED");
-    s_context->discard();
-    s_context->submit(id, ProgramHandle());
 }
 
 } // namespace Miren

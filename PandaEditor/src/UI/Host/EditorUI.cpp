@@ -8,7 +8,6 @@
 #include <Foundation/Logger.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <PandaUI/Core/View.hpp>
 
 #include <filesystem>
@@ -25,9 +24,21 @@ namespace {
     }
 } // namespace
 
-void EditorUI::initialize(Fern::Window *window, Miren::ViewId viewId) {
+namespace {
+    // The whole window in pixels, as a view of the frame being built.
+    Miren::ViewDescription windowView(Fern::Window *window, Fern::GraphicsContext *graphics) {
+        const Fern::Size size = window->getSize();
+        const Fern::Size dpi = window->getDpi();
+        return {
+            .graphicsContext = graphics,
+            .viewport = Miren::Rect(0, 0, static_cast<int>(size.width * dpi.width), static_cast<int>(size.height * dpi.height)),
+        };
+    }
+} // namespace
+
+void EditorUI::initialize(Fern::Window *window) {
     if (m_initialized) { return; }
-    m_viewId = viewId;
+    m_window = window;
     m_renderer.init();
     m_platform.init(window, m_context); // synchronizes the Context viewport size from the window
     m_initialized = true;
@@ -38,7 +49,6 @@ void EditorUI::shutdown() {
     closeAuxiliaryWindow();
     for (const RetiredWindow &retired : m_retiredWindows) { Fern::disposeWindow(retired.window); }
     m_retiredWindows.clear();
-    Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, nullptr);
     m_platform.shutdown();
     m_renderer.shutdown();
     m_initialized = false;
@@ -54,7 +64,7 @@ void EditorUI::update(double deltaTime) {
     // while the cached draw-list is submitted always (otherwise on "clean" frames the scene would show
     // through the UI).
     m_context.update(deltaTime);
-    m_renderer.render(m_context.getDrawList(), m_viewId);
+    m_renderer.render(m_context.getDrawList(), Miren::addView(windowView(m_window, nullptr)));
     updateAuxiliary(deltaTime);
 }
 
@@ -90,8 +100,8 @@ PandaUI::Context *EditorUI::auxiliaryContext() {
     return m_auxiliary ? &m_auxiliary->context : nullptr;
 }
 
-void EditorUI::renderAuxiliaryTo(Miren::ViewId viewId) {
-    if (m_auxiliary) { m_renderer.render(m_auxiliary->context.getDrawList(), viewId); }
+void EditorUI::renderAuxiliaryTo(const Miren::ViewDescription &target) {
+    if (m_auxiliary) { m_renderer.render(m_auxiliary->context.getDrawList(), Miren::addView(target)); }
 }
 
 void EditorUI::updateAuxiliary(double deltaTime) {
@@ -99,17 +109,10 @@ void EditorUI::updateAuxiliary(double deltaTime) {
         Fern::Window *window = m_auxiliary->window;
         Fern::GraphicsContext *graphics = window->getDrawingContext();
         if (graphics != nullptr) { graphics->update(); } // the drawable follows the size of the window
-        const Fern::Size size = window->getSize();
-        const Fern::Size dpi = window->getDpi();
-        Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, graphics);
-        Miren::setViewport(
-            Views::AUXILIARY_WINDOW_VIEW,
-            Miren::Rect(0, 0, static_cast<int>(size.width * dpi.width), static_cast<int>(size.height * dpi.height))
-        );
-        Miren::setViewClear(Views::AUXILIARY_WINDOW_VIEW, 0x000000ff);
         m_auxiliary->platform.syncViewport();
         m_auxiliary->context.update(deltaTime);
-        m_renderer.render(m_auxiliary->context.getDrawList(), Views::AUXILIARY_WINDOW_VIEW);
+        // A window of its own: where its pass stands among the others means nothing.
+        m_renderer.render(m_auxiliary->context.getDrawList(), Miren::addView(windowView(window, graphics)));
     }
     const uint32_t frame = Miren::getFrameNumber();
     for (auto it = m_retiredWindows.begin(); it != m_retiredWindows.end();) {
@@ -117,14 +120,13 @@ void EditorUI::updateAuxiliary(double deltaTime) {
             ++it;
             continue;
         }
-        if (!m_auxiliary) { Miren::setViewGraphicsContext(Views::AUXILIARY_WINDOW_VIEW, nullptr); }
         Fern::disposeWindow(it->window);
         it = m_retiredWindows.erase(it);
     }
 }
 
-void EditorUI::renderTo(Miren::ViewId viewId) {
-    if (m_initialized) { m_renderer.render(m_context.getDrawList(), viewId); }
+void EditorUI::renderTo(const Miren::ViewDescription &target) {
+    if (m_initialized) { m_renderer.render(m_context.getDrawList(), Miren::addView(target)); }
 }
 
 bool EditorUI::handleEvent(Fern::Event *event) {

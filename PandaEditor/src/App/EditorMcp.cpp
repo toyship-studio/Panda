@@ -12,7 +12,6 @@
 #include <Miren/Miren.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Base/Version.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Renderer/ShaderFeatures.hpp>
 #include <miniz.h>
 #include <rapidjson/stringbuffer.h>
@@ -403,6 +402,20 @@ void EditorMcp::registerTools() {
         [this](const rapidjson::Value &arguments) { return command(arguments); },
     });
     m_server.addTool({
+        "build",
+        "Builds the C++ of the project the way the CMake panel does and answers when the build has ended: how it "
+        "ended and what cmake said (the compiler errors are there). `target`: `scripts` (the default) — the C++ "
+        "scripts of the project, in the configuration the panel shows; `export` — the game as an Xcode or Visual "
+        "Studio project, from the cooked data. `action`: `build` (the default; configures a build folder that is "
+        "not configured), `configure` (cmake again: after a source file was added), `clean` (deletes the build "
+        "folder). The editor loads scripts that were built — at once, or when the game stops if it plays.",
+        R"({"type":"object","properties":{)"
+        R"("target":{"type":"string","enum":["scripts","export"]},)"
+        R"("action":{"type":"string","enum":["build","configure","clean"]},)"
+        R"("lines":{"type":"number","description":"How many of the last lines of the output to answer with. Default 80."}}})",
+        [this](const rapidjson::Value &arguments) { return build(arguments); },
+    });
+    m_server.addTool({
         "restart",
         "Restarts the editor with the same project: after the editor itself was rebuilt, or when the module set "
         "of project.json has changed. The answer comes first, then the editor exits and starts again; the server "
@@ -502,8 +515,8 @@ Mcp::PendingResult EditorMcp::status() {
     const std::string camera = cameraJson();
     writer.RawValue(camera.data(), camera.size(), rapidjson::kObjectType);
 
-    const Renderer3D::Statistics stats3d = m_editor.shownWorld()->getRenderer3D().getStats();
-    const Renderer2D::Statistics stats2d = m_editor.shownWorld()->getRenderer2D().getStats();
+    const Renderer3D::Statistics stats3d = m_editor.viewports().worldView().renderer3D().getStats();
+    const Renderer2D::Statistics stats2d = m_editor.viewports().worldView().renderer2D().getStats();
     const Miren::GpuStats gpu = Miren::getGpuStats();
     const Editor::SystemStats system = Editor::sampleSystemStats();
     const double megabyte = 1024.0 * 1024.0;
@@ -714,13 +727,14 @@ bool EditorMcp::captureWindow(Screenshot &shot) {
         m_windowCaptureHeight = height;
     }
     // The chrome is drawn once more, into the texture: the window itself is drawn as always.
-    Miren::setViewport(Views::CAPTURE_VIEW, Miren::Rect(0, 0, width, height));
-    Miren::setViewClear(Views::CAPTURE_VIEW, 0x000000ff);
-    Miren::setViewFrameBuffer(Views::CAPTURE_VIEW, m_windowCaptureBuffer);
+    const Miren::ViewDescription capture{
+        .frameBuffer = m_windowCaptureBuffer,
+        .viewport = Miren::Rect(0, 0, static_cast<int>(width), static_cast<int>(height)),
+    };
     if (shot.settings) {
-        m_editor.ui().renderAuxiliaryTo(Views::CAPTURE_VIEW);
+        m_editor.ui().renderAuxiliaryTo(capture);
     } else {
-        m_editor.ui().renderTo(Views::CAPTURE_VIEW);
+        m_editor.ui().renderTo(capture);
     }
 
     shot.width = width;
@@ -1250,6 +1264,41 @@ Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
     steps.push_back(InputStep{});
     steps.push_back(InputStep{});
     return playInput(std::move(steps));
+}
+
+Mcp::PendingResult EditorMcp::build(const rapidjson::Value &arguments) {
+    if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
+    const std::string target = Mcp::stringArgument(arguments, "target", "scripts");
+    const std::string action = Mcp::stringArgument(arguments, "action", "build");
+    if (target != "scripts" && target != "export") {
+        return Mcp::ready(Mcp::ToolResult::error("target is \"scripts\" or \"export\""));
+    }
+    if (action != "build" && action != "configure" && action != "clean") {
+        return Mcp::ready(Mcp::ToolResult::error("action is \"build\", \"configure\" or \"clean\""));
+    }
+    ProjectBuilds &builds = m_editor.builds();
+    if (builds.isRunning()) { return Mcp::ready(Mcp::ToolResult::error("A build is running: wait for it, or stop it (the command build.stop)")); }
+    const size_t limit = static_cast<size_t>(std::clamp(Mcp::numberArgument(arguments, "lines", 80.0), 1.0, 2000.0));
+    builds.start(
+        target == "export" ? BuildTargetKind::Export : BuildTargetKind::Scripts,
+        action == "configure" ? BuildAction::Configure : action == "clean" ? BuildAction::Clean : BuildAction::Build
+    );
+    if (builds.lastResult() == ProjectBuilds::Result::None) {
+        return Mcp::ready(Mcp::ToolResult::error("The build did not start"));
+    }
+    return [this, limit]() -> std::optional<Mcp::ToolResult> {
+        ProjectBuilds &builds = m_editor.builds();
+        if (builds.lastResult() == ProjectBuilds::Result::Running) { return std::nullopt; }
+        const std::vector<std::string> &output = builds.lastOutput();
+        std::string text = builds.lastResult() == ProjectBuilds::Result::Succeeded  ? "Finished."
+                           : builds.lastResult() == ProjectBuilds::Result::Canceled ? "Canceled."
+                                                                                    : "Failed.";
+        const size_t first = output.size() > limit ? output.size() - limit : 0;
+        if (first > 0) { text += " The last " + std::to_string(limit) + " of " + std::to_string(output.size()) + " lines:"; }
+        for (size_t i = first; i < output.size(); ++i) { text += "\n" + output[i]; }
+        if (builds.lastResult() == ProjectBuilds::Result::Succeeded) { return textResult(std::move(text)); }
+        return Mcp::ToolResult::error(std::move(text));
+    };
 }
 
 Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {

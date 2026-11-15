@@ -165,7 +165,7 @@ Turn the feature off, save the project settings and compare the same view of the
 
 - the status strip of the editor shows the GPU time of the frame in milliseconds — the shader
   cost of the feature is the difference;
-- the Profiler panel shows the CPU work by scope: `World::renderShadowCascades` (the shadow
+- the Profiler panel shows the CPU work by scope: `WorldView::renderShadows` (the shadow
   passes), `World: lighting` (collecting the lights, the cascades, the volume window),
   `OcclusionVolume: chunk` (the bakes), `Ssao::apply`.
 

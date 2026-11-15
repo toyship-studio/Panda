@@ -28,8 +28,9 @@ The engine has ONE render pipeline, forward, and no second one is planned.
 
 **The meshes of a frame are read once.** A frame has many passes over the same world — the
 scene, up to four cascades of the sun, up to eight tiles of the lamps, picking — and each used to
-walk the registry and the hierarchy again. `RenderSystem::MeshList` (owned by `World`) is filled
-once, in `World::update` after the simulation: for every runtime mesh, greyboxing primitive and
+walk the registry and the hierarchy again. `RenderSystem::MeshList` (owned by the `WorldView`
+that draws the world) is filled once, in `WorldView::render`, after the simulation of the
+frame: for every runtime mesh, greyboxing primitive and
 primitive of an imported mesh its world transform (the hierarchy is walked here and nowhere
 else), its bounds and its resolved material. Every pass culls against its own frustum and
 submits from the list (`MeshList::submit`). The world systems of the modules (terrain, flora,
@@ -49,28 +50,50 @@ the share that stays, so a reflection on clear glass arrives whole. The glTF imp
 `KHR_materials_transmission` into it (and `KHR_materials_emissive_strength` into
 `emissiveIntensity`).
 
-The order of a frame (Miren executes views by descending id, `MirenViewDistribution`):
+**A world is drawn by a view of it.** `WorldView` (`Panda/Renderer/WorldView.hpp`) owns what a
+picture of a world needs and the world itself does not: the HDR targets of the scene, the
+renderers of the passes, the lighting fitted to the camera, the meshes of the frame, the
+pipeline of the look. `render(world, camera)` is the frame; `develop` / `developInto` is its
+look. The game has one view, the editor one for its viewports and one for each kind of preview;
+every view makes its own passes, so any number of them draw in one frame.
 
-1. Bakes that the scene reads: the light atlas of the environment map, impostors.
-2. The shadow tiles of the lamps, the shadow cascades of the sun.
-3. The scene: color (RGBA16F, linear light, not clamped) and emissive (RGBA16F), depth.
-4. `PostprocessingPipeline`: the fog of the world (`FogRenderer`, `context/lighting.md`, "Fog";
-   a world without fog runs no pass) → auto exposure → bloom (from the emissive target) → the
-   chain of the camera (linear HDR) → the Tonemap → the antialiasing. What the pipeline takes
-   from the world of the frame is set in one place, `PostprocessingFrameInputs::setWorld`. The
-   last two passes are the engine's:
+**The passes of a frame are Miren views, made in the order they run.** `Miren::addView` takes
+the description of a pass (`ViewDescription`: the target, the viewport, what entering it clears)
+and answers with an id that lives for this frame; Miren executes the views in the order they
+were added. Nothing names a view by a constant and nothing reserves a range of ids: a pass is
+made where its draws are, by who owns its target, and whoever draws what another pass reads
+goes first.
+
+The order of a frame of a view:
+
+1. The light is fitted to the camera (`LightingSystem::update`). A map of the environment that
+   has no light atlas yet is baked here, in a pass of its own.
+2. The shadow cascades of the sun, the shadow tiles of the lamps.
+3. The scene: color (RGBA16F, linear light, not clamped) and emissive (RGBA16F), depth. What
+   the editor draws over the world (the grid, the helper icons) goes into the same pass; its
+   own passes (the selection mask, picking) follow.
+4. `PostprocessingPipeline` (`WorldView::develop`): the ambient occlusion of this frame, for
+   the next one → the fog of the world (`FogRenderer`, `context/lighting.md`, "Fog"; a world
+   without fog runs no pass) → auto exposure → bloom (from the emissive target) → the chain of
+   the camera (linear HDR) → the Tonemap → the antialiasing. What the pipeline takes from the
+   view and the world of the frame is set in one place (`WorldView::postprocessingInputs`,
+   `PostprocessingFrameInputs::setView`). The last two passes are the engine's:
    - the Tonemap (`tonemap.frag`) multiplies by the exposure of the camera (`2^exposure`),
      applies its curve (`Panda::Tonemap`: AgX — the default, ACES, Khronos PBR Neutral,
      Reinhard, none; `tonemapParams` of `PANDA_POST`), encodes sRGB and adds a dither of one
      display step (a sky gradient does not band in 8 bits);
-   - the antialiasing (`fxaa.frag`, FXAA 3.11 quality) works on the display picture. In the
-     runtime it is the pass that goes to the screen; where the chain ends in a texture it has
-     the view `ANTIALIASING_VIEW`.
+   - the antialiasing (`fxaa.frag`, FXAA 3.11 quality) works on the display picture.
+   The last pass goes where the caller says: into a texture of the pipeline (the editor
+   composes its viewport from it) or straight into a target of the caller (`developInto`: the
+   screen of a game, the display texture of a preview).
    A camera owns the look (`CameraComponent`: bloom, auto exposure, `tonemap`, `exposure`,
    `antialiasing`); `PostprocessingFrameInputs::setCamera` is the one place that maps a camera to
    the pipeline, the editor and the runtime call it.
-5. The ambient occlusion of this frame, for the next one.
-6. The editor composite, picking, the game UI, the UI.
+5. What goes over the finished frame: the editor composite, the game UI, the UI.
+
+The fullscreen passes of the pipeline (fog, exposure, bloom, the chain, the ambient occlusion)
+draw into `PassTarget`s — an RGBA16F color texture with its framebuffer that follows the size
+asked of it and adds its own view.
 
 ## Miren: uniform model
 
@@ -80,8 +103,9 @@ be expressed. Public API: `Miren/include/Miren/Miren.hpp`.
 
 - `addInputUniformBuffer(name, value, size)` and `addInputTexture(name, handle)` take no
   `ProgramHandle`. `submit(viewId, program)` receives the program as an argument; there is no
-  `setShader`. `touch(viewId)` is an empty draw call: a view without geometry still executes, so
-  its clear runs.
+  `setShader`. A view is a pass of the frame being built (`addView`, above); one that got no
+  draws is still entered when it clears something, so a pass that was declared clears its
+  target.
 - Name → slot resolution happens on the render thread during replay:
   `RendererI::addInput(program, input)` (`Miren/src/Miren/RendererI.hpp`); the backends take the
   program from `draw->m_shader`. Uniform blocks are std140 blobs.
@@ -393,9 +417,9 @@ per application.
   `directionDegrees` (the default 0° is +X). In a world the owner is `World::getWindSettings()`
   (the `wind` section of `.world`, the settings registry; editor: Settings → WIND). An
   application without a world keeps its own settings.
-- A world applies its settings itself: `World::update` calls `SceneWind::apply` when the frame
-  of the world begins, so what a world draws is drawn in its own wind and no layer has to
-  remember it. `EditorLayer::onAttach` also applies the wind of the loaded world right after
+- A world brings its wind into its frame: `WorldView::render` calls `SceneWind::apply` with the
+  settings of the world it draws, so what a world draws is drawn in its own wind and no layer
+  has to remember it. `EditorLayer::onAttach` also applies the wind of the loaded world right after
   `loadInitialData` (before `applyDockLayout` and before the first frame: pinned material tabs
   must show the values of the world). An application without a world applies its own settings
   before it renders.

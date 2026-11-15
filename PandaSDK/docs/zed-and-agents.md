@@ -127,7 +127,11 @@ editor works, but a new project comes with `.zed/tasks.json`, so in Zed the proj
 
 `.clangd` in the project root points at `Scripts/<Project>/cmake-build-debug`, so after the first
 configure the language server sees the SDK headers and the compile flags. The CMake panel of the
-editor uses the same build directories, so the two never rebuild each other's work.
+editor uses the same build directories, so the two never rebuild each other's work — as long as
+both use the same toolchain. The editor's is the Toolchain section of its settings (the defaults:
+what cmake finds); the shell scripts take theirs from the environment the way cmake does
+(`CMAKE_GENERATOR`, `CC`, `CXX`). A build folder made with another generator or compiler is
+deleted and configured again by the editor before it builds.
 
 ## Coding agents
 
@@ -167,6 +171,7 @@ asset — a text file does that already; it has only what a file cannot do:
 | `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI; or `window` — the whole editor window with its panels. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
 | `logs` | the log of the editor and the engine: what the Output panel shows and the engine console. `since` returns only the new lines, `level` filters |
 | `play`, `stop` | Play and Stop |
+| `build` | builds the C++ of the project the way the CMake panel does and answers when the build has ended, with how it ended and what cmake said — the compiler errors are in the answer. `target`: `scripts` (the default) or `export`; `action`: `build` (the default), `configure`, `clean`. Scripts that were built are loaded by the editor: no `reload` is needed after it |
 | `camera` | where the editor camera of the Scene is; `position` moves it, `target` turns it to a point |
 | `save` | Save All: what the user changed in the editor reaches the files |
 | `open_world` | opens a world file in a tab and makes it the active world |
@@ -210,4 +215,7 @@ JSON-RPC message, one JSON answer, no session. A restart of the editor is theref
 the client: its next request reaches the new process.
 
 `PandaEditor --project <path>` starts the editor with a project instead of the one of the last
-session (macOS: `open -n PandaEditor.app --args --project <path>`).
+session (macOS: `open -n PandaEditor.app --args --project <path>`). `--user-data <dir>` makes
+the instance keep its settings, its session and its plugins in that folder instead of the
+user's: an editor an agent starts for itself does not move the panels of the editor the user
+works in.

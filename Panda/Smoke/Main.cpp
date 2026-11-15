@@ -2,11 +2,11 @@
 // the generated HLSL UBO blocks (ShaderInterface) and exit; otherwise — the tests: freshness
 // of the generated includes in Resources, temporal stability of the occlusion volume (the CPU
 // logic of the window) and cascaded sun shadows (CSM) end to end. A World with a plane,
-// a cube above it and a sun at the side is rendered in the usual way (World::update → SCENE_VIEW,
-// without physics and scripts) into an offscreen target; the cube shadow on the plane is checked
-// by pixels along the middle row (the camera looks straight down, screen +x = world +x — the row
-// order on readback differs between backends, the columns are the same). Without shadows the same
-// points are equally bright.
+// a cube above it and a sun at the side is rendered in the usual way (WorldView::render, without
+// physics and scripts); the HDR frame of the view is read back, and the cube shadow on the plane
+// is checked by pixels along the middle row (the camera looks straight down, screen +x = world +x
+// — the row order on readback differs between backends, the columns are the same). Without
+// shadows the same points are equally bright.
 
 #include <Fern/Fern.hpp>
 #include <Foundation/Foundation.hpp>
@@ -18,8 +18,8 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Renderer/OcclusionVolume.hpp>
+#include <Panda/Renderer/WorldView.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/Extensions/Settings.hpp>
 #include <Panda/Serialization/WorldMapper.hpp>
@@ -43,6 +43,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/packing.hpp>
 
 #include <array>
 #include <chrono>
@@ -171,23 +172,6 @@ int main(int argc, const char **argv) {
 #endif
     Panda::StaticResources::initStaticResources();
 
-    // Offscreen scene target: color + emissive (the MRT of lit shaders) + depth, as in the runtime.
-    Miren::TextureCreate colorCreate;
-    colorCreate.m_format = Miren::TextureFormat::RGBA8;
-    colorCreate.m_width = TARGET_SIZE;
-    colorCreate.m_height = TARGET_SIZE;
-    colorCreate.m_wrap = Miren::CLAMP;
-    Miren::TextureHandle sceneColor = Miren::createTexture(colorCreate);
-    Miren::TextureHandle sceneEmissive = Miren::createTexture(colorCreate);
-    colorCreate.m_format = Miren::TextureFormat::DEPTH24STENCIL8;
-    Miren::TextureHandle sceneDepth = Miren::createTexture(colorCreate);
-    Miren::FrameBufferAttachment attachments[] = {sceneColor, sceneEmissive, sceneDepth};
-    Miren::FrameBufferHandle sceneFrameBuffer =
-        Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 3));
-    Miren::setViewFrameBuffer(Panda::Views::SCENE_VIEW, sceneFrameBuffer);
-    Miren::setViewport(Panda::Views::SCENE_VIEW, Miren::Rect(0, 0, TARGET_SIZE, TARGET_SIZE));
-    Miren::setViewClear(Panda::Views::SCENE_VIEW, 0x000000ff);
-
     // World: a 20×20 plane (white lit material), a 2 m cube above it, the sun from +x at 45°.
     auto *world = new Panda::World();
     Panda::Entity cubeEntity;
@@ -227,21 +211,46 @@ int main(int argc, const char **argv) {
     glm::mat4 viewProj = projection * view;
     glm::mat4 skyViewProj = viewProj;
 
+    // The world is not simulated here: a frame of it is drawn through a view of its own, into
+    // the targets of the view — the same HDR frame the game has.
+    auto *worldView = new Panda::WorldView();
+    worldView->resize(TARGET_SIZE, TARGET_SIZE);
+    const auto drawWorld = [&] {
+        Panda::ViewCamera camera;
+        camera.viewProj = viewProj;
+        camera.skyViewProj = skyViewProj;
+        camera.position = cameraPosition;
+        worldView->render(*world, camera);
+    };
+    // The readback of the frame that was just drawn: the scene color as it is (RGBA16F, linear
+    // light). The checks compare the brightness a display without a curve would show — 8 bits,
+    // clamped at 1.0.
+    using RawFrame = std::vector<uint16_t>;
+    const auto readScene = [&](RawFrame &raw) {
+        raw.assign(TARGET_SIZE * TARGET_SIZE * 4, 0);
+        return Miren::readTexture(worldView->postprocessingInputs(*world).color, raw.data());
+    };
+    const auto resolve = [](const RawFrame &raw, std::vector<uint8_t> &out) {
+        for (size_t i = 0; i < raw.size(); i++) {
+            out[i] = static_cast<uint8_t>(glm::clamp(glm::unpackHalf1x16(raw[i]), 0.f, 1.f) * 255.f + 0.5f);
+        }
+    };
+
     std::vector<uint8_t> pixels(TARGET_SIZE * TARGET_SIZE * 4);
+    RawFrame rawPixels;
     auto renderAndRead = [&]() {
         for (int frame = 0; frame < 3; frame++) {
-            world->update(1.0 / 60.0, {.viewProj = viewProj, .skyViewProj = skyViewProj, .cameraPosition = cameraPosition});
+            drawWorld();
             Fern::pollEvents();
             Miren::frame();
         }
-        std::fill(pixels.begin(), pixels.end(), 0);
-        const uint32_t ready =
-            Miren::readFrameBuffer(sceneFrameBuffer, 0, 0, 0, TARGET_SIZE, TARGET_SIZE, pixels.data());
+        const uint32_t ready = readScene(rawPixels);
         while (Miren::getFrameNumber() <= ready) {
-            world->update(1.0 / 60.0, {.viewProj = viewProj, .skyViewProj = skyViewProj, .cameraPosition = cameraPosition});
+            drawWorld();
             Fern::pollEvents();
             Miren::frame();
         }
+        resolve(rawPixels, pixels);
     };
 
     int failures = 0;
@@ -730,6 +739,7 @@ int main(int argc, const char **argv) {
     check("terrain receiver built and on screen", terrainOnScreen, static_cast<float>(warmupRounds), 0.f, 0.f);
     constexpr int MOTION_FRAMES = 12;
     std::vector<std::vector<uint8_t>> motionFrames(MOTION_FRAMES, std::vector<uint8_t>(TARGET_SIZE * TARGET_SIZE * 4));
+    std::vector<RawFrame> motionRaw(MOTION_FRAMES);
     std::vector<glm::mat4> motionViewProj(MOTION_FRAMES);
     uint32_t lastReady = 0;
     // A projection like that of the editor camera: near 0.1, far 20000, a wide aspect. The inverse
@@ -745,17 +755,17 @@ int main(int argc, const char **argv) {
         viewProj = editorLikeProjection * glm::lookAt(movedCamera, glm::vec3(-3.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
         skyViewProj = viewProj;
         motionViewProj[frame] = viewProj;
-        world->update(1.0 / 60.0, {.viewProj = viewProj, .skyViewProj = skyViewProj, .cameraPosition = cameraPosition});
-        lastReady =
-            Miren::readFrameBuffer(sceneFrameBuffer, 0, 0, 0, TARGET_SIZE, TARGET_SIZE, motionFrames[frame].data());
+        drawWorld();
+        lastReady = readScene(motionRaw[frame]);
         Fern::pollEvents();
         Miren::frame();
     }
     while (Miren::getFrameNumber() <= lastReady) {
-        world->update(1.0 / 60.0, {.viewProj = viewProj, .skyViewProj = skyViewProj, .cameraPosition = cameraPosition});
+        drawWorld();
         Fern::pollEvents();
         Miren::frame();
     }
+    for (int frame = 0; frame < MOTION_FRAMES; frame++) { resolve(motionRaw[frame], motionFrames[frame]); }
     edgeMin = 1e9f;
     edgeMax = -1e9f;
     bool edgeInEveryFrame = true;
@@ -785,10 +795,7 @@ int main(int argc, const char **argv) {
         Miren::frame();
     }
     delete world;
-    Miren::deleteFrameBuffer(sceneFrameBuffer);
-    Miren::deleteTexture(sceneColor);
-    Miren::deleteTexture(sceneEmissive);
-    Miren::deleteTexture(sceneDepth);
+    delete worldView;
     Panda::StaticResources::deinitStaticResources();
     assetHandler->cleanup();
     Panda::GameContext::setAssetHandler(nullptr);

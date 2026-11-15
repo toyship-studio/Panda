@@ -210,7 +210,7 @@ struct MaterialPreview final {
     Miren::VertexLayoutHandle (*vertexLayout)() = nullptr;
     Foundation::Memory (*packVertices)(const std::vector<Panda::Vertex> &vertices, uint32_t &outSize) = nullptr;
     // Placeholder inputs of the shader (a splatmap), as inputs of the view the stage is drawn
-    // into (Miren::addViewInputTexture): every frame, before the stage.
+    // into (Miren::addViewInputTexture): every frame the stage is drawn, for that frame.
     void (*bindInputs)(Miren::ViewId view) = nullptr;
 };
 

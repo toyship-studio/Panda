@@ -74,6 +74,7 @@ private:
     Mcp::PendingResult pointer(const rapidjson::Value &arguments);
     Mcp::PendingResult key(const rapidjson::Value &arguments);
     Mcp::PendingResult command(const rapidjson::Value &arguments);
+    Mcp::PendingResult build(const rapidjson::Value &arguments);
     Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.

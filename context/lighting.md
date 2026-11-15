@@ -59,8 +59,9 @@ over the world every frame, a point light six) and the project has the `shadows`
   six — the faces of a cube around it, 96° wide so that the filter of a point on the edge of a
   face stays inside the tile. The lamps come nearest to the camera first; a lamp whose tiles do
   not fit casts no shadow this frame. With no such lamp the atlas is released.
-- The depth passes are the passes of the sun's cascades: `World::renderShadowCascades` walks the
-  tiles after the cascades, views `LAMP_SHADOW_VIEWS_BEGIN` downward, the same depth shaders. The
+- The depth passes are the passes of the sun's cascades: `WorldView::render` walks the tiles
+  after the cascades (`LampShadowMap::addTileView`: a view per tile, the first one clears the
+  atlas), the same depth shaders. The
   pancake of those shaders (casters before the near plane pressed onto it) is for the
   orthographic eye of the sun only — `w == 1` there; through the perspective of a lamp a caster
   behind the lamp must be clipped, and the test keeps it so.
@@ -112,15 +113,18 @@ forest comes from the Occlusion Volume.
   per slice, the radius quantized in steps of 1/64, the projection snapped to a texel. The light
   uses `glm::orthoZO` on all backends plus a pancake `z = max(z, 0)` in the depth vertex shaders.
   The depth atlas is DEPTH32F with compare, cascade tiles along U, a runtime asset plus an FBO;
-  the views are `Views::shadowView(i)` = 36..33 (before the scene). Settings:
+  a cascade is a view of the frame over its tile (`addCascadeView`), made before the scene
+  view. Settings:
   `WorldGraphicsSettings::shadows` (= `CascadedShadowMap::Settings`, stored in `.world`, edited in
   Settings → SHADOWS). The shadow sun is the first enabled directional light with `castShadows`.
-- Traversal: `World::renderShadowCascades` runs after the DEFAULT traversal (GEOMETRY_ONLY and IDS
-  after it must set the camera viewProj again, otherwise picking breaks). `renderWorld` in
+- Traversal: the views of the cascades are made before the scene view (the passes of a frame
+  run in the order their views were made), while the world is walked for them AFTER the scene
+  traversal of the same frame (`WorldView::render`): the scene pass moves what follows the
+  camera, the depth passes traverse the same state. The world is walked in
   `RenderingMode::SHADOW_DEPTH`: culling by the cascade frustum, terrain and flora LOD by the
   camera, terrain uses `collect()` without mutations, sprites, blended geometry and the sky are
-  skipped. The view of cascade 0 gets a `touch` every frame (a view without draws is not executed,
-  which leaves ghost shadows).
+  skipped. The view of cascade 0 clears the depth of the atlas, and Miren enters a view that
+  clears also when nothing was drawn into it — no ghost shadows after the casters are gone.
 - Depth shaders (`StaticResources`, `createShadowDepth`): `shadow_depth[_instanced|_terrain].vert`
   plus `shadow_depth[_masked].frag`. Masked (alphaMode == 1): the renderer takes the alpha
   threshold and multiplier from the material fields by the naming convention of the lit template
@@ -383,9 +387,10 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
   the depth of its own frame exists. The usual answer is a depth prepass: the world drawn twice,
   and a depth variant of every vertex shader (wind, terrain layouts, user shaders) that must
   match the color pass. Here the occlusion is computed from the depth of the frame that has just
-  been drawn and read by the NEXT frame: `PostprocessingPipeline` runs `SsaoRenderer` after the
-  chain (views `SSAO_VIEW`, `SSAO_BLUR_VIEW`), the layer hands the result to the world
-  (`World::setScreenOcclusion`), `LightingSystem` puts it into `WorldLightingData::ssao` and
+  been drawn and read by the NEXT frame of the same view: `PostprocessingPipeline` runs
+  `SsaoRenderer` over the depth of the scene (two passes: the integral and its blur),
+  `WorldView::develop` hands the result to the lighting of the view
+  (`LightingSystem::setScreenOcclusion`), which puts it into `WorldLightingData::ssao` and
   `SceneBlocks` binds `ssaoMap` with `PANDA_SSAO` (`ssaoViewProj` — the view-projection of that
   frame). `sampleScreenOcclusion(worldPos)` projects the point with it and reads the map. A
   point the last frame did not show — a disocclusion, a moving object, a cut — is recognized by
@@ -438,8 +443,7 @@ one pass of the engine over the finished scene, and a world without fog does not
 - **Where.** The first step of `PostprocessingPipeline`, in linear HDR, before the auto
   exposure and the bloom (the exposure measures the frame with the air in it, a lamp glows
   through the fog) and before the chain of the project. The pass reads the scene color and
-  depth and writes an RGBA16F target of its own (`Views::FOG_VIEW`, between the scene and the
-  exposure).
+  depth and writes an RGBA16F target of its own (a view between the scene and the exposure).
 - **How much.** An exponential height fog: the density at the height `h` is
   `density · 2^(−(h − baseHeight) / heightFalloff)`, so the air along the view ray has a closed
   form — `d₀ · e^(−k·h₀) · L · (1 − e^(−k·dy·L)) / (k·dy·L)` for a ray of length `L` that
@@ -504,13 +508,14 @@ the same equirectangular layout, one under another.
   (32×16) — what a matte surface receives.
 - Every tile has a gutter of 4 texels rendered from the directions past its edges (u wraps by
   itself, v repeats the pole row), so bilinear filtering is seamless at the seam and the poles.
-- The bake (`environment_bake.frag`, view `ENVIRONMENT_BAKE_VIEW`) is ONE fullscreen pass over
+- The bake (`environment_bake.frag`, a view of its own made when the light of a frame is asked
+  for, before the passes that read the atlas) is ONE fullscreen pass over
   the atlas: a pixel finds its tile and integrates 128 samples — the GGX distribution of half
   vectors with the view along the direction (the split-sum approximation), or the cosine lobe.
   The map is sampled with filtered importance sampling: the mip of a sample follows its solid
-  angle, so the sun of an HDR map smears over the lobe instead of sparkling. It runs when the
-  world gets another map (another Miren texture: a reimport rebakes), at most one bake per frame
-  for all worlds.
+  angle, so the sun of an HDR map smears over the lobe instead of sparkling. It runs when a
+  view meets a map that has no atlas yet (another Miren texture: a reimport rebakes); the atlas
+  of a map is shared by every view lit by it.
 - `environmentDiffuse(normal)` reads tile 5. `environmentSpecular(reflected, roughness)` blends
   the two tiles around `roughness × 5`; under the first tile it blends from the map itself, whose
   mip follows the angle a pixel covers (the derivatives of uv break at the seam of atan2) and

@@ -1,7 +1,6 @@
 #include "Panda/Renderer/FogRenderer.hpp"
 
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/Renderer/SceneBlocks.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
@@ -25,31 +24,7 @@ namespace {
 } // namespace
 
 FogRenderer::~FogRenderer() {
-    if (m_color.isValid()) {
-        Miren::deleteFrameBuffer(m_frameBuffer);
-        Miren::deleteTexture(m_color);
-    }
     if (m_program.isValid()) { Miren::deleteProgram(m_program); }
-}
-
-void FogRenderer::ensureTarget(uint32_t width, uint32_t height) {
-    if (m_color.isValid() && m_width == width && m_height == height) { return; }
-    if (m_color.isValid()) {
-        Miren::deleteFrameBuffer(m_frameBuffer);
-        Miren::deleteTexture(m_color);
-    }
-    Miren::TextureCreate create;
-    create.m_width = width;
-    create.m_height = height;
-    create.m_format = Miren::TextureFormat::RGBA16F;
-    create.m_minFiltering = Miren::LINEAR;
-    create.m_magFiltering = Miren::LINEAR;
-    create.m_wrap = Miren::CLAMP;
-    m_color = Miren::createTexture(create);
-    Miren::FrameBufferAttachment attachments[] = {m_color};
-    m_frameBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
-    m_width = width;
-    m_height = height;
 }
 
 Miren::TextureHandle FogRenderer::apply(
@@ -67,8 +42,6 @@ Miren::TextureHandle FogRenderer::apply(
             AssetImporterBase::loadShaderProgram("default-shaders/postprocess.vert", "default-shaders/fog.frag")
         );
     }
-    ensureTarget(width, height);
-
     PassUbo block{};
     block.inverseViewProj = glm::inverse(frame.viewProj);
     block.density = glm::vec4(
@@ -82,16 +55,14 @@ Miren::TextureHandle FogRenderer::apply(
         Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft ? 1.f : 0.f
     );
 
-    Miren::setViewport(Views::FOG_VIEW, Miren::Rect(0, 0, width, height));
-    Miren::setViewClear(Views::FOG_VIEW, 0x000000ff);
-    Miren::setViewFrameBuffer(Views::FOG_VIEW, m_frameBuffer);
-    frame.scene->bind(Views::FOG_VIEW); // the camera, the sun and the environment light of the frame
+    const Miren::ViewId view = m_target.addView(width, height);
+    frame.scene->bind(view); // the camera, the sun and the environment light of the frame
     Miren::setState(0);
     Miren::addInputUniformBuffer("FOG_PASS", &block, sizeof(block));
     Miren::addInputTexture("inputTexture", sceneColor);
     Miren::addInputTexture("depthTexture", depth);
-    quad.submit(Views::FOG_VIEW, m_program);
-    return m_color;
+    quad.submit(view, m_program);
+    return m_target.color();
 }
 
 } // namespace Panda

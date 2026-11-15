@@ -4,7 +4,6 @@
 #include <Foundation/GraphicsAPI.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 
 namespace Panda {
 
@@ -34,76 +33,67 @@ namespace {
 } // namespace
 
 // ---------------------------------------------------------------------------------------------
-// SceneRenderTargets
+// EditorPassTargets
 // ---------------------------------------------------------------------------------------------
 
-SceneRenderTargets::~SceneRenderTargets() {
+EditorPassTargets::~EditorPassTargets() {
     if (!m_initialized) { return; }
     deleteFrameBuffers();
-    for (Miren::TextureHandle texture : {m_color, m_emissive, m_depth, m_selection, m_ids, m_idsDepth}) {
-        Miren::deleteTexture(texture);
-    }
+    for (Miren::TextureHandle texture : {m_selection, m_ids, m_idsDepth}) { Miren::deleteTexture(texture); }
 }
 
-void SceneRenderTargets::init(Size size) {
+void EditorPassTargets::init(Size size) {
     m_size = size;
-    // The scene is HDR (linear light, no clamp at 1.0) with the emissive buffer of the bloom; the
-    // id buffer is at the pixel size; the selection mask samples by uv and keeps the point size.
-    m_color = Miren::createTexture(renderTarget(size, Miren::TextureFormat::RGBA16F, true));
-    m_emissive = Miren::createTexture(renderTarget(size, Miren::TextureFormat::RGBA16F, true));
-    m_depth = Miren::createTexture(renderTarget(size, Miren::TextureFormat::DEPTH24STENCIL8, true));
+    // The id buffer is at the pixel size of the frame; the selection mask samples by uv and keeps
+    // the point size.
     m_selection = Miren::createTexture(renderTarget(size, Miren::TextureFormat::RGBA8, false));
     m_ids = Miren::createTexture(renderTarget(size, Miren::TextureFormat::R32UI, true));
     m_idsDepth = Miren::createTexture(renderTarget(size, Miren::TextureFormat::DEPTH24STENCIL8, true));
     createFrameBuffers();
-    Miren::setViewClear(Views::SCENE_VIEW, 0x000000ff); // a world without a sky is black, as in the game
-    Miren::setViewClear(Views::SELECTED_GEOMETRY_VIEW, 0);
-    Miren::setViewClearAttachments(Views::IDS_VIEW, {Miren::Clear(0, 0)});
-    Miren::setViewClear(Views::IDS_VIEW, 0);
-    bindViews();
     m_initialized = true;
 }
 
-void SceneRenderTargets::resize(Size size) {
+void EditorPassTargets::resize(Size size) {
     if (!m_initialized || size.width < 1.f || size.height < 1.f) { return; }
     if (size.width == m_size.width && size.height == m_size.height) { return; }
     m_size = size;
     const Fern::Size dpi = windowDpi();
     const uint32_t width = size.width * dpi.width;
     const uint32_t height = size.height * dpi.height;
-    Miren::resizeTexture(m_color, width, height);
-    Miren::resizeTexture(m_emissive, width, height);
-    Miren::resizeTexture(m_depth, width, height);
     Miren::resizeTexture(m_selection, size.width, size.height);
     Miren::resizeTexture(m_ids, width, height);
     Miren::resizeTexture(m_idsDepth, width, height);
     deleteFrameBuffers();
     createFrameBuffers();
-    bindViews();
 }
 
-void SceneRenderTargets::createFrameBuffers() {
-    Miren::FrameBufferAttachment sceneAttachments[] = {m_color, m_emissive, m_depth};
-    m_sceneFB = Miren::createFrameBuffer(Miren::FrameBufferSpecification(sceneAttachments, 3));
+void EditorPassTargets::createFrameBuffers() {
     Miren::FrameBufferAttachment selectionAttachments[] = {m_selection};
     m_selectionFB = Miren::createFrameBuffer(Miren::FrameBufferSpecification(selectionAttachments, 1));
     Miren::FrameBufferAttachment idsAttachments[] = {m_ids, m_idsDepth};
     m_idsFB = Miren::createFrameBuffer(Miren::FrameBufferSpecification(idsAttachments, 2));
 }
 
-void SceneRenderTargets::deleteFrameBuffers() {
-    Miren::deleteFrameBuffer(m_sceneFB);
+void EditorPassTargets::deleteFrameBuffers() {
     Miren::deleteFrameBuffer(m_selectionFB);
     Miren::deleteFrameBuffer(m_idsFB);
 }
 
-void SceneRenderTargets::bindViews() {
-    Miren::setViewport(Views::SCENE_VIEW, pixelRect(m_size));
-    Miren::setViewFrameBuffer(Views::SCENE_VIEW, m_sceneFB);
-    Miren::setViewport(Views::SELECTED_GEOMETRY_VIEW, Miren::Rect(0, 0, m_size.width, m_size.height));
-    Miren::setViewFrameBuffer(Views::SELECTED_GEOMETRY_VIEW, m_selectionFB);
-    Miren::setViewport(Views::IDS_VIEW, pixelRect(m_size));
-    Miren::setViewFrameBuffer(Views::IDS_VIEW, m_idsFB);
+Miren::ViewId EditorPassTargets::addSelectionView() const {
+    return Miren::addView({
+        .frameBuffer = m_selectionFB,
+        .viewport = Miren::Rect(0, 0, m_size.width, m_size.height),
+        .clearColor = 0x00000000,
+    });
+}
+
+Miren::ViewId EditorPassTargets::addIdsView() const {
+    return Miren::addView({
+        .frameBuffer = m_idsFB,
+        .viewport = pixelRect(m_size),
+        .clearColor = 0x00000000,
+        .clearAttachments = {Miren::Clear(0, 0)}, // an integer target: its own clear value
+    });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -155,17 +145,16 @@ void ViewportComposite::init() {
     create.m_format = Miren::TextureFormat::RGBA8;
     create.m_data = texel;
     m_emptyMask = Miren::createTexture(create);
-    Miren::setViewClear(Views::EDITOR_VIEWPORT_VIEW, 0x000000ff);
     m_initialized = true;
 }
 
-void ViewportComposite::draw(Miren::TextureHandle color, Miren::TextureHandle selectionMask) const {
+void ViewportComposite::draw(Miren::ViewId view, Miren::TextureHandle color, Miren::TextureHandle selectionMask) const {
     Miren::setState(0);
     Miren::addInputTexture("colorTexture", color);
     Miren::addInputTexture("selectedGeometryTexture", selectionMask);
     Miren::setVertexBuffer(m_vertexBuffer);
     Miren::setIndexBuffer(m_indexBuffer, 0, 6);
-    Miren::submit(Views::EDITOR_VIEWPORT_VIEW, m_program);
+    Miren::submit(view, m_program);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -203,9 +192,8 @@ void ViewportSurface::setFrame(Rect frame) {
     m_fb = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
 }
 
-void ViewportSurface::bindView(Miren::ViewId view) const {
-    Miren::setViewport(view, pixelRect(m_frame.size));
-    Miren::setViewFrameBuffer(view, m_fb);
+Miren::ViewId ViewportSurface::addView() const {
+    return Miren::addView({.frameBuffer = m_fb, .viewport = pixelRect(m_frame.size)});
 }
 
 } // namespace Panda

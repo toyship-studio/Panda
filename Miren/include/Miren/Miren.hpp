@@ -75,18 +75,11 @@ uint32_t readTexture(TextureHandle handle, void *data);
 // thread after readback. A custom release callback can retain a shared result.
 uint32_t readTexture(TextureHandle handle, Foundation::Memory destination);
 // MARK: - Encoder setup
-void setViewClear(ViewId id, uint32_t color);
-// false — the view draws on top of the target contents (UI after the tonemap): entering it
-// does not erase color and depth. Clearing is enabled by default.
-void setViewClearEnabled(ViewId id, bool enabled);
-void setViewClearAttachments(ViewId id, std::vector<Clear> clear);
-// Clearing of the view's DEPTH separately from color (shadow atlas: the cascades write into one
-// depth, the first one clears it, the rest draw on top). By default depth is cleared together
-// with color (setViewClearEnabled) to the value 1.0.
-void setViewClearDepth(ViewId id, bool enabled, float depth = 1.f);
-void setViewport(ViewId id, Rect rect);
-void setViewGraphicsContext(ViewId id, Fern::GraphicsContext *ctx);
-void setViewFrameBuffer(ViewId id, FrameBufferHandle frameBuffer);
+// A view of the frame being built: a pass with its target, viewport and clear. Views are made
+// every frame and are executed in the order they were made; the id is good for the draws and the
+// view inputs of this frame only (until frame()). A view is executed when it has draws or erases
+// something: a pass that was declared clears its target also when nothing was drawn into it.
+ViewId addView(const ViewDescription &description);
 void setState(uint32_t state);
 void setScissorRect(Rect rect);
 // Depth bias of the draw call (shadow pass against acne): constant — in units of the
@@ -114,8 +107,6 @@ void discard();
 /// Submit draw call. The program is an argument of the submit (bgfx semantics): the draw state does
 /// not carry a shader, the "inputs of one program while another is active" desync is inexpressible.
 void submit(ViewId id, ProgramHandle program);
-// Empty draw call: a view without geometry is executed (clear), the state is reset.
-void touch(ViewId id);
 // MARK: - Main functions
 /// Process all requests to gpu (from rendering thread)
 bool renderFrame();

@@ -4,6 +4,7 @@
 #include "Project/Modules/ProjectModules.hpp"
 #include "Project/Settings/EditorSettings.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
+#include "Project/System/SystemTools.hpp"
 
 #include <Fern/Fonts/FontCatalog.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
@@ -403,6 +404,141 @@ namespace {
         ));
     }
 
+    // A program of the toolchain as a choice: the default, the commands found on this machine, a
+    // value of the user's own (settings.json, or a file chosen here), and the file dialog. A
+    // found command is kept by its name, a chosen file by its path. The line under the row says
+    // which file the choice is: defaultFile — what the default means.
+    void addProgramRow(
+        CollapsibleSection &section, const char *title, const std::string &defaultFile,
+        const std::vector<std::string> &commands, const std::string &value, std::function<void(std::string)> set
+    ) {
+        struct Choices {
+            std::vector<std::string> titles;
+            std::vector<std::string> values;
+        };
+        auto choices = std::make_shared<Choices>();
+        choices->titles.emplace_back("Default");
+        choices->values.emplace_back();
+        for (const std::string &command : commands) {
+            if (!Panda::SystemTools::findExecutable(command)) { continue; }
+            choices->titles.push_back(command);
+            choices->values.push_back(command);
+        }
+        const auto indexOf = [choices](const std::string &wanted) {
+            const auto it = std::find(choices->values.begin(), choices->values.end(), wanted);
+            return it == choices->values.end() ? -1 : static_cast<int>(it - choices->values.begin());
+        };
+        // A value that is none of the above: a file is shown by its name, the line under says where it is.
+        const auto addOwn = [choices](const std::string &own) {
+            choices->titles.push_back(Panda::path_t(own).filename().string());
+            choices->values.push_back(own);
+            return static_cast<int>(choices->values.size()) - 1;
+        };
+        const auto describe = [defaultFile](const std::string &chosen) {
+            if (chosen.empty()) { return defaultFile; }
+            const std::optional<Panda::path_t> file = Panda::SystemTools::findExecutable(chosen);
+            return file ? file->string() : "\"" + chosen + "\" was not found on this machine";
+        };
+        int selected = indexOf(value);
+        if (selected < 0) { selected = addOwn(value); }
+        static constexpr const char *CHOOSE = "Choose a File…";
+
+        auto combobox = std::make_shared<Combobox>();
+        const auto fill = [choices](Combobox &box, int index) {
+            std::vector<std::string> titles = choices->titles;
+            titles.emplace_back(CHOOSE);
+            box.setItems(std::move(titles));
+            box.setSelectedIndex(index);
+        };
+        fill(*combobox, selected);
+        std::shared_ptr<Label> where = makeFormHint(describe(value));
+        auto current = std::make_shared<int>(selected);
+        combobox->setOnSelectionChanged(
+            [choices, current, fill, indexOf, addOwn, describe, where, set = std::move(set)](Combobox &box) {
+                int index = box.selectedIndex();
+                if (index == static_cast<int>(choices->values.size())) { // the file dialog
+                    const std::optional<Panda::path_t> file = editorHost().openFileDialog();
+                    if (!file) {
+                        box.setSelectedIndex(*current); // cancelled: the choice stays
+                        return;
+                    }
+                    index = indexOf(file->string());
+                    if (index < 0) { index = addOwn(file->string()); }
+                    fill(box, index);
+                }
+                if (index < 0 || index == *current) { return; }
+                *current = index;
+                where->setText(describe(choices->values[index]));
+                set(choices->values[index]);
+            }
+        );
+        section.addContent(std::make_shared<PropertyRow>(title, combobox));
+        section.addContent(where);
+    }
+
+    // The toolchain of this machine: what the CMake panel builds the C++ of a project with.
+    void buildToolchain(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto data = std::make_shared<Panda::EditorToolchainSettings>(store.get<Panda::EditorToolchainSettings>());
+        auto emit = [data] { commitSettings<Panda::EditorToolchainSettings>(SettingsScope::Editor, *data); };
+
+        const std::optional<Panda::path_t> bundled = Panda::SystemTools::findCMakeExecutable();
+        addProgramRow(
+            section, "CMake", bundled ? bundled->string() : "No cmake was found: bundled, the SDK's or in PATH", {"cmake"},
+            data->cmake,
+            [data, emit](std::string value) {
+                data->cmake = std::move(value);
+                emit();
+            }
+        );
+
+        // The generator is a name cmake knows, not a program: the build tool it needs is looked for.
+        std::vector<std::string> generators = {"", "Ninja", "Unix Makefiles"};
+#ifdef PLATFORM_WINDOWS
+        generators = {"", "Ninja", "NMake Makefiles"};
+#endif
+        if (std::find(generators.begin(), generators.end(), data->generator) == generators.end()) {
+            generators.push_back(data->generator); // a name of the user's own, from settings.json
+        }
+        std::vector<std::string> generatorTitles;
+        int selectedGenerator = 0;
+        for (size_t i = 0; i < generators.size(); ++i) {
+            std::string generatorTitle = generators[i].empty() ? "Default" : generators[i];
+            if (generators[i] == "Ninja" && !Panda::SystemTools::findExecutable("ninja")) {
+                generatorTitle += "  (ninja is not installed)";
+            }
+            generatorTitles.push_back(std::move(generatorTitle));
+            if (generators[i] == data->generator) { selectedGenerator = static_cast<int>(i); }
+        }
+        addComboRow(section, "Generator", generatorTitles, selectedGenerator, [data, emit, generators](int index) {
+            if (index < 0 || index >= static_cast<int>(generators.size())) { return; }
+            data->generator = generators[index];
+            emit();
+        });
+
+#ifdef PLATFORM_WINDOWS
+        const std::vector<std::string> cCompilers = {"cl", "clang-cl", "clang", "gcc"};
+        const std::vector<std::string> cxxCompilers = {"cl", "clang-cl", "clang++", "g++"};
+#else
+        const std::vector<std::string> cCompilers = {"clang", "gcc", "cc"};
+        const std::vector<std::string> cxxCompilers = {"clang++", "g++", "c++"};
+#endif
+        const std::string byCmake = "cmake finds the compiler itself";
+        addProgramRow(section, "C Compiler", byCmake, cCompilers, data->cCompiler, [data, emit](std::string value) {
+            data->cCompiler = std::move(value);
+            emit();
+        });
+        addProgramRow(section, "C++ Compiler", byCmake, cxxCompilers, data->cxxCompiler, [data, emit](std::string value) {
+            data->cxxCompiler = std::move(value);
+            emit();
+        });
+        section.addContent(makeFormHint(
+            "What the CMake panel builds the scripts of a project with. After a change of the generator or of a "
+            "compiler the next build starts from a clean build folder. The scripts link the libraries of the SDK: "
+            "the compiler has to be compatible with the one the SDK was built with. The Export project is an Xcode "
+            "or Visual Studio project and takes only the cmake from here."
+        ));
+    }
+
     // The editor updater (context/infrastructure.md, section 5): the one switch of Zed's
     // `auto_update`; the channel belongs to the build.
     void buildUpdates(CollapsibleSection &section, Panda::TypeContext &store) {
@@ -608,6 +744,7 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});
     extensions.settingsSections.push_back({SettingsScope::Editor, "APPEARANCE", buildAppearance});
     extensions.settingsSections.push_back({SettingsScope::Editor, "EXTERNAL TOOLS", buildExternalTools});
+    extensions.settingsSections.push_back({SettingsScope::Editor, "TOOLCHAIN", buildToolchain});
     extensions.settingsSections.push_back({SettingsScope::Editor, "UPDATES", buildUpdates});
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});

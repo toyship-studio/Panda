@@ -49,6 +49,10 @@ struct ViewportSurfaces {
     bool sceneVisible = false;
     PandaUI::Rect game;
     bool gameVisible = false;
+    // The viewport the user works in — the one that renders while both are on screen: the Game
+    // (true) or the Scene. It is the one whose surface had the focus last; Play gives it to the
+    // Game, Stop gives it back to the Scene.
+    bool gameInFocus = false;
 };
 
 // The editor COORDINATOR — the workspace of an open project: it builds the chrome (the panels, the
@@ -103,7 +107,7 @@ public:
     PandaUI::Rect viewportSceneFrame() const {
         return m_viewportView ? m_viewportView->sceneWorldFrame() : PandaUI::Rect();
     }
-    ViewportSurfaces viewportSurfaces() const;
+    ViewportSurfaces viewportSurfaces(); // once a frame: it also follows the focus of the surfaces
     // What the Scene surface collected since the last frame for the editor camera, the gizmo and
     // the tools.
     SceneNavigation takeSceneNavigation() {
@@ -124,11 +128,12 @@ public:
     void setViewportHelperLines(std::vector<Panda::HelperLine> lines) {
         if (m_viewportView) { m_viewportView->setHelperLines(std::move(lines)); }
     }
-    // The Game tab: whether its surface renders this frame (otherwise it shows its last frame and
-    // says so), a caption over the frame (empty — none), the keyboard focus of the game.
-    void setGameViewportLive(bool live) {
-        if (m_gameView) { m_gameView->setLive(live); }
+    // Which viewport renders this frame: the other keeps its last frame and says so (a veil).
+    void setLiveViewport(bool gameLive) {
+        if (m_viewportView) { m_viewportView->setSceneLive(!gameLive); }
+        if (m_gameView) { m_gameView->setLive(gameLive); }
     }
+    // The Game tab: a caption over the frame (empty — none), the keyboard focus of the game.
     void setGameViewportMessage(const std::string &text) {
         if (m_gameView) { m_gameView->setMessage(text); }
     }
@@ -137,7 +142,7 @@ public:
     }
     void focusGameView();  // the keyboard focus to the Game surface (a click on the game)
     void openGameView();   // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
-    void showSceneView();  // the tab of the active world comes forward — Stop
+    void showSceneView();  // the tab of the active world comes forward and the Scene renders — Stop
 
     // ---- What else the application tells the chrome.
     void thumbnailDidBecomeReady(Panda::AssetId assetId); // the cell of the asset in the Content Browser follows
@@ -315,6 +320,7 @@ private:
     std::shared_ptr<ProfilerPanelView> m_profilerView;
     std::shared_ptr<ViewportPanelView> m_viewportView;
     std::shared_ptr<GameViewportView> m_gameView; // the surface of the Game tab (one instance, the tab comes and goes)
+    bool m_gameInFocus = false;                   // the Game is the viewport the user works in (ViewportSurfaces)
     std::shared_ptr<PandaUI::View> m_root;
     std::unique_ptr<DockManager> m_dockManager;
     std::unique_ptr<EditorTabs> m_editorTabs; // editor tabs of the selection (after m_dockManager)

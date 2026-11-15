@@ -154,7 +154,7 @@ namespace {
 
     // An executable by its name: the folders of PATH, then the usual install folders — a GUI
     // application on macOS does not inherit the PATH of the user's shell.
-    std::optional<path_t> findExecutable(const std::string &name) {
+    std::optional<path_t> findInPath(const std::string &name) {
 #ifdef PLATFORM_WINDOWS
         const char separator = ';';
         const std::vector<std::string> names = {name + ".exe", name + ".cmd", name + ".bat", name};
@@ -191,7 +191,7 @@ namespace {
     }
 
     std::optional<path_t> pathCMakePath() {
-        return findExecutable("cmake");
+        return findInPath("cmake");
     }
 
     void emitCommandOutput(const SystemTools::CommandOutputCallback &callback, std::string line) {
@@ -451,7 +451,20 @@ std::optional<path_t> SystemTools::openFolderDialog(const char *initialFolder) {
     return res;
 }
 
+namespace {
+    path_t s_userDataDirectory; // --user-data; empty — the folder of the system
+}
+
+void SystemTools::setUserDataDirectory(path_t directory) {
+    s_userDataDirectory = std::move(directory);
+}
+
+bool SystemTools::isUserDataDirectoryOverridden() {
+    return !s_userDataDirectory.empty();
+}
+
 path_t SystemTools::userDataDirectory() {
+    if (!s_userDataDirectory.empty()) { return s_userDataDirectory; }
 #ifdef PLATFORM_WINDOWS
     const char *base = std::getenv("APPDATA");
     if (base == nullptr || *base == '\0') { return {}; }
@@ -523,13 +536,7 @@ void SystemTools::openInEditor(const std::string &command, const path_t &path) {
         openWithDefaultApplication(path);
         return;
     }
-    std::error_code errorCode;
-    std::optional<path_t> executable;
-    if (std::filesystem::is_regular_file(command, errorCode)) {
-        executable = path_t(command);
-    } else {
-        executable = findExecutable(command);
-    }
+    const std::optional<path_t> executable = findExecutable(command);
     if (executable) {
 #ifdef PLATFORM_WINDOWS
         // A command of an editor is often a .cmd script: the shell starts both it and an .exe,
@@ -596,6 +603,13 @@ SystemTools::SaveChangesChoice SystemTools::showSaveChangesDialog(const char *ti
 }
 
 #endif
+
+std::optional<path_t> SystemTools::findExecutable(const std::string &command) {
+    if (command.empty()) { return std::nullopt; }
+    std::error_code errorCode;
+    if (std::filesystem::is_regular_file(command, errorCode)) { return path_t(command); }
+    return findInPath(command);
+}
 
 std::optional<path_t> SystemTools::findCMakeExecutable() {
     if (std::optional<path_t> path = bundledCMakePath()) { return path; }

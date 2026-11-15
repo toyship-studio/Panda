@@ -5,14 +5,18 @@
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/Loader/ProjectLoader.hpp"
 #include "Project/Modules/ProjectModules.hpp"
+#include "Project/Settings/EditorSettings.hpp"
 #include "Project/System/PandaSdkLocator.hpp"
 #include "Project/System/SystemTools.hpp"
 
+#include <Foundation/PlatformDetection.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <thread>
 #include <utility>
 
@@ -90,6 +94,10 @@ namespace {
         return std::to_string(std::max(1u, std::thread::hardware_concurrency()));
     }
 
+    // The toolchain a build tree of the scripts was made with (Toolchain::scriptsSignature), kept
+    // in the tree; no file — the defaults.
+    constexpr const char *TOOLCHAIN_STAMP = "panda-toolchain.txt";
+
 } // namespace
 
 void ProjectBuilds::State::pushLine(std::string line) {
@@ -100,7 +108,13 @@ void ProjectBuilds::State::pushLine(std::string line) {
 ProjectBuilds::ProjectBuilds(ProjectLoader &project, FileDocuments &documents, std::function<void()> scriptsBuilt)
     : m_project(project)
     , m_documents(documents)
-    , m_scriptsBuilt(std::move(scriptsBuilt)) {}
+    , m_scriptsBuilt(std::move(scriptsBuilt))
+#ifdef PLATFORM_WINDOWS
+    , m_exportTarget(ExportProjectTarget::VisualStudioWindows)
+#else
+    , m_exportTarget(ExportProjectTarget::XcodeMacOS)
+#endif
+{}
 
 ProjectBuilds::~ProjectBuilds() {
     m_state->cancelRequested = true;
@@ -123,6 +137,78 @@ path_t ProjectBuilds::folder(BuildTargetKind kind) {
     return kind == BuildTargetKind::Export ? projectPath / "Export" : projectPath / "Scripts" / projectPath.filename();
 }
 
+path_t ProjectBuilds::buildFolder(BuildTargetKind kind) {
+    return kind == BuildTargetKind::Export ? folder(kind) / "build" / exportBuildDirectoryName(m_exportTarget)
+                                           : folder(kind) / scriptsBuildDirectoryName(m_scriptsConfig);
+}
+
+/* ------------------------------ The steps of a build ------------------------------ */
+
+ProjectBuilds::Step ProjectBuilds::commandStep(path_t executable, std::vector<std::string> args) {
+    return [executable = std::move(executable), args = std::move(args)](State &state) {
+        std::string display = "> " + executable.filename().string();
+        for (const std::string &arg : args) {
+            display += " " + arg;
+        }
+        state.pushLine(std::move(display));
+        const bool ok = SystemTools::runCommand(
+            executable, args, {}, [&state](std::string_view line) { state.pushLine(std::string(line)); },
+            &state.cancelRequested
+        );
+        return ok && !state.cancelRequested;
+    };
+}
+
+ProjectBuilds::Step ProjectBuilds::removeStep(path_t directory, std::string why) {
+    return [directory = std::move(directory), why = std::move(why)](State &state) {
+        if (!why.empty()) { state.pushLine(why); }
+        std::error_code error;
+        if (!std::filesystem::exists(directory, error)) {
+            state.pushLine("Nothing to clean: " + directory.string() + " does not exist.");
+            return true;
+        }
+        state.pushLine("> remove " + directory.string());
+        std::filesystem::remove_all(directory, error);
+        if (error) {
+            state.pushLine("error: the folder could not be removed: " + error.message());
+            return false;
+        }
+        return true;
+    };
+}
+
+ProjectBuilds::Step ProjectBuilds::stampStep(path_t buildDirectory, std::string signature) {
+    return [file = buildDirectory / TOOLCHAIN_STAMP, signature = std::move(signature)](State &) {
+        std::error_code error;
+        if (signature.empty()) {
+            std::filesystem::remove(file, error); // the defaults need no mark
+        } else {
+            std::ofstream(file) << signature;
+        }
+        return true;
+    };
+}
+
+void ProjectBuilds::run(std::vector<Step> steps) {
+    // Background priority: a long process does not take the workers from the decoding of assets.
+    Application::get()->getScheduler().submit<bool>(
+        PandaAsync::JobDesc{"project.build", PandaAsync::Priority::Background},
+        [state = m_state, steps = std::move(steps)](PandaAsync::Context &) -> bool {
+            for (const Step &step : steps) {
+                if (!step(*state) || state->cancelRequested) { return false; }
+            }
+            return true;
+        },
+        [state = m_state](bool &&success) {
+            const bool canceled = state->cancelRequested;
+            state->finished = Finished{success && !canceled, canceled, /*ran*/ true};
+            state->running = false;
+        }
+    );
+}
+
+/* ------------------------------ Starting ------------------------------ */
+
 bool ProjectBuilds::begin(BuildTargetKind kind, BuildAction action) {
     if (!m_project.hasOpenedProject()) { return false; }
     update(); // what the previous build still has to say belongs to it
@@ -132,6 +218,8 @@ bool ProjectBuilds::begin(BuildTargetKind kind, BuildAction action) {
     m_kind = kind;
     m_action = action;
     m_openWhenConfigured.reset();
+    m_lastResult = Result::Running;
+    m_lastOutput.clear();
     if (m_output != nullptr) { m_output->buildStarted(kind); }
     return true;
 }
@@ -148,48 +236,59 @@ void ProjectBuilds::fail(const std::string &reason) {
 }
 
 std::optional<ProjectBuilds::Toolchain> ProjectBuilds::findToolchain() {
-    const std::optional<path_t> cmake = SystemTools::findCMakeExecutable();
+    const EditorToolchainSettings &settings = m_documents.editorSettings().get<EditorToolchainSettings>();
+    const char *where = " (Settings, Editor, Toolchain)";
+    Toolchain toolchain;
+
+    const std::optional<path_t> cmake =
+        settings.cmake.empty() ? SystemTools::findCMakeExecutable() : SystemTools::findExecutable(settings.cmake);
     if (!cmake) {
-        fail("cmake executable not found (bundled, SDK or PATH)");
+        fail(settings.cmake.empty() ? "cmake executable not found (bundled, SDK or PATH)"
+                                    : "cmake \"" + settings.cmake + "\" was not found" + where);
         return std::nullopt;
     }
+    toolchain.cmake = *cmake;
+
     const std::optional<path_t> sdkConfigDirectory = findPandaSdkConfigDirectory();
     if (!sdkConfigDirectory) {
         fail("PandaSDK not found near the editor");
         return std::nullopt;
     }
-    return Toolchain{*cmake, *sdkConfigDirectory};
+    toolchain.sdkConfigDirectory = *sdkConfigDirectory;
+
+    // The scripts: the generator and the compilers. Commands are resolved to files here — cmake
+    // run by a GUI application does not see the PATH of the user's shell.
+    if (!settings.generator.empty()) {
+        toolchain.scriptsArguments.insert(toolchain.scriptsArguments.end(), {"-G", settings.generator});
+        toolchain.scriptsSignature += "generator=" + settings.generator + ";";
+        if (settings.generator.find("Ninja") != std::string::npos) {
+            const std::optional<path_t> ninja = SystemTools::findExecutable("ninja");
+            if (!ninja) {
+                fail(std::string("ninja was not found: install it or choose another generator") + where);
+                return std::nullopt;
+            }
+            toolchain.scriptsArguments.push_back("-DCMAKE_MAKE_PROGRAM=" + ninja->string());
+        }
+    }
+    const std::pair<const std::string *, const char *> compilers[] = {
+        {&settings.cCompiler, "CMAKE_C_COMPILER"},
+        {&settings.cxxCompiler, "CMAKE_CXX_COMPILER"},
+    };
+    for (const auto &[command, variable] : compilers) {
+        if (command->empty()) { continue; }
+        const std::optional<path_t> compiler = SystemTools::findExecutable(*command);
+        if (!compiler) {
+            fail("compiler \"" + *command + "\" was not found" + where);
+            return std::nullopt;
+        }
+        toolchain.scriptsArguments.push_back(std::string("-D") + variable + "=" + compiler->string());
+        toolchain.scriptsSignature += std::string(variable) + "=" + compiler->string() + ";";
+    }
+    return toolchain;
 }
 
-void ProjectBuilds::startScripts(BuildAction action, ScriptsBuildConfig config) {
-    if (!begin(BuildTargetKind::Scripts, action)) { return; }
-    const path_t scriptsDirectory = folder(BuildTargetKind::Scripts);
-    if (!std::filesystem::exists(scriptsDirectory / "CMakeLists.txt")) {
-        fail("scripts project not found at " + scriptsDirectory.string());
-        return;
-    }
-    const std::optional<Toolchain> toolchain = findToolchain();
-    if (!toolchain) { return; }
-
-    const path_t buildDirectory = scriptsDirectory / scriptsBuildDirectoryName(config);
-    std::vector<CommandStep> steps;
-    // Build configures a tree that is not configured yet: a fresh checkout is built with one button.
-    if (action == BuildAction::Configure || !std::filesystem::exists(buildDirectory / "CMakeCache.txt")) {
-        steps.push_back(
-            {toolchain->cmake,
-             {"-S", scriptsDirectory.string(), "-B", buildDirectory.string(),
-              std::string("-DCMAKE_BUILD_TYPE=") + buildTypeName(config),
-              "-DPandaSDK_DIR=" + toolchain->sdkConfigDirectory.string(), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"}}
-        );
-    }
-    if (action == BuildAction::Build) {
-        steps.push_back({toolchain->cmake, {"--build", buildDirectory.string(), "-j", jobsArgument()}});
-    }
-    run(std::move(steps));
-}
-
-void ProjectBuilds::startExport(BuildAction action, ExportProjectTarget target) {
-    startExport(action, target, /*openWhenConfigured*/ false);
+void ProjectBuilds::start(BuildTargetKind kind, BuildAction action) {
+    start(kind, action, /*openWhenConfigured*/ false);
 }
 
 void ProjectBuilds::openExportProject(ExportProjectTarget target) {
@@ -197,74 +296,78 @@ void ProjectBuilds::openExportProject(ExportProjectTarget target) {
         LOG_WARN_EDITOR("A build is running. Open the Export project when it is done.");
         return;
     }
-    startExport(BuildAction::Configure, target, /*openWhenConfigured*/ true);
+    m_exportTarget = target;
+    start(BuildTargetKind::Export, BuildAction::Configure, /*openWhenConfigured*/ true);
 }
 
-void ProjectBuilds::startExport(BuildAction action, ExportProjectTarget target, bool openWhenConfigured) {
-    if (!begin(BuildTargetKind::Export, action)) { return; }
+void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhenConfigured) {
+    if (!begin(kind, action)) { return; }
+    const bool scripts = kind == BuildTargetKind::Scripts;
+    const path_t projectDirectory = folder(kind);
+    const path_t buildDirectory = buildFolder(kind);
+    std::vector<Step> steps;
+
+    if (action == BuildAction::Clean) {
+        steps.push_back(removeStep(buildDirectory, {}));
+        run(std::move(steps));
+        return;
+    }
     // The Export project is built from the cooked data of the game: it is made first.
-    if (!cook()) {
+    if (!scripts && !cook()) {
         endWithError("the runtime data was not cooked (the Output panel says why)");
         return;
     }
-    const path_t exportDirectory = folder(BuildTargetKind::Export);
-    if (!std::filesystem::exists(exportDirectory / "CMakeLists.txt")) {
-        fail("export project not found at " + exportDirectory.string());
+    if (!std::filesystem::exists(projectDirectory / "CMakeLists.txt")) {
+        fail(std::string(scripts ? "scripts" : "export") + " project not found at " + projectDirectory.string());
         return;
     }
     const std::optional<Toolchain> toolchain = findToolchain();
     if (!toolchain) { return; }
 
-    const path_t buildDirectory = exportDirectory / "build" / exportBuildDirectoryName(target);
-    std::vector<CommandStep> steps;
-    if (action == BuildAction::Configure || !std::filesystem::exists(buildDirectory / "CMakeCache.txt")) {
-        steps.push_back(
-            {toolchain->cmake,
-             exportConfigureArguments(target, exportDirectory, buildDirectory, toolchain->sdkConfigDirectory)}
-        );
+    // A tree made with another generator or compiler is not one cmake goes on with: it is made
+    // again. The Export project is an IDE project and takes neither from the toolchain.
+    const bool configured = std::filesystem::exists(buildDirectory / "CMakeCache.txt");
+    const std::string signature = scripts ? toolchain->scriptsSignature : std::string();
+    bool stale = false;
+    if (scripts && configured) {
+        std::ifstream stamp(buildDirectory / TOOLCHAIN_STAMP);
+        const std::string made((std::istreambuf_iterator<char>(stamp)), std::istreambuf_iterator<char>());
+        stale = made != signature;
+    }
+    if (stale) {
+        steps.push_back(removeStep(buildDirectory, "The toolchain changed: the build folder is made again."));
+    }
+    // Build configures a tree that is not configured yet: a fresh checkout is built with one button.
+    if (action == BuildAction::Configure || stale || !configured) {
+        std::vector<std::string> arguments;
+        if (scripts) {
+            arguments = {"-S", projectDirectory.string(), "-B", buildDirectory.string(),
+                         std::string("-DCMAKE_BUILD_TYPE=") + buildTypeName(m_scriptsConfig),
+                         "-DPandaSDK_DIR=" + toolchain->sdkConfigDirectory.string(), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"};
+            arguments.insert(arguments.end(), toolchain->scriptsArguments.begin(), toolchain->scriptsArguments.end());
+        } else {
+            arguments =
+                exportConfigureArguments(m_exportTarget, projectDirectory, buildDirectory, toolchain->sdkConfigDirectory);
+        }
+        steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
+        if (scripts) { steps.push_back(stampStep(buildDirectory, signature)); }
     }
     if (action == BuildAction::Build) {
+        std::vector<std::string> arguments = {"--build", buildDirectory.string()};
         // Xcode and Visual Studio are multi-configuration generators: the configuration is chosen
         // at the build.
-        steps.push_back(
-            {toolchain->cmake, {"--build", buildDirectory.string(), "--config", "Debug", "-j", jobsArgument()}}
-        );
+        if (!scripts) { arguments.insert(arguments.end(), {"--config", "Debug"}); }
+        arguments.insert(arguments.end(), {"-j", jobsArgument()});
+        steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
     }
     if (openWhenConfigured) {
-        m_openWhenConfigured = OpenRequest{buildDirectory, target};
+        m_openWhenConfigured = OpenRequest{buildDirectory, m_exportTarget};
         LOG_INFO_EDITOR(
             "Configuring the Export project (%s): cmake writes to the CMake panel, the project opens when it is done.",
-            exportBuildDirectoryName(target)
+            exportBuildDirectoryName(m_exportTarget)
         );
     }
     run(std::move(steps));
-}
-
-void ProjectBuilds::run(std::vector<CommandStep> steps) {
-    // Background priority: a long process does not take the workers from the decoding of assets.
-    Application::get()->getScheduler().submit<bool>(
-        PandaAsync::JobDesc{"project.build", PandaAsync::Priority::Background},
-        [state = m_state, steps = std::move(steps)](PandaAsync::Context &) -> bool {
-            for (const CommandStep &step : steps) {
-                std::string display = "> " + step.executable.filename().string();
-                for (const std::string &arg : step.args) {
-                    display += " " + arg;
-                }
-                state->pushLine(std::move(display));
-                const bool ok = SystemTools::runCommand(
-                    step.executable, step.args, {},
-                    [&state](std::string_view line) { state->pushLine(std::string(line)); }, &state->cancelRequested
-                );
-                if (!ok || state->cancelRequested) { return false; }
-            }
-            return true;
-        },
-        [state = m_state](bool &&success) {
-            const bool canceled = state->cancelRequested;
-            state->finished = Finished{success && !canceled, canceled, /*cmakeRan*/ true};
-            state->running = false;
-        }
-    );
 }
 
 void ProjectBuilds::update() {
@@ -273,16 +376,21 @@ void ProjectBuilds::update() {
         std::lock_guard<std::mutex> lock(m_state->linesMutex);
         lines = std::exchange(m_state->lines, {});
     }
-    if (!lines.empty() && m_output != nullptr) { m_output->buildOutput(m_kind, lines); }
+    if (!lines.empty()) {
+        if (m_output != nullptr) { m_output->buildOutput(m_kind, lines); }
+        m_lastOutput.insert(m_lastOutput.end(), lines.begin(), lines.end());
+    }
 
     const std::optional<Finished> finished = std::exchange(m_state->finished, std::nullopt);
     if (!finished) { return; }
+    m_lastResult = finished->canceled ? Result::Canceled : finished->success ? Result::Succeeded : Result::Failed;
     if (m_output != nullptr) { m_output->buildFinished(m_kind, finished->success, finished->canceled); }
     const std::optional<OpenRequest> open = std::exchange(m_openWhenConfigured, std::nullopt);
     if (!finished->success) {
-        if (finished->cmakeRan && !finished->canceled) {
+        if (finished->ran && !finished->canceled) {
+            static const char *const ACTIONS[] = {"Configure", "Build", "Clean"};
             LOG_ERROR_EDITOR(
-                "cmake failed for the %s project: see the CMake panel.",
+                "%s of the %s project failed: see the CMake panel.", ACTIONS[static_cast<int>(m_action)],
                 m_kind == BuildTargetKind::Export ? "Export" : "scripts"
             );
         }

@@ -2,7 +2,6 @@
 
 #include "Camera/CameraController.hpp"
 
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Assets/Base/AssetHandler.hpp>
 #include <Panda/Renderer/Std140Buffer.hpp>
 #include <glm/glm.hpp>
@@ -61,7 +60,8 @@ public:
         );
     }
 
-    void update(glm::mat4 &viewProjection) {
+    // The grid into the scene pass of the frame (WorldView::sceneView), over the world.
+    void update(const glm::mat4 &viewProjection, Miren::ViewId sceneView) {
         m_viewProjection = viewProjection;
         glm::vec4 pos = glm::vec4(m_cameraController->getPosition(), 1.0);
         Std140Buffer ubo1;
@@ -77,7 +77,7 @@ public:
         Miren::setVertexBuffer(m_vertexBuffer);
         Miren::setIndexBuffer(m_indexBuffer, 0, 6);
         Miren::setState(MIREN_STATE_DEPTH_TEST | MIREN_STATE_BLEND);
-        Miren::submit(Views::SCENE_VIEW, m_shader);
+        Miren::submit(sceneView, m_shader);
     }
 
 private:

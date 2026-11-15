@@ -26,7 +26,7 @@ namespace Panda {
 // through its orbit. A texture is its own picture: a copy for the display.
 //
 // Everything is drawn from update(), once a frame: one preview of a form (the visible ones take
-// turns) and one thumbnail from the queue — a frame has one pair of views for each.
+// turns) and one thumbnail from the queue — the renderer has one view of a world for each.
 class AssetPreviews final {
 public:
     static constexpr uint32_t THUMBNAIL_SIZE = 128; // px, the side of a thumbnail
@@ -94,16 +94,20 @@ private:
     void releasePreview(Preview &preview); // the resources go to the retire lists, the lease gets an empty texture
     void retireTexture(Miren::TextureHandle texture, PandaUI::TextureHandle ui = {});
     void renderLivePreview();
-    bool renderPendingDisplayCopy(); // true — the display view of the thumbnail slot is busy this frame
+    void renderPendingDisplayCopy(); // one a frame
     void renderNextThumbnail();
     // A thumbnail of a TEXTURE: a copy into a square (letterbox) by a blit pass — the source is
     // already display-referred, there is nothing to light or tonemap. An sRGB source is sampled
     // as linear: the blit encodes it back.
-    void renderTextureThumbnail(AssetId textureId); // the caller sets up the target
+    void renderTextureThumbnail(AssetId textureId, Miren::FrameBufferHandle target);
     // A display copy of a full-resolution sRGB texture for the large preview (PandaUI works in
     // display space and does not encode sRGB itself). One blit per lease.
     Miren::TextureHandle renderDisplayCopy(TextureAsset &texture);
-    void blit(Miren::TextureHandle source, const glm::vec4 &fit, bool encodeSrgb);
+    // A pass of its own over the whole target of width × height pixels.
+    void blit(
+        Miren::TextureHandle source, const glm::vec4 &fit, bool encodeSrgb, Miren::FrameBufferHandle target,
+        uint32_t width, uint32_t height
+    );
     void enqueue(AssetId assetId);
 
     WrapTexture m_wrap;

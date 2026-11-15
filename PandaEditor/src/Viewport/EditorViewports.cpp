@@ -2,12 +2,9 @@
 
 #include "Viewport/EditorWorldPasses.hpp"
 
-#include <Fern/Window/Window.hpp>
-#include <Panda/Application/Application.hpp>
 #include <Panda/Assets/PostprocessingAsset.hpp>
 #include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Input.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 
 namespace Panda {
 
@@ -16,56 +13,58 @@ namespace {
 }
 
 EditorViewports::EditorViewports()
-    : m_targets()
+    : m_passTargets()
     , m_composite()
     , m_sceneSurface()
     , m_gameSurface()
     , m_editorCamera()
     , m_cameraController()
-    , m_scene(&m_cameraController, &m_targets)
+    , m_scene(&m_cameraController, &m_passTargets)
     , m_grid(&m_cameraController)
     , m_helpers() {}
 
 void EditorViewports::init() {
-    m_targets.init(INITIAL_SIZE);
+    m_passTargets.init(INITIAL_SIZE);
     m_composite.init();
     m_sceneSurface.init(INITIAL_SIZE);
     m_gameSurface.init(INITIAL_SIZE);
     m_scene.setCamera(&m_editorCamera);
 }
 
-void EditorViewports::sync(const ViewportFrames &frames, bool playing) {
-    if (playing) {
-        m_live = frames.gameVisible || !frames.sceneVisible ? ViewportKind::Game : ViewportKind::Scene;
-    } else {
-        m_live = frames.sceneVisible || !frames.gameVisible ? ViewportKind::Scene : ViewportKind::Game;
-    }
+void EditorViewports::sync(const ViewportFrames &frames) {
+    // The viewport in focus renders; when its tab is not on screen and the other one is — the other.
+    const bool gameFocused = frames.focused == ViewportKind::Game;
+    const bool focusedVisible = gameFocused ? frames.gameVisible : frames.sceneVisible;
+    const bool otherVisible = gameFocused ? frames.sceneVisible : frames.gameVisible;
+    const ViewportKind other = gameFocused ? ViewportKind::Scene : ViewportKind::Game;
+    m_live = focusedVisible || !otherVisible ? frames.focused : other;
     m_sceneSurface.setFrame(frames.scene);
     m_scene.setFrame(frames.scene);
     m_gameSurface.setFrame(frames.game);
     const ViewportSurface &live = liveSurface();
-    if (live.isReady()) { m_targets.resize(live.frame().size); }
+    if (live.isReady()) {
+        m_view.resize(live.pixelWidth(), live.pixelHeight());
+        m_passTargets.resize(live.frame().size);
+    }
     // Panda::Input is the game's: its viewport is the Game surface, whichever viewport renders.
     if (m_gameSurface.isReady()) { Input::setViewportFrame(m_gameSurface.frame()); }
 }
 
-WorldFrame EditorViewports::beginFrame(
-    World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings,
+void EditorViewports::beginFrame(
+    World &world, double deltaTime, const EditorViewportSettings &settings,
     const CameraController::Navigation &navigation
 ) {
     // The debug wireframe is a display option of the Scene; the Game shows the game.
-    world.getRenderer3D().setForceWireframe(settings.wireframe && isSceneLive());
-    m_frame = WorldFrame{};
-    m_frame.simulate = simulate;
+    m_view.renderer3D().setForceWireframe(settings.wireframe && isSceneLive());
     Camera *mainCamera = isGameLive() ? world.findMainCamera() : nullptr;
     m_gameHasCamera = !isGameLive() || mainCamera != nullptr;
     m_sceneCameraFrame = mainCamera == nullptr;
+    m_mainCameraFrame = mainCamera != nullptr;
     if (mainCamera != nullptr) {
-        // The game camera: its projection is resolved by World::update after the simulation (the
-        // scripts move it in the same frame); its aspect is the Game surface's.
+        // The game camera: its matrices are asked after the simulation (the scripts move it in
+        // the same frame); its aspect is the Game surface's.
         mainCamera->setViewportSize(m_gameSurface.frame().size);
-        m_frame.mainCamera = true;
-        return m_frame;
+        return;
     }
     // The editor camera: the Scene, or the Game of a world without a main camera.
     m_cameraController.update(static_cast<float>(deltaTime), navigation);
@@ -74,48 +73,49 @@ WorldFrame EditorViewports::beginFrame(
     const glm::mat4 projection = m_editorCamera.getProjection();
     m_sceneView = m_cameraController.getViewMatrix();
     m_sceneViewProj = projection * m_sceneView;
-    m_frame.projection = projection;
-    m_frame.viewProj = m_sceneViewProj;
-    m_frame.skyViewProj = projection * m_cameraController.getSkyViewMatrix();
-    m_frame.cameraPosition = m_cameraController.getPosition();
-    return m_frame;
+    m_camera = ViewCamera{};
+    m_camera.projection = projection;
+    m_camera.viewProj = m_sceneViewProj;
+    m_camera.skyViewProj = projection * m_cameraController.getSkyViewMatrix();
+    m_camera.position = m_cameraController.getPosition();
 }
 
-void EditorViewports::finishFrame(World &world, const EditorViewportSettings &settings, float time) {
-    // The game UI draws into the Game surface whatever is live: in a Scene-live frame it lands on
-    // the last game frame, which the panel marks as not rendering.
-    m_gameSurface.bindView(Views::GAME_UI_VIEW);
+void EditorViewports::render(World &world, const EditorViewportSettings &settings, float time) {
+    // A world whose main camera went away during the simulation keeps the camera of its last frame.
+    if (m_mainCameraFrame) { ViewCamera::main(world, m_camera); }
+    // The passes of the frame in the order they are executed: the world (its shadows, then the
+    // scene), the editor passes of the Scene, the look of the frame, the composite into the output.
+    m_view.render(world, m_camera);
     const ViewportSurface &surface = liveSurface();
     if (!surface.isReady()) { return; }
     if (isSceneLive()) { renderScenePasses(world, settings); }
-    const Miren::TextureHandle color = runPostprocessing(world, settings, time);
-    surface.bindView(Views::EDITOR_VIEWPORT_VIEW);
-    m_composite.draw(color, isSceneLive() ? m_targets.selectionMask() : m_composite.emptyMask());
+    const Miren::TextureHandle color = develop(world, settings, time);
+    m_composite.draw(
+        surface.addView(), color, isSceneLive() ? m_passTargets.selectionMask() : m_composite.emptyMask()
+    );
 }
 
 void EditorViewports::renderScenePasses(World &world, const EditorViewportSettings &settings) {
-    EditorWorldPasses::renderSelectionOverlay(world, m_sceneViewProj);
-    EditorWorldPasses::renderPicking(world, m_frame);
-    if (settings.showGrid) { m_grid.update(m_sceneViewProj); }
-    if (settings.showHelperIcons) { m_helpers.render(&world, m_sceneViewProj, m_editorCamera.getViewportSize()); }
+    EditorWorldPasses::renderSelectionOverlay(m_view, world, m_passTargets.addSelectionView());
+    const Miren::ViewId idsView = m_passTargets.addIdsView();
+    EditorWorldPasses::renderPicking(m_view, world, idsView);
+    // What the editor draws into the scene over the world goes into the scene pass itself.
+    if (settings.showGrid) { m_grid.update(m_sceneViewProj, m_view.sceneView()); }
+    if (settings.showHelperIcons) {
+        m_helpers.render(&world, m_sceneViewProj, m_editorCamera.getViewportSize(), m_view.sceneView(), idsView);
+    }
 }
 
-Miren::TextureHandle EditorViewports::runPostprocessing(
-    World &world, const EditorViewportSettings &settings, float time
-) {
+Miren::TextureHandle EditorViewports::develop(World &world, const EditorViewportSettings &settings, float time) {
     // HDR: the scene is linear 16F, the pipeline ALWAYS runs (at minimum an implicit Tonemap). The
     // display option of the Scene and camera.postprocessingEnabled control only the user chain;
     // the Game always shows the look of the game.
     const bool showChain = isGameLive() || settings.showPostprocessing;
-    Entity cameraEntity = world.findMainCameraEntity();
     AssetRef<PostprocessingAsset> chain;
-    PostprocessingFrameInputs inputs;
-    inputs.color = m_targets.color();
-    inputs.emissive = m_targets.emissive();
-    inputs.depth = m_targets.depth();
+    PostprocessingFrameInputs inputs = m_view.postprocessingInputs(world);
     inputs.cameraNear = m_editorCamera.getNear();
     inputs.cameraFar = m_editorCamera.getFar();
-    inputs.setWorld(world);
+    Entity cameraEntity = world.findMainCameraEntity();
     if (cameraEntity.isValid()) {
         CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
         if (showChain && camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }
@@ -127,14 +127,7 @@ Miren::TextureHandle EditorViewports::runPostprocessing(
             inputs.cameraFar = m_editorCamera.getFar();
         }
     }
-    if (!m_postprocessing) { m_postprocessing = std::make_unique<PostprocessingPipeline>(); }
-    const Fern::Size dpi = Application::get()->getMainWindow()->getDpi();
-    const Rect &frame = liveSurface().frame();
-    const Miren::TextureHandle output = m_postprocessing->apply(
-        chain, inputs, (uint32_t)(frame.size.width * dpi.width), (uint32_t)(frame.size.height * dpi.height), time
-    );
-    world.setScreenOcclusion(m_postprocessing->screenOcclusion()); // its next frame shades with it
-    return output.id != inputs.color.id ? output : inputs.color; // a zero-size frame: the raw scene
+    return m_view.develop(chain, inputs, time);
 }
 
 } // namespace Panda

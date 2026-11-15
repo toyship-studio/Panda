@@ -2,7 +2,6 @@
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <PandaEditorKit/Selection.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 
 namespace Panda {
 
@@ -72,6 +71,7 @@ Miren::TextureHandle EditorHelpersRenderer::getIconTextureHandle(IconType type) 
 void EditorHelpersRenderer::submitIcon(
     const IconInstance &icon, const glm::mat4 &viewProj, Size viewportSize, bool idsPass
 ) {
+    const Miren::ViewId view = idsPass ? m_idsView : m_sceneView;
     Miren::ProgramHandle program = idsPass ? m_idsProgram : m_sceneProgram;
 
     Std140Buffer vertUbo;
@@ -92,11 +92,15 @@ void EditorHelpersRenderer::submitIcon(
     Miren::setVertexBuffer(m_vertexBuffer);
     Miren::setIndexBuffer(m_indexBuffer, 0, 6);
     Miren::setState(idsPass ? 0u : MIREN_STATE_BLEND);
-    Miren::submit(idsPass ? Views::IDS_VIEW : Views::SCENE_VIEW, program);
+    Miren::submit(view, program);
 }
 
-void EditorHelpersRenderer::render(World *world, const glm::mat4 &viewProj, Size viewportSize) {
+void EditorHelpersRenderer::render(
+    World *world, const glm::mat4 &viewProj, Size viewportSize, Miren::ViewId sceneView, Miren::ViewId idsView
+) {
     if (!world) { return; }
+    m_sceneView = sceneView;
+    m_idsView = idsView;
 
     const std::unordered_set<UUID> &selectedIds = Editor::selection().entityIds();
 

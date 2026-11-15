@@ -25,8 +25,10 @@ public:
     void setStore(Panda::TypeContext *store);
     void rebuild();
     // Expands the section with this title and scrolls the list to it (the "Settings" link of a
-    // material field).
+    // material field, the Toolchain button of the CMake panel). A view that was just made is
+    // scrolled once it has been laid out.
     void revealSection(const std::string &title);
+    void update(double deltaTime) override;
     // Only the sections with these titles (empty — all): the Display popover shows the viewport
     // section alone.
     void setTitleFilter(std::function<bool(const std::string &)> filter);
@@ -43,6 +45,7 @@ private:
     std::shared_ptr<PandaUI::Panel> m_sections;
     std::unordered_map<std::string, std::shared_ptr<PandaUI::CollapsibleSection>> m_byTitle;
     std::unordered_map<std::string, bool> m_expanded; // the expanded state survives a rebuild
+    std::string m_pendingReveal; // the section to scroll to when the frames are known
 };
 
 } // namespace Editor

@@ -58,17 +58,21 @@ Renderer3D::Renderer3D(Panda::Renderer3D &&other)
 void Renderer3D::begin(RenderingMode mode, Miren::ViewId id) {
     m_mode = mode;
     m_viewId = id;
-    // A caster with its own depth variant reads the scene blocks (the light direction, the wind);
-    // the shadow atlas is the render target of the pass, so the blocks go without the textures.
-    if (mode == RenderingMode::SHADOW_DEPTH) { m_scene.bindBlocks(id); }
+    // The scene blocks of the frame go to the view of the pass, every draw of the view reads them
+    // (the sprites too). The scene: the blocks and the system textures. A shadow depth pass: a
+    // caster with its own depth variant reads the blocks (the light direction, the wind), while
+    // the shadow atlas is the render target of the pass — the blocks go without the textures.
+    // Picking and the selection mask read none of it.
+    if (mode == RenderingMode::DEFAULT) {
+        m_scene.bind(id);
+    } else if (mode == RenderingMode::SHADOW_DEPTH) {
+        m_scene.bindBlocks(id);
+    }
 }
 
 void Renderer3D::setLighting(const WorldLightingData &lighting) {
     m_sceneLighting = lighting;
-    // The lighting is one per frame: the blocks are assembled here and given to the view of the
-    // pass, every draw of the view reads them.
-    m_scene.assemble(lighting);
-    m_scene.bind(m_viewId);
+    m_scene.assemble(lighting); // the lighting is one per frame: its passes begin after this
 }
 
 // Shadow depth pass: the program by the vertex layout and the material; for the masked variant —

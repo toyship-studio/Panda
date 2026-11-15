@@ -174,8 +174,16 @@ void EditorController::registerDocumentTypes() {
     editorExtensions().documentTypes.add(std::move(game));
 }
 
-ViewportSurfaces EditorController::viewportSurfaces() const {
+ViewportSurfaces EditorController::viewportSurfaces() {
+    // The focus of a surface makes its viewport the one the user works in; it stays so while the
+    // focus is elsewhere in the editor (a field of a form, the Hierarchy).
+    if (m_gameView && m_gameView->isFocused()) {
+        m_gameInFocus = true;
+    } else if (m_viewportView && m_viewportView->sceneHasFocus()) {
+        m_gameInFocus = false;
+    }
     ViewportSurfaces surfaces;
+    surfaces.gameInFocus = m_gameInFocus;
     if (m_viewportView) {
         surfaces.scene = m_viewportView->sceneWorldFrame();
         surfaces.sceneVisible = isViewOnScreen(m_viewportView.get()) && surfaces.scene.size.width >= 1.f &&
@@ -193,6 +201,7 @@ void EditorController::openGameView() {
     if (!m_editorTabs || !m_dockManager) { return; }
     m_editorTabs->openDocumentType(GAME_DOCUMENT, Dock::Center); // an open tab is activated in its dock
     m_dockManager->showPanel(GAME_TAB_ID);                       // the focus: the keys go to the game
+    m_gameInFocus = true;
 }
 
 bool EditorController::showPanel(const std::string &id) {
@@ -208,6 +217,7 @@ bool EditorController::showPanel(const std::string &id) {
 
 void EditorController::showSceneView() {
     if (m_worldTabs) { m_worldTabs->showActive(); }
+    m_gameInFocus = false;
 }
 
 void EditorController::focusGameView() {
@@ -684,7 +694,7 @@ void EditorController::toolbarDidTapPlay() {
                 "Play works from then on.",
                 "Build Scripts", /*destructive*/ false,
                 [this] {
-                    m_app.builds().startScripts(Panda::BuildAction::Build, Panda::ScriptsBuildConfig::Debug);
+                    m_app.builds().start(Panda::BuildTargetKind::Scripts, Panda::BuildAction::Build);
                 }
             );
         }

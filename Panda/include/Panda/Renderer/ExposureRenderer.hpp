@@ -3,6 +3,7 @@
 #include <Miren/Miren.hpp>
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
+#include "Panda/Renderer/PassTarget.hpp"
 
 #include <cstdint>
 
@@ -23,8 +24,6 @@ struct ExposureSettings {
 // (before bloom): the rest of the pipeline sees an already exposed frame.
 class ExposureRenderer final {
 public:
-    ExposureRenderer();
-    ~ExposureRenderer();
 
     // Returns the full-res exposed frame (16F, linear light). Disabled/unavailable — the input
     // as is. time — the frame's seconds (the adaptation dt is computed from the difference).
@@ -34,20 +33,10 @@ public:
     );
 
 private:
-    struct Target {
-        Miren::FrameBufferHandle frameBuffer;
-        Miren::FrameBufferSpecification specification;
-        Miren::TextureHandle color;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        bool created = false;
-    };
-    void ensureTarget(Target &target, uint32_t width, uint32_t height);
-
-    Target m_measure;    // 64×64 luminance measurement
-    Target m_reduce;     // 1×1 frame average
-    Target m_adapted[2]; // 1×1 adaptation ping-pong
-    Target m_output;     // full-res exposed frame
+    PassTarget m_measure;    // 64×64 luminance measurement
+    PassTarget m_reduce;     // 1×1 frame average
+    PassTarget m_adapted[2]; // 1×1 adaptation ping-pong
+    PassTarget m_output;     // full-res exposed frame
     int m_adaptedIndex = 0;
     bool m_adaptedValid = false; // first frame — snap without creep
     float m_lastTime = 0.f;

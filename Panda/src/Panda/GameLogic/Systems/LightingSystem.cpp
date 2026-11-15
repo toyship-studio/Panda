@@ -127,8 +127,8 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     // turned off.
     m_sunScreen = sun.intensity > 0.f ? projectSunToScreen(viewProj, sun.direction) : glm::vec4(0.f);
     const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
-    // The shadow cascades are fitted to the camera and the sun of the frame; the depth passes go
-    // after the scene traversal (the GPU executes them earlier — the views are above SCENE_VIEW).
+    // The shadow cascades are fitted to the camera and the sun of the frame; the view of the world
+    // draws the depth passes next, before the scene.
     CascadedShadowMap::Settings shadowSettings = graphics.shadows;
     if (!features.has(ShaderFeature::Shadows)) { shadowSettings.enabled = false; }
     const glm::vec3 shadowLight = sun.castShadows && sun.intensity > 0.f ? sun.direction : glm::vec3(0.f);

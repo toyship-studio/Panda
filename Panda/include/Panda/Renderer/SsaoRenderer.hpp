@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
+#include "Panda/Renderer/PassTarget.hpp"
 #include "Panda/Renderer/WorldLighting.hpp"
 
 #include <Miren/Miren.hpp>
@@ -58,7 +59,7 @@ public:
     SsaoRenderer(const SsaoRenderer &) = delete;
     SsaoRenderer &operator=(const SsaoRenderer &) = delete;
 
-    // After the scene of the frame is submitted. depth — the depth of the scene (width × height
+    // After the scene pass of the frame. depth — the depth of the scene (width × height
     // pixels), projection and viewProj — its camera. Returns what the next frame shades with;
     // disabled or impossible — an empty SsaoData (no occlusion).
     SsaoData apply(
@@ -67,19 +68,11 @@ public:
     );
 
 private:
-    struct Target {
-        Miren::FrameBufferHandle frameBuffer;
-        Miren::TextureHandle color;
-    };
-    void ensureTargets(uint32_t width, uint32_t height);
-    void releaseTargets();
-
-    Target m_raw;     // the integral, noisy
-    Target m_result;  // blurred: r — the share of the sky a point sees, g — its view depth (m)
+    // RGBA16F: the depth of a point next to its occlusion.
+    PassTarget m_raw;    // the integral, noisy
+    PassTarget m_result; // blurred: r — the share of the sky a point sees, g — its view depth (m)
     Miren::ProgramHandle m_program;
     Miren::ProgramHandle m_blurProgram;
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
 };
 
 } // namespace Panda

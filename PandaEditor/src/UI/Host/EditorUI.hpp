@@ -33,20 +33,23 @@ namespace Panda {
 // the engine's (PandaUIFernHost, PandaUIMirenRenderer).
 class EditorUI final {
 public:
-    void initialize(Fern::Window *window, Miren::ViewId viewId);
+    void initialize(Fern::Window *window);
     void shutdown();
 
     void setRootView(std::shared_ptr<PandaUI::View> view);
-    void update(double deltaTime);        // runs layout/animation + submits the draw-list to Miren (every frame)
+    // Runs layout/animation and draws the chrome: the last pass of the frame, into the window
+    // (every frame). Whatever the chrome shows of this frame — the viewports, the previews — is
+    // drawn before it.
+    void update(double deltaTime);
     bool handleEvent(Fern::Event *event); // Fern → Context
     // A gesture made in place of the user is in flight (EditorMcp: `pointer`): the real mouse is
     // not heard until it ends, so a hand that happens to move does not tear the gesture.
     void setPointerOverridden(bool overridden) {
         m_pointerOverridden = overridden;
     }
-    // The chrome as it was last drawn, once more into another view (a screenshot of the window:
-    // the view draws into a texture of the size of the window in pixels).
-    void renderTo(Miren::ViewId viewId);
+    // The chrome as it was last drawn, once more as a pass into another target (a screenshot of
+    // the window: a texture of the size of the window in pixels).
+    void renderTo(const Miren::ViewDescription &target);
 
     // The fonts of the chrome. uiFamily / monoFamily: a family installed on this machine (Fern::Fonts)
     // that plays the Sans / Mono role; empty — the bundled Inter Display / JetBrains Mono. uiSize: the
@@ -91,7 +94,7 @@ public:
     void closeAuxiliaryWindow();
     Fern::Window *auxiliaryWindow() const; // nullptr — none is open
     PandaUI::Context *auxiliaryContext();
-    void renderAuxiliaryTo(Miren::ViewId viewId); // like renderTo, the tree of the second window
+    void renderAuxiliaryTo(const Miren::ViewDescription &target); // like renderTo, the tree of the second window
 
     // The texture a viewport renders into, as a PandaUI texture for its ImageView. The handle is
     // stable across resizes, so it is wrapped once; the texture stays the engine's.
@@ -129,7 +132,7 @@ private:
     };
     std::vector<RetiredWindow> m_retiredWindows;
     void updateAuxiliary(double deltaTime);
-    Miren::ViewId m_viewId = 0;
+    Fern::Window *m_window = nullptr;
     bool m_initialized = false;
     bool m_pointerOverridden = false;
 

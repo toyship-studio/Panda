@@ -33,6 +33,7 @@ files stay the way to change the project; the tools are for what a file cannot d
 | `screenshot` | a picture of the `scene` view (the editor camera), of the `game` view (the main camera, the game UI) or of the whole editor `window` |
 | `logs` | the log of the editor: shader, import and script errors |
 | `play`, `stop` | runs the game inside the editor, returns to editing |
+| `build` | builds the C++ scripts (or `target: "export"`) the way the CMake panel does and answers with what cmake said, the compiler errors included; the editor loads scripts that were built |
 | `camera` | places the editor camera of the `scene` view |
 | `save` | writes what the user changed in the editor to the files |
 | `open_world`, `restart`, `quit` | another world, a new start of the editor |
@@ -134,11 +135,14 @@ place:
 
 1. Edit the code (the script skeleton and fields — `scripting.md`: the `Script` class,
    `PANDA_FIELDS_*`, `REGISTER_SCRIPT`).
-2. Build from a terminal:
+2. Build. With the editor running, call its `build` tool: it answers with the output of cmake —
+   the compiler errors are there — and the editor loads the library when the build succeeded
+   and updates `.Panda/scripts-manifest.json`. After a source file was added, `build` with
+   `action: "configure"` first. Fix compilation errors yourself, using the output.
+3. Without the editor, build from a terminal:
    `Scripts/___PROJECTNAME___/scripts/configure_scripts.sh debug` (once),
    then `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`.
    The scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`. The same commands
    are the Zed tasks "Configure ___PROJECTNAME___ Debug" and "Build ___PROJECTNAME___ Debug".
-   Fix compilation errors yourself, using the output.
-3. Call `reload` (or ask the user to press Reload, Cmd/Ctrl+R) — the editor picks up the fresh
-   library (by mtime) and updates `.Panda/scripts-manifest.json`.
+   When the editor is started, `reload` (or Reload, Cmd/Ctrl+R) picks up the fresh library (by
+   mtime).

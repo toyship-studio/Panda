@@ -35,7 +35,7 @@ public:
         bool isEqualTo(IRect rect);
     };
 
-    SceneViewport(CameraController *cameraController, SceneRenderTargets *targets);
+    SceneViewport(CameraController *cameraController, EditorPassTargets *targets);
     ~SceneViewport();
 
     void setCamera(Camera *camera);
@@ -60,7 +60,7 @@ private:
     void endRectSelection();
     void cancelRectSelection();
 
-    SceneRenderTargets *m_targets;
+    EditorPassTargets *m_targets;
     Gizmos m_gizmos;
     Camera *m_camera;
     CameraController *m_cameraController;

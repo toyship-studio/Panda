@@ -100,9 +100,9 @@ does not have to do anything for it.
 
 ## The frame, in one paragraph
 
-A world frame is `World::update`: the simulation (only while the world runs — Play in the
-editor, always in a game), then the scene pass, then the shadow cascades. The simulation runs
-the frame phases over all world systems: `PreFixed`, then `Fixed` once per physics step,
-`PostPhysics`, `Update`, `PostUpdate`. The scene pass asks every system to `submit` its
-geometry. The details, the order among systems and the hooks of a running world are in
+A frame of a world is two steps. `World::update` is the simulation (only while the world
+runs — Play in the editor, always in a game): the frame phases over all world systems —
+`PreFixed`, then `Fixed` once per physics step, `PostPhysics`, `Update`, `PostUpdate`. Then a
+view draws the world (`WorldView::render`): the scene pass and the shadow passes, each of
+which asks every system to `submit` its geometry. The details, the order among systems and the hooks of a running world are in
 [World systems](world-systems.md).

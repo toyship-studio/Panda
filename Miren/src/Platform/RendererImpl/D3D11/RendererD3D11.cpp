@@ -255,7 +255,7 @@ void RendererD3D11::viewChanged(View &view) {
             m_deviceContext->ClearRenderTargetView(colorView, clearColor);
         }
     }
-    // Depth is cleared separately from color (setViewClearDepth). D3D11 clears the whole DSV, not
+    // Depth is cleared separately from color (ViewDescription::clearsDepth). D3D11 clears the whole DSV, not
     // the viewport — the shadow atlas tiles share one clear (cascade zero clears, the rest do not).
     if (view.clearsDepth() && depthView) {
         const UINT flags = D3D11_CLEAR_DEPTH | (depthHasStencil ? D3D11_CLEAR_STENCIL : 0);

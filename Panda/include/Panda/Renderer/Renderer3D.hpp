@@ -91,9 +91,9 @@ public:
     Statistics getStats();
     void resetStats();
     void setViewProj(glm::mat4 viewProj);
-    // The frame lighting of the pass begun with begin(): the scene blocks are assembled here once
-    // per frame (SceneBlocks) and given to the view of the pass — every draw into that view reads
-    // them, a Renderer2D or a module drawing into the same view included.
+    // The lighting of the frame, before its passes begin: the scene blocks are assembled here
+    // once (SceneBlocks), and begin() gives them to the view of a pass that reads them — every
+    // draw into that view does, a Renderer2D or a module drawing into the same view included.
     void setLighting(const WorldLightingData &lighting);
     // The scene blocks of the last frame (setLighting): what a pass over the finished frame —
     // the fog — reads the light of the world from.

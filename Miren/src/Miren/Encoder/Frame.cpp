@@ -7,11 +7,13 @@ namespace Miren {
 
 Frame::Frame()
     : m_drawCallsCount(0)
+    , m_viewCount(0)
     , m_preCommandQueue(300000)
     , m_postCommandQueue(300000)
     , m_transientVbSize(0)
     , m_transientIbSize(0)
-    , m_drawCallsOverflow(false) {}
+    , m_drawCallsOverflow(false)
+    , m_viewDrawCalls() {}
 
 void Frame::beginDrawCall() {
     if (m_drawCallsOverflow) { return; }
@@ -73,8 +75,24 @@ void Frame::addInput(std::string_view name, RenderPassInputType type, const void
 void Frame::addViewInput(
     ViewId id, std::string_view name, RenderPassInputType type, const void *value, size_t size
 ) {
+    if (!isViewOfThisFrame(id)) { return; }
     PassInput input(name, type, const_cast<void *>(value), size);
     m_viewInputs[id].writeInput(input);
+}
+
+ViewId Frame::addView(const ViewDescription &description) {
+    PND_ASSERT_F(m_viewCount < MAX_VIEWS, "Miren MAX_VIEWS exceeded: %d views in a frame", MAX_VIEWS);
+    if (m_viewCount >= MAX_VIEWS) { return static_cast<ViewId>(MAX_VIEWS - 1); } // its draws join the last view
+    const ViewId id = static_cast<ViewId>(m_viewCount++);
+    m_views[id] = View(description);
+    m_viewDrawCalls[id] = 0;
+    return id;
+}
+
+bool Frame::isViewOfThisFrame(ViewId id) const {
+    // An id kept from another frame names nothing: its draw would land in a pass it knows nothing about.
+    PND_ASSERT_F(id < m_viewCount, "Miren: view %d is not a view of this frame (%d views added)", id, m_viewCount);
+    return id < m_viewCount;
 }
 
 void Frame::setScissorRect(Rect rect) {
@@ -99,9 +117,26 @@ void Frame::resetCurrentDrawCall() {
 void Frame::submitCurrentDrawCall(ViewId id, ProgramHandle program) {
     RenderPass *draw = getCurrentDrawCall();
     if (!draw) { return; }
+    if (!isViewOfThisFrame(id)) {
+        draw->reset(); // dropped: the slot serves the next draw
+        return;
+    }
     draw->m_shader = program;
     draw->m_viewId = id;
     draw->m_isSubmitted = true;
+    m_viewDrawCalls[id]++;
+}
+
+void Frame::closeViews() {
+    for (int id = 0; id < m_viewCount; id++) {
+        if (m_viewDrawCalls[id] != 0 || !m_views[id].clearsAnything()) { continue; }
+        resetCurrentDrawCall();
+        submitCurrentDrawCall(static_cast<ViewId>(id), ProgramHandle());
+        beginDrawCall();
+    }
+    // A frame nothing is drawn in presents the main window: the renderers take its context from
+    // view 0, which is then nobody's view.
+    if (m_drawCallsCount == 0) { m_views[0] = View(); }
 }
 
 void Frame::queueFree(FrameBufferHandle handle) {
@@ -177,9 +212,11 @@ void Frame::reset() {
     m_indexBuffersFreeHandle.reset();
     m_preCommandQueue.reset();
     m_postCommandQueue.reset();
-    for (RenderPassInputs &inputs : m_viewInputs) {
-        inputs.reset();
+    for (int id = 0; id < m_viewCount; id++) {
+        m_viewInputs[id].reset();
     }
+    m_viewCount = 0;
+    m_views[0] = View(); // a frame without views presents the main window (the renderers read view 0)
     RenderPass &draw = m_drawCalls[m_drawCallsCount];
     draw.reset();
 }
@@ -192,9 +229,11 @@ Foundation::CommandBuffer &Frame::getPostCommandQueue() {
     return m_postCommandQueue;
 }
 
+// The draws by their views, in the order the views were added; the draws of a view keep the order
+// they were submitted in.
 void Frame::sort() {
     std::stable_sort(m_drawCalls, m_drawCalls + m_drawCallsCount, [](const RenderPass &l, const RenderPass &r) {
-        return l.m_viewId > r.m_viewId;
+        return l.m_viewId < r.m_viewId;
     });
 }
 

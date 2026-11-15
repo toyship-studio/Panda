@@ -6,7 +6,6 @@
 #include <Foundation/Profile.hpp>
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Extensions/Extensions.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/Assets/StaticResources.hpp"
 
 #include <Rain/Rain.hpp>
@@ -143,134 +142,30 @@ void World::runPhase(FramePhase phase, double time) {
     }
 }
 
-void World::update(double deltaTime, WorldFrame frame) {
-    // The wind of this world for everything its frame draws (the scene blocks, the system
-    // material fields, the modules): a world brings its own, nobody sets it from outside.
-    SceneWind::apply(getWindSettings());
-    m_renderer3d.resetStats();
-    // The frame is cleared also when the world draws nothing (a view without draw calls is not
-    // executed): an empty world is an empty frame, not the last frame of the world before it.
-    Miren::touch(Views::SCENE_VIEW);
-    m_renderer2d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
-    m_renderer3d.begin(RenderingMode::DEFAULT, Views::SCENE_VIEW);
-    if (frame.simulate) {
-        const double gameDelta = std::min(deltaTime, MAX_FRAME_TIME);
-        destroyPending(); // asked for between the frames (a UI event of a script)
-        // The frame phases (FramePhase); physics and scripts are world systems like the modules
-        // (CoreWorldSystems). Every physics step is one Fixed phase: physics.begin, the scripts'
-        // fixedUpdate, physics.step. Between the steps the transforms hold the exact body poses;
-        // the first step of the frame restores them after the interpolated write of the last
-        // frame (isFirstFixedStep).
-        runPhase(FramePhase::PreFixed, gameDelta);
-        m_physicsAccumulator += gameDelta;
-        m_firstFixedStep = true;
-        while (m_physicsAccumulator >= PHYSICS_STEP) {
-            m_physicsAccumulator -= PHYSICS_STEP;
-            Input::beginFixedTick();
-            runPhase(FramePhase::Fixed, PHYSICS_STEP);
-            Input::endFixedTick();
-            m_firstFixedStep = false;
-        }
+void World::update(double deltaTime) {
+    const double gameDelta = std::min(deltaTime, MAX_FRAME_TIME);
+    destroyPending(); // asked for between the frames (a UI event of a script)
+    // The frame phases (FramePhase); physics and scripts are world systems like the modules
+    // (CoreWorldSystems). Every physics step is one Fixed phase: physics.begin, the scripts'
+    // fixedUpdate, physics.step. Between the steps the transforms hold the exact body poses;
+    // the first step of the frame restores them after the interpolated write of the last
+    // frame (isFirstFixedStep).
+    runPhase(FramePhase::PreFixed, gameDelta);
+    m_physicsAccumulator += gameDelta;
+    m_firstFixedStep = true;
+    while (m_physicsAccumulator >= PHYSICS_STEP) {
+        m_physicsAccumulator -= PHYSICS_STEP;
+        Input::beginFixedTick();
+        runPhase(FramePhase::Fixed, PHYSICS_STEP);
+        Input::endFixedTick();
         m_firstFixedStep = false;
-        // The frame falls between two steps: the bodies are drawn in between, one step behind.
-        m_fixedStepAlpha = static_cast<float>(m_physicsAccumulator / PHYSICS_STEP);
-        runPhase(FramePhase::PostPhysics, gameDelta);
-        runPhase(FramePhase::Update, gameDelta);
-        runPhase(FramePhase::PostUpdate, gameDelta);
     }
-    if (frame.mainCamera) { resolveMainCamera(frame); }
-    m_frameProjection = frame.projection;
-    m_frameViewProj = frame.viewProj;
-    // The simulation of the frame is over: what the world draws is read once, for every pass.
-    m_meshes.collect(*this);
-    m_renderer2d.setViewProj(frame.viewProj);
-    m_renderer3d.setViewProj(frame.viewProj);
-    renderWorld(frame.viewProj, frame.skyViewProj, frame.cameraPosition);
-    m_renderer2d.end();
-    m_renderer3d.end();
-    renderShadowCascades(frame.cameraPosition);
-}
-
-void World::renderPass(RenderingMode mode, Miren::ViewId view, const WorldFrame &frame) {
-    glm::mat4 viewProj = frame.viewProj;
-    glm::mat4 skyViewProj = frame.skyViewProj;
-    m_renderer2d.begin(mode, view);
-    m_renderer3d.begin(mode, view);
-    m_renderer2d.setViewProj(viewProj);
-    m_renderer3d.setViewProj(viewProj);
-    renderWorld(viewProj, skyViewProj, frame.cameraPosition);
-    m_renderer2d.end();
-    m_renderer3d.end();
-}
-
-void World::draw(Miren::ViewId view, const WorldFrame &frame) {
-    m_frameProjection = frame.projection;
-    m_frameViewProj = frame.viewProj;
-    m_meshes.collect(*this);
-    renderPass(RenderingMode::DEFAULT, view, frame);
-}
-
-void World::resolveMainCamera(WorldFrame &frame) {
-    Entity cameraEntity = findMainCameraEntity();
-    if (!cameraEntity.isValid()) { return; }
-    WorldCamera &camera = cameraEntity.getComponent<CameraComponent>().camera;
-    const glm::mat4 cameraWorldMtx = getWorldSpaceTransformMatrix(cameraEntity);
-    const glm::mat4 projMtx = camera.getProjection();
-    frame.projection = projMtx;
-    frame.viewProj = projMtx * glm::inverse(cameraWorldMtx);
-    frame.skyViewProj = projMtx * glm::inverse(cameraEntity.getTransform().getSkyTransform());
-    frame.cameraPosition = glm::vec3(cameraWorldMtx * glm::vec4(0.f, 0.f, 0.f, 1.f));
-}
-
-void World::renderWorld(glm::mat4 &viewProjMtx, glm::mat4 &skyViewProjMtx, glm::vec3 cameraPosition) {
-    PANDA_PROFILE_SCOPE_N("World::renderWorld");
-    // Lighting is needed only by the DEFAULT pass (IDS/GEOMETRY_ONLY do not bind it) — do not
-    // collect it for nothing in the picking pass.
-    if (m_renderer3d.getMode() == RenderingMode::DEFAULT) {
-        const WorldLightingData &lighting = m_lighting.update(*this, viewProjMtx, cameraPosition);
-        m_renderer3d.setLighting(lighting); // the scene blocks of the view, the sprites read them too
-    }
-    const bool shadowPass = m_renderer3d.getMode() == RenderingMode::SHADOW_DEPTH;
-    const RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProjMtx);
-    RenderSystem::submitSky(*this, m_renderer3d, skyViewProjMtx);
-    if (!shadowPass) { RenderSystem::submitSprites(*this, m_renderer2d, frustum); }
-    // World systems (contributions of the worldSystems registry) — between sprites and meshes, in
-    // all modes.
-    for (const WorldSystem &system : GameContext::getExtensions().worldSystems.systems()) {
-        if (system.submit != nullptr) { system.submit(*this, m_renderer3d, cameraPosition, viewProjMtx); }
-    }
-    m_meshes.submit(m_renderer3d, frustum, shadowPass, cameraPosition);
-}
-
-void World::renderShadowCascades(glm::vec3 cameraPosition) {
-    PANDA_PROFILE_SCOPE_N("World::renderShadowCascades");
-    // World traversal per cascade: culling by the light frustum, the LOD of the world systems —
-    // by the camera (the same mesh as in the scene — otherwise the surface shadows itself at the
-    // LOD seams).
-    CascadedShadowMap &shadowMap = m_lighting.shadowMap();
-    for (uint32_t cascade = 0; cascade < shadowMap.cascadeCount(); cascade++) {
-        m_renderer3d.begin(RenderingMode::SHADOW_DEPTH, shadowMap.cascadeView(cascade));
-        glm::mat4 viewProj = shadowMap.cascadeViewProj(cascade);
-        m_renderer3d.setViewProj(viewProj);
-        if (cascade == 0) {
-            // The atlas is cleared by the view of the first cascade, and a view without draw calls
-            // is not executed: touch guarantees the clear — otherwise ghost shadows remain after
-            // the casters disappear.
-            Miren::touch(shadowMap.cascadeView(cascade));
-        }
-        renderWorld(viewProj, viewProj, cameraPosition);
-        m_renderer3d.end();
-    }
-    // The tiles of the lamps that cast shadows: the same traversal through the eye of the lamp.
-    LampShadowMap &lampShadows = m_lighting.lampShadowMap();
-    for (uint32_t tile = 0; tile < lampShadows.tileCount(); tile++) {
-        m_renderer3d.begin(RenderingMode::SHADOW_DEPTH, lampShadows.tileView(tile));
-        glm::mat4 viewProj = lampShadows.tileViewProj(tile);
-        m_renderer3d.setViewProj(viewProj);
-        if (tile == 0) { Miren::touch(lampShadows.tileView(tile)); } // the clear of the atlas
-        renderWorld(viewProj, viewProj, cameraPosition);
-        m_renderer3d.end();
-    }
+    m_firstFixedStep = false;
+    // The frame falls between two steps: the bodies are drawn in between, one step behind.
+    m_fixedStepAlpha = static_cast<float>(m_physicsAccumulator / PHYSICS_STEP);
+    runPhase(FramePhase::PostPhysics, gameDelta);
+    runPhase(FramePhase::Update, gameDelta);
+    runPhase(FramePhase::PostUpdate, gameDelta);
 }
 
 Entity World::instantiateEntity() {

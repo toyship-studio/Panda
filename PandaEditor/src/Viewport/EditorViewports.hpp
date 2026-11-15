@@ -9,10 +9,9 @@
 #include "Viewport/ViewportTargets.hpp"
 
 #include <Panda/GameLogic/World.hpp>
-#include <Panda/Renderer/PostprocessingPipeline.hpp>
+#include <Panda/Renderer/WorldView.hpp>
 
 #include <glm/glm.hpp>
-#include <memory>
 
 namespace Panda {
 
@@ -21,20 +20,24 @@ namespace Panda {
 //           picking, gizmo, grid, helper icons and lines, the tools of the editor parts;
 //   Game  — the frame of the game: the main camera of the world, the game UI and the game input,
 //           no editor layer. In Play the running game, in Edit a still view of the main camera.
-// The world is rendered ONCE per frame, through the viewport that is live: in Play the Game when
-// its tab is visible, otherwise the Scene; in Edit the Scene when its tab is visible, otherwise the
-// Game. The other viewport keeps its last frame (its panel says so). A second live camera would
-// mean a second set of views and targets and a second fit of the camera-dependent state (CSM,
-// exposure, terrain LOD, the occlusion window) — not worth it for a tab the user is not looking at.
+// The world is rendered ONCE per frame, through the viewport that is live: the one the user works
+// in — the viewport in focus — when its tab is on screen, otherwise the other one. The viewport
+// that is not live keeps its last frame, and its panel says so (a veil over the picture). A second
+// live camera would mean a second view of the world — its targets and passes, a second fit of the
+// camera-dependent state (CSM, exposure, terrain LOD, the occlusion window) — every frame, for a
+// picture the user is not working with.
 enum class ViewportKind { Scene, Game };
 
 // The on-screen frames of the viewport tabs this frame, from the PandaUI panels (in points); a tab
-// that is not the selected one of its dock, or whose dock is hidden, is not visible.
+// that is not the selected one of its dock, or whose dock is hidden, is not visible. focused — the
+// viewport the user works in (the one whose surface had the focus last; Play gives it to the Game,
+// Stop to the Scene).
 struct ViewportFrames {
     Rect scene;
     bool sceneVisible = false;
     Rect game;
     bool gameVisible = false;
+    ViewportKind focused = ViewportKind::Scene;
 };
 
 class EditorViewports final {
@@ -44,9 +47,10 @@ public:
     void init(); // Miren is ready: the targets, the surfaces, the composite pass
 
     // Once a frame, before the world updates: the frames of the tabs → the surfaces, the live
-    // viewport of the frame (the rule above), the shared targets at its size, the viewport frame
-    // of Panda::Input (the Game's: the input of the window is the game's).
-    void sync(const ViewportFrames &frames, bool playing);
+    // viewport of the frame (the rule above), the view and the targets of the editor passes at
+    // its size, the viewport frame of Panda::Input (the Game's: the input of the window is the
+    // game's).
+    void sync(const ViewportFrames &frames);
     ViewportKind live() const {
         return m_live;
     }
@@ -57,18 +61,24 @@ public:
         return m_live == ViewportKind::Game;
     }
 
-    // The frame of the world through the live viewport. Scene: the editor camera, flown here by
-    // what the Scene surface collected this frame (navigation). Game: the main camera of the
-    // world, whose aspect follows the Game surface; a world without a main camera is seen through
-    // the editor camera (gameHasCamera() tells the panel). simulate — physics and scripts run (Play).
-    WorldFrame beginFrame(
-        World &world, double deltaTime, bool simulate, const EditorViewportSettings &settings,
+    // Before the world is simulated: the camera of the frame is chosen. Scene: the editor camera,
+    // flown here by what the Scene surface collected this frame (navigation). Game: the main
+    // camera of the world, whose aspect follows the Game surface; a world without a main camera is
+    // seen through the editor camera (gameHasCamera() tells the panel).
+    void beginFrame(
+        World &world, double deltaTime, const EditorViewportSettings &settings,
         const CameraController::Navigation &navigation
     );
-    // After World::update of the same frame: the editor passes of the Scene (selection outline,
-    // picking, grid, helper icons), the postprocessing chain of the main camera, the composite into
-    // the output of the live surface. The game UI view is bound to the Game surface every frame.
-    void finishFrame(World &world, const EditorViewportSettings &settings, float time);
+    // After the simulation of the same frame: the world through the live viewport (WorldView) —
+    // its shadows and the scene — then the editor passes of the Scene (selection outline, picking,
+    // grid, helper icons), the look of the main camera (WorldView::develop), the composite into
+    // the output of the live surface. The game UI is drawn over the output of the Game after
+    // this (gameTarget).
+    void render(World &world, const EditorViewportSettings &settings, float time);
+    // The view the world is drawn through: one for both viewports — one of them renders a frame.
+    WorldView &worldView() {
+        return m_view;
+    }
 
     Miren::TextureHandle sceneResult() const {
         return m_sceneSurface.result();
@@ -78,6 +88,11 @@ public:
     }
     const Rect &gameFrame() const {
         return m_gameSurface.frame();
+    }
+    // What the game UI is drawn into, over the frame of the game: the output of the Game while the
+    // Game renders; invalid — the Game shows a frame that is not this one's, the UI is not drawn.
+    Miren::FrameBufferHandle gameTarget() const {
+        return isGameLive() ? m_gameSurface.frameBuffer() : Miren::FrameBufferHandle();
     }
     bool gameHasCamera() const { // the last Game frame found a main camera
         return m_gameHasCamera;
@@ -112,9 +127,11 @@ private:
         return isSceneLive() ? m_sceneSurface : m_gameSurface;
     }
     void renderScenePasses(World &world, const EditorViewportSettings &settings);
-    Miren::TextureHandle runPostprocessing(World &world, const EditorViewportSettings &settings, float time);
+    // The frame as the viewport shows it: the look of the main camera of the world — in the Scene
+    // its chain, bloom and auto exposure only with the display option on.
+    Miren::TextureHandle develop(World &world, const EditorViewportSettings &settings, float time);
 
-    SceneRenderTargets m_targets;
+    EditorPassTargets m_passTargets;
     ViewportComposite m_composite;
     ViewportSurface m_sceneSurface;
     ViewportSurface m_gameSurface;
@@ -123,9 +140,10 @@ private:
     SceneViewport m_scene;
     SceneGrid m_grid;
     EditorHelpersRenderer m_helpers;
-    std::unique_ptr<PostprocessingPipeline> m_postprocessing;
+    WorldView m_view; // the world through the camera of the live viewport, at its size
     ViewportKind m_live = ViewportKind::Scene;
-    WorldFrame m_frame;                   // the frame given to World::update (the picking pass repeats it)
+    ViewCamera m_camera;           // of the frame: the editor camera's, or the main camera's (asked after the simulation)
+    bool m_mainCameraFrame = false; // the frame is seen through the main camera of the world
     glm::mat4 m_sceneView = glm::mat4(1.f);
     glm::mat4 m_sceneViewProj = glm::mat4(1.f);
     bool m_sceneCameraFrame = true; // the frame is the editor camera's (Scene, or Game without a main camera)

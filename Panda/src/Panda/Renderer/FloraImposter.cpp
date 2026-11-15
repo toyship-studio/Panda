@@ -5,7 +5,6 @@
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include <Foundation/GraphicsAPI.hpp>
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/Renderer/SceneBlocks.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 
@@ -241,15 +240,22 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
     );
 
     // The first view angle of the pass clears the whole atlas (Metal: a clear = the loadAction of
-    // the whole target); the subsequent ones draw their tiles on top.
-    Miren::setViewFrameBuffer(Views::FLORA_IMPOSTER_COLOR_VIEW, entry.colorFb);
-    Miren::setViewport(Views::FLORA_IMPOSTER_COLOR_VIEW, colorRect);
-    Miren::setViewClear(Views::FLORA_IMPOSTER_COLOR_VIEW, 0x00000000);
-    Miren::setViewClearEnabled(Views::FLORA_IMPOSTER_COLOR_VIEW, tile == 0);
-    Miren::setViewFrameBuffer(Views::FLORA_IMPOSTER_NORMAL_VIEW, entry.normalFb);
-    Miren::setViewport(Views::FLORA_IMPOSTER_NORMAL_VIEW, normalRect);
-    Miren::setViewClear(Views::FLORA_IMPOSTER_NORMAL_VIEW, 0x00000000);
-    Miren::setViewClearEnabled(Views::FLORA_IMPOSTER_NORMAL_VIEW, tile == 0);
+    // the whole target); the subsequent ones draw their tiles on top. The atlases are read when
+    // every tile is in them, so the two passes may run anywhere in the frame.
+    const Miren::ViewId colorView = Miren::addView({
+        .frameBuffer = entry.colorFb,
+        .viewport = colorRect,
+        .clearsColor = tile == 0,
+        .clearsDepth = tile == 0,
+        .clearColor = 0x00000000,
+    });
+    const Miren::ViewId normalView = Miren::addView({
+        .frameBuffer = entry.normalFb,
+        .viewport = normalRect,
+        .clearsColor = tile == 0,
+        .clearsDepth = tile == 0,
+        .clearColor = 0x00000000,
+    });
 
     // Bake lighting: pure ambient — the pbr/lit fragment shader returns ~albedo (the light is
     // applied by the billboard shader using the baked normal; otherwise the lighting would be
@@ -263,8 +269,8 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
     // normal pass reads the blocks alone (the crown vertex shader — the wind).
     SceneBlocks bakeScene;
     bakeScene.assemble(bakeLighting);
-    bakeScene.bind(Views::FLORA_IMPOSTER_COLOR_VIEW);
-    bakeScene.bindBlocks(Views::FLORA_IMPOSTER_NORMAL_VIEW);
+    bakeScene.bind(colorView);
+    bakeScene.bindBlocks(normalView);
     const DrawUbo vertUbo{frame.viewProj, glm::mat4(1.f)};
 
     const ImportedMeshAsset *meshAsset = entry.mesh.get();
@@ -305,7 +311,7 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
             bindBlock(vertUbo);
             Miren::setVertexBuffer(primitive.vertexBufferHandle);
             Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
-            Miren::submit(Views::FLORA_IMPOSTER_COLOR_VIEW, colorShader);
+            Miren::submit(colorView, colorShader);
 
             // Normals. A veg_crown crown has its own pass: the normal of EVERY leaf (the normal
             // tile through the card basis, the plane faces the camera of the view angle) — the same
@@ -352,7 +358,7 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
             bindBlock(vertUbo);
             Miren::setVertexBuffer(primitive.vertexBufferHandle);
             Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
-            Miren::submit(Views::FLORA_IMPOSTER_NORMAL_VIEW, normalShader);
+            Miren::submit(normalView, normalShader);
 
             if (suppressDoubleSided) { material->setFieldValue("doubleSided", savedDoubleSided); }
             if (savedViewFade != 0.f) { material->setFieldValue("viewFade", savedViewFade); }

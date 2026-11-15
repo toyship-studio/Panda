@@ -68,6 +68,23 @@ build them; the CMake panel shows the build and the editor loads the result. Bui
 (Cmd/Ctrl+B) builds them at any time; a build that ends while the game plays is loaded when the
 game stops.
 
+The Scene (the tab of a world: the editor camera, the selection, the gizmo) and the Game (the
+main camera of the world, the game UI and the game input) are not drawn together: the editor
+draws the one you work in. With both on screen — the Game tab dragged into another dock — a
+click on a viewport gives it the focus and it renders; the other one keeps its last picture
+under a light gray veil with a caption that says who has the focus. Play gives the focus to the
+Game, Stop gives it back to the Scene. While the Scene has the focus during Play the game goes
+on — it is simulated and its UI lives — only its picture waits for the focus to return.
+
+The CMake panel has two tabs — Scripts (the C++ of the project) and Export (the game as an
+Xcode or Visual Studio project) — and the same actions on each: **Configure** runs cmake again
+(after a source file was added), **Build** compiles, **Clean** deletes the build folder so that
+the next Build starts from nothing, **Stop** stops the build that runs. What the scripts are
+built with — the cmake, the generator (Ninja, Makefiles), the C and C++ compilers — is the
+Toolchain section of the editor settings (the Toolchain button of the panel opens it); everything
+is found on its own until you choose otherwise, and a change of the generator or of a compiler
+cleans the build folder by itself.
+
 ## Previews
 
 The tab of a material or a model has a little viewport at its top. It is turned the way the

@@ -51,6 +51,9 @@ ViewportView::ViewportView(ViewportViewOutput *output)
     m_marquee->setBackgroundColor(Color(0x64646466));
     hideMarquee();
     addSubview(m_marquee);
+
+    m_veil = std::make_shared<ViewportVeil>("Not rendering: the Game has the focus");
+    addSubview(m_veil);
 }
 
 void ViewportView::setSceneTexture(TextureHandle texture, bool flipVertical) {

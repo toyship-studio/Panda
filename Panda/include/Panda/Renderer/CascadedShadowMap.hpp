@@ -52,7 +52,7 @@ public:
 
     ~CascadedShadowMap();
 
-    // Recomputes the cascades for the frame's camera and sun (+ the atlas and the Miren views).
+    // Recomputes the cascades for the frame's camera and sun (+ the atlas).
     // false — shadows are not drawn this frame (disabled / no sun): data() is empty.
     bool update(
         const Settings &settings,
@@ -70,7 +70,9 @@ public:
     const glm::mat4 &cascadeViewProj(uint32_t cascade) const {
         return m_cascadeViewProj[cascade];
     }
-    Miren::ViewId cascadeView(uint32_t cascade) const;
+    // The depth pass of a cascade as a view of the frame being built: its tile of the atlas. The
+    // cascades are added in their order — the first one clears the depth they share.
+    Miren::ViewId addCascadeView(uint32_t cascade) const;
 
 private:
     void ensureAtlas(uint32_t cascadeCount, uint32_t tileSize);

@@ -5,6 +5,7 @@
 #include <Miren/Miren.hpp>
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
+#include "Panda/Renderer/PassTarget.hpp"
 
 #include <cstdint>
 
@@ -22,13 +23,11 @@ struct BloomSettings {
 // upsampling with octave accumulation through a tent filter (bright core + wide tail), apply adds
 // the glow to the scene color with intensity. There is no brightness threshold: "what glows" is
 // defined by the material's emissive.
-// Executed by PostprocessingPipeline BEFORE the user chain (Views::bloomView).
+// Executed by PostprocessingPipeline BEFORE the user chain.
 class BloomRenderer final {
 public:
-    static constexpr int MAX_LEVELS = 4; // ½..1/16; 2*MAX_LEVELS steps — one per bloom view
+    static constexpr int MAX_LEVELS = 4; // ½..1/16
 
-    BloomRenderer();
-    ~BloomRenderer();
 
     // Runs the pyramid; returns the full-res "scene color + bloom" texture (16F, linear light).
     // With bloom disabled / a zero-sized frame / unavailable shaders returns sceneColor as is.
@@ -42,19 +41,9 @@ public:
     );
 
 private:
-    struct Target {
-        Miren::FrameBufferHandle frameBuffer;
-        Miren::FrameBufferSpecification specification;
-        Miren::TextureHandle color;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        bool created = false;
-    };
-    void ensureTarget(Target &target, uint32_t width, uint32_t height);
-
-    Target m_down[MAX_LEVELS];     // downsample levels: ½, ¼, ⅛, 1/16
-    Target m_up[MAX_LEVELS - 1];   // upsample levels with accumulation
-    Target m_output;               // full-res: scene color + bloom
+    PassTarget m_down[MAX_LEVELS];   // downsample levels: ½, ¼, ⅛, 1/16
+    PassTarget m_up[MAX_LEVELS - 1]; // upsample levels with accumulation
+    PassTarget m_output;             // full-res: scene color + bloom
 };
 
 } // namespace Panda

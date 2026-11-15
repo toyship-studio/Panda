@@ -14,7 +14,7 @@ class Entity;
 class Renderer3D;
 struct Occluder;
 
-// Phases of a simulating frame (World::update with simulate), in this order. A system takes part
+// Phases of a simulating frame (World::update), in this order. A system takes part
 // in the phases it has hooks for; World runs the hooks of a phase in the registry order
 // (WorldSystemRegistry::ordered) and removes the entities destroyed by a hook before the next one.
 //   PreFixed     once a frame before the fixed steps; time is the game time of the frame
@@ -24,7 +24,8 @@ struct Occluder;
 //                frame (World::fixedStepAlpha)
 //   Update       once a frame: gameplay
 //   PostUpdate   once a frame after Update: cameras, followers
-// The render hooks of a system (submit, occluders) are not phases: they run per render pass.
+// The render hooks of a system (submit, occluders) are not phases: they run per render pass of
+// a view that draws the world (WorldView), also for a world that does not run.
 enum class FramePhase : uint8_t { PreFixed, Fixed, PostPhysics, Update, PostUpdate };
 
 using FrameHook = void (*)(World &, double time);
@@ -48,8 +49,10 @@ struct WorldSystem final {
     // cycle is reported and the registration order is kept for the systems in it.
     std::vector<std::string> after;
     std::vector<std::string> before;
-    // Scene pass: geometry submission after the sky and sprites, before meshes — in all render
-    // modes (scene, shadow depth passes, IDS); the mode is held by the renderer.
+    // A pass over the world: geometry submission after the sky and sprites, before meshes — in
+    // all render modes (scene, shadow depth passes, IDS); the mode is held by the renderer. The
+    // scene pass is the first traversal of a frame: a system that follows the camera moves its
+    // state there, the other passes of the frame traverse what it prepared.
     void (*submit)(World &, Renderer3D &, const glm::vec3 &cameraPosition, const glm::mat4 &viewProj) = nullptr;
     // Occlusion volume: occluders in the world AABB and the source version (a change — a rebake).
     void (*collectOccluders)(

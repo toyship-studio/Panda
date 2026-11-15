@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Miren/Base.hpp>
 #include <Panda/Base/Base.hpp>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
 
@@ -16,9 +17,12 @@ namespace Panda {
 // (bindHostApi). The translation of the input and the drawing are the shared ones
 // (PandaUIFernHost.hpp, PandaUIMirenRenderer.hpp).
 //
-// The main window of the game is the window of the application; while the game plays inside the
-// editor it is a frame of that window instead (setMainViewportFrame: the Game tab), and the UI
-// draws into GAME_UI_VIEW, which the host of the frame points at its target.
+// The main window of the game is the window of the application, and its UI is drawn over the
+// finished frame, into the back buffer. While the game plays inside the editor it is a frame of
+// that window instead (setMainViewportFrame: the Game tab), drawn into the target the editor
+// names — over the frame of the game the editor put there earlier in the same Miren frame. A
+// window is a pass of the frame from its first draw list on: the UI is updated after the frame
+// of the game is developed.
 class GameUI final {
 public:
     explicit GameUI(Fern::Window *mainWindow);
@@ -27,11 +31,14 @@ public:
     void shutdown();
     // The UI of the bundle lays out, animates and submits its draw lists.
     void update(float deltaTime);
-    // The window was resized: its view follows.
+    // The window was resized: its drawable follows.
     void syncWindow(Fern::Window *window);
     // An event of a window of the game UI into the bundle; true — a view consumed it.
     bool handleEvent(Fern::Event *event);
-    void setMainViewportFrame(Rect frame, Size dpiScale);
+    // The main window is the frame of another window (in points of that window, its dpi scale),
+    // drawn into `target` — a framebuffer of frame.size × dpiScale pixels. An invalid target: the
+    // host does not draw the frame now, the UI is updated and not drawn.
+    void setMainViewportFrame(Rect frame, Size dpiScale, Miren::FrameBufferHandle target);
     void clearMainViewportFrame();
 
     static void bindHostApi(ScriptHostApi &hostApi);

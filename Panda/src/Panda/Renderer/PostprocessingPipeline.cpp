@@ -1,10 +1,10 @@
 #include "Panda/Renderer/PostprocessingPipeline.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/GameLogic/Components/BaseComponents.hpp"
 #include "Panda/GameLogic/World.hpp"
+#include "Panda/Renderer/WorldView.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
@@ -67,15 +67,15 @@ void PostprocessingFrameInputs::setCamera(const CameraComponent &camera) {
     cameraFar = camera.camera.getFar();
 }
 
-void PostprocessingFrameInputs::setWorld(World &world) {
-    sunScreen = world.getFrameSunScreen();
-    projection = world.getFrameProjection();
-    viewProj = world.getFrameViewProj();
+void PostprocessingFrameInputs::setView(const WorldView &view, World &world) {
+    sunScreen = view.sunScreen();
+    projection = view.camera().projection;
+    viewProj = view.camera().viewProj;
     const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
     ssao = graphics.ssao;
     fog.settings = graphics.fog;
     fog.viewProj = viewProj;
-    fog.scene = &world.getRenderer3D().sceneBlocks();
+    fog.scene = &view.sceneBlocks();
 }
 
 namespace {
@@ -91,71 +91,40 @@ namespace {
 
 } // namespace
 
-PostprocessingPipeline::PostprocessingPipeline() {
-}
-
 PostprocessingPipeline::~PostprocessingPipeline() {
-    for (auto &pair : m_targets) {
-        for (Target &target : pair) {
-            if (!target.created) { continue; }
-            Miren::deleteFrameBuffer(target.frameBuffer);
-            Miren::deleteTexture(target.color);
-        }
-    }
     if (m_antialiasing.isValid()) { Miren::deleteProgram(m_antialiasing); }
-}
-
-
-void PostprocessingPipeline::ensureTarget(Target &target, uint32_t width, uint32_t height) {
-    if (target.created && target.width == width && target.height == height) { return; }
-    if (target.created) { // resize: like the viewport — resizeTexture + FBO recreation
-        Miren::resizeTexture(target.color, width, height);
-        Miren::deleteFrameBuffer(target.frameBuffer);
-        target.frameBuffer = Miren::createFrameBuffer(target.specification);
-    } else {
-        Miren::TextureCreate create;
-        create.m_minFiltering = Miren::LINEAR;
-        create.m_magFiltering = Miren::LINEAR;
-        create.m_wrap = Miren::CLAMP;
-        create.m_format = Miren::TextureFormat::RGBA16F; // HDR: the chain works in linear light
-        create.m_width = width;
-        create.m_height = height;
-        target.color = Miren::createTexture(create);
-        Miren::FrameBufferAttachment attachments[] = {target.color};
-        target.specification = Miren::FrameBufferSpecification(attachments, 1);
-        target.frameBuffer = Miren::createFrameBuffer(target.specification);
-        target.created = true;
-    }
-    target.width = width;
-    target.height = height;
 }
 
 Miren::TextureHandle PostprocessingPipeline::apply(
     AssetRef<PostprocessingAsset> chain, const PostprocessingFrameInputs &inputs, uint32_t width, uint32_t height,
     float time
 ) {
-    return runChain(chain, inputs, width, height, time, false, 0);
+    return runChain(chain, inputs, width, height, time, nullptr).color;
 }
 
-void PostprocessingPipeline::applyToView(
-    AssetRef<PostprocessingAsset> chain, const PostprocessingFrameInputs &inputs, uint32_t width, uint32_t height,
-    float time, Miren::ViewId outputView
+Miren::ViewId PostprocessingPipeline::applyToView(
+    AssetRef<PostprocessingAsset> chain, const PostprocessingFrameInputs &inputs, float time,
+    const Miren::ViewDescription &output
 ) {
-    runChain(chain, inputs, width, height, time, true, outputView);
+    const uint32_t width = static_cast<uint32_t>(std::max(output.viewport.size.width, 0));
+    const uint32_t height = static_cast<uint32_t>(std::max(output.viewport.size.height, 0));
+    const ChainResult result = runChain(chain, inputs, width, height, time, &output);
+    // Nothing reached the target (no size, no Tonemap program yet): it is cleared all the same.
+    return result.outputView >= 0 ? static_cast<Miren::ViewId>(result.outputView) : Miren::addView(output);
 }
 
-Miren::TextureHandle PostprocessingPipeline::runChain(
+PostprocessingPipeline::ChainResult PostprocessingPipeline::runChain(
     AssetRef<PostprocessingAsset> chain, const PostprocessingFrameInputs &inputs, uint32_t width, uint32_t height,
-    float time, bool lastPassToOutput, Miren::ViewId outputView
+    float time, const Miren::ViewDescription *output
 ) {
     PANDA_PROFILE_SCOPE_N("Postprocessing::runChain");
     // isValid() of the Miren handles is non-const — working copies.
     Miren::TextureHandle input = inputs.color;
     Miren::TextureHandle emissive = inputs.emissive;
     Miren::TextureHandle depth = inputs.depth;
-    if (width == 0 || height == 0) { return input; }
+    if (width == 0 || height == 0) { return {input}; }
     // The ambient occlusion of this frame for the next one: from the depth the scene has just
-    // been drawn into (its views come after the whole chain).
+    // been drawn into.
     m_screenOcclusion = ShaderFeatures::enabled().has(ShaderFeature::Ssao)
                             ? m_ssao.apply(depth, width, height, inputs.projection, inputs.viewProj, inputs.ssao, m_quad)
                             : SsaoData{};
@@ -168,7 +137,7 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
     // The built-in camera bloom goes before the chain: the passes (and originalTexture) see the
     // frame already with the glow.
     input = m_bloom.apply(input, emissive, width, height, inputs.bloom, m_quad);
-    // Collect the active passes with valid shaders (no more than the view layout allows).
+    // Collect the active passes with valid shaders (no more than MAX_PASSES).
     // The user passes, the Tonemap, the antialiasing. A pass without a material is the engine's
     // own program: it has no fields to bind.
     Miren::ProgramHandle shaders[MAX_PASSES + 2];
@@ -216,28 +185,27 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
         downsamples[passCount] = 1;
         ++passCount;
     }
-    if (passCount == 0) { return input; }
+    if (passCount == 0) { return {input}; }
 
+    ChainResult result;
     Miren::TextureHandle current = input;
     for (int i = 0; i < passCount; ++i) {
-        const bool isOutputPass = lastPassToOutput && i == passCount - 1;
-        const Miren::ViewId viewId = isOutputPass                 ? outputView
-                                     : i == antialiasingPass ? Views::ANTIALIASING_VIEW
-                                                             : Views::postProcessingView(i);
-        // Pass target size: full / downsample; the output view (the screen) is not downsampled.
+        const bool isOutputPass = output != nullptr && i == passCount - 1;
+        // Pass target size: full / downsample; the output (the screen) is not downsampled.
         uint32_t passWidth = width;
         uint32_t passHeight = height;
-        Target *target = nullptr;
-        if (!isOutputPass) {
+        PassTarget *target = nullptr;
+        Miren::ViewId viewId = 0;
+        if (isOutputPass) {
+            viewId = Miren::addView(*output);
+            result.outputView = viewId;
+        } else {
             passWidth = std::max(1u, width / downsamples[i]);
             passHeight = std::max(1u, height / downsamples[i]);
             // The global parity of i guarantees: neighboring passes of the same divisor do not
             // read/write one target.
             target = &m_targets[downsampleIndex(downsamples[i])][i % 2];
-            ensureTarget(*target, passWidth, passHeight);
-            Miren::setViewport(viewId, Miren::Rect(0, 0, passWidth, passHeight));
-            Miren::setViewClear(viewId, 0x000000ff);
-            Miren::setViewFrameBuffer(viewId, target->frameBuffer);
+            viewId = target->addView(passWidth, passHeight);
         }
 
         PANDA_PROFILE_SCOPE_N("Postprocessing: pass");
@@ -260,9 +228,10 @@ Miren::TextureHandle PostprocessingPipeline::runChain(
         );
         bindBlock(postData);
         m_quad.submit(viewId, shaders[i]);
-        if (target) { current = target->color; }
+        if (target) { current = target->color(); }
     }
-    return current;
+    result.color = current;
+    return result;
 }
 
 } // namespace Panda

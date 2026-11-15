@@ -6,6 +6,7 @@
 #include <Foundation/Foundation.hpp>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #if MIREN_LOG_ENABLED == 1
 #    define MIREN_LOG(...) LOG_INFO(__VA_ARGS__)
@@ -319,6 +320,35 @@ struct Clear {
     Clear(int attachmentIndex, uint32_t value)
         : attachmentIndex(attachmentIndex)
         , value(value) {}
+};
+
+} // namespace Miren
+
+namespace Fern {
+class GraphicsContext;
+}
+
+namespace Miren {
+
+// A view is a pass of the frame: where its draws go and what entering it erases. A frame makes
+// its views anew (addView), and they are executed in the order they were made — whoever draws
+// something another pass reads makes its view first.
+struct ViewDescription {
+    // The target: a framebuffer, or — invalid — the back buffer of the context.
+    FrameBufferHandle frameBuffer = FrameBufferHandle();
+    // The window the back buffer belongs to; nullptr — the one Miren was initialized with.
+    Fern::GraphicsContext *graphicsContext = nullptr;
+    // In pixels of the target, the origin at the bottom left.
+    Rect viewport = Rect();
+    // What entering the view erases: the color attachments — to clearColor (RGBA8), or to a value
+    // of its own for an attachment named in clearAttachments (integer targets) — and the depth,
+    // to clearDepth. A view that erases nothing draws on top of what its target holds: UI over a
+    // finished frame, the next tile of a shadow atlas.
+    bool clearsColor = true;
+    bool clearsDepth = true;
+    uint32_t clearColor = 0x000000ff;
+    float clearDepth = 1.f;
+    std::vector<Clear> clearAttachments = {};
 };
 
 } // namespace Miren

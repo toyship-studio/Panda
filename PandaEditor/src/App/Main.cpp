@@ -36,6 +36,7 @@ int main(int argc, const char **argv) {
     // start screen — the project of the last session belongs to the first one. `--project <path>`:
     // the instance opens this project (a restart, an agent or a script that starts the editor).
     // `--mcp <port>`: the MCP server listens from the start, with or without a project.
+    // `--user-data <dir>`: the settings, the session and the plugins of this instance live there.
     Panda::EditorLaunch launch;
     for (int i = 1; i < argc; i++) {
         const std::string_view argument(argv[i]);
@@ -45,6 +46,8 @@ int main(int argc, const char **argv) {
             launch.project = std::filesystem::absolute(Panda::path_t(argv[++i])).lexically_normal();
         } else if (argument == Panda::SystemTools::MCP_ARGUMENT && i + 1 < argc) {
             launch.mcpPort = std::atoi(argv[++i]);
+        } else if (argument == Panda::SystemTools::USER_DATA_ARGUMENT && i + 1 < argc) {
+            Panda::SystemTools::setUserDataDirectory(std::filesystem::absolute(Panda::path_t(argv[++i])).lexically_normal());
         }
     }
     application->pushLayer(new Panda::EditorLayer(window, std::move(launch)));

@@ -31,25 +31,8 @@ GameViewportView::GameViewportView() {
     m_message->setUserInteractionEnabled(false);
     addSubview(m_message);
 
-    // The badge of a frozen frame: the top-right corner, above the image.
-    m_badge = std::make_shared<Panel>();
-    m_badge->setUserInteractionEnabled(false);
-    m_badge->layout().setPositionType(PositionType::Absolute);
-    m_badge->layout().setPosition(Edge::Right, Length::points(12.f));
-    m_badge->layout().setPosition(Edge::Top, Length::points(12.f));
-    m_badge->layout().setPadding(Edge::Horizontal, 10.f);
-    m_badge->layout().setPadding(Edge::Vertical, 5.f);
-    m_badge->surface().setCornerRadius(Radius::md);
-    m_badge->surface().setBorderWidth(1.f);
-    m_badge->surface().setBorderColor(ThemeColor::border);
-    m_badge->setBackgroundColor(ThemeColor::surface);
-    m_badgeLabel = std::make_shared<Label>("Not rendering: the tab of the world is in front");
-    m_badgeLabel->setFont(Typo::Caption);
-    m_badgeLabel->setTextRole(TextRole::Secondary);
-    m_badgeLabel->setUserInteractionEnabled(false);
-    m_badge->addSubview(m_badgeLabel);
-    addSubview(m_badge);
-    setLive(true);
+    m_veil = std::make_shared<ViewportVeil>("Not rendering: the Scene has the focus");
+    addSubview(m_veil);
 }
 
 void GameViewportView::setTexture(TextureHandle texture, bool flipVertical) {
@@ -63,11 +46,6 @@ void GameViewportView::setMessage(const std::string &text) {
     if (shown) { m_message->setText(text); }
     m_message->setHidden(!shown);
     m_message->layout().setDisplay(shown ? Display::Flex : Display::None);
-}
-
-void GameViewportView::setLive(bool live) {
-    m_badge->setHidden(live);
-    m_badge->layout().setDisplay(live ? Display::None : Display::Flex);
 }
 
 bool GameViewportView::pointerDown(PointerEvent &) {

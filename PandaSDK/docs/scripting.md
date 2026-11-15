@@ -117,9 +117,11 @@ until the scripts have been loaded in the editor at least once.
 
 ## Build and reload
 
-- From the editor: Build Scripts (Cmd/Ctrl+B), or the CMake panel (configure/build). After a
-  successful build the fresh library is picked up automatically — when the game stops, if it
-  plays.
+- From the editor: Build Scripts (Cmd/Ctrl+B), or the CMake panel (Configure, Build, Clean).
+  After a successful build the fresh library is picked up automatically — when the game stops,
+  if it plays. The cmake, the generator and the compilers are the Toolchain section of the
+  editor settings (`"toolchain"` in the editor's `settings.json`: `cmake`, `generator`,
+  `cCompiler`, `cxxCompiler` — a command or a path each, empty for the default).
 - From a terminal: `Scripts/<ProjectName>/scripts/configure_scripts.sh debug` and
   `build_scripts.sh debug` (the SDK paths come from the environment, see the scripts). Then, in
   the editor — **Reload** (Cmd/Ctrl+R): it picks up the fresh library (by mtime) and, along with

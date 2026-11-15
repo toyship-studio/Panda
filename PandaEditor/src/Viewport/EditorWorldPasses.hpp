@@ -1,21 +1,23 @@
 #pragma once
 
 #include <Panda/GameLogic/World.hpp>
+#include <Panda/Renderer/WorldView.hpp>
 
 #include <glm/glm.hpp>
 
 namespace Panda {
 
-// Editor passes on top of the world frame (after World::update of the same frame): selection
-// wireframe and IDS picking. The renderers and the world traversal are the engine's, the
-// selection — Editor::selection().
+// Editor passes on top of a frame of the world (after WorldView::render of the same frame): the
+// mask of the selection and IDS picking. The renderers and the world traversal are the view's,
+// the selection — Editor::selection(); the Miren views are the caller's (EditorPassTargets).
 namespace EditorWorldPasses {
 
-    // Wireframe of the selected entities in SELECTED_GEOMETRY_VIEW (GEOMETRY_ONLY mode).
-    void renderSelectionOverlay(World &world, const glm::mat4 &viewProj);
-    // IDS pass for mouse picking: a full world traversal into IDS_VIEW. Runs every frame — a
+    // The selected entities into `selectionView` (GEOMETRY_ONLY mode): the mask the outline is
+    // made from.
+    void renderSelectionOverlay(WorldView &view, World &world, Miren::ViewId selectionView);
+    // IDS pass for mouse picking: a full world traversal into `idsView`. Runs every frame — a
     // candidate for "on demand" (on a click/gizmo drag); the scope is visible in the Profiler panel.
-    void renderPicking(World &world, const WorldFrame &frame);
+    void renderPicking(WorldView &view, World &world, Miren::ViewId idsView);
 
 } // namespace EditorWorldPasses
 

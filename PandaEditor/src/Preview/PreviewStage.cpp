@@ -69,8 +69,8 @@ PreviewStage::PreviewStage() {
 
 // The studio: the built-in sky lights the subject and is reflected by it, a little flat fill,
 // a key light from the upper right of the first view. The light stands still while the camera
-// orbits — the far side of the subject is its shaded side. No shadows, no occlusion: their
-// passes belong to the frame of the viewport (World::draw).
+// orbits — the far side of the subject is its shaded side. No shadows, no occlusion, no fog: a
+// picture of an asset, not of a place.
 void PreviewStage::setUpStudio() {
     WorldLightingSettings &lighting = m_world.getLightingSettings();
     lighting.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
@@ -183,7 +183,7 @@ PreviewOrbit PreviewStage::defaultOrbit(AssetType type) {
     return orbit;
 }
 
-void PreviewStage::draw(Miren::ViewId view, const PreviewOrbit &orbit, float aspect) {
+void PreviewStage::draw(WorldView &view, const PreviewOrbit &orbit, float aspect) {
     aspect = std::max(aspect, 0.01f);
     const float pitch = std::clamp(orbit.pitch, -MAX_PITCH, MAX_PITCH);
     // The distance the subject fits the frame from: across — at any turn about the vertical
@@ -202,22 +202,22 @@ void PreviewStage::draw(Miren::ViewId view, const PreviewOrbit &orbit, float asp
     const float nearPlane = std::max(distance - radius * 1.2f, std::max(distance, radius) * 0.01f);
     const float farPlane = distance + radius * 1.2f;
 
-    WorldFrame frame;
-    frame.projection = Foundation::ACTIVE_GRAPHICS_TRAITS.homogeneousDepth
-                           ? glm::perspective(FIELD_OF_VIEW, aspect, nearPlane, farPlane)
-                           : glm::perspectiveZO(FIELD_OF_VIEW, aspect, nearPlane, farPlane);
+    ViewCamera camera;
+    camera.projection = Foundation::ACTIVE_GRAPHICS_TRAITS.homogeneousDepth
+                            ? glm::perspective(FIELD_OF_VIEW, aspect, nearPlane, farPlane)
+                            : glm::perspectiveZO(FIELD_OF_VIEW, aspect, nearPlane, farPlane);
     const glm::mat4 orientation = glm::mat4_cast(rotation);
-    frame.viewProj = frame.projection * glm::inverse(glm::translate(glm::mat4(1.f), position) * orientation);
-    frame.skyViewProj = frame.projection * glm::inverse(orientation);
-    frame.cameraPosition = position;
+    camera.viewProj = camera.projection * glm::inverse(glm::translate(glm::mat4(1.f), position) * orientation);
+    camera.skyViewProj = camera.projection * glm::inverse(orientation);
+    camera.position = position;
 
-    // The view clears its target also when the stage is empty (a view without draws is not executed).
-    Miren::touch(view);
+    // The studio has no shadows and no occlusion (setUpStudio): the frame is the scene pass alone.
+    view.render(m_world, camera);
+    // What a material of a module rule reads besides its own fields goes to that pass.
     const std::vector<Editor::MaterialPreview> &rules = Editor::editorExtensions().materialPreviews;
     if (m_rule >= 0 && m_rule < static_cast<int>(rules.size()) && rules[static_cast<size_t>(m_rule)].bindInputs != nullptr) {
-        rules[static_cast<size_t>(m_rule)].bindInputs(view);
+        rules[static_cast<size_t>(m_rule)].bindInputs(view.sceneView());
     }
-    m_world.draw(view, frame);
 }
 
 } // namespace Panda

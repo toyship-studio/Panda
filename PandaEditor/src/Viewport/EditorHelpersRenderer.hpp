@@ -4,6 +4,8 @@
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Renderer/Std140Buffer.hpp>
 
+#include <Miren/Miren.hpp>
+
 #include <cstdint>
 
 namespace Panda {
@@ -16,7 +18,12 @@ public:
     EditorHelpersRenderer(const EditorHelpersRenderer &) = delete;
     EditorHelpersRenderer &operator=(const EditorHelpersRenderer &) = delete;
 
-    void render(World *world, const glm::mat4 &viewProj, Size viewportSize);
+    // The icons of the lights and the cameras of the world, each twice: into the scene pass of
+    // the frame (what the user sees) and into the picking pass (a click on an icon selects its
+    // entity).
+    void render(
+        World *world, const glm::mat4 &viewProj, Size viewportSize, Miren::ViewId sceneView, Miren::ViewId idsView
+    );
 
 private:
     enum class IconType : uint32_t { DirectionalLight = 0, PointLight = 1, Camera = 2 };
@@ -33,6 +40,10 @@ private:
     void freeResources();
     void submitIcon(const IconInstance &icon, const glm::mat4 &viewProj, Size viewportSize, bool idsPass);
     Miren::TextureHandle getIconTextureHandle(IconType type);
+
+    Miren::ViewId m_sceneView = 0; // of the render in progress
+
+    Miren::ViewId m_idsView = 0;
 
     Miren::ProgramHandle m_sceneProgram;
     Miren::ProgramHandle m_idsProgram;

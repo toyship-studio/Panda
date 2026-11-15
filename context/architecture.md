@@ -383,8 +383,8 @@ so the scene stays in view behind what is being set. It is a second native windo
 window of Fern (`WindowType::Modal` — on macOS a child of the main window: above it, moving and
 going with it, not blocking it) with a UI tree of its own — `EditorUI::openAuxiliaryWindow`
 gives it a `PandaUI::Context` over the renderer, the fonts and the theme of the chrome, drawn
-into the graphics context of that window through its own Miren view
-(`Views::AUXILIARY_WINDOW_VIEW`); the events of Fern carry their window, and each context
+into the graphics context of that window through a Miren view of its own (a pass of the frame
+with that context for a target); the events of Fern carry their window, and each context
 takes its own. `Editor::SettingsWindow` (`UI/SettingsWindow`) builds the content and owns the
 three documents while the window is open (`show(page)`); the window is closed by its button, by
 Escape and with the project. The project settings page is the document of `project.json` (its
@@ -418,22 +418,29 @@ Unity's Scene and Game views:
   It is the viewport in the tab of the active world ("The document model" above). In EDIT it
   shows the editing world; in PLAY the playing copy, as it runs (what a separate Simulate mode
   used to do: Simulate is gone, the Scene during Play is it).
-- **Game** — the frame of the game: the main camera, the game PandaUI on top (`GAME_UI_VIEW` draws
-  into the Game surface), the input of the game (`Panda::Input` and the game UI get the game's
-  events while the Game renders; `Input`'s viewport frame is always the Game tab's). No editor
-  layer ever lands in it. In EDIT it is a still view of the main camera over the editing world; a world without a
+- **Game** — the frame of the game: the main camera, the game PandaUI on top (`GameUI` draws
+  its main window into the output of the Game, after the frame of the game is composed there),
+  the input of the game (`Panda::Input` and the game UI get the game's events while the Game
+  renders; `Input`'s viewport frame is always the Game tab's). No editor layer ever lands in
+  it. In EDIT it is a still view of the main camera over the editing world; a world without a
   main camera is shown through the editor camera with a caption.
-- **One world render per frame.** The world renders once, into one set of scene targets
-  (`SceneRenderTargets`: the HDR frame, the selection mask, the id buffer), sized to the viewport
-  that is *live*: in PLAY the Game when its tab is visible (the selected tab of a visible dock),
-  otherwise the Scene; in EDIT the Scene when visible, otherwise the Game. Every tab owns its
-  output (`ViewportSurface`, the composite `EDITOR_VIEWPORT_VIEW` is bound to the live one each
-  frame). The other viewport keeps its last frame and its panel says so. Two live cameras would
-  mean a second set of views and targets and a second fit of the camera-dependent state (CSM,
-  exposure, terrain LOD, the occlusion window) — not done.
+- **One world render per frame: the viewport in focus.** The Scene and the Game are not
+  rendered together. The world is drawn once, through one `WorldView` (`EditorViewports`) sized
+  to the viewport that is *live*: the one the user works in — the viewport whose surface had
+  the focus last (a click on it; Play gives the focus to the Game, Stop back to the Scene) —
+  when its tab is on screen (the selected tab of a visible dock), otherwise the other one.
+  Every tab owns its output (`ViewportSurface`: the composite of the frame is a view over the
+  output of the live one). The viewport that is not live keeps its last frame under a veil
+  (`ViewportVeil`: a light gray over the picture and a small white caption, "Not rendering:
+  the Scene has the focus"); the veil takes no input, so a click on the surface under it gives
+  it the focus and it renders from the next frame. While the Scene has the focus in PLAY the
+  game goes on — it is simulated, its UI is updated — only its picture is not drawn. Two live
+  cameras would mean a second view of the world — its targets and passes, a second fit of the
+  camera-dependent state (CSM, exposure, terrain LOD, the occlusion window) — every frame, for
+  a picture the user is not working with: not done.
 - The editor edits or plays (`EditorLayer::play` / `stop`); Play opens (or raises) the Game tab and gives it the focus, Stop
-  raises the Scene. Edits made in PLAY land in the playing copy and are discarded on Stop, as
-  before: the tabs change where one looks, not what survives.
+  raises the Scene and gives the focus back to it. Edits made in PLAY land in the playing copy
+  and are discarded on Stop, as before: the tabs change where one looks, not what survives.
 - **`Panda::Input` is the game's input, and only the game's.** `EditorLayer::onEvent` gives
   every input event either to the game or to the editor chrome, never to both, and marks the
   editor's as handled so `Application` feeds `Input` nothing of them. In Play, while the Game
@@ -452,10 +459,13 @@ Unity's Scene and Game views:
   `EditorViewports::beginFrame`; `takePointer` → the gizmo's `InputState` and
   `ViewportToolFrame::pointerPosition` / `pointerDown` of the tools). The camera therefore reads
   no input of its own, and the editor keeps no flags about whose input it is.
-- `EditorLayer` keeps the worlds and the states; `EditorViewports` owns the targets, the surfaces,
-  the editor camera, the gizmo and the selection (`SceneViewport`), the grid, the helpers and the
-  postprocessing, and renders the frame of the live viewport (`beginFrame` → `World::update` →
-  `finishFrame`).
+- `EditorLayer` keeps the worlds and the states; `EditorViewports` owns the view of the world
+  (`WorldView`: the HDR frame and its look), the targets of the editor passes (`EditorPassTargets`:
+  the selection mask, the id buffer), the surfaces, the editor camera, the gizmo and the
+  selection (`SceneViewport`), the grid and the helpers, and renders the frame of the live
+  viewport: `beginFrame` (the camera of the frame) → `World::update` (the simulation, in Play) →
+  `render` (the world through the view, the editor passes of the Scene, the look of the main
+  camera, the composite into the output).
 
 #### Asset previews
 
@@ -464,16 +474,15 @@ Code: `PandaEditor/src/Preview/` (`AssetPreviews`, `PreviewStage`, `PreviewRende
 
 - **A preview is a little world.** A material and a model are shown the same way: a
   `PreviewStage` — a `World` of its own with the asset in it and a studio light (the built-in sky
-  as the environment, a key light, a little fill) — drawn by `World::draw` into the target of
-  the preview. A material stands there as an entity with a primitive (`PrimitiveMeshComponent`:
+  as the environment, a key light, a little fill) — drawn through a `WorldView`, as the world
+  of a viewport is. A material stands there as an entity with a primitive (`PrimitiveMeshComponent`:
   a sphere, a cube, a cylinder, a capsule, a plane); a model as the scene of its file
   (`addGltfSceneToWorld`, the same call that puts it into a scene). So a preview shows what a
   scene would — the same materials, node transforms and blended surfaces, the passes of the
   modules — and whatever a world learns to show later (a skeleton in motion) needs no preview
-  code of its own. `World::draw(view, frame)` is the frame of a world outside the frame of the
-  viewport: the meshes are collected and drawn in one pass into the given view, nothing is
-  simulated and no shadow pass runs (the shadow views belong to the world that is `update`d), so
-  a stage keeps shadows, the occlusion volume and the screen occlusion off. A material on a
+  code of its own. Nothing is simulated on a stage, and it keeps shadows, the occlusion
+  volume, the screen occlusion and the fog off: a picture of an asset, not of a place — its
+  frame is the scene pass and the Tonemap. A material on a
   shader of a module that reads its vertices its own way (`EditorExtensions::materialPreviews`)
   gets the primitive in those vertices as a runtime mesh of the stage, and the placeholder
   inputs of the rule as inputs of the view.
@@ -502,12 +511,13 @@ Code: `PandaEditor/src/Preview/` (`AssetPreviews`, `PreviewStage`, `PreviewRende
   picture of their own (a material, a model, a texture); the rest keep the icon of their kind.
   `invalidate(assetId)` redraws the thumbnail into the same texture and sets the open previews
   up again (a reimport, other import settings).
-- **The state of a Miren view (FBO, viewport, clear) is a snapshot per frame**: the last
-  `setViewFrameBuffer` applies to ALL submits of that view in the frame. A frame has two pairs
-  of views for previews (`PreviewRenderer::Slot`: the stage in linear HDR, then the engine's
-  Tonemap into the display texture) — one preview of a form and one thumbnail — so everything
-  is drawn from `AssetPreviews::update()`: the visible previews take turns, one a frame, and a
-  display copy and a thumbnail share the display view of the thumbnail slot.
+- **A stage is drawn through a view of the renderer** (`PreviewRenderer`): a `WorldView` of
+  twice the size of the picture — the same HDR frame a viewport has — whose Tonemap goes
+  straight into the display texture and brings the picture down to its size, four samples a
+  pixel. The renderer has one view for the preview of a form and one for the thumbnails (their
+  sizes differ; a view has one frame a Miren frame), so everything is drawn from
+  `AssetPreviews::update()`, before the chrome: the visible previews take turns, one a frame,
+  and one thumbnail from the queue.
 - The light of the built-in sky is baked once for the process (`EnvironmentLighting` shares the
   atlas of a map between the worlds lit by it), so a stage costs a world of a few entities and
   nothing else.
@@ -646,10 +656,19 @@ Three rules fix what is global and what is not.
   editor process is set up like the runtime's, so another project opens in another process
   (File → New Window), never in the same one: a project sees only the modules it enabled, and
   a crash of one game does not take another project down.
-- **A world is an object.** `World` owns its entities, its settings and the state of its
-  systems (the context), its renderers, its lighting and its undo history. Any number of worlds
-  may be alive at once: the edited world, the playing copy, the scratch world of a clipboard
-  fragment. A function works on the world it was given; nothing asks for "the current world".
+- **A world is an object.** `World` owns its entities, its settings, the state of its systems
+  (the context) and its undo history. Any number of worlds may be alive at once: the edited
+  world, the playing copy, the scratch world of a clipboard fragment, the stage of a preview. A
+  function works on the world it was given; nothing asks for "the current world".
+- **A world does not draw itself: a view does.** How a world looks from a camera — the passes
+  of a frame, their targets and what they keep between frames — belongs to a `WorldView`
+  (`Panda/Renderer/WorldView.hpp`): the HDR targets of the scene, the renderers of the passes,
+  the lighting fitted to the camera (`LightingSystem`: the shadow cascades, the tiles of the
+  lamps, the light of the environment, the occlusion volume, the ambient occlusion of the last
+  frame), the meshes of the frame and the pipeline that develops the frame for the display.
+  The game has one view; the editor one for its viewports and one for each kind of preview.
+  Any world is drawn through a view, one frame after another, and any number of views draw in
+  one Miren frame — each makes its own passes ("Frame" below).
 - **One world runs at a time.** Running (`World::startRunning` … `finishRunning`) is the
   simulation of the game, and a process has one. The world registers itself as
   `GameContext::getRunningWorld()` (there is no setter; a second start asserts), and that is the
@@ -664,10 +683,9 @@ Three rules fix what is global and what is not.
 
 What follows from the rules:
 
-- What a frame of a world draws is drawn with the state of that world: `World::update` applies
-  the world's wind to `SceneWind` when the frame begins, the lighting is collected per world
-  (`LightingSystem`). The views a world renders into are fixed (`Views::SCENE_VIEW`, the shadow
-  views), so one world is drawn per frame.
+- What a frame of a world draws is drawn with the state of that world: `WorldView::render`
+  applies the world's wind to `SceneWind` when the frame begins, and the lighting is collected
+  from the world it is given.
 - The entities of the editor's selection (`Editor::selection()`) are of one world, the one the
   editor shows: `Selection::setWorld` on a switch between the edited world and the playing copy
   (the same ids: the selection moves with them); another world in front deselects them first —
@@ -675,36 +693,53 @@ What follows from the rules:
 
 ### Frame
 
-- `World::update(deltaTime, WorldFrame)` is the only entry point of a frame. `WorldFrame` carries
-  the camera, either as explicit matrices (the editor: the viewport camera) or as `mainCamera`
-  (the runtime; the main camera is resolved AFTER simulation, because scripts move the camera in
-  the same frame), and `simulate` (physics and scripts). Stages: simulation → scene pass
-  (`renderWorld`) → shadow cascades. Simulation takes the game time of the frame (the real time,
-  capped) and runs the frame phases over the world systems (`FramePhase`, `context/plugins.md`):
-  `PreFixed`; `Fixed` once per physics step (`physics` opens the step, the scripts' `fixedUpdate`,
-  `physics.step` with its contact events); `PostPhysics` (the body poses interpolated for the
-  frame); `Update` (the modules, then the scripts); `PostUpdate` (the scripts' `lateUpdate`), all
-  with the same game time (`context/physics.md`). The scripts are a world system of the core
-  (`CoreWorldSystems`), the physics the two systems of the Physics module; `World` only runs the
-  phases and keeps the fixed-step clock. Callers: the runtime and Play in the editor pass
-  `{mainCamera, simulate}`; the editor passes `{matrices}` for the Scene in EDIT,
-  `{matrices, simulate}` for the Scene in PLAY and `{mainCamera, simulate}` for the Game in PLAY
-  ("The Scene and the Game" above).
-- `World::renderPass(mode, view, frame)` is an additional pass with the same frame (the editor:
-  IDS picking). The selection overlay and picking live in
-  `PandaEditor/src/Viewport/EditorWorldPasses.hpp`; `EditorLayer` calls them after `update`.
-  `World` knows nothing about selection.
-- `renderWorld` only defines the order: frame lighting (DEFAULT mode only) → sky → sprites (not in
+- A frame is two calls: the world is simulated, then a view draws it.
+- **`World::update(deltaTime)` is the simulation**, and only that. It takes the game time of the
+  frame (the real time, capped) and runs the frame phases over the world systems (`FramePhase`,
+  `context/plugins.md`): `PreFixed`; `Fixed` once per physics step (`physics` opens the step, the
+  scripts' `fixedUpdate`, `physics.step` with its contact events); `PostPhysics` (the body poses
+  interpolated for the frame); `Update` (the modules, then the scripts); `PostUpdate` (the
+  scripts' `lateUpdate`), all with the same game time (`context/physics.md`). The scripts are a
+  world system of the core (`CoreWorldSystems`), the physics the two systems of the Physics
+  module; `World` only runs the phases and keeps the fixed-step clock. It is called for a world
+  that runs: the runtime every frame, the editor in Play.
+- **`WorldView::render(world, camera)` is the picture.** The camera of the frame is a
+  `ViewCamera` — the matrices of the editor camera, or `ViewCamera::main(world, …)`, asked AFTER
+  the simulation, because scripts move the camera in the same frame. The view reads the meshes
+  of the world once (`RenderSystem::MeshList`), fits the light to the camera
+  (`LightingSystem::update`), and makes the passes of the frame in the order they run: the
+  shadow passes (the cascades of the sun, the tiles of the lamps), then the scene into its HDR
+  targets. The world itself is walked for the scene first and for the depth passes after it:
+  the scene traversal is where a world system that follows the camera moves its state (the LOD
+  of a terrain, the blocks of its flora), and the depth passes draw the same geometry. `WorldView::develop` / `developInto` is the look of the frame — fog, auto exposure,
+  bloom, the postprocessing chain of the camera, the Tonemap (`PostprocessingPipeline`, owned by
+  the view) — into a texture of the view (the editor: the composite reads it) or into a target
+  of the caller (the runtime: the screen; a preview: its display texture). Callers: the runtime
+  (`RuntimeLayer`: update → render → developInto the screen → the game UI), the editor
+  (`EditorViewports`, "The Scene and the Game" above), the previews (`PreviewRenderer`).
+- **A Miren frame is a list of views (passes) in the order they were made.** `Miren::addView`
+  describes a pass — its target, viewport and what entering it clears — and answers with an id
+  for the draws and the view inputs of this frame; the views are executed in the order they
+  were added, so whoever draws what another pass reads makes its view first. There is no table
+  of view ids and no limit of one world, one chain or one preview a frame: a pass is made
+  where its draws are, by who owns its target. A view that got no draws is still entered when
+  it clears something (an empty world is an empty frame, not the frame before it).
+- `WorldView::renderPass(world, mode, view)` is an additional pass over the same frame (the
+  editor: IDS picking). The selection overlay and picking live in
+  `PandaEditor/src/Viewport/EditorWorldPasses.hpp`, with the targets of `EditorPassTargets`;
+  `EditorViewports` calls them after `render`. Neither `World` nor `WorldView` knows about the
+  selection. What the editor draws into the scene over the world (the grid, the helper icons)
+  goes into the scene pass itself (`WorldView::sceneView`).
+- A pass of the world only defines the order (`WorldView::submitWorld`): sky → sprites (not in
   the depth pass) → contribution systems (`Extensions::worldSystems`, `WorldSystem::submit`:
   terrain, particles) → meshes. Core geometry is submitted by `RenderSystem` (`Frustum`,
-  `submitSky` / `submitSprites` / `submitMeshes`: functions over registry views). The core knows
-  nothing about terrain.
-- The shadow cascade depth passes are submitted after the scene pass of the same frame, which has
-  fitted the cascades to the camera and the sun. Miren executes views in descending id order, so
-  the cascades are rendered before the scene that samples them.
-- Frame lighting is `LightingSystem` (a member of `World`): light sources from components,
-  `CascadedShadowMap` and `OcclusionVolume` fitted to the camera and the sun, the screen position
-  of the sun (`World::getFrameSunScreen`). The occluders of the volume come from the contribution
+  `submitSky` / `submitSprites`, `MeshList`). The core knows nothing about terrain. The scene
+  blocks of the frame (`SceneBlocks`: the camera, the lights, the shadows, the environment,
+  the wind) are assembled once (`Renderer3D::setLighting`) and given to the view of each pass
+  that reads them when it begins.
+- Frame lighting is `LightingSystem` (a member of `WorldView`): light sources from components,
+  `CascadedShadowMap`, `LampShadowMap` and `OcclusionVolume` fitted to the camera and the sun,
+  the screen position of the sun (`WorldView::sunScreen`). The occluders of the volume come from the contribution
   systems (`collectOccluders` / `occluderVersion`: the tree crowns of terrains). A system with
   per-entity runtime state (bodies) has the lifecycle hooks of `WorldSystem` (`start` / `stop`
   of the running world, `entityRemoved` / `entityRestored`, `componentsChanged`,
@@ -985,19 +1020,37 @@ second one is built from. `UI/Panels/CMakePanel` (a tab of the bottom dock) is i
 they close the loop author → build → run: edit a script, press Build, the script library is
 loaded, play.
 
-- One build at a time: cmake runs on a background-priority PandaAsync worker, its lines are
-  collected and handed to the panel once a frame (`update`), cancellation is cooperative. What the
-  worker shares with the main thread lives in a `shared_ptr`, so closing the editor during a
-  build is safe.
-- Wiring: the panel holds the builds and calls them (`startScripts`, `startExport`, `cancel`,
-  `showFolder`); it is their `ProjectBuildsOutput` (`buildStarted`, `buildOutput`,
-  `buildFinished`). Nothing stands between the two. The commands `build.scripts` (Cmd+B),
-  `build.stop`, `export.cook` and `export.<ide>` call the same object.
+- Three actions on a cmake project (`BuildAction`): **Configure** — cmake makes the build tree
+  (again); **Build** — compiles, configuring a tree that is not configured yet; **Clean** —
+  deletes the build folder. What is built is chosen once (`scriptsConfig`: Debug / Release;
+  `exportTarget`: the IDE and the platform) and is the builds' own state: the panel shows and
+  changes it, `start(kind, action)` and the commands build what is chosen.
+- One build at a time: its steps (a cmake command, the removal of a folder, the mark of the
+  toolchain) run on a background-priority PandaAsync worker, their lines are collected and handed
+  to the panel once a frame (`update`), cancellation is cooperative. What the worker shares with
+  the main thread lives in a `shared_ptr`, so closing the editor during a build is safe.
+- Wiring: the panel holds the builds and calls them; it is their `ProjectBuildsOutput`
+  (`buildStarted`, `buildOutput`, `buildFinished`). Nothing stands between the two. The commands
+  `build.scripts` (Cmd+B), `build.configure`, `build.clean`, `build.stop`, `export.cook` and
+  `export.<ide>` call the same object. The panel names its actions (Configure, Build, Clean,
+  Stop, Open in Xcode / Visual Studio on the Export tab) and a tab with no output yet says what
+  they do.
+- **The toolchain** is a section of the editor settings (`EditorToolchainSettings`, "toolchain" in
+  `settings.json`: the machine's, not the project's): the cmake (empty — the one that comes with
+  the editor, then the SDK's, then PATH), the generator of the scripts (`-G`; empty — cmake's
+  default), the C and C++ compilers (empty — cmake finds them). A field is a command or a path;
+  the builds resolve it to a file (`SystemTools::findExecutable`: PATH and the usual install
+  folders — a GUI application does not inherit the PATH of the shell) and pass it explicitly
+  (`-DCMAKE_MAKE_PROGRAM` for Ninja, `-DCMAKE_C_COMPILER`, `-DCMAKE_CXX_COMPILER`). A build tree
+  keeps the generator and the compilers it was made with (`panda-toolchain.txt` in the tree; no
+  file — the defaults); a tree made with others is deleted and configured again before the
+  build — cmake does not go on with it. The Toolchain button of the panel opens the section. The
+  Export project is an IDE project and takes only the cmake.
 - Scripts are built by convention, WITHOUT presets: `cmake -S Scripts/<Name>
   -B Scripts/<Name>/cmake-build-<cfg> -DCMAKE_BUILD_TYPE=<Debug|RelWithDebInfo>
-  -DPandaSDK_DIR=<the editor's SDK> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, then `cmake --build`.
-  Build without a configured tree configures first. A successful Build tells the application
-  (`scriptsBuilt`), and it loads the new library: at once, or when the game stops if it plays.
+  -DPandaSDK_DIR=<the editor's SDK> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` plus the toolchain, then
+  `cmake --build`. A successful Build tells the application (`scriptsBuilt`), and it loads the
+  new library: at once, or when the game stops if it plays.
 - Export is also built without presets (presets carried machine paths and broke projects on
   another computer): the generator and platform flags of each target are in
   `ProjectBuilds.cpp` (macOS, iOS Simulator, iOS Device → Xcode; Windows → Visual Studio x64), the
@@ -1005,17 +1058,20 @@ loaded, play.
   `Export/build/<macos-debug|ios-debug|ios-device-debug|windows-debug>`. The runtime data is
   cooked before cmake starts (`cook`: the open world as it is edited, the assets, the list of
   modules → `.Panda/Cooked/Runtime`). `openExportProject` (File → Export Game → Open Xcode / Visual
-  Studio) is the same Configure followed by opening what cmake generated.
-- What is wrong before cmake starts — no cmake, no SDK, no project, no world to cook — is a line of
-  the panel and a failed build; the log of the editor (the Output panel) says it too. A cmake that
-  fails leaves one line in the log pointing at the panel.
-- cmake is found by `SystemTools::findCMakeExecutable()` (bundled → SDK → PATH).
+  Studio, the Open button of the panel) is the same Configure followed by opening what cmake
+  generated.
+- What is wrong before the first step — no cmake, no SDK, no project, a compiler of the toolchain
+  that is not there, no world to cook — is a line of the panel and a failed build; the log of the
+  editor (the Output panel) says it too. A step that fails leaves one line in the log pointing at
+  the panel.
 
 Invariants:
 
 1. One build flow, one build tree. The panel builds into the same directories with the same cache
    variables as the external shell scripts, so the result and the cache are shared. The build logic
-   is never forked; it is always plain cmake.
+   is never forked; it is always plain cmake. A toolchain other than the defaults has to be the
+   same on both sides: cmake reads `CMAKE_GENERATOR`, `CC` and `CXX` from the environment of the
+   shell scripts.
 2. Asynchrony goes through PandaAsync (work → complete plus a per-frame update), not private threads.
 3. A successful script build loads the script library (in edit mode at once; a build that ends
    while the game plays is loaded when the game stops).
@@ -1068,8 +1124,11 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `camera`, `open_world`, `show`, `command`,
-  `pointer`, `key`, `restart`, `quit`. `show` brings a panel, the settings, the tab of an asset
+  `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `camera`, `open_world`, `show`,
+  `command`, `pointer`, `key`, `restart`, `quit`. `build` starts a build of the project
+  (`ProjectBuilds::start`) and answers when it has ended with what cmake said
+  (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
+  answer, where the CMake panel alone would have them. `show` brings a panel, the settings, the tab of an asset
   or the inspector of an entity in front — a click, not an edit: with the `window` screenshot
   (`settings` for the Settings window) it is how an agent looks at the editor's own UI.
   `command` lists the commands of the registry, runs one by id and rebinds its keys: what the
@@ -1103,19 +1162,25 @@ second way to do what a text file already does. The user-facing page is
   open — the start screen included, where only `status`, `logs`, the `window` screenshot,
   `pointer`, `key` and `quit` have something to act on; a restart carries the flag over.
 - `screenshot` reads the output texture of a viewport (`ViewportSurface`): the tab of the
-  viewport comes forward (one viewport renders per frame), a few frames pass, `Miren::readTexture`
-  reads the texture back, and the picture is scaled down by area averaging and packed as PNG
-  (miniz). The buffer is owned by the render command too, so a dropped connection frees nothing
-  early. The `window` view is the editor itself: the chrome as it was last drawn is submitted
-  once more (`EditorUI::renderTo`) into `Views::CAPTURE_VIEW`, a texture of the size of the
-  window — the window is drawn as always, the system menu bar and title are not part of the
-  picture. An agent that changes the editor sees its panels this way.
+  viewport comes forward and takes the focus (one viewport renders per frame), a few frames
+  pass, `Miren::readTexture` reads the texture back, and the picture is scaled down by area
+  averaging and packed as PNG (miniz); the viewport that rendered before gets the focus back.
+  The buffer is owned by the render command too, so a dropped connection frees nothing early.
+  The `window` view is the editor itself: the chrome as it was last drawn is submitted once
+  more (`EditorUI::renderTo`) as a pass into a texture of the size of the window — the window
+  is drawn as always, the system menu bar and title are not part of the picture. An agent that
+  changes the editor sees its panels this way.
 - `logs` answers from `Foundation::LogHistory`: the last lines of both logs (`LOG_*` of the
   console and `LOG_*_EDITOR` of the Output panel) kept in memory with sequence numbers. The
   editor enables it at the first line of `main`; a game leaves it off.
 - `restart` and `quit` answer first and exit a few frames after the answer has left
   (`Server::hasUnsentData`). The new instance gets `--project <path>` (`EditorLaunch`), the
   command line a restart of any kind uses: the session file is shared by every running editor.
+- An editor that is itself the thing under test runs on user data of its own: `--user-data
+  <dir>` (`SystemTools::setUserDataDirectory`) puts the settings, the session, the keymap and
+  the plugins of the instance into that folder instead of the folder of the system, so the
+  layout and the settings of the user stay as they are and a comparison of pictures does not
+  depend on what the user did in between; a restart carries the flag over.
 
 ## Open items
 
@@ -1123,10 +1188,8 @@ second way to do what a text file already does. The user-facing page is
 - Worlds: a game cannot yet load a second world file into the running world (additive
   loading). The engine side exists (`WorldMapper::loadEntities`, `World::importEntity`); the
   script API and the rules for the ids of the loaded entities do not.
-- Worlds: a world renders into fixed views, so two worlds cannot be drawn in one frame (a
-  preview of another world next to the edited one). `WorldFrame` would carry the views.
 - Worlds: an open world that is not active keeps what its systems built for drawing (the
-  shadow atlas, the meshes of a terrain) until its tab closes. Releasing it on deactivation is
+  meshes of a terrain) until its tab closes. Releasing it on deactivation is
   a hook the world systems do not have yet.
 - Worlds: the tabs of the worlds cannot be reordered by dragging (they are pinned to the
   center, and a pinned tab is not draggable), and a switch of the active world drops the

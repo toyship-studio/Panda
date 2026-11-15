@@ -12,7 +12,6 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/Input.hpp>
 #include <Panda/GameLogic/Systems/ScriptSystem.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
 #include <Panda/UI/GameUI.hpp>
 
@@ -62,6 +61,7 @@ void RuntimeLayer::onAttach() {
     GameContext::setScriptEngine(m_scriptEngine);
 
     StaticResources::initStaticResources();
+    m_view = std::make_unique<WorldView>();
     m_gameUI = F_NEW(Foundation::getAllocator(), GameUI)(Application::get()->getMainWindow());
     m_gameUI->initialize();
 
@@ -91,70 +91,32 @@ void RuntimeLayer::onAttach() {
 void RuntimeLayer::onUpdate(double deltaTime) {
     PANDA_PROFILE_SCOPE_N("Panda::RuntimeLayer::onUpdate");
     if (m_world && m_world->isRunning()) {
-        m_world->update(deltaTime, WorldFrame{.mainCamera = true, .simulate = true});
+        m_world->update(deltaTime);
+        // The camera is asked after the simulation: the scripts move it in the same frame. A
+        // world without a main camera is drawn through an identity one.
+        ViewCamera camera;
+        ViewCamera::main(*m_world, camera);
+        m_view->render(*m_world, camera);
+        developFrame();
     }
-    updatePostprocessing();
+    // After the frame of the game: the UI is the pass over it.
     if (m_gameUI) { m_gameUI->update(static_cast<float>(deltaTime)); }
     loadPendingWorldRequest();
 }
 
-void RuntimeLayer::updatePostprocessing() {
-    // HDR: the scene is always rendered into a linear 16F FBO, it is output to the screen by the
-    // pipeline's implicit Tonemap; camera.postprocessingEnabled controls only the user chain.
-    const uint32_t width = (uint32_t)(m_viewportSize.width * m_viewportDpi.width);
-    const uint32_t height = (uint32_t)(m_viewportSize.height * m_viewportDpi.height);
-    if (width == 0 || height == 0) { return; }
-    ensureSceneFramebuffer(width, height);
-    if (!m_postprocessing) { m_postprocessing = std::make_unique<PostprocessingPipeline>(); }
-    Miren::setViewport(Views::POST_PROCESSING_OUTPUT_VIEW, Miren::Rect(0, 0, width, height));
+void RuntimeLayer::developFrame() {
+    // HDR: the scene is linear 16F, the pipeline always runs — at least its implicit Tonemap, which
+    // is what puts the frame on the screen; camera.postprocessingEnabled controls only the user chain.
     AssetRef<PostprocessingAsset> chain;
-    PostprocessingFrameInputs inputs;
-    inputs.color = m_sceneColor;
-    inputs.emissive = m_sceneEmissive;
-    inputs.depth = m_sceneDepth;
-    if (m_world) {
-        inputs.setWorld(*m_world);
-        Entity cameraEntity = m_world->findMainCameraEntity();
-        if (cameraEntity.isValid()) {
-            CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
-            if (camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }
-            inputs.setCamera(camera);
-        }
+    PostprocessingFrameInputs inputs = m_view->postprocessingInputs(*m_world);
+    Entity cameraEntity = m_world->findMainCameraEntity();
+    if (cameraEntity.isValid()) {
+        CameraComponent &camera = cameraEntity.getComponent<CameraComponent>();
+        if (camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }
+        inputs.setCamera(camera);
     }
-    m_postprocessing->applyToView(
-        chain, inputs, width, height, Application::get()->getTime(), Views::POST_PROCESSING_OUTPUT_VIEW
-    );
-    if (m_world) { m_world->setScreenOcclusion(m_postprocessing->screenOcclusion()); } // its next frame shades with it
-}
-
-void RuntimeLayer::ensureSceneFramebuffer(uint32_t width, uint32_t height) {
-    if (m_sceneFramebufferActive && m_scenePixelWidth == width && m_scenePixelHeight == height) { return; }
-    if (!m_sceneColor.isValid()) {
-        Miren::TextureCreate create;
-        create.m_minFiltering = Miren::LINEAR;
-        create.m_magFiltering = Miren::LINEAR;
-        create.m_wrap = Miren::CLAMP;
-        create.m_format = Miren::TextureFormat::RGBA16F; // HDR: linear light, no clamp at 1.0
-        create.m_width = width;
-        create.m_height = height;
-        m_sceneColor = Miren::createTexture(create);
-        m_sceneEmissive = Miren::createTexture(create); // MRT: emissive buffer (bloom)
-        create.m_format = Miren::TextureFormat::DEPTH24STENCIL8;
-        m_sceneDepth = Miren::createTexture(create);
-        Miren::FrameBufferAttachment attachments[] = {m_sceneColor, m_sceneEmissive, m_sceneDepth};
-        m_sceneFbSpec = Miren::FrameBufferSpecification(attachments, 3);
-        m_sceneFB = Miren::createFrameBuffer(m_sceneFbSpec);
-    } else if (m_scenePixelWidth != width || m_scenePixelHeight != height) {
-        Miren::resizeTexture(m_sceneColor, width, height);
-        Miren::resizeTexture(m_sceneEmissive, width, height);
-        Miren::resizeTexture(m_sceneDepth, width, height);
-        Miren::deleteFrameBuffer(m_sceneFB);
-        m_sceneFB = Miren::createFrameBuffer(m_sceneFbSpec);
-    }
-    Miren::setViewFrameBuffer(Views::SCENE_VIEW, m_sceneFB);
-    m_sceneFramebufferActive = true;
-    m_scenePixelWidth = width;
-    m_scenePixelHeight = height;
+    const Miren::Rect screen(0, 0, static_cast<int>(m_view->width()), static_cast<int>(m_view->height()));
+    m_view->developInto(chain, inputs, Application::get()->getTime(), {.viewport = screen});
 }
 
 void RuntimeLayer::onEvent(Fern::Event *event) {
@@ -196,6 +158,7 @@ void RuntimeLayer::onDetach() {
         F_DELETE(Foundation::getAllocator(), m_world);
         m_world = nullptr;
     }
+    m_view.reset();
 
     if (m_projectLoader) {
         F_DELETE(Foundation::getAllocator(), m_projectLoader);
@@ -212,13 +175,6 @@ void RuntimeLayer::onDetach() {
         m_gameUI->shutdown();
         F_DELETE(Foundation::getAllocator(), m_gameUI);
         m_gameUI = nullptr;
-    }
-    m_postprocessing.reset();
-    if (m_sceneColor.isValid()) {
-        Miren::deleteFrameBuffer(m_sceneFB);
-        Miren::deleteTexture(m_sceneColor);
-        Miren::deleteTexture(m_sceneEmissive);
-        Miren::deleteTexture(m_sceneDepth);
     }
     StaticResources::deinitStaticResources();
 
@@ -270,11 +226,10 @@ void RuntimeLayer::syncViewportWithWindow() {
     Size viewportDpi(dpi.width, dpi.height);
     if (m_viewportSize != viewportSize || m_viewportDpi != viewportDpi) {
         window->getDrawingContext()->update();
-        Miren::setViewport(
-            Views::SCENE_VIEW,
-            Miren::Rect(0, 0, viewportSize.width * viewportDpi.width, viewportSize.height * viewportDpi.height)
+        m_view->resize(
+            static_cast<uint32_t>(viewportSize.width * viewportDpi.width),
+            static_cast<uint32_t>(viewportSize.height * viewportDpi.height)
         );
-        Miren::setViewClear(Views::SCENE_VIEW, 0x000000ff);
         m_viewportSize = viewportSize;
         m_viewportDpi = viewportDpi;
     }

@@ -1,7 +1,6 @@
 #include "Panda/Renderer/LampShadowMap.hpp"
 
 #include "Panda/GameLogic/GameContext.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -69,8 +68,14 @@ void LampShadowMap::releaseAtlas() {
     m_atlasTileSize = 0;
 }
 
-Miren::ViewId LampShadowMap::tileView(uint32_t tile) const {
-    return Views::LAMP_SHADOW_VIEWS_BEGIN - static_cast<Miren::ViewId>(tile);
+Miren::ViewId LampShadowMap::addTileView(uint32_t tile) const {
+    const int tileSize = static_cast<int>(m_atlasTileSize);
+    return Miren::addView({
+        .frameBuffer = m_frameBuffer,
+        .viewport = Miren::Rect(static_cast<int>(tile) * tileSize, 0, tileSize, tileSize),
+        .clearsColor = false,
+        .clearsDepth = tile == 0,
+    });
 }
 
 void LampShadowMap::ensureAtlas(uint32_t tileSize) {
@@ -150,15 +155,6 @@ void LampShadowMap::update(
             const glm::mat4 view = glm::lookAt(lamp.position, lamp.position + direction, up);
             m_tileViewProj[tile] = projection * view;
             data.textureMatrices[tile] = tileMatrix(tile) * bias * m_tileViewProj[tile];
-
-            // The view of the tile: its square of the atlas; the first one clears the shared depth.
-            const Miren::ViewId viewId = tileView(tile);
-            Miren::setViewFrameBuffer(viewId, m_frameBuffer);
-            Miren::setViewport(
-                viewId, Miren::Rect(static_cast<int>(tile * tileSize), 0, static_cast<int>(tileSize), static_cast<int>(tileSize))
-            );
-            Miren::setViewClearEnabled(viewId, false);
-            Miren::setViewClearDepth(viewId, tile == 0, 1.f);
         }
     }
     data.atlas = m_atlas;

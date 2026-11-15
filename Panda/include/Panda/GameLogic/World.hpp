@@ -3,10 +3,6 @@
 #include "Panda/Base/TypeContext.hpp"
 #include "Panda/GameLogic/Entity.hpp"
 #include "Panda/GameLogic/WorldSettings.hpp"
-#include "Panda/GameLogic/Systems/LightingSystem.hpp"
-#include "Panda/GameLogic/Systems/RenderSystem.hpp"
-#include "Panda/Renderer/Renderer2D.hpp"
-#include "Panda/Renderer/Renderer3D.hpp"
 #include "Panda/Renderer/SceneWind.hpp"
 #include "Panda/WorldCommands/CommandHistory.hpp"
 #include "Panda/Extensions/WorldSystems.hpp"
@@ -17,20 +13,6 @@
 #include <vector>
 
 namespace Panda {
-
-// World frame: what to draw with and what to do. The camera is either explicit matrices (editor:
-// the viewport camera) or the world's main camera (runtime; resolved AFTER the simulation — scripts
-// move the camera within the same frame). update stages: simulation (the frame phases of the world
-// systems, FramePhase: physics and scripts among them) → scene pass → shadow cascades. Additional
-// passes (picking, editor overlays) — renderPass.
-struct WorldFrame {
-    bool mainCamera = false;
-    glm::mat4 projection = glm::mat4(1.f); // of the camera; viewProj = projection * view
-    glm::mat4 viewProj = glm::mat4(1.f);
-    glm::mat4 skyViewProj = glm::mat4(1.f);
-    glm::vec3 cameraPosition = glm::vec3(0.f);
-    bool simulate = false; // physics and scripts (Play)
-};
 
 class World final {
 public:
@@ -48,22 +30,10 @@ public:
     // and finishRunning it is the world the scripts act in (GameContext::getRunningWorld).
     void startRunning();
     void finishRunning();
-    // World frame by stages (WorldFrame). The runtime calls it only on a running world.
-    void update(double deltaTime, WorldFrame frame);
-    // Additional world pass in a rendering mode into a view (editor: IDS picking) — after
-    // update of the same frame, with the same frame.
-    void renderPass(RenderingMode mode, Miren::ViewId view, const WorldFrame &frame);
-    // A frame of a world outside the frame of the viewport (a preview of the editor): what the
-    // world shows is collected and drawn in one DEFAULT pass into `view`. Nothing is simulated
-    // and no shadow pass runs — the shadow views belong to the world that is `update`d this
-    // frame, so a world drawn this way keeps its shadows, its occlusion volume and its screen
-    // occlusion off in its settings.
-    void draw(Miren::ViewId view, const WorldFrame &frame);
-    // The box around the meshes the last frame collected (update or draw) — all of them, or
-    // those of the given entities: what a camera frames. false — nothing with bounds.
-    bool getMeshBounds(glm::vec3 &outMin, glm::vec3 &outMax, const std::vector<UUID> *entities = nullptr) const {
-        return m_meshes.bounds(outMin, outMax, entities);
-    }
+    // A frame of the simulation: the frame phases of the world systems (FramePhase), physics and
+    // scripts among them. Called on a running world only. Drawing is not here: a world is drawn
+    // through a view (Renderer/WorldView.hpp), after its update — the scripts move the camera in it.
+    void update(double deltaTime);
     Entity instantiateEntity();
     // Entity with a known id (loading the world from a file — WorldMapper).
     Entity instantiateEntity(UUID id);
@@ -96,12 +66,6 @@ public:
     inline bool isRunning() {
         return m_isRunning;
     }
-    Renderer2D &getRenderer2D() {
-        return m_renderer2d;
-    }
-    Renderer3D &getRenderer3D() {
-        return m_renderer3d;
-    }
     // The core settings of the world: sections of the world scope of the settings registry
     // (Extensions::settings — "lighting", "graphics", "wind" in .world) in the context, like the
     // settings of the modules. They exist from the world's birth; clear resets them.
@@ -117,32 +81,13 @@ public:
     const WorldLightingSettings &getLightingSettings() const {
         return settings<WorldLightingSettings>();
     }
-    // Scene wind of the world. The world applies it to SceneWind itself when its frame begins
-    // (update), so what is drawn in a frame of a world is drawn in the wind of that world.
+    // Scene wind of the world: the wind of every frame drawn of it (WorldView::render applies it
+    // to SceneWind), so what is drawn in a frame of a world is drawn in the wind of that world.
     SceneWindSettings &getWindSettings() {
         return context<SceneWindSettings>();
     }
     const SceneWindSettings &getWindSettings() const {
         return settings<SceneWindSettings>();
-    }
-    // Screen position of the frame's sun (xy — UV, z — "in frame" 0/1): computed from the
-    // CAMERA's viewProj in update*, consumed by postprocessing (flares in bloom_apply).
-    glm::vec4 getFrameSunScreen() const {
-        return m_lighting.sunScreen();
-    }
-    // The camera the last update drew the world through (the main camera is resolved inside the
-    // update, after the simulation): what works on the frame afterwards — the postprocessing —
-    // needs its matrices.
-    const glm::mat4 &getFrameProjection() const {
-        return m_frameProjection;
-    }
-    const glm::mat4 &getFrameViewProj() const {
-        return m_frameViewProj;
-    }
-    // The screen-space ambient occlusion computed from the frame that was just drawn
-    // (SsaoRenderer): the next frame of this world shades with it.
-    void setScreenOcclusion(const SsaoData &occlusion) {
-        m_lighting.setScreenOcclusion(occlusion);
     }
     glm::mat4 getWorldSpaceTransformMatrix(Entity entity);
     void convertToWorldSpace(Entity entity);
@@ -242,16 +187,6 @@ public:
     bool isValid(UUID entityId);
 
 private:
-    // World pass in the current rendering mode: frame lighting (DEFAULT only), then feeding
-    // geometry by families (RenderSystem). In the shadow depth pass viewProjMtx is the cascade's.
-    void renderWorld(glm::mat4 &viewProjMtx, glm::mat4 &skyViewProjMtx, glm::vec3 cameraPosition);
-    // Depth passes of the shadow cascades (after the DEFAULT traversal of the same frame: it has
-    // computed the cascades for the camera and the sun; the GPU executes them before the scene —
-    // the views are above SCENE_VIEW).
-    void renderShadowCascades(glm::vec3 cameraPosition);
-    // Matrices and position of the world's main camera into the frame; without a camera —
-    // identity matrices.
-    void resolveMainCamera(WorldFrame &frame);
     void fillEntity(Entity entity, UUID id);
     // The two sides of a link and the count of bodies above it, with nothing of what setParent
     // does around them: its halves, and the way an entity leaves the hierarchy when it is
@@ -315,13 +250,6 @@ private:
     CommandHistory m_commandHistory;
     entt::registry m_registry;
     TypeContext m_context;
-    Renderer2D m_renderer2d;
-    Renderer3D m_renderer3d;
-    LightingSystem m_lighting; // frame lighting: lights, shadow cascades, occlusion volume
-    // The meshes of the frame, read from the registry once in update: every pass draws from it.
-    RenderSystem::MeshList m_meshes;
-    glm::mat4 m_frameProjection = glm::mat4(1.f);
-    glm::mat4 m_frameViewProj = glm::mat4(1.f);
 
     friend class Entity;
 };

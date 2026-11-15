@@ -1,5 +1,4 @@
 #include "Panda/Renderer/CascadedShadowMap.hpp"
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Assets/Base/AssetHandler.hpp"
 
@@ -130,8 +129,14 @@ void CascadedShadowMap::releaseAtlas() {
     m_atlasTileSize = 0;
 }
 
-Miren::ViewId CascadedShadowMap::cascadeView(uint32_t cascade) const {
-    return Views::shadowView(static_cast<int>(cascade));
+Miren::ViewId CascadedShadowMap::addCascadeView(uint32_t cascade) const {
+    const int tileSize = static_cast<int>(m_atlasTileSize);
+    return Miren::addView({
+        .frameBuffer = m_frameBuffer,
+        .viewport = Miren::Rect(static_cast<int>(cascade) * tileSize, 0, tileSize, tileSize),
+        .clearsColor = false,
+        .clearsDepth = cascade == 0,
+    });
 }
 
 void CascadedShadowMap::ensureAtlas(uint32_t cascadeCount, uint32_t tileSize) {
@@ -241,15 +246,6 @@ bool CascadedShadowMap::update(
         m_data.splits[i] = d1;
         m_data.texelWorld[i] = 2.f * radius / static_cast<float>(tileSize);
         m_data.depthScale[i] = depthPerMeterScale / (2.f * radius);
-
-        // Cascade view: an atlas tile; only the first one clears the depth (shared attachment).
-        const Miren::ViewId view = cascadeView(i);
-        Miren::setViewFrameBuffer(view, m_frameBuffer);
-        Miren::setViewport(
-            view, Miren::Rect(static_cast<int>(i * tileSize), 0, static_cast<int>(tileSize), static_cast<int>(tileSize))
-        );
-        Miren::setViewClearEnabled(view, false);
-        Miren::setViewClearDepth(view, i == 0, 1.f);
     }
     for (uint32_t i = cascadeCount; i < RENDERER_MAX_SHADOW_CASCADES; i++) {
         m_data.textureMatrices[i] = glm::mat4(1.f);

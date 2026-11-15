@@ -1,5 +1,8 @@
 #include "Panda/GameLogic/Systems/RenderSystem.hpp"
 
+#include "Panda/Renderer/Renderer2D.hpp"
+#include "Panda/Renderer/Renderer3D.hpp"
+
 #include <algorithm>
 
 #include "Panda/Assets/StaticResources.hpp"

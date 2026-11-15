@@ -27,8 +27,13 @@ public:
     void setDepthBias(float constant, float slope);
     void addInput(std::string_view name, RenderPassInputType type, const void *value, size_t size);
     void addViewInput(ViewId id, std::string_view name, RenderPassInputType type, const void *value, size_t size);
+    // The next view of the frame. The views are executed in the order they were added.
+    ViewId addView(const ViewDescription &description);
     void resetCurrentDrawCall();
     void submitCurrentDrawCall(ViewId id, ProgramHandle program);
+    // The frame is complete: a view that got no draw but erases something gets an empty one, so
+    // that it is entered — its target is cleared.
+    void closeViews();
     void queueFree(FrameBufferHandle handle);
     void queueFree(ProgramHandle handle);
     void queueFree(TextureHandle handle);
@@ -52,13 +57,18 @@ public:
     uint32_t m_transientIbSize;
     int m_drawCallsCount;
     RenderPass m_drawCalls[MAX_DRAW_CALLS];
+    // The views of this frame, m_viewCount of them, in the order of their execution.
     View m_views[MAX_VIEWS];
+    int m_viewCount;
     // The inputs of a view for this frame: applied to each of its draws before the draw's own.
     RenderPassInputs m_viewInputs[MAX_VIEWS];
 
 private:
     RenderPass *getCurrentDrawCall();
     void reportDrawCallOverflow();
+    bool isViewOfThisFrame(ViewId id) const;
+
+    uint32_t m_viewDrawCalls[MAX_VIEWS]; // how many draws a view of this frame got
 
     FreeHandleQueue<FrameBufferHandle, MAX_FRAME_BUFFERS> m_frameBuffersFreeHandle;
     FreeHandleQueue<ProgramHandle, MAX_SHADERS> m_shadersFreeHandle;

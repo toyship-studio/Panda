@@ -14,9 +14,10 @@ class World;
 
 // Frame lighting of the world: ambient and the environment map — from the world's lighting
 // settings, the sun and point lights — from components, shadow cascades and the occlusion volume —
-// fitted to the frame's camera and sun. Owns CascadedShadowMap, OcclusionVolume and the light
-// atlas of the environment map, EnvironmentLighting (state between frames). World calls update once per frame before the scene pass; the cascade depth passes are
-// drawn by World through shadowMap(). Occlusion volume occluders are collected from the world
+// fitted to the frame's camera and sun. Owns CascadedShadowMap, LampShadowMap, OcclusionVolume and
+// the light atlas of the environment map, EnvironmentLighting (state between frames). A WorldView
+// calls update once per frame, before the passes of the frame, and draws the depth passes through
+// shadowMap() and lampShadowMap(). Occlusion volume occluders are collected from the world
 // systems (contributions of the worldSystems registry).
 class LightingSystem final {
 public:

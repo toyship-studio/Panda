@@ -281,7 +281,7 @@ void RendererOpenGL::viewChanged(View &view) {
             view.m_viewport.origin.x, view.m_viewport.origin.y, view.m_viewport.size.width, view.m_viewport.size.height
         ));
     }
-    // Color and depth are cleared separately (setViewClearDepth). As with Metal/D3D11, the clear
+    // Color and depth are cleared separately (ViewDescription::clearsDepth). As with Metal/D3D11, the clear
     // covers the whole attachment, not the viewport: the shadow atlas tiles share one clear.
     // Clears must not inherit clipping or disabled color writes from a previous draw.
     GL_CALL(glDisable(GL_SCISSOR_TEST));

@@ -15,7 +15,6 @@
 #include <MirenTools.hpp>
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
-#include <Panda/Renderer/MirenViewDistribution.hpp>
 #include <Panda/Renderer/SceneWind.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
@@ -111,12 +110,6 @@ void EditorLayer::onAttach() {
     // request arrives in the middle of the world update — stop() tears down the playing world and
     // would crash the script frame in progress.
     GameContext::setQuitRequestHandler([this] { m_pendingStop = true; });
-    Fern::Size dpi = Application::get()->getMainWindow()->getDpi();
-    Fern::Size windowSize = Application::get()->getMainWindow()->getSize();
-    // Default framebuffer initial size
-    Miren::setViewport(
-        Views::GLOBAL_VIEW, Miren::Rect(0, 0, windowSize.width * dpi.width, windowSize.height * dpi.height)
-    );
     m_viewports.init();
     m_viewports.scene().setWorld(m_currentWorld);
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
@@ -131,11 +124,11 @@ void EditorLayer::onAttach() {
     const path_t settingsPath = m_documents.editorSettingsFile().path();
     m_commands.loadKeymap(settingsPath.empty() ? path_t() : settingsPath.parent_path() / "keymap.json");
 
-    // PandaUI host of the editor chrome (renders on GLOBAL_VIEW). Fonts and icons go BEFORE the
-    // controller is created (panels take icons from the global registry while being built). The
-    // coordinator is Editor::EditorController.
+    // PandaUI host of the editor chrome (the last pass of a frame, into the window). Fonts and
+    // icons go BEFORE the controller is created (panels take icons from the global registry while
+    // being built). The coordinator is Editor::EditorController.
     installSystemColorSampler(); // ColorPicker eyedropper (macOS: NSColorSampler; otherwise no-op)
-    m_editorUI.initialize(m_window, Views::GLOBAL_VIEW);
+    m_editorUI.initialize(m_window);
     m_editorUI.loadFonts(fontSettings());
     // The list of installed fonts for the APPEARANCE section is scanned once, off the main thread.
     Application::get()->getScheduler().submit(
@@ -263,13 +256,16 @@ void EditorLayer::onUpdate(double deltaTime) {
         } else {
             m_scenePointer = Editor::ScenePointer{};
         }
-        const WorldFrame frame =
-            m_viewports.beginFrame(*m_currentWorld, deltaTime, playing, m_viewportSettings, navigation);
+        m_viewports.beginFrame(*m_currentWorld, deltaTime, m_viewportSettings, navigation);
         if (!playing) {
-            updateViewportTools(deltaTime); // brushes — before the world update: edits are remeshed this frame
+            updateViewportTools(deltaTime); // brushes — before the frame is drawn: edits are remeshed this frame
         }
-        if (!playing || m_playingWorld.isRunning()) { m_currentWorld->update(deltaTime, frame); }
-        m_viewports.finishFrame(*m_currentWorld, m_viewportSettings, Application::get()->getTime());
+        // The game is simulated, then the world on screen is drawn through the live viewport. A
+        // playing world that does not run (it waits for its next world) keeps its last frame.
+        if (playing && m_playingWorld.isRunning()) { m_currentWorld->update(deltaTime); }
+        if (!playing || m_playingWorld.isRunning()) {
+            m_viewports.render(*m_currentWorld, m_viewportSettings, Application::get()->getTime());
+        }
         if (playing) {
             syncGameUiFrame();
             m_gameUI.update(static_cast<float>(deltaTime)); // the game UI draws into the Game surface
@@ -286,8 +282,8 @@ void EditorLayer::onUpdate(double deltaTime) {
         // Layout passes of the chrome UI accumulate over a one-second window: the panel itself dirties
         // the layout by changing text (background ~2-3/s), so a per-frame value would flicker; a
         // pathology shows up as ~FPS passes per second.
-        const Renderer2D::Statistics stats2d = m_currentWorld->getRenderer2D().getStats();
-        const Renderer3D::Statistics stats3d = m_currentWorld->getRenderer3D().getStats();
+        const Renderer2D::Statistics stats2d = m_viewports.worldView().renderer2D().getStats();
+        const Renderer3D::Statistics stats3d = m_viewports.worldView().renderer3D().getStats();
         const uint64_t uiLayoutCount = m_editorUI.context().layoutPassCount();
         m_uiLayoutAccum += static_cast<uint32_t>(uiLayoutCount - m_lastUiLayoutCount);
         m_lastUiLayoutCount = uiLayoutCount;
@@ -329,7 +325,8 @@ void EditorLayer::syncViewports() {
     frames.sceneVisible = surfaces.sceneVisible;
     frames.game = Rect(surfaces.game.origin.x, surfaces.game.origin.y, surfaces.game.size.width, surfaces.game.size.height);
     frames.gameVisible = surfaces.gameVisible;
-    m_viewports.sync(frames, m_playing);
+    frames.focused = surfaces.gameInFocus ? ViewportKind::Game : ViewportKind::Scene;
+    m_viewports.sync(frames);
     // Wrap the output textures once (the native handles are stable across resizes) and feed the panels.
     // The wrap waits for a laid-out tab: an ImageView draws nothing for a texture of size zero, and the
     // size is frozen at the wrap (the panel stretches the image to its frame anyway).
@@ -348,7 +345,7 @@ void EditorLayer::syncViewports() {
         m_gameNative = gameNative;
     }
     if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
-    m_editorController->setGameViewportLive(m_viewports.isGameLive());
+    m_editorController->setLiveViewport(m_viewports.isGameLive());
     m_editorController->setGameViewportMessage(
         !hasWorld() && !m_playing                                  ? "No world is open"
         : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
@@ -704,7 +701,7 @@ void EditorLayer::focusSelection() {
     glm::vec3 center = Editor::selection().medianPosition();
     float radius = 1.f;
     glm::vec3 boundsMin, boundsMax;
-    if (m_currentWorld->getMeshBounds(boundsMin, boundsMax, &ids)) {
+    if (m_viewports.worldView().meshBounds(boundsMin, boundsMax, &ids)) {
         center = (boundsMin + boundsMax) * 0.5f;
         radius = std::max(glm::length(boundsMax - boundsMin) * 0.5f, 0.1f);
     }
@@ -938,8 +935,7 @@ void EditorLayer::onEvent(Fern::Event *event) {
         closeAppRequest();
         event->isHandled = true;
     } else if (event->type == Fern::EventType::WindowResize && event->getWindow() == m_window) {
-        const Fern::WindowResizeEvent *ev = static_cast<const Fern::WindowResizeEvent *>(event);
-        windowSizeChanged(Size(ev->getWidth(), ev->getHeight()));
+        windowSizeChanged();
         if (m_playing) {
             syncGameUiFrame();
             m_gameUI.syncWindow(event->getWindow());
@@ -947,12 +943,9 @@ void EditorLayer::onEvent(Fern::Event *event) {
     }
 }
 
-void EditorLayer::windowSizeChanged(Size size) {
-    Miren::Rect viewport =
-        Miren::Rect(0, 0, size.width * m_window->getDpi().width, size.height * m_window->getDpi().height);
-    Miren::setViewport(Views::GLOBAL_VIEW, viewport);
+void EditorLayer::windowSizeChanged() {
 #ifdef PLATFORM_DESKTOP
-    m_window->getDrawingContext()->update();
+    m_window->getDrawingContext()->update(); // the drawable follows the size of the window
 #endif
 }
 
@@ -1119,7 +1112,8 @@ path_t EditorLayer::defaultProjectParentPath() const {
 
 void EditorLayer::syncGameUiFrame() {
     Fern::Size dpi = m_window->getDpi();
-    m_gameUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height)); // the game UI lives in the Game tab
+    // The game UI lives in the Game tab: drawn over the output of the Game while it renders.
+    m_gameUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height), m_viewports.gameTarget());
 }
 
 #pragma region Project loader output
@@ -1268,11 +1262,14 @@ void EditorLayer::registerCommands() {
     command("file.showCppProject", "File", "Show C++ Project", [this] { m_builds.showFolder(BuildTargetKind::Scripts); });
     command("file.closeProject", "File", "Close Project", [this] { closeProjectRequest(); });
     command("app.exit", "File", "Exit", [this] { closeAppRequest(); }, anywhere);
-    // The scripts as the game plays them in the editor; the CMake panel has the other builds.
-    command("build.scripts", "Build", "Build Scripts", [this] {
+    // The scripts in the configuration the CMake panel shows; the panel has the Export project too.
+    const auto scripts = [this](BuildAction action) {
         m_editorController->showPanel("cmake");
-        m_builds.startScripts(BuildAction::Build, ScriptsBuildConfig::Debug);
-    });
+        m_builds.start(BuildTargetKind::Scripts, action);
+    };
+    command("build.scripts", "Build", "Build Scripts", [scripts] { scripts(BuildAction::Build); });
+    command("build.configure", "Build", "Configure Scripts", [scripts] { scripts(BuildAction::Configure); });
+    command("build.clean", "Build", "Clean Scripts Build Folder", [scripts] { scripts(BuildAction::Clean); });
     command("build.stop", "Build", "Stop Build", [this] { m_builds.cancel(); });
     command("export.cook", "Export Game", "Cook Runtime Data", [this] { m_builds.cook(); });
 #ifdef PLATFORM_MACOS
@@ -1814,6 +1811,10 @@ void EditorLayer::restartEditor() {
         if (m_launch.mcpPort > 0) { // the agent that restarted the editor finds it on the same port
             arguments.push_back(SystemTools::MCP_ARGUMENT);
             arguments.push_back(std::to_string(m_launch.mcpPort));
+        }
+        if (SystemTools::isUserDataDirectoryOverridden()) { // the new instance keeps the settings of this one
+            arguments.push_back(SystemTools::USER_DATA_ARGUMENT);
+            arguments.push_back(SystemTools::userDataDirectory().string());
         }
         SystemTools::setRelaunchOnExit(true, std::move(arguments));
         closeApp();

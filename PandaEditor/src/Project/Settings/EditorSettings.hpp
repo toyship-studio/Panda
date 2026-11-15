@@ -141,6 +141,25 @@ struct EditorExternalToolsSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+/// "toolchain": what the editor builds the C++ of a project with on this machine (the CMake
+/// panel: Project/Build/ProjectBuilds). Every field is a command found in PATH and the usual
+/// install folders, or the path of an executable; empty — the default named next to it. A change
+/// of the generator or of a compiler makes the next Configure or Build start from a clean build
+/// folder: cmake does not reuse a tree made with another.
+struct EditorToolchainSettings final : public Rain::Codable {
+    std::string cmake;       // empty — the cmake that comes with the editor, then the SDK's, then PATH
+    std::string generator;   // cmake -G for the scripts ("Ninja", "Unix Makefiles"); empty — cmake's default
+    std::string cCompiler;   // CMAKE_C_COMPILER; empty — cmake finds one
+    std::string cxxCompiler; // CMAKE_CXX_COMPILER; empty — cmake finds one
+
+    RAIN_FIELDS_BEGIN(EditorToolchainSettings)
+    RAIN_FIELD(cmake)
+    RAIN_FIELD(generator)
+    RAIN_FIELD(cCompiler)
+    RAIN_FIELD(cxxCompiler)
+    RAIN_FIELDS_END
+};
+
 /// "appearance": the look of the editor.
 struct EditorAppearanceSettings final : public Rain::Codable {
     std::string theme;      // plugin theme id ("<plugin>/<file>"); empty or not found — the built-in dark one

@@ -18,6 +18,11 @@ public:
     // Windows %APPDATA%/Panda, Linux $XDG_DATA_HOME|~/.local/share/Panda. Plugins —
     // <folder>/Plugins. Empty — the home folder could not be determined.
     static path_t userDataDirectory();
+    // `--user-data <dir>`: this instance keeps its settings, its session and its plugins there
+    // instead (a test run, an agent's own editor: the layout of the user stays as it is). Set
+    // before anything is read; empty — the folder of the system.
+    static void setUserDataDirectory(path_t directory);
+    static bool isUserDataDirectoryOverridden();
     static std::optional<path_t> openFileDialog();
     static std::optional<path_t> openFolderDialog(const char *initialFolder = "");
     static std::optional<path_t> saveFileDialog(
@@ -82,10 +87,16 @@ public:
     // start, whatever is open — the start screen included. For work on the editor itself; a
     // project turns its own server on in its settings.
     static constexpr const char *MCP_ARGUMENT = "--mcp";
+    static constexpr const char *USER_DATA_ARGUMENT = "--user-data";
     // Starts a program without waiting for it or wiring its pipes (the update helper, the new
     // editor after an update).
     static bool startDetached(const path_t &executable, const std::vector<std::string> &args);
     static uint32_t currentProcessId();
+    // An executable by its command: the folders of PATH, then the usual install folders (a GUI
+    // application on macOS does not inherit the PATH of the user's shell). A path of a file is
+    // answered as it is.
+    static std::optional<path_t> findExecutable(const std::string &command);
+    // The cmake that comes with the editor, then the SDK's, then PATH.
     static std::optional<path_t> findCMakeExecutable();
     // slangc for compiling user shaders (MirenTools): editor bundle → PandaSDK.
     static std::optional<path_t> findSlangExecutable();

@@ -220,7 +220,7 @@ private:
     void closeApp();
     void saveOpenedProjectWindowState();
     void updateWindowState();
-    void windowSizeChanged(Size size);
+    void windowSizeChanged();
     void showStartScreen();
     void showEditorChrome();
     void syncStartScreenModel();

@@ -1,6 +1,5 @@
 #include "Panda/UI/GameUI.hpp"
 
-#include "Panda/Renderer/MirenViewDistribution.hpp"
 #include "Panda/ScriptEngine/InnerScriptHook.hpp"
 #include "Panda/UI/PandaUIFernHost.hpp"
 #include "Panda/UI/PandaUIMirenRenderer.hpp"
@@ -22,24 +21,27 @@ namespace Panda {
 namespace {
 
     constexpr Handle MAIN_WINDOW_HANDLE = 1;
-    constexpr Miren::ViewId UI_VIEW_BEGIN = 100; // the views of the windows the UI opens
+    constexpr uint32_t NO_FRAME = ~0u;
 
     struct WindowEntry {
         Handle handle = 0;
         Fern::Window *window = nullptr;
-        Miren::ViewId viewId = 0;
         bool ownsNativeWindow = false; // a window the UI opened; the main one is the application's
+        // The Miren view of the window in the frame viewFrame: a view lives for one frame, it is
+        // made at the first draw list of the frame that goes into the window.
+        Miren::ViewId viewId = 0;
+        uint32_t viewFrame = NO_FRAME;
     };
 
     struct MainViewportFrame {
         Rect frame;
         Size dpiScale;
+        Miren::FrameBufferHandle target; // what the frame is drawn into
         bool enabled = false;
     };
 
     struct PendingWindowDisposal {
         Fern::Window *window = nullptr;
-        Miren::ViewId viewId = 0;
         uint32_t retireFrame = 0;
     };
 
@@ -48,7 +50,6 @@ namespace {
     MainViewportFrame s_mainViewportFrame;
     std::vector<PendingWindowDisposal> s_pendingWindowDisposals;
     Handle s_nextWindowHandle = MAIN_WINDOW_HANDLE + 1;
-    Miren::ViewId s_nextViewId = UI_VIEW_BEGIN + 1;
     bool s_initialized = false;
 
     // Lives as long as the process and is never destroyed: at exit the renderer it would release
@@ -111,25 +112,43 @@ namespace {
         ExternalCalls::ui_HandleEvent(&event);
     }
 
-    // The view of the window follows its graphics context and size (on creation and on a resize).
-    void syncView(const WindowEntry &entry) {
+    // The drawable of the window follows its size (on creation and on a resize).
+    void syncDrawable(const WindowEntry &entry) {
         if (!entry.window) { return; }
+        if (Fern::GraphicsContext *context = entry.window->getDrawingContext()) { context->update(); }
+    }
+
+    // The pass of the window in the frame being built. The main window goes over the finished
+    // frame of the game — the back buffer of the application, or the target of the frame the
+    // editor gives it — so entering its view erases nothing; a window the UI opened is all UI.
+    Miren::ViewId viewOf(WindowEntry &entry) {
+        const uint32_t frame = Miren::getFrameNumber();
+        if (entry.viewFrame == frame) { return entry.viewId; }
         const PandaUI::Size size = sizeOf(entry);
         const PandaUI::Size dpi = dpiScaleOf(entry);
-        Fern::GraphicsContext *context = entry.window->getDrawingContext();
-        if (context) { context->update(); }
-        Miren::setViewGraphicsContext(entry.viewId, context);
-        Miren::setViewport(
-            entry.viewId,
-            Miren::Rect(0, 0, static_cast<int>(size.width * dpi.width), static_cast<int>(size.height * dpi.height))
-        );
-        if (entry.ownsNativeWindow) { Miren::setViewClear(entry.viewId, 0x111318ff); }
+        Miren::ViewDescription view;
+        view.viewport =
+            Miren::Rect(0, 0, static_cast<int>(size.width * dpi.width), static_cast<int>(size.height * dpi.height));
+        if (inFrame(entry)) {
+            view.frameBuffer = s_mainViewportFrame.target;
+        } else {
+            view.graphicsContext = entry.window->getDrawingContext();
+        }
+        if (entry.ownsNativeWindow) {
+            view.clearColor = 0x111318ff;
+        } else {
+            view.clearsColor = false;
+            view.clearsDepth = false;
+        }
+        entry.viewId = Miren::addView(view);
+        entry.viewFrame = frame;
+        return entry.viewId;
     }
 
     // A window of the UI goes two frames later: frames in flight still draw into it.
     void queueWindowDisposal(const WindowEntry &entry) {
         if (!entry.ownsNativeWindow || !entry.window) { return; }
-        s_pendingWindowDisposals.push_back({entry.window, entry.viewId, Miren::getFrameNumber() + 2});
+        s_pendingWindowDisposals.push_back({entry.window, Miren::getFrameNumber() + 2});
     }
 
     /* ------------------------------ the ui_* entries of the ABI ------------------------------ */
@@ -146,8 +165,8 @@ namespace {
         );
         if (!window) { return 0; }
         const Handle handle = s_nextWindowHandle++;
-        s_windows[handle] = {handle, window, s_nextViewId++, true};
-        syncView(s_windows[handle]);
+        s_windows[handle] = {handle, window, true};
+        syncDrawable(s_windows[handle]);
         return handle;
     }
 
@@ -222,9 +241,12 @@ namespace {
         PANDA_PROFILE_PLOT("PandaUI Draw Commands", static_cast<int64_t>(drawList->commandsCount));
         PANDA_PROFILE_PLOT("PandaUI Vertices", static_cast<int64_t>(drawList->verticesCount));
         PANDA_PROFILE_PLOT("PandaUI Indices", static_cast<int64_t>(drawList->indicesCount));
-        const WindowEntry *entry = findWindow(windowHandle);
+        WindowEntry *entry = findWindow(windowHandle);
         if (!entry || !entry->window) { return; }
-        renderer().render(*drawList, entry->viewId);
+        // The frame of the editor that holds the main window is not drawn this frame: the UI
+        // lives on (layout, animation, input), its picture has nowhere to go.
+        if (inFrame(*entry) && !s_mainViewportFrame.target.isValid()) { return; }
+        renderer().render(*drawList, viewOf(*entry));
     }
 
 } // namespace
@@ -237,12 +259,10 @@ void GameUI::initialize() {
     m_initialized = true;
     if (s_initialized) { return; }
     renderer().init();
-    // The main window draws into GAME_UI_VIEW — after the tonemap, in display space: in a game
-    // that is the backbuffer, in the editor the output of the Game viewport. The UI goes over
-    // the finished frame: entering its view must not clear the target.
-    s_windows[MAIN_WINDOW_HANDLE] = {MAIN_WINDOW_HANDLE, m_window, Views::GAME_UI_VIEW, false};
-    Miren::setViewClearEnabled(Views::GAME_UI_VIEW, false);
-    syncView(s_windows[MAIN_WINDOW_HANDLE]);
+    // The main window draws after the tonemap, in display space, over the finished frame: in a
+    // game that is the back buffer, in the editor the output of the Game viewport (viewOf).
+    s_windows[MAIN_WINDOW_HANDLE] = {MAIN_WINDOW_HANDLE, m_window, false};
+    syncDrawable(s_windows[MAIN_WINDOW_HANDLE]);
     s_initialized = true;
 }
 
@@ -258,7 +278,6 @@ void GameUI::shutdown() {
     renderer().shutdown();
     s_mainViewportFrame = {};
     s_nextWindowHandle = MAIN_WINDOW_HANDLE + 1;
-    if (s_pendingWindowDisposals.empty()) { s_nextViewId = UI_VIEW_BEGIN + 1; }
     s_initialized = false;
 }
 
@@ -268,7 +287,7 @@ void GameUI::update(float deltaTime) {
 }
 
 void GameUI::syncWindow(Fern::Window *window) {
-    if (const WindowEntry *entry = findWindow(window)) { syncView(*entry); }
+    if (const WindowEntry *entry = findWindow(window)) { syncDrawable(*entry); }
 }
 
 bool GameUI::handleEvent(Fern::Event *event) {
@@ -287,15 +306,15 @@ bool GameUI::handleEvent(Fern::Event *event) {
     return ExternalCalls::ui_HandleEvent(&uiEvent);
 }
 
-void GameUI::setMainViewportFrame(Rect frame, Size dpiScale) {
+void GameUI::setMainViewportFrame(Rect frame, Size dpiScale, Miren::FrameBufferHandle target) {
     const auto same = [](Size a, Size b) { return a.width == b.width && a.height == b.height; };
     const bool changed = !s_mainViewportFrame.enabled || !same(s_mainViewportFrame.frame.size, frame.size) ||
                          !same(s_mainViewportFrame.dpiScale, dpiScale);
     s_mainViewportFrame.frame = frame;
     s_mainViewportFrame.dpiScale = dpiScale;
+    s_mainViewportFrame.target = target;
     s_mainViewportFrame.enabled = true;
     if (!m_initialized) { return; }
-    syncWindow(m_window);
     if (changed) {
         if (const WindowEntry *entry = findWindow(MAIN_WINDOW_HANDLE)) { sendResizeEvent(*entry); }
     }
@@ -303,7 +322,6 @@ void GameUI::setMainViewportFrame(Rect frame, Size dpiScale) {
 
 void GameUI::clearMainViewportFrame() {
     s_mainViewportFrame = {};
-    if (m_initialized) { syncWindow(m_window); }
 }
 
 void GameUI::bindHostApi(ScriptHostApi &hostApi) {
@@ -327,11 +345,9 @@ void GameUI::flushPendingWindowDisposals() {
             ++it;
             continue;
         }
-        Miren::setViewGraphicsContext(it->viewId, nullptr);
         if (it->window) { Fern::disposeWindow(it->window); }
         it = s_pendingWindowDisposals.erase(it);
     }
-    if (!s_initialized && s_pendingWindowDisposals.empty()) { s_nextViewId = UI_VIEW_BEGIN + 1; }
 }
 
 } // namespace Panda

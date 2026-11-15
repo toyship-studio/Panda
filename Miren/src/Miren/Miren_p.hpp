@@ -636,9 +636,7 @@ struct Context {
             m_rendererSemaphore.wait();
         }
         freeAllHandles(m_submit);
-        for (int i = 0; i < MAX_VIEWS; i++) {
-            m_submit->m_views[i] = m_views[i];
-        }
+        m_submit->closeViews();
         swap();
         m_submit->reset();
         m_apiSemaphore.post();
@@ -649,34 +647,8 @@ struct Context {
         return m_frameNumber;
     }
 
-    void setViewport(ViewId id, Rect rect) {
-        m_views[id].m_viewport = rect;
-    }
-
-    void setViewGraphicsContext(ViewId id, Fern::GraphicsContext *ctx) {
-        m_views[id].m_graphicsContext = ctx;
-    }
-
-    void setViewClear(ViewId id, uint32_t color) {
-        m_views[id].m_clearColor = color;
-    }
-
-    void setViewClearEnabled(ViewId id, bool enabled) {
-        m_views[id].m_clearEnabled = enabled;
-    }
-
-    void setViewClearAttachments(ViewId id, std::vector<Clear> clear) {
-        m_views[id].m_clearAttachments = clear;
-    }
-
-    void setViewClearDepth(ViewId id, bool enabled, float depth) {
-        m_views[id].m_clearDepthOverride = true;
-        m_views[id].m_clearDepthEnabled = enabled;
-        m_views[id].m_clearDepth = depth;
-    }
-
-    void setViewFrameBuffer(ViewId id, FrameBufferHandle frameBuffer) {
-        m_views[id].m_frameBuffer = frameBuffer;
+    ViewId addView(const ViewDescription &description) {
+        return m_submit->addView(description);
     }
 
     std::thread m_thread;
@@ -686,7 +658,6 @@ private:
     Frame m_frame[2];
     Frame *m_render;
     Frame *m_submit;
-    View m_views[MAX_VIEWS];
     uint32_t m_frameNumber;
 
     Fern::GraphicsContext *m_ctx;
