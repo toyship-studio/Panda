@@ -7,6 +7,7 @@
 #include "UI/Documents/CoreAssetEditors.hpp"
 #include "UI/Documents/CoreComponentInspectors.hpp"
 #include "UI/Documents/PluginsDocument.hpp"
+#include "UI/ExportWindow.hpp"
 #include "UI/SettingsWindow.hpp"
 #include "UI/Documents/UiGalleryDocument.hpp"
 #include "UI/AssetActions.hpp"
@@ -100,6 +101,7 @@ EditorController::EditorController(Panda::EditorLayer &app)
     , m_statisticsView(std::make_shared<StatisticsPanelView>())
     , m_profilerView(std::make_shared<ProfilerPanelView>())
     , m_settings(std::make_unique<SettingsWindow>(app, app.commands()))
+    , m_export(std::make_unique<ExportWindow>(app))
     , m_commands(app.commands()) {
     s_controller = this;
     // The core goes through the same registries as the modules (context/plugins.md, decision 2):
@@ -127,17 +129,50 @@ EditorController::EditorController(Panda::EditorLayer &app)
 
 
 EditorController::~EditorController() {
-    closeSettingsWindow(); // the tree leaves the window before its documents go
+    closeAuxiliaryWindow(); // the tree leaves the window before its documents go
     if (s_controller == this) { s_controller = nullptr; }
 } // m_hostBinding unbinds the host last
 
-void EditorController::closeSettingsWindow() {
+void EditorController::closeAuxiliaryWindow() {
     if (m_settings->owns(m_lastUndoDocument)) { m_lastUndoDocument = nullptr; }
     m_settings->close();
+    m_export->close();
 }
 
-void EditorController::settingsWindowFocusChanged(bool focused) {
+void EditorController::auxiliaryWindowFocusChanged(bool focused) {
     m_settings->setFocused(focused);
+    m_export->setFocused(focused);
+}
+
+// The second window shows one thing at a time. The one that is open gives its place from a tick
+// of the main window: whoever asks may be a click or a key inside the window that goes.
+void EditorController::replaceAuxiliaryWindow(std::function<void()> show) {
+    if (!m_settings->isOpen() && !m_export->isOpen()) {
+        show();
+        return;
+    }
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    if (context == nullptr) { return; }
+    context->postDeferred([this, show = std::move(show)] {
+        closeAuxiliaryWindow();
+        show();
+    });
+}
+
+void EditorController::showExportWindow() {
+    if (m_export->isOpen()) {
+        m_export->show(); // comes to the front
+        return;
+    }
+    replaceAuxiliaryWindow([this] { m_export->show(); });
+}
+
+void EditorController::showSettings(SettingsPage page, const std::string &section) {
+    if (m_settings->isOpen()) {
+        m_settings->show(page, section);
+        return;
+    }
+    replaceAuxiliaryWindow([this, page, section] { m_settings->show(page, section); });
 }
 
 void EditorController::registerDocumentTypes() {
@@ -498,7 +533,7 @@ void EditorController::syncSelection() {
 }
 
 void EditorController::updateChromeFromState(bool isEditMode) {
-    if (m_settings->isCloseRequested()) { closeSettingsWindow(); }
+    if (m_settings->isCloseRequested() || m_export->isCloseRequested()) { closeAuxiliaryWindow(); }
     if (!m_toolbarView) { return; }
     m_worldTabs->sync();
     // The undo/redo buttons show the stack state of the ACTIVE document (just like Cmd+Z itself).
@@ -837,7 +872,7 @@ void EditorController::openPlugins() {
 }
 
 void EditorController::openKeymap() {
-    m_settings->show(SettingsPage::Keymap);
+    showSettings(SettingsPage::Keymap);
 }
 
 void EditorController::openUiGallery() {
@@ -850,15 +885,13 @@ void EditorController::openSettings(Panda::SettingsScope scope, const std::strin
             setWorldSettingsVisible(true);
             if (m_worldSettingsView && !section.empty()) { m_worldSettingsView->revealSection(section); }
             return;
-        case Panda::SettingsScope::Project: m_settings->show(SettingsPage::Project, section); return;
-        case Panda::SettingsScope::Editor: m_settings->show(SettingsPage::Editor, section); return;
+        case Panda::SettingsScope::Project: showSettings(SettingsPage::Project, section); return;
+        case Panda::SettingsScope::Editor: showSettings(SettingsPage::Editor, section); return;
     }
 }
 
 void EditorController::toolbarDidExport() {
-    // The button is File → Export Game → Cook Runtime Data; what it did is in the Output.
-    showPanel("output");
-    m_app.builds().cook();
+    showExportWindow();
 }
 
 // Undo/redo go by the stack of the ACTIVE DOCUMENT (the document model): a document tab —
@@ -1179,11 +1212,15 @@ void EditorController::showGoTo() {
 }
 
 // The tab the keyboard is in closes — the selected tab of the dock that has the focus, or of
-// the center when nothing has it — the way its close button closes it. The Settings window,
-// while it has the keyboard, is what closes.
+// the center when nothing has it — the way its close button closes it. The second window (the
+// Settings, the Export), while it has the keyboard, is what closes.
 bool EditorController::closeFocusedTab() {
     if (m_settings->isFocused()) {
         m_settings->requestClose();
+        return true;
+    }
+    if (m_export->isFocused()) {
+        m_export->requestClose();
         return true;
     }
     if (!m_dockManager) { return false; }

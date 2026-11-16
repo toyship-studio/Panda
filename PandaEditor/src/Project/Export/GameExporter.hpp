@@ -21,9 +21,7 @@ struct ExportSettings {
     path_t reportFile;           // what the cook made, for people and tools (not a part of the game)
     // The world the game starts in: `"world".startWorld` of project.json, relative to the project.
     std::string startWorld;
-    std::string appName = "Panda Game";
-    std::string bundleIdentifier;
-    std::string version = "1.0.0";
+    std::string appName = "Panda Game"; // the name of the save folder of the game
     // Enabled modules of the project that have an engine part (ProjectModules::enabledIds):
     // the export project links only those (modules.txt in the cooked data).
     std::vector<std::string> modules;

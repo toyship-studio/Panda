@@ -105,17 +105,7 @@ void EditorMenuBar::rebuild() {
         item(fileMenu, "Close Project", "file.closeProject");
         fileMenu.addSeparator();
 
-        auto &exportMenu = fileMenu.addSubmenu("Export Game");
-        item(exportMenu, "Cook Runtime Data", "export.cook");
-#ifdef PLATFORM_MACOS
-        auto &xcodeMenu = exportMenu.addSubmenu("Open Xcode");
-        item(xcodeMenu, "macOS", "export.xcodeMacOS");
-        item(xcodeMenu, "iOS Simulator", "export.xcodeIOSSimulator");
-        item(xcodeMenu, "iOS Device", "export.xcodeIOSDevice");
-#endif
-#ifdef PLATFORM_WINDOWS
-        item(exportMenu, "Open Visual Studio", "export.visualStudio");
-#endif
+        item(fileMenu, "Export Game", "export.open"); // a window of its own
     }
 
     // Settings, the Zed way: the editor settings first, then the project's, then the keymap;

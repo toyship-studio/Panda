@@ -430,8 +430,10 @@ dragged as what it holds: `folder` with the ids of every asset in it and under i
 the browser shows names (`nameLess`: the case does not matter, a run of digits is a number). The
 type of a folder is its own on purpose: a target has to ask for many assets to get them (a list
 field of a script), and a well or the viewport, which take `asset.<kind>`, do not react to a
-folder. A selection cannot be dragged into the form of an entity — selecting assets replaces
-that form — which is why the folder is the way to give a list many assets at once.
+folder. A selection of several assets is dragged into the form of an entity whose tab is kept
+(pinned): selecting assets opens their own preview tab next to it and leaves a kept tab alone.
+A structural edit of a form — a script added, a row of a list — rebuilds the tab that asked
+(`EditorTabs`), not the tab of the selection: the selection may be those assets.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). A world is a document, not an asset with parameters: a click on a
@@ -458,7 +460,13 @@ Escape and with the project. The project settings page is the document of `proje
 own undo stack, dirty until saved): a footer with Save and Revert appears while it has unsaved
 changes, and while the window has the keyboard Save and Undo of the menu mean the document of
 its page (`SettingsWindow::focusedDocument`, asked by the coordinator's `activeDocument`). Closing the window keeps unsaved project settings unsaved — Save All and
-the question at exit still cover them. The menu follows Zed: File → Settings holds Open
+the question at exit still cover them. The second window shows one thing at a time: the Settings
+or the export of the game (`UI/ExportWindow`; "Editor: builds of the project"). `EditorController`
+owns both and opens one in the place of the other (`replaceAuxiliaryWindow`) — from a tick of
+the main window, never from inside a click or a key of the window that goes, whose tree the
+closing destroys. At exit the renderer gets through the frames in flight before the window is
+disposed (`EditorUI::shutdown`): a frame drawn into a window that is gone leaves the render
+thread waiting for a drawable forever. The menu follows Zed: File → Settings holds Open
 Settings (Cmd+,), Open Project Settings and Open Keymap — the pages — and Open Settings File /
 Open Project Settings File / Open Keymap File, which open `settings.json`,
 `.Panda/project.json` and `keymap.json` in the external editor (the editor has no text editor
@@ -1112,25 +1120,27 @@ dropping of the queue on `waitAll`.
 
 `Project/Build/ProjectBuilds` is everything the editor builds for the open project: its two cmake
 projects — the scripts (`Scripts/<Name>`) and the game (`Export/`) — and the runtime data the
-second one is built from. `UI/Panels/CMakePanel` (a tab of the bottom dock) is its face; together
-they close the loop author → build → run: edit a script, press Build, the script library is
-loaded, play.
+second one is built from. The two have two faces, because they are two different tasks. The
+scripts are the inner loop — edit a script, press Build, the library is loaded, play — and live
+in a tab of the bottom dock, `UI/Panels/CMakePanel`. The export of the game is a task of its own,
+done now and then, with choices before it and a result after it: it has a window of its own,
+`UI/ExportWindow` (below).
 
-- Three actions on a cmake project (`BuildAction`): **Configure** — cmake makes the build tree
-  (again); **Build** — compiles, configuring a tree that is not configured yet; **Clean** —
-  deletes the build folder. What is built is chosen once (`scriptsConfig`: Debug / Release;
-  `exportTarget`: the IDE and the platform) and is the builds' own state: the panel shows and
-  changes it, `start(kind, action)` and the commands build what is chosen.
+- The actions (`BuildAction`): **Configure** — cmake makes the build tree (again); **Build** —
+  compiles, configuring a tree that is not configured yet; **Clean** — deletes the build folder;
+  **Cook** — the data of the game alone, without cmake (the Export project only). What is built
+  is chosen once (`scriptsConfig`; `exportTarget` and `exportConfig`) and is the builds' own
+  state: the panel and the window show and change it, `start(kind, action)` and the commands
+  build what is chosen.
 - One build at a time: its steps (a cmake command, the removal of a folder, the mark of the
-  toolchain) run on a background-priority PandaAsync worker, their lines are collected and handed
-  to the panel once a frame (`update`), cancellation is cooperative. What the worker shares with
-  the main thread lives in a `shared_ptr`, so closing the editor during a build is safe.
-- Wiring: the panel holds the builds and calls them; it is their `ProjectBuildsOutput`
-  (`buildStarted`, `buildOutput`, `buildFinished`). Nothing stands between the two. The commands
-  `build.scripts` (Cmd+B), `build.configure`, `build.clean`, `build.stop`, `export.cook` and
-  `export.<ide>` call the same object. The panel names its actions (Configure, Build, Clean,
-  Stop, Open in Xcode / Visual Studio on the Export tab) and a tab with no output yet says what
-  they do.
+  toolchain) run on a background-priority PandaAsync worker, their lines are collected once a
+  frame (`update`), cancellation is cooperative. What the worker shares with the main thread
+  lives in a `shared_ptr`, so closing the editor during a build is safe.
+- Wiring of the scripts: the panel holds the builds and calls them; it is their
+  `ScriptsBuildOutput` (`buildStarted`, `buildOutput`, `buildFinished`), given the output of a
+  build of the scripts as it comes. The commands `build.scripts` (Cmd+B), `build.configure`,
+  `build.clean`, `build.stop` call the same object. While there is no output the panel says what
+  its actions do. Its list of lines is `UI/Widgets/BuildLogView`, shared with the Export window.
 - **The toolchain** is a section of the editor settings (`EditorToolchainSettings`, "toolchain" in
   `settings.json`: the machine's, not the project's): the cmake (empty — the one that comes with
   the editor, then the SDK's, then PATH), the generator of the scripts (`-G`; empty — cmake's
@@ -1150,15 +1160,34 @@ loaded, play.
 - Export is also built without presets (presets carried machine paths and broke projects on
   another computer): the generator and platform flags of each target are in
   `ProjectBuilds.cpp` (macOS, iOS Simulator, iOS Device → Xcode; Windows → Visual Studio x64), the
-  SDK is passed with `-DPandaSDK_DIR`, and the build directories are
-  `Export/build/<macos-debug|ios-debug|ios-device-debug|windows-debug>`. The runtime data is
-  cooked before cmake starts (`cook`: the start world of the project and everything it reaches,
-  in one pack, with the manifest and the list of modules → `.Panda/Cooked/Runtime`; what is
-  cooked, what is left out and the pack are `context/export.md`). `builtGame` names the
-  executable a build of the chosen target left, for a check run. `openExportProject` (File →
-  Export Game → Open Xcode / Visual
-  Studio, the Open button of the panel) is the same Configure followed by opening what cmake
-  generated.
+  SDK is passed with `-DPandaSDK_DIR`. `exportTargets()` are the targets of the machine the editor
+  runs on — Xcode on a Mac, Visual Studio on Windows — and nothing else is offered. The build
+  directory is `Export/build/<platform>-<debug|release>` (`macos-release`, `ios-device-debug`; the
+  shell scripts of a project use the same names), and the configuration is given at the build
+  (`--config Debug|Release`: Xcode and Visual Studio are multi-configuration). The configuration
+  is of the code of the game — its scripts and the engine parts of its modules; the libraries
+  of the SDK are the ones the SDK ships.
+- An export is three steps (`ExportStep`): **Cook** (`cook`: the start world of the project and
+  everything it reaches, in one pack, with the manifest and the list of modules →
+  `.Panda/Cooked/Runtime`; what is cooked, what is left out and the pack are
+  `context/export.md`), **Configure**, **Build**. The cook reads the files on the main thread
+  and stops the editor for its time, so `start` only begins the run and the cook waits two
+  frames (`update`) — the screen shows that an export runs before it stands still. `exportStep()`
+  is the step the run is at, or the one it ended in. `builtGame()` names what a build of the
+  chosen target and configuration left: the product (the `.app`, the `.exe`) and, when it runs on
+  this machine, its executable; `runBuiltGame` starts it. `openExportProject` is Cook and
+  Configure followed by opening what cmake generated in its IDE.
+- **The Export window** (`UI/ExportWindow`; File → Export Game, the button of the toolbar, the
+  command `export.open`) is the whole scenario in the order of doing: what is exported (the start
+  world, a setting of the project — the window shows it and leads to it), for what (the target,
+  Debug / Release), what stands in the way (unsaved documents with Save All, no start world), the
+  action (Export; Open in Xcode / Visual Studio; Cook Only), how it goes (the three steps, the
+  output), what came of it (the game with Show in Folder and Run, what the pack holds by kind,
+  the assets the cook left out — a row shows its asset in the Content Browser). The window keeps
+  nothing of its own: every frame it shows what the builds and the files say — the run
+  (`kind`, `action`, `lastResult`, `lastOutput`, `exportStep`), the built game on disk,
+  `report.json` of the last cook (read again when `cookCount` changes). So it can be closed while
+  an export runs and opened again, also in another session.
 - What is wrong before the first step — no cmake, no SDK, no project, a compiler of the toolchain
   that is not there, no start world to cook — is a line of the panel and a failed build; the log of the
   editor (the Output panel) says it too. A step that fails leaves one line in the log pointing at
@@ -1235,7 +1264,7 @@ second way to do what a text file already does. The user-facing page is
   another project the way File → Open Project does (the answer first, the switch a few frames
   later, like `restart`). `show` brings a panel, the settings, the tab of an asset
   or the inspector of an entity in front — a click, not an edit: with the `window` screenshot
-  (`settings` for the Settings window) it is how an agent looks at the editor's own UI.
+  (`settings` or `export` for the second window) it is how an agent looks at the editor's own UI.
   `command` lists the commands of the registry, runs one by id and rebinds its keys: what the
   editor can be asked to do is asked by name, and a new ability of the editor an agent needs
   becomes a command or a tool — pressed keys and clicks are for testing the UI itself. A

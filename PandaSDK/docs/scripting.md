@@ -100,7 +100,9 @@ come by a drop on the **header** of the list: an asset from the Content Browser,
 the Hierarchy — and a **folder** from the Content Browser, which adds every asset of the kind of
 the list that lies in it and under it, in the order of their names. A drop on the value of an
 item replaces that value, as on any field. An edit of the list itself — a drop of a whole folder
-included — is one step of Undo.
+included — is one step of Undo. Several assets selected in the Content Browser go to a list at
+once the same way; selecting assets shows their own form, so keep the tab of the entity open
+first (a double click on the tab).
 
 **A script gets an asset from a field and from nowhere else.** A handle of an asset has no
 constructor from a number: `WorldHandle(3100002001)` does not compile. This is what lets an

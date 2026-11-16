@@ -27,24 +27,31 @@ namespace Panda {
 
 namespace {
 
-    const char *buildTypeName(ScriptsBuildConfig config) {
-        return config == ScriptsBuildConfig::Debug ? "Debug" : "RelWithDebInfo";
+    const char *buildTypeName(BuildConfig config) {
+        return config == BuildConfig::Debug ? "Debug" : "RelWithDebInfo";
     }
 
     // The directories the tasks of an external editor use too: one build tree for both.
-    const char *scriptsBuildDirectoryName(ScriptsBuildConfig config) {
-        return config == ScriptsBuildConfig::Debug ? "cmake-build-debug" : "cmake-build-release";
+    const char *scriptsBuildDirectoryName(BuildConfig config) {
+        return config == BuildConfig::Debug ? "cmake-build-debug" : "cmake-build-release";
     }
 
-    // Export/build/<name>.
-    const char *exportBuildDirectoryName(ExportProjectTarget target) {
+    // Export/build/<name>: the platform and the configuration, the names the shell scripts of a
+    // project use too (configure_export.sh macos-release).
+    std::string exportBuildDirectoryName(ExportProjectTarget target, BuildConfig config) {
+        const char *platform = "macos";
         switch (target) {
-            case ExportProjectTarget::XcodeMacOS: return "macos-debug";
-            case ExportProjectTarget::XcodeIOSSimulator: return "ios-debug";
-            case ExportProjectTarget::XcodeIOSDevice: return "ios-device-debug";
-            case ExportProjectTarget::VisualStudioWindows: return "windows-debug";
+            case ExportProjectTarget::XcodeMacOS: platform = "macos"; break;
+            case ExportProjectTarget::XcodeIOSSimulator: platform = "ios"; break;
+            case ExportProjectTarget::XcodeIOSDevice: platform = "ios-device"; break;
+            case ExportProjectTarget::VisualStudioWindows: platform = "windows"; break;
         }
-        return "macos-debug";
+        return std::string(platform) + (config == BuildConfig::Debug ? "-debug" : "-release");
+    }
+
+    // The configuration of the Export project, as Xcode and Visual Studio name it.
+    const char *exportConfigName(BuildConfig config) {
+        return config == BuildConfig::Debug ? "Debug" : "Release";
     }
 
     // The generator and the platform of the target; the SDK is named by an explicit PandaSDK_DIR.
@@ -119,11 +126,39 @@ ProjectBuilds::ProjectBuilds(ProjectLoader &project, FileDocuments &documents, s
 #endif
 {}
 
+std::vector<ExportProjectTarget> ProjectBuilds::exportTargets() {
+#if defined(PLATFORM_MACOS)
+    return {ExportProjectTarget::XcodeMacOS, ExportProjectTarget::XcodeIOSSimulator, ExportProjectTarget::XcodeIOSDevice};
+#elif defined(PLATFORM_WINDOWS)
+    return {ExportProjectTarget::VisualStudioWindows};
+#else
+    return {};
+#endif
+}
+
+const char *ProjectBuilds::exportTargetName(ExportProjectTarget target) {
+    switch (target) {
+        case ExportProjectTarget::XcodeMacOS: return "macOS";
+        case ExportProjectTarget::XcodeIOSSimulator: return "iOS Simulator";
+        case ExportProjectTarget::XcodeIOSDevice: return "iOS Device";
+        case ExportProjectTarget::VisualStudioWindows: return "Windows";
+    }
+    return "";
+}
+
+const char *ProjectBuilds::exportIdeName(ExportProjectTarget target) {
+    return generatedProjectOf(target).ide;
+}
+
+ExportStep ProjectBuilds::exportStep() const {
+    return m_kind == BuildTargetKind::Export ? m_state->exportStep.load() : ExportStep::None;
+}
+
 ProjectBuilds::~ProjectBuilds() {
     m_state->cancelRequested = true;
 }
 
-void ProjectBuilds::setOutput(ProjectBuildsOutput *output) {
+void ProjectBuilds::setOutput(ScriptsBuildOutput *output) {
     m_output = output;
 }
 
@@ -141,8 +176,9 @@ path_t ProjectBuilds::folder(BuildTargetKind kind) {
 }
 
 path_t ProjectBuilds::buildFolder(BuildTargetKind kind) {
-    return kind == BuildTargetKind::Export ? folder(kind) / "build" / exportBuildDirectoryName(m_exportTarget)
-                                           : folder(kind) / scriptsBuildDirectoryName(m_scriptsConfig);
+    return kind == BuildTargetKind::Export
+               ? folder(kind) / "build" / exportBuildDirectoryName(m_exportTarget, m_exportConfig)
+               : folder(kind) / scriptsBuildDirectoryName(m_scriptsConfig);
 }
 
 /* ------------------------------ The steps of a build ------------------------------ */
@@ -159,6 +195,13 @@ ProjectBuilds::Step ProjectBuilds::commandStep(path_t executable, std::vector<st
             &state.cancelRequested
         );
         return ok && !state.cancelRequested;
+    };
+}
+
+ProjectBuilds::Step ProjectBuilds::exportStepMark(ExportStep step) {
+    return [step](State &state) {
+        state.exportStep = step;
+        return true;
     };
 }
 
@@ -218,12 +261,14 @@ bool ProjectBuilds::begin(BuildTargetKind kind, BuildAction action) {
     bool expected = false;
     if (!m_state->running.compare_exchange_strong(expected, true)) { return false; }
     m_state->cancelRequested = false;
+    m_state->exportStep = ExportStep::None;
     m_kind = kind;
     m_action = action;
     m_openWhenConfigured.reset();
+    m_pendingExport.reset();
     m_lastResult = Result::Running;
     m_lastOutput.clear();
-    if (m_output != nullptr) { m_output->buildStarted(kind); }
+    if (m_output != nullptr && kind == BuildTargetKind::Scripts) { m_output->buildStarted(); }
     return true;
 }
 
@@ -294,17 +339,26 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action) {
     start(kind, action, /*openWhenConfigured*/ false);
 }
 
-void ProjectBuilds::openExportProject(ExportProjectTarget target) {
-    if (isRunning()) {
-        LOG_WARN_EDITOR("A build is running. Open the Export project when it is done.");
-        return;
-    }
-    m_exportTarget = target;
+void ProjectBuilds::openExportProject() {
     start(BuildTargetKind::Export, BuildAction::Configure, /*openWhenConfigured*/ true);
 }
 
 void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhenConfigured) {
+    if (kind == BuildTargetKind::Scripts && action == BuildAction::Cook) { return; } // the game is cooked, not the scripts
     if (!begin(kind, action)) { return; }
+    if (kind == BuildTargetKind::Export && action != BuildAction::Clean) {
+        // The cook reads the files of the game on the main thread, and the editor stands still
+        // meanwhile: it begins two frames later (update), when the screen says an export runs.
+        m_state->exportStep = ExportStep::Cook;
+        m_pendingExport = PendingExport{openWhenConfigured, 2};
+        return;
+    }
+    launch(openWhenConfigured);
+}
+
+void ProjectBuilds::launch(bool openWhenConfigured) {
+    const BuildTargetKind kind = m_kind;
+    const BuildAction action = m_action;
     const bool scripts = kind == BuildTargetKind::Scripts;
     const path_t projectDirectory = folder(kind);
     const path_t buildDirectory = buildFolder(kind);
@@ -324,6 +378,12 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhe
             endWithError("the data of the game was not cooked");
             return;
         }
+        if (action == BuildAction::Cook) { // the data alone
+            m_state->finished = Finished{/*success*/ true, /*canceled*/ false, /*ran*/ true};
+            m_state->running = false;
+            return;
+        }
+        m_state->exportStep = ExportStep::Configure; // what fails from here on is not the cook
     }
     if (!std::filesystem::exists(projectDirectory / "CMakeLists.txt")) {
         fail(std::string(scripts ? "scripts" : "export") + " project not found at " + projectDirectory.string());
@@ -347,6 +407,7 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhe
     }
     // Build configures a tree that is not configured yet: a fresh checkout is built with one button.
     if (action == BuildAction::Configure || stale || !configured) {
+        if (!scripts) { steps.push_back(exportStepMark(ExportStep::Configure)); }
         std::vector<std::string> arguments;
         if (scripts) {
             arguments = {"-S", projectDirectory.string(), "-B", buildDirectory.string(),
@@ -364,42 +425,56 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhe
         std::vector<std::string> arguments = {"--build", buildDirectory.string()};
         // Xcode and Visual Studio are multi-configuration generators: the configuration is chosen
         // at the build.
-        if (!scripts) { arguments.insert(arguments.end(), {"--config", "Debug"}); }
+        if (!scripts) {
+            steps.push_back(exportStepMark(ExportStep::Build));
+            arguments.insert(arguments.end(), {"--config", exportConfigName(m_exportConfig)});
+        }
         arguments.insert(arguments.end(), {"-j", jobsArgument()});
         steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
     }
     if (openWhenConfigured) {
         m_openWhenConfigured = OpenRequest{buildDirectory, m_exportTarget};
         LOG_INFO_EDITOR(
-            "Configuring the Export project (%s): cmake writes to the CMake panel, the project opens when it is done.",
-            exportBuildDirectoryName(m_exportTarget)
+            "Configuring the Export project (%s): the project opens when cmake is done.",
+            exportBuildDirectoryName(m_exportTarget, m_exportConfig).c_str()
         );
     }
     run(std::move(steps));
 }
 
 void ProjectBuilds::update() {
+    // An export that began: its cook, then its steps of cmake. Stopped before that — it ends here.
+    if (m_pendingExport && --m_pendingExport->frames <= 0) {
+        const bool openWhenConfigured = std::exchange(m_pendingExport, std::nullopt)->openWhenConfigured;
+        if (m_state->cancelRequested) {
+            m_state->finished = Finished{/*success*/ false, /*canceled*/ true, /*ran*/ false};
+            m_state->running = false;
+        } else {
+            launch(openWhenConfigured);
+        }
+    }
+    const bool scripts = m_kind == BuildTargetKind::Scripts;
     std::vector<std::string> lines;
     {
         std::lock_guard<std::mutex> lock(m_state->linesMutex);
         lines = std::exchange(m_state->lines, {});
     }
     if (!lines.empty()) {
-        if (m_output != nullptr) { m_output->buildOutput(m_kind, lines); }
+        if (m_output != nullptr && scripts) { m_output->buildOutput(lines); }
         m_lastOutput.insert(m_lastOutput.end(), lines.begin(), lines.end());
     }
 
     const std::optional<Finished> finished = std::exchange(m_state->finished, std::nullopt);
     if (!finished) { return; }
     m_lastResult = finished->canceled ? Result::Canceled : finished->success ? Result::Succeeded : Result::Failed;
-    if (m_output != nullptr) { m_output->buildFinished(m_kind, finished->success, finished->canceled); }
+    if (m_output != nullptr && scripts) { m_output->buildFinished(finished->success, finished->canceled); }
     const std::optional<OpenRequest> open = std::exchange(m_openWhenConfigured, std::nullopt);
     if (!finished->success) {
         if (finished->ran && !finished->canceled) {
-            static const char *const ACTIONS[] = {"Configure", "Build", "Clean"};
+            static const char *const ACTIONS[] = {"Configure", "Build", "Clean", "Cook"};
             LOG_ERROR_EDITOR(
-                "%s of the %s project failed: see the CMake panel.", ACTIONS[static_cast<int>(m_action)],
-                m_kind == BuildTargetKind::Export ? "Export" : "scripts"
+                "%s of the %s project failed: see %s.", ACTIONS[static_cast<int>(m_action)], scripts ? "scripts" : "Export",
+                scripts ? "the CMake panel" : "the Export window (File, Export Game)"
             );
         }
         return;
@@ -424,6 +499,7 @@ void ProjectBuilds::openGeneratedProject(const path_t &buildDirectory, ExportPro
 }
 
 bool ProjectBuilds::cook() {
+    ++m_cookCount;
     m_cookMessages.clear();
     // What the cook says goes to the log of the editor and is kept for the panel: an Export build
     // shows it before what cmake says.
@@ -526,20 +602,41 @@ bool ProjectBuilds::cook() {
     return true;
 }
 
-path_t ProjectBuilds::builtGame() {
-    if (!m_project.hasOpenedProject()) { return {}; }
+ProjectBuilds::BuiltGame ProjectBuilds::builtGame() {
+    BuiltGame game;
+    if (!m_project.hasOpenedProject()) { return game; }
     const std::string name = m_project.getOpenedProjectPath().filename().string();
-    const path_t products = buildFolder(BuildTargetKind::Export) / "Debug";
+    const path_t tree = buildFolder(BuildTargetKind::Export);
+    const std::string config = exportConfigName(m_exportConfig);
+    // Where Xcode and Visual Studio put what they build: <tree>/<configuration>[-<sdk>]/.
     path_t executable;
-#if defined(PLATFORM_MACOS)
-    if (m_exportTarget == ExportProjectTarget::XcodeMacOS) {
-        executable = products / (name + ".app") / "Contents" / "MacOS" / name;
+    switch (m_exportTarget) {
+        case ExportProjectTarget::XcodeMacOS:
+            game.product = tree / config / (name + ".app");
+            executable = game.product / "Contents" / "MacOS" / name;
+            break;
+        case ExportProjectTarget::XcodeIOSSimulator: game.product = tree / (config + "-iphonesimulator") / (name + ".app"); break;
+        case ExportProjectTarget::XcodeIOSDevice: game.product = tree / (config + "-iphoneos") / (name + ".app"); break;
+        case ExportProjectTarget::VisualStudioWindows:
+            game.product = tree / config / (name + ".exe");
+            executable = game.product;
+            break;
     }
-#elif defined(PLATFORM_WINDOWS)
-    if (m_exportTarget == ExportProjectTarget::VisualStudioWindows) { executable = products / (name + ".exe"); }
-#endif
     std::error_code error;
-    return !executable.empty() && std::filesystem::is_regular_file(executable, error) ? executable : path_t();
+    if (!std::filesystem::exists(game.product, error)) { return {}; }
+    if (std::filesystem::is_regular_file(executable, error)) { game.executable = executable; }
+    return game;
+}
+
+bool ProjectBuilds::runBuiltGame() {
+    const BuiltGame game = builtGame();
+    if (game.executable.empty()) { return false; }
+#if defined(PLATFORM_MACOS)
+    // A bundle is started by the system: the game comes to the front as an application of its own.
+    return SystemTools::openWithDefaultApplication(game.product);
+#else
+    return SystemTools::startDetached(game.executable, {});
+#endif
 }
 
 path_t ProjectBuilds::cookReportFile() const {

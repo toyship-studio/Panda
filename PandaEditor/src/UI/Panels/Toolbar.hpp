@@ -19,7 +19,7 @@ public:
     virtual void toolbarDidTapStop() = 0; // back to editing
     virtual void toolbarDidTapReload() = 0;                      // sync with the disk (Reload)
     virtual void toolbarDidSave() = 0;                           // save the world
-    virtual void toolbarDidExport() = 0;                         // export / cook
+    virtual void toolbarDidExport() = 0;                         // the Export window
     virtual void toolbarDidUndo() = 0;
     virtual void toolbarDidRedo() = 0;
     virtual void toolbarDidNavigateBack() = 0;    // selection history: back

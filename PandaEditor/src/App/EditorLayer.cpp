@@ -399,18 +399,18 @@ void EditorLayer::onEvent(Fern::Event *event) {
     const bool modal = m_editorUI.context().modals().isPresenting();
     if (m_menuBar.handleEvent(event, modal)) { return; }
 
-    // The Settings window: its own UI tree takes its input; closing it is the controller's (the
-    // documents of the window are its).
+    // The second window (the Settings, the export of the game): its own UI tree takes its input;
+    // closing it is the controller's (what the window shows is its).
     if (m_editorUI.auxiliaryWindow() != nullptr && event->getWindow() == m_editorUI.auxiliaryWindow()) {
         switch (event->type) {
             case Fern::EventType::WindowCloseRequest:
-                if (m_editorController) { m_editorController->closeSettingsWindow(); }
+                if (m_editorController) { m_editorController->closeAuxiliaryWindow(); }
                 break;
             case Fern::EventType::WindowFocus:
-                if (m_editorController) { m_editorController->settingsWindowFocusChanged(true); }
+                if (m_editorController) { m_editorController->auxiliaryWindowFocusChanged(true); }
                 break;
             case Fern::EventType::WindowLostFocus:
-                if (m_editorController) { m_editorController->settingsWindowFocusChanged(false); }
+                if (m_editorController) { m_editorController->auxiliaryWindowFocusChanged(false); }
                 break;
             default:
                 m_editorUI.handleEvent(event);
@@ -741,7 +741,7 @@ void EditorLayer::loaderWillCloseProject() {
     m_play.world().clear();
     Editor::selection().clear();
     if (m_editorController) {
-        m_editorController->closeSettingsWindow(); // its pages are the project's
+        m_editorController->closeAuxiliaryWindow(); // what it shows is the project's
         m_editorController->projectWillClose();    // the tabs of its entities and assets, the history
     }
     if (m_previews) { m_previews->clear(); } // the previews and the thumbnails hold its assets
@@ -956,11 +956,11 @@ void EditorLayer::syncWindowIdentity() {
     }
 }
 
-bool EditorLayer::openSettingsWindow(std::shared_ptr<PandaUI::View> root) {
-    return m_editorUI.openAuxiliaryWindow("Settings", PandaUI::Size(900.f, 640.f), std::move(root)) != nullptr;
+bool EditorLayer::openAuxiliaryWindow(const char *title, PandaUI::Size size, std::shared_ptr<PandaUI::View> root) {
+    return m_editorUI.openAuxiliaryWindow(title, size, std::move(root)) != nullptr;
 }
 
-void EditorLayer::closeSettingsWindow() {
+void EditorLayer::closeAuxiliaryWindow() {
     m_editorUI.closeAuxiliaryWindow();
 }
 
@@ -995,23 +995,8 @@ void EditorLayer::registerCommands() {
     command("build.configure", "Build", "Configure Scripts", [scripts] { scripts(BuildAction::Configure); });
     command("build.clean", "Build", "Clean Scripts Build Folder", [scripts] { scripts(BuildAction::Clean); });
     command("build.stop", "Build", "Stop Build", [this] { m_builds.cancel(); });
-    command("export.cook", "Export Game", "Cook Runtime Data", [this] { m_builds.cook(); });
-#ifdef PLATFORM_MACOS
-    command("export.xcodeMacOS", "Export Game", "Open Xcode: macOS", [this] {
-        m_builds.openExportProject(ExportProjectTarget::XcodeMacOS);
-    });
-    command("export.xcodeIOSSimulator", "Export Game", "Open Xcode: iOS Simulator", [this] {
-        m_builds.openExportProject(ExportProjectTarget::XcodeIOSSimulator);
-    });
-    command("export.xcodeIOSDevice", "Export Game", "Open Xcode: iOS Device", [this] {
-        m_builds.openExportProject(ExportProjectTarget::XcodeIOSDevice);
-    });
-#endif
-#ifdef PLATFORM_WINDOWS
-    command("export.visualStudio", "Export Game", "Open Visual Studio", [this] {
-        m_builds.openExportProject(ExportProjectTarget::VisualStudioWindows);
-    });
-#endif
+    // The export of the game is a window of its own: the target, the steps, what came of it.
+    command("export.open", "File", "Export Game", [this] { m_editorController->showExportWindow(); });
     command("settings.openFile", "Settings", "Open Settings File", [this] { showSettingsFile(SettingsScope::Editor); }, anywhere);
     command("settings.openProjectFile", "Settings", "Open Project Settings File", [this] {
         showSettingsFile(SettingsScope::Project);

@@ -34,6 +34,7 @@ public:
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;
     void setClipboardText(const char *text) override;
+    void showAlert(const char *title, const char *message) override;
     void setCursorLocked(bool locked) override;
     bool isCursorLocked() override;
     void setCursor(Cursor cursor) override;

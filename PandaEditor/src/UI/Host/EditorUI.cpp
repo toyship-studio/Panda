@@ -10,6 +10,7 @@
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <PandaUI/Core/View.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -47,6 +48,12 @@ void EditorUI::initialize(Fern::Window *window) {
 void EditorUI::shutdown() {
     if (!m_initialized) { return; }
     closeAuxiliaryWindow();
+    // The editor closes with a second window open: the frame it was closed in still draws into
+    // that window. The renderer gets through its frames in flight while the window is there —
+    // drawing into one that is gone, the render thread waits for a drawable forever.
+    uint32_t lastFrame = 0;
+    for (const RetiredWindow &retired : m_retiredWindows) { lastFrame = std::max(lastFrame, retired.frame); }
+    while (!m_retiredWindows.empty() && Miren::getFrameNumber() < lastFrame) { Miren::frame(); }
     for (const RetiredWindow &retired : m_retiredWindows) { Fern::disposeWindow(retired.window); }
     m_retiredWindows.clear();
     m_platform.shutdown();

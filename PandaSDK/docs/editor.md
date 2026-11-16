@@ -90,11 +90,10 @@ under a light gray veil with a caption that says who has the focus. Play gives t
 Game, Stop gives it back to the Scene. While the Scene has the focus during Play the game goes
 on — it is simulated and its UI lives — only its picture waits for the focus to return.
 
-The CMake panel has two tabs — Scripts (the C++ of the project) and Export (the game as an
-Xcode or Visual Studio project, built with the data the editor cooks first: [Exporting a
-game](export.md)) — and the same actions on each: **Configure** runs cmake again
+The CMake panel builds the C++ scripts of the project: **Configure** runs cmake again
 (after a source file was added), **Build** compiles, **Clean** deletes the build folder so that
-the next Build starts from nothing, **Stop** stops the build that runs. What the scripts are
+the next Build starts from nothing, **Stop** stops the build that runs. The game itself is
+exported in a window of its own, **File → Export Game** ([Exporting a game](export.md)). What the scripts are
 built with — the cmake, the generator (Ninja, Makefiles), the C and C++ compilers — is the
 Toolchain section of the editor settings (the Toolchain button of the panel opens it); everything
 is found on its own until you choose otherwise, and a change of the generator or of a compiler
@@ -130,6 +129,11 @@ The inspector, the settings and the asset tabs are made of the same rows.
 - **A reference field** (an asset, an entity) is `[value | choose | clear]`: a click on the
   value shows where the thing is, a double click selects it, an empty field opens the list, and
   a drop from the Content Browser or the Hierarchy sets it.
+- **The form of a selection is a preview tab** (its title is in italics): the next thing
+  selected takes the same tab. A double click on the tab keeps it open, and so does the first
+  edit of an asset. A form that is kept stays while something else is selected — an entity
+  whose list is to be filled, with several assets selected in the Content Browser and dragged
+  onto it at once.
 - **A component section** has a menu at the right of its title: Copy Values, Paste Values,
   Reset, Remove Component. The values travel as text — `{"pointLightComponent": {...}}`, the
   form of the world file — so they paste into another entity or another project, and a copy made

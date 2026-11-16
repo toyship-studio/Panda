@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <string>
 
 namespace Fern {
 
@@ -152,6 +153,16 @@ void Win32_System::setClipboardText(const char *text) {
         }
     }
     CloseClipboard();
+}
+
+void Win32_System::showAlert(const char *title, const char *message) {
+    const auto wide = [](const char *text) {
+        const int length = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+        std::wstring result(length > 0 ? static_cast<size_t>(length - 1) : 0, L'\0');
+        if (length > 1) { MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), length); }
+        return result;
+    };
+    MessageBoxW(nullptr, wide(message).c_str(), wide(title).c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
 
 void Win32_System::setCursorLocked(bool locked) {

@@ -54,6 +54,11 @@ void setApplicationIconLabel(const char *label) {
     s_system->setApplicationIconLabel(label != nullptr ? label : "");
 }
 
+void showAlert(const char *title, const char *message) {
+    PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
+    s_system->showAlert(title != nullptr ? title : "", message != nullptr ? message : "");
+}
+
 void pollEvents() {
     PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
     s_system->pollEvents();

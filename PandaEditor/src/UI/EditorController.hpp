@@ -39,7 +39,9 @@ namespace Editor {
 class AssetActions;
 class EntityActions;
 class GameDocument;
+class ExportWindow;
 class SettingsWindow;
+enum class SettingsPage;
 class WorldTabs;
 
 // The on-screen frames of the two viewport tabs (points): what the engine renders into and which
@@ -160,10 +162,12 @@ public:
     void extensionsChanged();
     void setUpdateStatus(const UpdateIndicatorModel &model); // the editor updater → the indicator of the toolbar
     void settingsFileReloaded(Panda::SettingsScope scope);   // settings.json / project.json was reread: its page follows
-    // The Settings window (a second window of the editor): the layer tells when the user closed
-    // it and when it got or lost the keyboard.
-    void closeSettingsWindow();
-    void settingsWindowFocusChanged(bool focused);
+    // The second window of the editor — the Settings or the export of the game, one at a time:
+    // opening one closes the other. The layer tells when the user closed the window and when it
+    // got or lost the keyboard.
+    void showExportWindow();
+    void closeAuxiliaryWindow();
+    void auxiliaryWindowFocusChanged(bool focused);
     // The docking layout (kept in the editor session by the layer).
     Panda::DockLayoutState captureDockLayout() const;
     void applyDockLayout(const Panda::DockLayoutState &state);
@@ -347,7 +351,12 @@ private:
     // the session document is the target of Undo from the viewport.
     std::function<void()> m_viewportEditingStop;
     Panda::AssetId m_viewportEditingDocument = 0;
+    // The second window: the one that is open gives its place, then `show` opens the other.
+    void replaceAuxiliaryWindow(std::function<void()> show);
+    void showSettings(SettingsPage page, const std::string &section = {});
+
     std::unique_ptr<SettingsWindow> m_settings; // the Settings window: its pages and their documents
+    std::unique_ptr<ExportWindow> m_export;     // the Export window
     Commands &m_commands; // the registry of the editor: the workspace adds its commands to it
 };
 

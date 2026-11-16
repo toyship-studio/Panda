@@ -10,13 +10,22 @@ Studio project made by cmake) and the **cooked data** it is built with
    (`"world".startWorld` of `.Panda/project.json`).
 2. Save (**Save All**). The game is made from the files of the project: an edit that is not saved
    is not in it, and the cook tells you which documents those are.
-3. **File → Export Game → Cook Runtime Data** cooks the data. Building the Export project from
-   the CMake panel (the Export tab: Configure, Build) cooks it first by itself, so this step is
-   for looking at the result without building.
-4. Build the game: **Build** on the Export tab of the CMake panel, or open the project in the
-   IDE (**File → Export Game → Open Xcode / Open Visual Studio**, the Open button of the panel)
-   and build, run and sign it there. The build folder is `Export/build/<target>`
-   (`macos-debug`, `ios-debug`, `ios-device-debug`, `windows-debug`).
+3. Open **File → Export Game** (the export button of the toolbar opens the same window). Choose
+   the target — the platforms this machine can build — and Debug or Release, and press
+   **Export**: the editor cooks the data, configures the Export project and builds the game. The
+   window shows the three steps and what cmake says.
+4. When it is done, the window shows the game: **Show in Folder** opens the folder it is in,
+   **Run** starts it. The build folder is `Export/build/<platform>-<debug|release>`
+   (`macos-release`, `ios-device-debug`, `windows-debug`).
+
+To sign and ship the game — or to build it for a device — press **Open in Xcode** (Visual Studio
+on Windows): the editor cooks the data, configures the project and opens it in the IDE. **Cook
+Only** makes the data alone, to see what the game would carry without building it.
+
+The name of the game, its icon, its bundle identifier and its signing are files of the Export
+project (`Export/CMakeLists.txt`, `Export/native/`): the Application row of the window shows the
+folder. Release means the code of your game — the scripts and the modules — is built optimized;
+the engine libraries are the ones the SDK ships.
 
 From a terminal the same build is `Scripts/<Project>/scripts/configure_export.sh <target>` and
 `build_export.sh <target>` with `PANDA_SDK_DIR` set; they build with the data the editor cooked
@@ -43,7 +52,10 @@ Export: 3 asset(s) of the project (10.4 MB) are not reached from the start world
 out of the game: Assets/Environment/studio_small_09.hdr, Assets/world.world, …
 ```
 
-Read it: it is how you notice a file the game was meant to have.
+Read it: it is how you notice a file the game was meant to have. The Export window lists the
+same after every cook, on its **Left Out** tab: every asset the game does not carry, with its
+size; select one to see it in the Content Browser. The list is of the last cook — cook again to
+see what an edit changed.
 
 **There is nothing to fill in by hand.** A game cannot use an asset its worlds do not name: a
 component holds the asset, or a field of a script does, and a script cannot make a reference from
@@ -102,8 +114,9 @@ PANDA_CHECK_FRAMES=120 Export/build/macos-debug/Debug/MyGame.app/Contents/MacOS/
 ```
 
 Without `PANDA_CHECK_FRAMES` the game is the game. A game that cannot load its data — the pack
-is missing or was made by another version of the engine — says so in its log and exits with
-code 2 in any run.
+is missing or was made by another version of the engine — does not stay as an empty window: it
+says so in a message of the system (macOS and Windows) and in its log, and exits with code 2.
+In a check run it shows no message: nobody is there to close it.
 
 An agent does the whole check through the editor ([Working with Zed and coding
 agents](zed-and-agents.md)): the `export` tool cooks and answers with the account of the cook,

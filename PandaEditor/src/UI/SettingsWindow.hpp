@@ -65,7 +65,7 @@ enum class SettingsPage { Editor, Project, Keymap }; // the order of the pages
 
 // The Settings window: a second window of the editor over the main one, with the editor settings,
 // the project settings and the keymap as its pages. What is edited there shows in the viewport
-// behind it at once. The window itself is the application's (EditorLayer::openSettingsWindow);
+// behind it at once. The window itself is the application's (EditorLayer::openAuxiliaryWindow);
 // its content and the documents of its pages are made here and live while it is open: the project
 // settings — a document of project.json with its own undo stack, dirty until saved; the editor
 // settings and the keymap — applied and written by every edit.
@@ -83,6 +83,9 @@ public:
     // the owner closes the window on the next frame.
     void requestClose();
     bool isCloseRequested() const;
+    bool isOpen() const {
+        return m_open != nullptr;
+    }
 
     // The window got or lost the keyboard. While it has it, Save and Undo of the editor mean the
     // document of the page in front (focusedDocument; nullptr — the keyboard is elsewhere).

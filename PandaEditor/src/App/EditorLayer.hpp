@@ -158,10 +158,11 @@ public:
     // (the text form of the file: a binary asset opens its sidecar), and in the file manager.
     void openInExternalEditor(const std::filesystem::path &path);
     void revealInFileManager(const std::filesystem::path &path);
-    // The Settings window: a second window of the editor over the main one, with this tree. An
-    // open one comes to the front. false — the window could not be made.
-    bool openSettingsWindow(std::shared_ptr<PandaUI::View> root);
-    void closeSettingsWindow();
+    // The second window of the editor, over the main one, with this tree: the Settings, the
+    // export of the game. One at a time (EditorController says which); an open one comes to the
+    // front. false — the window could not be made.
+    bool openAuxiliaryWindow(const char *title, PandaUI::Size size, std::shared_ptr<PandaUI::View> root);
+    void closeAuxiliaryWindow();
     // Editor::UpdateIndicatorOutput: the update indicator of the toolbar and of the start screen.
     void updateIndicatorDidActivate() override; // it was clicked: restart, details, release notes
     void updateIndicatorDidDismiss() override;  // hidden until the state of the updater changes

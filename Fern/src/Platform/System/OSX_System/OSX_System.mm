@@ -185,6 +185,18 @@ const char * OSX_System::getClipboardText() {
     return [object UTF8String];
 }
 
+void OSX_System::showAlert(const char *title, const char *message) {
+    @autoreleasepool {
+        NSAlert *alert = [[[NSAlert alloc] init] autorelease];
+        [alert setAlertStyle:NSAlertStyleCritical];
+        [alert setMessageText:[NSString stringWithUTF8String:title] ?: @""];
+        [alert setInformativeText:[NSString stringWithUTF8String:message] ?: @""];
+        // The message is why the application is there at all: it comes in front of the others.
+        [NSApp activateIgnoringOtherApps:YES];
+        [alert runModal];
+    }
+}
+
 void OSX_System::setApplicationIconLabel(const char *label) {
     @autoreleasepool {
         // The icon of the bundle, taken before the first change: an empty label brings it back.

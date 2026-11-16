@@ -314,7 +314,7 @@ void EditorMcp::registerTools() {
         "`window`: the editor itself — its panels, tabs and dialogs with the viewport inside (the menu bar and the "
         "title of the system are not part of it). Takes a few frames.",
         R"({"type":"object","properties":{)"
-        R"("view":{"type":"string","enum":["scene","game","window","settings"],"description":"Default: game while playing, scene while editing. settings: the Settings window while it is open."},)"
+        R"("view":{"type":"string","enum":["scene","game","window","settings","export"],"description":"Default: game while playing, scene while editing. settings, export: the second window of the editor (Settings, Export Game) while it is open."},)"
         R"("width":{"type":"integer","description":"The picture is scaled down to this width in pixels when the viewport is wider. Default 1280."},)"
         R"("wait":{"type":"number","description":"Seconds to wait before the shot: assets still loading, a moment of the game to reach. Default 0, at most 30."},)"
         R"("file":{"type":"string","description":"Also write the PNG to this file: an absolute path, or one relative to the project folder."},)"
@@ -391,7 +391,7 @@ void EditorMcp::registerTools() {
         "of the active world by its name: its inspector tab opens.",
         R"({"type":"object","properties":{)"
         R"("panel":{"type":"string","enum":["hierarchy","contentBrowser","output","cmake","statistics","profiler"]},)"
-        R"("settings":{"type":"string","enum":["world","project","editor","keymap","close"],"description":"world: the sidebar of the viewport. project, editor, keymap: a page of the Settings window (a window of its own). close: closes that window."},)"
+        R"("settings":{"type":"string","enum":["world","project","editor","keymap","close"],"description":"world: the sidebar of the viewport. project, editor, keymap: a page of the Settings window (a window of its own). close: closes the second window of the editor — Settings or Export Game (the command export.open opens that one)."},)"
         R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
         R"("entity":{"type":"string","description":"The name of the entity."}}})",
         [this](const rapidjson::Value &arguments) { return show(arguments); },
@@ -420,7 +420,7 @@ void EditorMcp::registerTools() {
         R"("count":{"type":"integer","description":"Wait until the path names exactly this many elements."},)"
         R"("value":{"type":"string","description":"Wait until the one element the path names has this value."},)"
         R"("label":{"type":"string","description":"Wait until the one element the path names has this label."},)"
-        R"("window":{"type":"string","enum":["main","settings"],"description":"Default: the window in front — the Settings window while it is open."},)"
+        R"("window":{"type":"string","enum":["main","settings","export"],"description":"Default: the window in front — the second window of the editor (Settings, Export Game) while one is open."},)"
         R"("of":{"type":"number","description":"The width of the screenshot the frames are for. Default 1280."}}})",
         [this](const rapidjson::Value &arguments) { return ui(arguments); },
     });
@@ -484,10 +484,11 @@ void EditorMcp::registerTools() {
     });
     m_server.addTool({
         "build",
-        "Builds the C++ of the project the way the CMake panel does and answers when the build has ended: how it "
+        "Builds the C++ of the project the way the editor does and answers when the build has ended: how it "
         "ended and what cmake said (the compiler errors are there). `target`: `scripts` (the default) — the C++ "
-        "scripts of the project, in the configuration the panel shows; `export` — the game as an Xcode or Visual "
-        "Studio project, from the cooked data. `action`: `build` (the default; configures a build folder that is "
+        "scripts of the project, in the configuration the CMake panel shows; `export` — the game as an Xcode or "
+        "Visual Studio project, from the data cooked first, for the target and the configuration the Export "
+        "window shows. `action`: `build` (the default; configures a build folder that is "
         "not configured), `configure` (cmake again: after a source file was added), `clean` (deletes the build "
         "folder). The editor loads scripts that were built — at once, or when the game stops if it plays.",
         R"({"type":"object","properties":{)"
@@ -715,9 +716,12 @@ Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
         shot->view = ViewportKind::Game;
     } else if (view == "window") {
         shot->window = true;
-    } else if (view == "settings") {
+    } else if (view == "settings" || view == "export") {
         if (m_editor.ui().auxiliaryWindow() == nullptr) {
-            return Mcp::ready(Mcp::ToolResult::error("The Settings window is closed: open it with `show` or the command settings.open"));
+            return Mcp::ready(Mcp::ToolResult::error(
+                "That window is closed: `show` or the command settings.open opens the Settings, the command export.open — "
+                "the Export window"
+            ));
         }
         shot->window = true;
         shot->settings = true;
@@ -1257,8 +1261,9 @@ namespace {
 
 } // namespace
 
-// Input made in place of the user goes where the user's would: to the Settings window while it
-// is open (it is in front of the main one), to the main window otherwise.
+// Input made in place of the user goes where the user's would: to the second window (the
+// Settings, the Export) while one is open (it is in front of the main one), to the main window
+// otherwise.
 PandaUI::Context &EditorMcp::inputContext() const {
     PandaUI::Context *settings = m_editor.ui().auxiliaryContext();
     return settings != nullptr ? *settings : m_editor.ui().context();
@@ -1715,8 +1720,8 @@ Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
         query->hasLabel = true;
         query->label = arguments["label"].GetString();
     }
-    if (query->window != "" && query->window != "main" && query->window != "settings") {
-        return Mcp::ready(Mcp::ToolResult::error("window is \"main\" or \"settings\""));
+    if (query->window != "" && query->window != "main" && query->window != "settings" && query->window != "export") {
+        return Mcp::ready(Mcp::ToolResult::error("window is \"main\", \"settings\" or \"export\""));
     }
     if (query->path.empty() && (query->gone || query->count >= 0 || query->hasValue || query->hasLabel)) {
         return Mcp::ready(Mcp::ToolResult::error("`gone`, `count`, `value` and `label` are about what `path` names: pass `path`"));
@@ -1730,10 +1735,10 @@ Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
         if (query->window == "main") {
             context = &m_editor.ui().context();
             window = m_editor.window();
-        } else if (query->window == "settings") {
+        } else if (query->window == "settings" || query->window == "export") {
             context = m_editor.ui().auxiliaryContext();
             window = m_editor.ui().auxiliaryWindow();
-            if (context == nullptr || window == nullptr) { return Mcp::ToolResult::error("The Settings window is not open"); }
+            if (context == nullptr || window == nullptr) { return Mcp::ToolResult::error("That window is not open"); }
         }
         if (window == nullptr) { return Mcp::ToolResult::error("The editor has no window"); }
 
@@ -1913,8 +1918,8 @@ Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
         } else if (settings == "keymap") {
             controller.openKeymap();
         } else if (settings == "close") {
-            controller.closeSettingsWindow();
-            return Mcp::ready(textResult("The Settings window is closed."));
+            controller.closeAuxiliaryWindow();
+            return Mcp::ready(textResult("The second window is closed."));
         } else {
             return Mcp::ready(Mcp::ToolResult::error("settings is \"world\", \"project\", \"editor\", \"keymap\" or \"close\""));
         }
@@ -2089,7 +2094,7 @@ namespace {
 } // namespace
 
 Mcp::PendingResult EditorMcp::runBuiltGame(const rapidjson::Value &arguments) {
-    const path_t game = m_editor.builds().builtGame();
+    const path_t game = m_editor.builds().builtGame().executable;
     if (game.empty()) {
         return Mcp::ready(Mcp::ToolResult::error(
             "The game is not built for this machine: `export` (cook), then `build` with target `export`. An export "

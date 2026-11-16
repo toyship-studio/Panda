@@ -88,7 +88,7 @@ void ToolbarPanelView::addSubviews() {
 
     auto exportButton = std::make_shared<IconButton>(Ic::Export, Ic::ToolbarSize, ACTION_SIZE);
     exportButton->setAccessibilityId("export");
-    exportButton->setTooltip("Export Game: cook the runtime data");
+    exportButton->setTooltip("Export Game");
     exportButton->setOnClick([this] { m_output->toolbarDidExport(); });
     left->addSubview(exportButton);
 

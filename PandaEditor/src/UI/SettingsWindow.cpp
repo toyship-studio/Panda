@@ -14,6 +14,8 @@ using namespace PandaUI;
 
 namespace {
 
+    constexpr const char *WINDOW_TITLE = "Settings";
+    const PandaUI::Size WINDOW_SIZE(900.f, 640.f);
     constexpr float NAVIGATION_WIDTH = 190.f;
     constexpr float NAVIGATION_ROW = 32.f;
 
@@ -220,7 +222,7 @@ SettingsWindow::~SettingsWindow() {
 
 bool SettingsWindow::show(SettingsPage page) {
     if (m_open) {
-        m_app.openSettingsWindow(m_open->view); // an open one comes to the front
+        m_app.openAuxiliaryWindow(WINDOW_TITLE, WINDOW_SIZE, m_open->view); // an open one comes to the front
         m_open->view->selectPage(static_cast<int>(page));
         return true;
     }
@@ -248,7 +250,7 @@ bool SettingsWindow::show(SettingsPage page) {
         {"Keymap", Ic::Script, "The keys of every command. Applied at once.", open->keymap.get()},
     };
     open->view = std::make_shared<SettingsWindowView>(std::move(pages), [this] { requestClose(); });
-    if (!m_app.openSettingsWindow(open->view)) { return false; }
+    if (!m_app.openAuxiliaryWindow(WINDOW_TITLE, WINDOW_SIZE, open->view)) { return false; }
     open->focused = true;
     m_open = std::move(open);
     m_open->view->selectPage(static_cast<int>(page));
@@ -267,7 +269,7 @@ void SettingsWindow::show(SettingsPage page, const std::string &section) {
 void SettingsWindow::close() {
     if (!m_open) { return; }
     // The tree leaves the window before its documents go: the views are theirs.
-    m_app.closeSettingsWindow();
+    m_app.closeAuxiliaryWindow();
     m_open.reset();
 }
 

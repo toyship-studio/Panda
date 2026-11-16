@@ -412,7 +412,9 @@ void EntityActions::entityDidAddScript(const std::string &className) {
             Panda::ExternalScript(static_cast<Panda::Handle>(entity.getId()), 0u, clazz.name, fields, clazz.order)
         );
     }
-    m_workspace.selectionChanged(); // a Script section with the real fields appears
+    // A Script section with the real fields appears: the form that asked rereads its sections
+    // itself (EditorTabs). The selection is not shown again — the form may be a pinned tab of
+    // an entity that is not the selection, and the tab of the selection would come in front of it.
 }
 
 void EntityActions::entityDidRemoveScript(int scriptIndex) {
@@ -424,7 +426,6 @@ void EntityActions::entityDidRemoveScript(int scriptIndex) {
             primary.setWorldChanged();
         }
     }
-    m_workspace.selectionChanged();
 }
 
 void EntityActions::entityDidEditScriptField(
@@ -444,7 +445,7 @@ void EntityActions::entityDidEditScriptField(
         std::move(value), structural
     );
     shown->getCommandHistory().execute(command);
-    if (structural) { m_workspace.selectionChanged(); } // the rows of the list are other rows now
+    // A structural edit made other rows of the list: the form that asked rereads them (EditorTabs).
 }
 
 void EntityActions::entityDidClickBackground() {

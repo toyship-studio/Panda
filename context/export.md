@@ -26,8 +26,9 @@ in version control.
 ## The cook
 
 `GameExporter::exportGame` (`PandaEditor/src/Project/Export/`), called by
-`ProjectBuilds::cook` — the `export.cook` command, the first step of every build of the Export
-project, the `export` tool of the MCP server.
+`ProjectBuilds::cook` — the first step of every export (Export, Open in Xcode and Cook Only of
+the Export window: `context/architecture.md`, "Editor: builds of the project"), the `export` tool
+of the MCP server.
 
 **The cook is a function of the files of the project.** It does not read the worlds or the
 assets the editor holds in memory, so the same project gives the same game whatever is open and
@@ -82,9 +83,21 @@ game names; the runtime needs none of the editor's rules.
 
 **What is left out.** An asset of the project nothing reaches is not cooked and not packed. The
 cook says so every time — a warning in the log with the first names and the size of their
-source files — and `report.json` lists every one of them (`unused`). The warning is the
-price of cutting by reachability: an asset the game was meant to have and does not is noticed at
-the cook, not in the game.
+source files — `report.json` lists every one of them (`unused`), and the Export window shows
+that list after the cook (the Left Out tab: a row shows its asset in the Content Browser). The
+warning is the price of cutting by reachability: an asset the game was meant to have and does
+not is noticed at the cook, not in the game.
+
+What is left out is known as of the last cook and is not kept true to the files between cooks,
+on purpose. Finding what the game uses means reading every world of the game: 81 µs per entity
+in a debug build of the editor — 12 ms for a small project, 3.2 s for 20 worlds of 2000
+entities — and after every save that is a freeze of the editor. The walk does not move to
+another thread as it is: a world is read into a real `World`, the components of which hold
+`AssetRef`s that count their references in the asset handler, and the decoders of the
+components, those of the modules too, are written for the main thread. The cook pays for the
+walk once, when it is asked for. For the same reason the Content Browser does not mark such
+assets: a mark there would be true only as of the last cook, and the list is shown where the
+export is made.
 
 **The report** (`CookReport`): the start world, the pack and its size, what each kind takes
 (`kinds`: the number of assets and the bytes; `engine` is what the engine adds — the registry
@@ -141,7 +154,10 @@ side is `RuntimeLayer`). The environment of the process asks for it:
 Without `PANDA_CHECK_FRAMES` the game is the game: the variables cost one `getenv` at start.
 One exit code is not of the check alone: a game whose data does not load — no pack next to it,
 a pack of another version — logs why and leaves with 2 whenever it is started, instead of
-staying as an empty window.
+staying as an empty window. Outside a check run it tells the player first: `Fern::showAlert`, a
+message of the system with one button (the game has nothing of its own to draw one with — its
+shaders are in the pack). macOS and Windows show it; the platform layer of the others does
+nothing there yet.
 
 The `export` tool of the MCP server (`EditorMcp`) is the cook and the check from outside:
 `cook` (answers with the report as text), `report`, `files` (the files of the pack, filtered),
@@ -171,10 +187,23 @@ back, a file that is not one is refused.
 
 ## Open items
 
-- The pack carries the shaders of every backend (about a megabyte): an export target knows its
-  backend and could carry one.
-- The cook writes the whole pack every time. For the projects of today it is a second; a cook
-  that reuses the unchanged entries is the next step when it is not.
+- The pack carries the shaders of every backend, because the cooked data is one folder for every
+  export target: about a megabyte, of which a game uses a quarter. Measured on a pack of 117 MB:
+  0.98 MB of it are shaders of the backends that game cannot run, under 1%. One backend per
+  target needs cooked data per target (or a pack of shaders per backend) — a concept the saving
+  does not pay for. It comes for free on the day a target needs cooked data of its own for
+  another reason (a texture format a platform does not read).
+- The cook writes the whole pack every time: 0.4 s for that pack of 117 MB (the textures are
+  converted once and kept). A cook that reuses the unchanged entries is the step for the day
+  this stops being true.
+- What the game leaves out is known as of the last cook. To know it as the files stand needs
+  what each file names remembered per file, by its modification time, so that a save rereads
+  one file, and a way to tell what a world names without making its components. That is a
+  registry of dependencies — a concept this alone does not pay for.
+- The cook runs on the main thread: the editor stands still for its time (5.6 s for 20 worlds of
+  2000 entities), and the Export window shows that it began, not how far it is.
+- An export from the editor builds Debug or Release of the code of the game; the libraries of
+  the SDK have one configuration, the one the SDK was packaged with.
 - A world is read whole. Streaming of a large world is designed with culling
   (`context/architecture.md`, "Open items"), and the pack already answers a read of one entry.
 - Project scope sections of the modules do not reach the runtime (`project.bin` carries none

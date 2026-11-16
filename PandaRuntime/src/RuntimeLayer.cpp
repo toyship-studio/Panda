@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <thread>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
 #include <Panda/UI/GameUI.hpp>
@@ -86,8 +87,17 @@ void RuntimeLayer::onAttach() {
     m_projectLoader = F_NEW(Foundation::getAllocator(), RuntimeProjectLoader)();
     if (!m_projectLoader->load(m_runtimeDataPath, *m_assetHandler, *m_world)) {
         // A game without its data has nothing to show: it leaves and says why, instead of
-        // staying as an empty window.
+        // staying as an empty window. The log is for who builds the game; who plays it gets a
+        // message of the system — not in a check run, where nobody is there to close it.
         LOG_ERROR("RUNTIME: The data of the game did not load from %s: the game leaves", m_runtimeDataPath.string().c_str());
+        if (m_check.frames == 0) {
+            const std::string where = m_runtimeDataPath.string();
+            Fern::showAlert(
+                "The game cannot start",
+                ("Its data did not load: the files of the game are missing or were made for another version of it. "
+                 "Install the game again.\n\n" + where).c_str()
+            );
+        }
         s_exitCode = CheckRun::EXIT_NO_DATA;
         m_check.frames = 0;
         Application::get()->close();

@@ -23,6 +23,7 @@ public:
     ) override;
     void disposeWindow(Window *window) override;
     void setApplicationIconLabel(const char *label) override;
+    void showAlert(const char *title, const char *message) override;
     void pollEvents() override;
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;

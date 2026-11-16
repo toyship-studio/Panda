@@ -25,6 +25,10 @@ const char *getDesktopAppId();       // empty — not set
 /// machine. Call before initialize(). Only macOS follows it so far.
 void setStartsInBackground(bool background);
 bool startsInBackground();
+/// A message of the system with one button, shown until the user closes it: what an application
+/// has to say when it cannot say it in a window of its own (a game whose data did not load).
+/// Returns when the message is closed. macOS and Windows show it; elsewhere nothing happens.
+void showAlert(const char *title, const char *message);
 /// The window is created with a context of the build's active graphics API
 /// (Foundation::ACTIVE_GRAPHICS_API; selected by the PANDA_SHADER_BACKEND CMake option).
 /// Never explicitly delete the window, use disposeWindow() instead.
