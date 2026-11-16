@@ -1,10 +1,16 @@
 #include "UI/Panels/StartScreen.hpp"
 
+#include "Project/Loader/ProjectLoader.hpp"
+#include "Project/System/SystemTools.hpp"
+
 #include <PandaEditorKit/Widgets/Icons.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
 #include <functional>
+#include <optional>
 #include <utility>
 
 namespace Editor {
@@ -373,13 +379,42 @@ std::shared_ptr<Button> StartScreenView::makeSidebarButton(const std::string &te
 
 /* ---------------------------- Controller ----------------------------- */
 
-StartScreenController::StartScreenController(TextureHandle logoTexture, StartScreenControllerOutput *output)
-    : m_output(output)
+namespace {
+
+    const char *DEFAULT_PROJECT_NAME = "UntitledGame";
+
+    // Where a new project goes unless the user says otherwise.
+    Panda::path_t defaultProjectParentPath() {
+        if (const char *home = std::getenv("HOME")) { return Panda::path_t(home); }
+        return std::filesystem::current_path();
+    }
+
+} // namespace
+
+StartScreenController::StartScreenController(
+    TextureHandle logoTexture, Panda::ProjectLoader &loader, UpdateIndicatorOutput *updates
+)
+    : m_loader(loader)
+    , m_updates(updates)
     , m_view(std::make_shared<StartScreenView>(logoTexture, this)) {
+    m_model.newProjectName = DEFAULT_PROJECT_NAME;
+    m_model.newProjectLocation = defaultProjectParentPath().string();
+    refreshRecentProjects();
     syncView();
 }
 
-void StartScreenController::setRecentProjects(std::vector<StartScreenRecentProject> projects) {
+void StartScreenController::refreshRecentProjects() {
+    // A 1:1 mirror of the recent list — the indices of the rows are the indices of the loader.
+    std::vector<StartScreenRecentProject> projects;
+    const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
+    projects.reserve(recent.size());
+    for (const Panda::RecentProject &project : recent) {
+        std::string name = project.name.empty() ? Panda::path_t(project.path).filename().string() : project.name;
+        if (name.empty()) { name = project.path; }
+        std::error_code errorCode;
+        const bool missing = !std::filesystem::exists(project.path, errorCode);
+        projects.push_back({std::move(name), project.path, missing});
+    }
     if (m_model.recentProjects == projects) { return; }
     m_model.recentProjects = std::move(projects);
     syncView();
@@ -400,26 +435,15 @@ void StartScreenController::setUpdateStatus(const UpdateIndicatorModel &model) {
 }
 
 void StartScreenController::startScreenDidActivateUpdate() {
-    if (m_output) { m_output->startScreenDidActivateUpdate(); }
+    if (m_updates) { m_updates->updateIndicatorDidActivate(); }
 }
 
 void StartScreenController::startScreenDidDismissUpdate() {
-    if (m_output) { m_output->startScreenDidDismissUpdate(); }
+    if (m_updates) { m_updates->updateIndicatorDidDismiss(); }
 }
 
 void StartScreenController::setStatus(std::string text) {
     m_model.statusText = std::move(text);
-    syncView();
-}
-
-void StartScreenController::setNewProjectDefaults(std::string name, std::string location) {
-    m_model.newProjectName = std::move(name);
-    m_model.newProjectLocation = std::move(location);
-    syncView();
-}
-
-void StartScreenController::setNewProjectLocation(std::string location) {
-    m_model.newProjectLocation = std::move(location);
     syncView();
 }
 
@@ -436,21 +460,48 @@ void StartScreenController::startScreenDidRequestNewProject() {
 void StartScreenController::startScreenDidRequestOpenProjectDialog() {
     m_model.mode = StartScreenMode::RecentProjects;
     syncView();
-    m_output->startScreenDidRequestOpenProjectDialog();
+    const std::optional<Panda::path_t> folder = Panda::SystemTools::openFolderDialog();
+    if (!folder.has_value()) {
+        setStatus("Project opening cancelled.");
+        return;
+    }
+    m_loader.openProject(*folder);
+    if (!m_loader.hasOpenedProject()) { setStatus("Could not open project: " + folder->string()); }
 }
 
 void StartScreenController::startScreenDidRequestOpenRecentProject(size_t index) {
-    if (index >= m_model.recentProjects.size()) { return; }
-    m_output->startScreenDidRequestOpenRecentProject(index);
+    const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
+    if (index >= m_model.recentProjects.size() || index >= recent.size()) { return; }
+    const Panda::path_t projectPath = recent[index].path;
+    if (!std::filesystem::exists(projectPath)) {
+        setStatus("Project not found: " + projectPath.string());
+        return;
+    }
+    m_loader.openProject(projectPath);
+    if (!m_loader.hasOpenedProject()) { setStatus("Could not open project: " + projectPath.string()); }
 }
 
 void StartScreenController::startScreenDidRequestRemoveRecentProject(size_t index) {
-    if (index >= m_model.recentProjects.size()) { return; }
-    m_output->startScreenDidRequestRemoveRecentProject(index);
+    const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
+    if (index >= m_model.recentProjects.size() || index >= recent.size()) { return; }
+    const std::string name =
+        recent[index].name.empty() ? Panda::path_t(recent[index].path).filename().string() : recent[index].name;
+    m_loader.removeRecentProject(static_cast<int>(index));
+    m_loader.saveSession();
+    refreshRecentProjects();
+    setStatus("Removed " + name + " from recent projects.");
 }
 
 void StartScreenController::startScreenDidRequestCreateProject(const std::string &name, const std::string &location) {
-    m_output->startScreenDidRequestCreateProject(name, location);
+    const std::string projectName = name.empty() ? DEFAULT_PROJECT_NAME : name;
+    const Panda::path_t parentPath = location.empty() ? defaultProjectParentPath() : Panda::path_t(location);
+    const Panda::path_t projectPath = parentPath / projectName;
+    if (std::filesystem::exists(projectPath)) {
+        setStatus("Project already exists: " + projectPath.string());
+        return;
+    }
+    m_loader.createProject(projectName, projectPath);
+    if (!m_loader.hasOpenedProject()) { setStatus("Could not create project: " + projectPath.string()); }
 }
 
 void StartScreenController::startScreenDidCancelProjectCreation() {
@@ -459,7 +510,11 @@ void StartScreenController::startScreenDidCancelProjectCreation() {
 }
 
 void StartScreenController::startScreenDidRequestChooseProjectLocation() {
-    m_output->startScreenDidRequestChooseProjectLocation();
+    const std::string initialFolder = defaultProjectParentPath().string();
+    const std::optional<Panda::path_t> folder = Panda::SystemTools::openFolderDialog(initialFolder.c_str());
+    if (!folder.has_value()) { return; }
+    m_model.newProjectLocation = folder->string();
+    syncView();
 }
 
 void StartScreenController::syncView() {

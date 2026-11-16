@@ -100,6 +100,9 @@ private:
     std::unordered_map<std::string, path_t> m_scriptSources;
     bool m_scriptSourcesRead = false;
     EditorSession m_session;
+    // What the user took out of the recent projects in this instance: the session file other
+    // instances share still names them until this one writes it, and they are not taken back.
+    std::vector<RecentProject> m_forgottenProjects;
     ProjectSession m_projectSession;
     ProjectCreator m_projectCreator;
     ScriptEngine m_scriptEngine;

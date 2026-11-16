@@ -141,7 +141,7 @@ void AssetActions::contentDidRequestImport(const std::vector<Panda::AssetId> &as
         // for a world (an open world is a file document — FileDocuments — not an asset of the
         // loading registry).
         if (handler->getInfo(id).type == Panda::AssetType::WORLD) {
-            m_app.reloadWorldAsset(id);
+            m_app.documentActions().reloadWorldAsset(id);
             continue;
         }
         handler->reload(id);

@@ -617,6 +617,23 @@ const path_t &AssetHandlerEditor::getProjectPath() {
     return m_projectPath;
 }
 
+path_t AssetHandlerEditor::worldFilePath(AssetId id) {
+    if (!hasAsset(id)) {
+        LOG_ERROR_EDITOR("World asset %u not found", (uint32_t)id);
+        return {};
+    }
+    if (getInfo(id).type != AssetType::WORLD) {
+        LOG_ERROR_EDITOR("Asset %u is not a world", (uint32_t)id);
+        return {};
+    }
+    const path_t relative = assetPath(id);
+    if (relative.empty()) {
+        LOG_ERROR_EDITOR("World asset %u has empty path", (uint32_t)id);
+        return {};
+    }
+    return m_projectPath / relative;
+}
+
 std::unordered_set<path_t> AssetHandlerEditor::getAssetPaths(AssetId id) {
     std::unordered_set<path_t> result;
     const path_t mainPath = assetPath(id);

@@ -231,10 +231,12 @@ bool SettingsWindow::show(SettingsPage page) {
     });
     ProjectSettingsDocument::Host project;
     project.store = [app]() -> Panda::TypeContext & { return app->settingsStore(Panda::SettingsScope::Project); };
-    project.isDirty = [app] { return app->isProjectSettingsDirty(); };
-    project.markDirty = [app] { app->projectSettingsEdited(); };
-    project.save = [app] { return app->saveProjectSettings(); };
-    project.revert = [app] { app->revertProjectSettings(); };
+    // The project scope is a file document like any other: an edit marks it, Save and the revert
+    // are the document's.
+    project.isDirty = [app] { return app->documents().projectSettingsFile().isDirty(); };
+    project.markDirty = [app] { app->documents().projectSettingsFile().markEdited(); };
+    project.save = [app] { return app->documentActions().save(app->documents().projectSettingsFile()); };
+    project.revert = [app] { app->documents().projectSettingsFile().reload(); };
     project.filePath = [app] { return app->settingsFilePath(Panda::SettingsScope::Project); };
     open->project = std::make_unique<ProjectSettingsDocument>(std::move(project));
     open->keymap = std::make_unique<KeymapDocument>(m_commands, [this] { m_commands.run("keymap.openFile"); });

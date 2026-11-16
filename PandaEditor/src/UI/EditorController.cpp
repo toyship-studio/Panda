@@ -23,6 +23,7 @@
 #include "PandaUI/Elements/TabView.hpp"
 #include "PandaUI/Runtime/Context.hpp"
 
+#include <Panda/Assets/FontAsset.hpp>
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <PandaEditorKit/Selection.hpp>
@@ -32,6 +33,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -148,9 +150,14 @@ void EditorController::registerDocumentTypes() {
         PluginsHost host;
         Panda::EditorLayer *app = &s_controller->m_app;
         host.store = &app->pluginStore();
-        host.currentTheme = [app] { return app->currentThemeId(); };
-        host.selectTheme = [app](const std::string &id) { app->selectTheme(id); };
-        host.installDevPlugin = [app] { app->installDevPlugin(); };
+        host.currentTheme = [app] { return app->appearance().currentThemeId(); };
+        host.selectTheme = [app](const std::string &id) { app->appearance().selectTheme(id); };
+        host.installDevPlugin = [app] {
+            // The native folder dialog blocks: the store reports problems as a notice the tab shows.
+            if (std::optional<Panda::path_t> folder = Panda::SystemTools::openFolderDialog()) {
+                app->pluginStore().installDev(*folder);
+            }
+        };
         return std::unique_ptr<Document>(std::make_unique<PluginsDocument>(std::move(host)));
     };
     editorExtensions().documentTypes.add(std::move(plugins));
@@ -161,7 +168,7 @@ void EditorController::registerDocumentTypes() {
     gallery.id = UI_GALLERY_DOCUMENT;
     gallery.title = "UI Gallery";
     gallery.create = [] {
-        return std::unique_ptr<Document>(std::make_unique<UiGalleryDocument>(s_controller->m_app.galleryHost()));
+        return std::unique_ptr<Document>(std::make_unique<UiGalleryDocument>(s_controller->m_app.ui().galleryHost()));
     };
     editorExtensions().documentTypes.add(std::move(gallery));
 
@@ -661,8 +668,13 @@ PandaUI::TextureHandle EditorController::assetThumbnail(Panda::AssetId id) {
     return thumbnails ? thumbnails->thumbnailFor(id) : PandaUI::TextureHandle{};
 }
 
+// The face of a font asset for the editor's own UI (the preview of the font tab): rasterized once
+// from the bytes of the asset; Sans when it cannot be read.
 PandaUI::FontFamily EditorController::assetFont(Panda::AssetId id) {
-    return m_app.fontFamilyForAsset(id);
+    Panda::AssetRef<Panda::FontAsset> ref{id};
+    const Panda::FontAsset *font = ref.get();
+    if (!font || font->isEmpty()) { return PandaUI::FontFamily::Sans; }
+    return m_app.ui().fontFamilyForAsset(id, font->data());
 }
 
 void EditorController::pickAsset(
@@ -744,12 +756,12 @@ void EditorController::toolbarDidTapStop() {
 }
 
 void EditorController::toolbarDidTapReload() {
-    m_app.reloadFromDisk(); // assets/scripts/world by mtime
+    m_app.documentActions().reloadFromDisk(); // assets/scripts/world by mtime
     LOG_INFO_EDITOR("Reloading from disk…");
 }
 
 void EditorController::toolbarDidSave() {
-    m_app.saveAll(); // every unsaved file document
+    m_app.documentActions().saveAll(); // every unsaved file document
 }
 
 /* ------------------------------ Settings (the scopes) ------------------------------ */
@@ -937,11 +949,11 @@ void EditorController::setUpdateStatus(const UpdateIndicatorModel &model) {
 }
 
 void EditorController::toolbarDidActivateUpdate() {
-    m_app.updateIndicatorAction();
+    m_app.updateIndicatorDidActivate();
 }
 
 void EditorController::toolbarDidDismissUpdate() {
-    m_app.updateIndicatorDismiss();
+    m_app.updateIndicatorDidDismiss();
 }
 
 void EditorController::toolbarDidNavigateBack() {
@@ -1267,7 +1279,7 @@ bool EditorController::tabsSaveWorld() {
 }
 
 bool EditorController::tabsSaveAsset(Panda::AssetId id) {
-    return m_app.saveAsset(id);
+    return m_app.documentActions().saveAsset(id);
 }
 
 std::filesystem::path EditorController::tabsWorldFilePath() {

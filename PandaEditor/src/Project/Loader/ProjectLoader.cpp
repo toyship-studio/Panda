@@ -105,7 +105,9 @@ void ProjectLoader::saveSession() {
     if (readJson(directory / "session.json", m_jsonDecoder, onDisk)) {
         for (const RecentProject &project : onDisk.recentProjects) {
             auto &recent = m_session.recentProjects;
-            if (std::find(recent.begin(), recent.end(), project) == recent.end()) { recent.push_back(project); }
+            const bool forgotten =
+                std::find(m_forgottenProjects.begin(), m_forgottenProjects.end(), project) != m_forgottenProjects.end();
+            if (!forgotten && std::find(recent.begin(), recent.end(), project) == recent.end()) { recent.push_back(project); }
         }
     }
     if (!writeJson(directory / "session.json", m_jsonEncoder, m_session)) {
@@ -382,6 +384,10 @@ void ProjectLoader::appendRecentProject() {
     RecentProject recentProject;
     recentProject.path = projectPath().generic_string();
     recentProject.name = projectPath().filename().string();
+    // Opened again, it is a recent project again.
+    m_forgottenProjects.erase(
+        std::remove(m_forgottenProjects.begin(), m_forgottenProjects.end(), recentProject), m_forgottenProjects.end()
+    );
     auto &recentList = m_session.recentProjects;
     auto existing = std::find(recentList.begin(), recentList.end(), recentProject);
     if (existing != recentList.end()) {
@@ -420,7 +426,10 @@ void ProjectLoader::closeProject() {
 }
 
 void ProjectLoader::removeRecentProject(int index) {
-    m_session.recentProjects.erase(std::next(m_session.recentProjects.begin(), index));
+    auto &recent = m_session.recentProjects;
+    if (index < 0 || index >= static_cast<int>(recent.size())) { return; }
+    m_forgottenProjects.push_back(recent[static_cast<size_t>(index)]);
+    recent.erase(std::next(recent.begin(), index));
 }
 
 LastOpenedProjectWindowState ProjectLoader::getLastWindowState() {

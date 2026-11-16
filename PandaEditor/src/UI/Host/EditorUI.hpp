@@ -5,6 +5,7 @@
 #include <Panda/UI/PandaUIMirenRenderer.hpp>
 #include <PandaUI/Rendering/Font.hpp>
 #include <PandaUI/Runtime/Context.hpp>
+#include <PandaUIGallery/Gallery.hpp> // PandaUI::Gallery::Host
 
 #include <filesystem>
 #include <array>
@@ -71,6 +72,11 @@ public:
     // Sans of that weight for the glyphs it lacks. False — the family is not installed or its file
     // cannot be read; nothing is registered then.
     bool loadInstalledFace(const std::string &installedFamily, int weightClass, PandaUI::FontFamily as);
+    // What the PandaUI gallery (Help → UI Gallery) needs from the UI host of an application:
+    // textures from pixels, its logo, a serif face for its "Fantasy" skin. The logo and the face
+    // are loaded once, on the first call, and stay for the process. The gallery is a tab, not a
+    // window, and follows the theme of the editor: the host gives neither.
+    PandaUI::Gallery::Host galleryHost();
     void loadEditorIcons(); // editor-icons + file-icons → the global Editor::IconLibrary (panel icons)
     // Folders of the packages' PNG icons (absolute paths; EditorExtensions::iconFolders) — into the same
     // library, on top of what is already loaded.
@@ -152,6 +158,9 @@ private:
     };
     std::unordered_map<uint32_t, AssetFont> m_assetFonts; // by asset id
     std::vector<std::shared_ptr<PandaUI::FontAtlas>> m_installedFaces; // loadInstalledFace: alive with the Context
+    PandaUI::TextureHandle m_galleryLogo;
+    PandaUI::FontFamily m_galleryDisplayFont = PandaUI::FontFamily::Sans;
+    bool m_galleryFontSearched = false;
     bool m_bundledFontsLoaded = false;
     void loadBundledFonts();
     void loadCustomFamily(FontRole &role, const std::string &family);

@@ -255,6 +255,23 @@ std::string EditorUpdater::releaseNotesUrl() const {
     return kPortalDownloadPage;
 }
 
+std::string EditorUpdater::statusLine() const {
+    using Kind = UpdateState::Kind;
+    std::string line = "Panda " + versionString();
+    if (ENGINE_BUILD_COMMIT[0] != '\0') { line += std::string(" (commit ") + ENGINE_BUILD_COMMIT + ")"; }
+    switch (m_state.kind) {
+        case Kind::Idle: return line;
+        case Kind::Checking: return line + ". Checking for updates…";
+        case Kind::Downloading: return line + ". Downloading " + m_state.version + "…";
+        case Kind::Installing: return line + ". Installing " + m_state.version + "…";
+        case Kind::Ready: return line + ". Update " + m_state.version + " is installed and runs after a restart.";
+        case Kind::UpToDate: return line + ". Up to date.";
+        case Kind::Updated: return line + ". Updated to " + m_state.version + ".";
+        case Kind::Error: return line + ". Update failed: " + m_state.message;
+    }
+    return line;
+}
+
 Fern::Net::Client &EditorUpdater::client() {
     if (!m_client) {
         Fern::Net::ClientDesc desc;

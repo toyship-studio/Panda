@@ -9,6 +9,10 @@
 #include <string>
 #include <vector>
 
+namespace Panda {
+class ProjectLoader;
+}
+
 namespace Editor {
 
 struct StartScreenRecentProject {
@@ -46,20 +50,6 @@ public:
     virtual void startScreenDidRequestRemoveRecentProject(size_t index) = 0;
     virtual void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) = 0;
     virtual void startScreenDidCancelProjectCreation() = 0;
-    virtual void startScreenDidRequestChooseProjectLocation() = 0;
-    virtual void startScreenDidActivateUpdate() = 0;
-    virtual void startScreenDidDismissUpdate() = 0;
-};
-
-// Intents of the start screen controller going outward, to the application host.
-class StartScreenControllerOutput {
-public:
-    virtual ~StartScreenControllerOutput() = default;
-
-    virtual void startScreenDidRequestOpenProjectDialog() = 0;
-    virtual void startScreenDidRequestOpenRecentProject(size_t index) = 0;
-    virtual void startScreenDidRequestRemoveRecentProject(size_t index) = 0;
-    virtual void startScreenDidRequestCreateProject(const std::string &name, const std::string &location) = 0;
     virtual void startScreenDidRequestChooseProjectLocation() = 0;
     virtual void startScreenDidActivateUpdate() = 0;
     virtual void startScreenDidDismissUpdate() = 0;
@@ -108,20 +98,22 @@ private:
     std::shared_ptr<PandaUI::TextField> m_locationField;
 };
 
-// CONTROLLER: owns the start screen model, implements the View's intents. Changes the UI state (mode,
-// status) itself; forwards domain actions (open/create/delete a project) to the output (the host).
+// CONTROLLER: owns the start screen model and implements the intents of the View. The start
+// screen is where a project is chosen: it opens, creates and forgets projects through the loader
+// itself and says what came of it in its status line. The update indicator it shows is the
+// application's: a click on it goes to `updates`.
 class StartScreenController final : public StartScreenOutput {
 public:
-    StartScreenController(PandaUI::TextureHandle logoTexture, StartScreenControllerOutput *output);
+    StartScreenController(PandaUI::TextureHandle logoTexture, Panda::ProjectLoader &loader, UpdateIndicatorOutput *updates);
 
     std::shared_ptr<PandaUI::View> rootView() const {
         return m_view;
     }
 
-    void setRecentProjects(std::vector<StartScreenRecentProject> projects);
+    // The screen is about to be shown: the list is the recent projects of the loader as they are
+    // now (a folder may be gone since).
+    void refreshRecentProjects();
     void setStatus(std::string text);
-    void setNewProjectDefaults(std::string name, std::string location);
-    void setNewProjectLocation(std::string location);
     void setUpdateStatus(const UpdateIndicatorModel &model);
     void showRecentProjects();
 
@@ -138,7 +130,8 @@ public:
 private:
     void syncView();
 
-    StartScreenControllerOutput *m_output = nullptr;
+    Panda::ProjectLoader &m_loader;
+    UpdateIndicatorOutput *m_updates = nullptr;
     StartScreenModel m_model;
     std::shared_ptr<StartScreenView> m_view;
 };

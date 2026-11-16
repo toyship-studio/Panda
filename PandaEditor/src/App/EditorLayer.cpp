@@ -1,16 +1,12 @@
 #include "EditorLayer.hpp"
 #include "App/EditorMcp.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
-#include "App/SystemStats.hpp"
 
-#include "Project/Export/GameExporter.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/Modules/ProjectModules.hpp"
-#include "Project/System/PandaSdkLocator.hpp"
 #include "Project/System/SystemColorSampler.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "UI/EditorDialogs.hpp"
-#include "Viewport/EditorWorldPasses.hpp"
 
 #include <MirenTools.hpp>
 
@@ -19,21 +15,12 @@
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Serialization/SettingsMapper.hpp>
-#include <Panda/Serialization/WorldMapper.hpp>
-#include <Panda/WorldCommands/Impl/AddRemoveEntitiesCommand.hpp>
 #include <Foundation/GraphicsAPI.hpp>
 #include <Panda/Base/Version.hpp>
 #include <Foundation/PlatformDetection.hpp>
 #include <Fern/Fonts/FontCatalog.hpp>
-#include <Panda/Assets/FontAsset.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Events/WindowEvents.hpp>
-#include <Fern/Events/Key.hpp>
-#include <Fern/Events/KeyEvents.hpp>
-#include <Fern/Events/MouseEvents.hpp>
-#include <Fern/Events/TouchEvents.hpp>
-#include <Panda/GameLogic/Systems/ScriptSystem.hpp>
-#include <Panda/GameLogic/Input.hpp>
 #include <PandaUI/PandaUI.hpp>
 
 #include "UI/EditorController.hpp"
@@ -41,9 +28,7 @@
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/Selection.hpp>
-#include <Rain/Coders/JsonDecoder.hpp>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -75,27 +60,38 @@ namespace {
         }
     }
 
+    std::vector<std::string> titlesOf(const Editor::CreateActions &actions) {
+        std::vector<std::string> titles;
+        for (const Editor::CreateAction &action : actions) { titles.push_back(action.title); }
+        return titles;
+    }
+
+    // The list is made again at the click: the folder of the Content Browser is the one of now.
+    void runAction(const Editor::CreateActions &actions, size_t index) {
+        if (index < actions.size()) { actions[index].run(); }
+    }
+
 } // namespace
 
 EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
-    : m_playingWorld()
-    , m_currentWorld(nullptr)
+    : m_play(window, m_viewports)
     , m_documents(this)
     , m_loader(m_documents, this)
+    , m_documentActions(*this)
     , m_builds(m_loader, m_documents, [this] { scriptsWereBuilt(); })
-    , m_pendingWorldLoad(0)
     , m_window(window)
     , m_menuBar(window, this, m_commands)
-    , m_gameUI(window)
-    , m_viewports() {
+    , m_viewports()
+    , m_appearance(m_editorUI, m_pluginStore, m_documents) {
     m_launch = std::move(launch);
     if (m_launch.unattended) { m_unattended = std::make_unique<SystemTools::Unattended>(); }
-    m_currentWorld = &editingWorld();
     registerCommands();
     m_commands.addKeymapListener([this] { m_menuBar.rebuild(); }); // the menu shows the keys
 }
 
 EditorLayer::~EditorLayer() = default; // EditorController and EditorMcp are complete here (see the includes) — for unique_ptr
+
+/* ------------------------------ The life of the application ------------------------------ */
 
 void EditorLayer::onAttach() {
     Foundation::EditorLogger::init(Editor::OutputPanelView::loggerCallback); // engine logs → Output panel
@@ -110,13 +106,10 @@ void EditorLayer::onAttach() {
     // ShaderBlocks.hpp: a mismatch means the layout has drifted and the files were not regenerated.
     const std::string staleIncludes = ShaderInterface::checkIncludes(AssetImporterBase::getShaderIncludeRoot());
     if (!staleIncludes.empty()) { LOG_ERROR_EDITOR("%s", staleIncludes.c_str()); }
-    Editor::selection().setWorld(m_currentWorld); // the selection is of the world the editor shows
-    // A script quit in the editor = Stop of the game, not closing the application. Deferred: the
-    // request arrives in the middle of the world update — stop() tears down the playing world and
-    // would crash the script frame in progress.
-    GameContext::setQuitRequestHandler([this] { m_pendingStop = true; });
+    Editor::selection().setWorld(shownWorld()); // the selection is of the world the editor shows
+    m_play.initialize();
     m_viewports.init();
-    m_viewports.scene().setWorld(m_currentWorld);
+    m_viewports.scene().setWorld(shownWorld());
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
     m_loader.loadInitialData(m_launch.openLastProject, m_launch.project);
     // A world applies its wind itself when its frame begins. Here the wind of the loaded world
@@ -134,15 +127,14 @@ void EditorLayer::onAttach() {
     // being built). The coordinator is Editor::EditorController.
     installSystemColorSampler(); // ColorPicker eyedropper (macOS: NSColorSampler; otherwise no-op)
     m_editorUI.initialize(m_window);
-    m_editorUI.loadFonts(fontSettings());
+    m_editorUI.loadFonts(m_appearance.fonts());
     // The list of installed fonts for the APPEARANCE section is scanned once, off the main thread.
     Application::get()->getScheduler().submit(
         PandaAsync::JobDesc{"fonts.scan", PandaAsync::Priority::Background}, [](PandaAsync::Context &) { Fern::Fonts::families(); }
     );
     m_editorUI.loadEditorIcons();
-    loadPlugins();
-    // Before the controller: panels read the theme while being built.
-    applyTheme(m_documents.editorSettings().get<EditorAppearanceSettings>().theme);
+    // Before the controller: panels read the theme and take their icons while being built.
+    m_appearance.load();
     // The pictures of assets (previews of the forms, thumbnails): a single owner, the panels go
     // through AssetPreviews::shared().
     m_previews = std::make_unique<AssetPreviews>(
@@ -151,9 +143,7 @@ void EditorLayer::onAttach() {
     );
     AssetPreviews::setShared(m_previews.get());
     m_startScreenController =
-        std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), this);
-    m_startScreenController->setNewProjectDefaults("UntitledGame", defaultProjectParentPath().string());
-    syncStartScreenModel();
+        std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), m_loader, this);
     m_editorController = std::make_unique<Editor::EditorController>(*this);
     m_editorController->setWorld(panelsWorld()); // panels read the real engine world directly
     m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
@@ -170,15 +160,15 @@ void EditorLayer::onAttach() {
     m_menuBar.rebuild(); // File → New lists what the controller can create
     // The themes for the APPEARANCE section of the editor settings (the data plugins live here).
     Editor::setThemeProvider({
-        [this] { return themeNames(); },
-        [this] { return currentThemeIndex(); },
-        [this](int index) { selectThemeIndex(index); },
+        [this] { return m_appearance.themeNames(); },
+        [this] { return m_appearance.currentThemeIndex(); },
+        [this](int index) { m_appearance.selectThemeIndex(index); },
     });
     // The updater for the UPDATES section of the editor settings.
     Editor::setUpdateProvider({
         EditorUpdater::isEnabled(),
         [this] { checkForUpdates(true); },
-        [this] { return updateStatusLine(); },
+        [this] { return m_updater.statusLine(); },
     });
     loadEditorParts(); // parts host: the coordinator itself (since its creation) // project open at startup: module parts before layout (tab forms wait for them)
     m_editorController->applyDockLayout(m_loader.getDockLayout()); // saved dock layout (if any)
@@ -194,7 +184,6 @@ void EditorLayer::onAttach() {
     if (!m_launch.unattended) { m_updater.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); }
     m_pluginStore.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
     m_mcp = std::make_unique<EditorMcp>(*this); // listens once a project with the "mcp" section on is open
-
 }
 
 void EditorLayer::onDetach() {
@@ -206,24 +195,20 @@ void EditorLayer::onDetach() {
     AssetPreviews::setShared(nullptr);
     m_previews.reset();
     m_editorUI.shutdown();
-    m_gameUI.shutdown();
-    GameContext::setQuitRequestHandler(nullptr);
-    GameContext::setWorldLoadRequestHandler(nullptr);
+    m_play.shutdown();
     Editor::selection().clear();
     Editor::selection().setWorld(nullptr);
 }
 
+/* ------------------------------ The frame ------------------------------ */
+
 void EditorLayer::onUpdate(double deltaTime) {
     syncWindowIdentity();
-    m_stripFrameCounter++;
-    updateStripStatus(deltaTime);
+    m_statistics.updateStatus(deltaTime, m_editorController.get());
     m_updater.tick(deltaTime);
     pushUpdateStatus();
-    if (m_pendingStop) { // script quit from the previous frame → Stop before the worlds update begins
-        m_pendingStop = false;
-        stop();
-    }
-    if (m_scriptsBuiltWhilePlaying && !m_playing) {
+    if (m_play.takeQuitRequest()) { stop(); } // a script quit in the last frame: Stop before the worlds update
+    if (m_scriptsBuiltWhilePlaying && !isPlaying()) {
         m_scriptsBuiltWhilePlaying = false;
         if (m_loader.hasOpenedProject()) { m_loader.reloadScriptsDll(); }
     }
@@ -233,18 +218,19 @@ void EditorLayer::onUpdate(double deltaTime) {
     // Size the engine viewports from the PandaUI panels BEFORE the world renders this frame.
     if (m_loader.hasOpenedProject()) {
         syncViewports();
-        updateGameInput();
+        m_play.updateInput(m_editorController->isGameViewportFocused(), m_editorUI.context().modals().isPresenting());
         m_viewports.scene().pollSelection(); // apply async rect-select / click-picking results
         m_editorController->syncSelection(); // what the viewport selected → the panels and the tabs
         m_editorController->syncWorldStructure(); // scripts created/deleted entities → live Hierarchy
-        m_editorController->updateChromeFromState(!m_playing); // toolbar + dirty scene tab
+        m_editorController->updateChromeFromState(!isPlaying()); // toolbar + dirty scene tab
         m_builds.update(); // the output of cmake → the CMake panel; built scripts are loaded
     }
 
     if (m_loader.hasOpenedProject()) {
-        // The frame of the CURRENT world (the playing copy in Play) through the live viewport: the Scene
-        // sees it with the editor camera, the Game with the main camera of the world.
-        const bool playing = m_playing;
+        // The frame of the world on screen (the playing copy in Play) through the live viewport: the
+        // Scene sees it with the editor camera, the Game with the main camera of the world.
+        const bool playing = isPlaying();
+        World &world = *shownWorld();
         // What the user did over the Scene surface since the last frame: the flight of the editor
         // camera, the pointer of the gizmo and of the tools. Taken every frame (the surface
         // accumulates), meaningful only while the Scene renders.
@@ -262,56 +248,24 @@ void EditorLayer::onUpdate(double deltaTime) {
         } else {
             m_scenePointer = Editor::ScenePointer{};
         }
-        m_viewports.beginFrame(*m_currentWorld, deltaTime, m_viewportSettings, navigation);
+        m_viewports.beginFrame(world, deltaTime, m_viewportSettings, navigation);
         if (!playing) {
             updateViewportTools(deltaTime); // brushes — before the frame is drawn: edits are remeshed this frame
         }
         // The game is simulated, then the world on screen is drawn through the live viewport. A
         // playing world that does not run (it waits for its next world) keeps its last frame.
-        if (playing && m_playingWorld.isRunning()) { m_currentWorld->update(deltaTime); }
-        if (!playing || m_playingWorld.isRunning()) {
-            m_viewports.render(*m_currentWorld, m_viewportSettings, Application::get()->getTime());
+        if (playing && m_play.isRunning()) { m_play.simulate(deltaTime); }
+        if (!playing || m_play.isRunning()) {
+            m_viewports.render(world, m_viewportSettings, Application::get()->getTime());
         }
-        if (playing) {
-            syncGameUiFrame();
-            m_gameUI.update(static_cast<float>(deltaTime)); // the game UI draws into the Game surface
-            loadPendingWorldRequest();
-        }
+        if (playing) { m_play.updateUi(deltaTime); } // the UI of the game over its frame; the world a script asked for
         updateViewportHelperLines(); // after the camera update — collider outlines without a one-frame lag
         m_previews->update();        // one preview of a form + one thumbnail from the queue
         GameContext::getAssetHandler()->cleanup();
     }
 
     if (m_loader.hasOpenedProject()) {
-        // Live statistics: the current world has already rendered the frame (EDIT/PLAY) —
-        // the stats are current.
-        // Layout passes of the chrome UI accumulate over a one-second window: the panel itself dirties
-        // the layout by changing text (background ~2-3/s), so a per-frame value would flicker; a
-        // pathology shows up as ~FPS passes per second.
-        const Renderer2D::Statistics stats2d = m_viewports.worldView().renderer2D().getStats();
-        const Renderer3D::Statistics stats3d = m_viewports.worldView().renderer3D().getStats();
-        const uint64_t uiLayoutCount = m_editorUI.context().layoutPassCount();
-        m_uiLayoutAccum += static_cast<uint32_t>(uiLayoutCount - m_lastUiLayoutCount);
-        m_lastUiLayoutCount = uiLayoutCount;
-        m_uiLayoutWindow += static_cast<float>(deltaTime);
-        if (m_uiLayoutWindow >= 1.f) {
-            m_uiLayoutsPerSecond = m_uiLayoutAccum;
-            m_uiLayoutAccum = 0;
-            m_uiLayoutWindow -= 1.f;
-        }
-        m_editorController->setFrameStatistics(
-            Application::get()->fps, stats3d.drawCalls, stats3d.shadowDrawCalls, stats2d.drawCalls,
-            stats2d.quadCount, m_uiLayoutsPerSecond
-        );
-        m_editorController->collectExtensionStatistics(); // contribution sections (flora, etc.)
-        m_profilerRefreshWindow += static_cast<float>(deltaTime);
-        if (m_profilerRefreshWindow >= 0.25f) {
-            m_profilerRefreshWindow = 0.f;
-            m_editorController->updateProfilerPanel();
-        }
-    }
-
-    if (m_loader.hasOpenedProject()) {
+        m_statistics.updateFrame(deltaTime, m_viewports, m_editorUI, *m_editorController);
         if (Editor::editorExtensions().viewportTools.anyDriving()) {
             // The active viewport tool takes the LMB: the gizmo does not manipulate and hides.
             m_editorController->setGizmoVisible(false);
@@ -353,417 +307,10 @@ void EditorLayer::syncViewports() {
     if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
     m_editorController->setLiveViewport(m_viewports.isGameLive());
     m_editorController->setGameViewportMessage(
-        !hasWorld() && !m_playing                                  ? "No world is open"
+        !hasWorld() && !isPlaying()                                ? "No world is open"
         : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
                                                                    : ""
     );
-}
-
-// The game owns the input of the window while it plays, the Game tab renders and has the keyboard
-// focus (a click on the game gives it; a click anywhere else in the editor takes it away) and the
-// window is focused. Panda::Input is the game's input (onEvent routes it only the game's events);
-// this is its focus, a transition is the application focus of the scripts (onApplicationFocus).
-// The loss releases what the game held (the releases will go to the editor) and the cursor lock:
-// an FPS is left by clicking elsewhere, and locks again in onApplicationFocus(true).
-void EditorLayer::updateGameInput() {
-    const bool active = m_playing && m_windowFocused && m_viewports.isGameLive() &&
-                        m_editorController->isGameViewportFocused() && !m_editorUI.context().modals().isPresenting();
-    if (active == m_gameInputActive) { return; }
-    m_gameInputActive = active;
-    Input::setFocused(active);
-    if (!active) {
-        Input::releaseAll();
-        Fern::setCursorLocked(false);
-    }
-    if (m_playingWorld.isRunning()) { ScriptSystem::applicationFocus(m_playingWorld, active); }
-}
-
-// Which input events are the game's while it plays and the Game renders: the pointer over the Game
-// surface, the keys while the Game tab has the focus. A button's release goes where its press went
-// (m_gameMouseButtons): a drag that started on the game may leave the surface, one that started on
-// the chrome (a splitter) may end over it. A dialog of the editor on top takes the new interactions;
-// the releases still follow their presses.
-bool EditorLayer::eventBelongsToGame(Fern::Event *event) {
-    const bool modal = m_editorUI.context().modals().isPresenting();
-    const auto inGameFrame = [this](double x, double y) {
-        const Rect &frame = m_viewports.gameFrame();
-        return x >= frame.origin.x && y >= frame.origin.y && x < frame.origin.x + frame.size.width &&
-               y < frame.origin.y + frame.size.height;
-    };
-    const auto cursorInGameFrame = [this, &inGameFrame]() {
-        const Fern::Vec2 cursor = m_window->getCursorPosition();
-        return inGameFrame(cursor.x, cursor.y);
-    };
-    switch (event->type) {
-        case Fern::EventType::MouseMoved: {
-            const auto *ev = static_cast<const Fern::MouseMovedEvent *>(event);
-            return m_gameMouseButtons != 0 || (!modal && inGameFrame(ev->x, ev->y));
-        }
-        case Fern::EventType::MouseButtonPressed: {
-            const auto *ev = static_cast<const Fern::MouseKeyEvent *>(event);
-            const uint32_t bit = 1u << static_cast<uint32_t>(ev->button);
-            const bool game = !modal && cursorInGameFrame();
-            m_gameMouseButtons = game ? (m_gameMouseButtons | bit) : (m_gameMouseButtons & ~bit);
-            // A click on the game gives the Game tab the keyboard focus: the keys follow the mouse.
-            if (game) { m_editorController->focusGameView(); }
-            return game;
-        }
-        case Fern::EventType::MouseButtonReleased: {
-            const auto *ev = static_cast<const Fern::MouseKeyEvent *>(event);
-            const uint32_t bit = 1u << static_cast<uint32_t>(ev->button);
-            if ((m_gameMouseButtons & bit) == 0) { return false; }
-            m_gameMouseButtons &= ~bit;
-            return true;
-        }
-        case Fern::EventType::MouseScrolled:
-            return !modal && cursorInGameFrame();
-        case Fern::EventType::TouchBegan: {
-            const auto *ev = static_cast<const Fern::TouchBeganEvent *>(event);
-            return !modal && inGameFrame(ev->x, ev->y);
-        }
-        case Fern::EventType::TouchMoved: {
-            const auto *ev = static_cast<const Fern::TouchMovedEvent *>(event);
-            return !modal && inGameFrame(ev->x, ev->y);
-        }
-        case Fern::EventType::TouchEnded:
-        case Fern::EventType::KeyPressed:
-        case Fern::EventType::KeyReleased:
-        case Fern::EventType::InputCharacter:
-            return !modal && m_editorController->isGameViewportFocused();
-        default:
-            return false;
-    }
-}
-
-void EditorLayer::activateWorld(WorldFile &world) {
-    if (!m_playing) { m_documents.activateWorld(world); }
-}
-
-bool EditorLayer::saveWorld(WorldFile &world) {
-    // A world without a file yet is saved even when untouched: Save names it (Save As).
-    if (!world.isDirty() && !world.path().empty()) { return true; }
-    return saveFile(world);
-}
-
-void EditorLayer::closeWorld(WorldFile &world) {
-    // The game plays a copy of the active world: it ends with that world.
-    if (&world == m_documents.activeWorld()) { stop(); }
-    m_documents.closeWorld(world);
-}
-
-bool EditorLayer::saveAsset(AssetId asset) {
-    const std::unique_ptr<AssetFile> file = m_documents.assetFile(asset);
-    return file && saveFile(*file);
-}
-
-std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) {
-    switch (scope) {
-        case SettingsScope::Project: return m_documents.projectSettingsFile().path();
-        case SettingsScope::Editor: return m_documents.editorSettingsFile().path();
-        case SettingsScope::World: // the world settings live in the world file
-            return hasWorld() ? m_documents.activeWorld()->path() : std::filesystem::path();
-    }
-    return {};
-}
-
-void EditorLayer::openInExternalEditor(const std::filesystem::path &path) {
-    if (path.empty()) { return; }
-    const std::string &command = m_documents.editorSettings().get<EditorExternalToolsSettings>().editor;
-    // The text form of the file: a text document opens as it is; a binary asset (a texture, a
-    // model) is described by its sidecar. A shader is a pair of files: both open.
-    static const char *TEXT_EXTENSIONS[] = {".world", ".mat",  ".json", ".hlsl", ".hlsli", ".txt",
-                                            ".md",    ".cpp",  ".hpp",  ".h",    ".c",     ".cmake",
-                                            ".gltf",  ".pmeta"};
-    const std::string extension = path.extension().string();
-    bool text = false;
-    for (const char *known : TEXT_EXTENSIONS) {
-        if (extension == known) { text = true; }
-    }
-    path_t target = path;
-    if (!text) {
-        path_t sidecar = path;
-        sidecar += ".pmeta";
-        if (std::filesystem::exists(sidecar)) { target = sidecar; }
-    }
-    SystemTools::openInEditor(command, target);
-    const std::string name = path.filename().string();
-    const std::string vertexSuffix = "vert.hlsl";
-    if (name.size() > vertexSuffix.size() && name.compare(name.size() - vertexSuffix.size(), vertexSuffix.size(), vertexSuffix) == 0) {
-        path_t fragment = path;
-        fragment.replace_filename(name.substr(0, name.size() - vertexSuffix.size()) + "frag.hlsl");
-        if (std::filesystem::exists(fragment)) { SystemTools::openInEditor(command, fragment); }
-    }
-}
-
-void EditorLayer::revealInFileManager(const std::filesystem::path &path) {
-    if (!path.empty()) { SystemTools::revealInFileManager(path); }
-}
-
-void EditorLayer::openWorldAsset(AssetId worldAssetId) {
-    auto *assetHandler = AssetHandlerEditor::current();
-    if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) {
-        LOG_ERROR_EDITOR("World asset %u not found", (uint32_t)worldAssetId);
-        return;
-    }
-    AssetInfo assetInfo = assetHandler->getInfo(worldAssetId);
-    if (assetInfo.type != AssetType::WORLD) {
-        LOG_ERROR_EDITOR("Asset %u is not a world", (uint32_t)worldAssetId);
-        return;
-    }
-    const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
-    if (assetRelativePath.empty()) {
-        LOG_ERROR_EDITOR("World asset %u has empty path", (uint32_t)worldAssetId);
-        return;
-    }
-    const path_t worldPath = assetHandler->getProjectPath() / assetRelativePath;
-    // Nothing is dropped: the world opens in a tab of its own next to the open ones. The game
-    // plays a copy of the active world, so it stops before another world takes that place.
-    stop();
-    if (m_documents.openWorld(worldPath) == nullptr) {
-        LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
-        return;
-    }
-    // Its tab comes forward, also when the world was open and active already (behind the Game tab).
-    if (m_editorController) { m_editorController->showSceneView(); }
-}
-
-/* ------------------------------ File documents ------------------------------ */
-// Save, Reload and the unsaved-changes question, written once over FileDocument
-// (Project/Documents/FileDocument.hpp, context/architecture.md "The document model").
-
-namespace {
-
-    // A document title at the start of a sentence: `world "Forest"` → `World "Forest"`.
-    std::string sentenceStart(std::string title) {
-        if (!title.empty()) { title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0]))); }
-        return title;
-    }
-
-} // namespace
-
-EditorLayer::FileResolution EditorLayer::resolveFileConflict(FileDocument &file) {
-    // The memory has edits and the file is to be replaced or was replaced: one of the two
-    // versions stays, the user says which.
-    const std::string title = sentenceStart(file.title()) +
-                              (file.isChangedOnDisk() ? " was changed on disk and has unsaved changes"
-                                                      : " has unsaved changes");
-    const SystemTools::SaveChangesChoice choice = SystemTools::showSaveChangesDialog(
-        title.c_str(), "Save them over the file on disk, or discard them and take the version on disk?"
-    );
-    if (choice == SystemTools::SaveChangesChoice::Cancel) { return FileResolution::Cancelled; }
-    if (choice == SystemTools::SaveChangesChoice::Save) {
-        return file.save() ? FileResolution::Saved : FileResolution::Cancelled;
-    }
-    reloadFile(file);
-    return FileResolution::Reloaded;
-}
-
-void EditorLayer::reloadFile(FileDocument &file) {
-    // What follows a read is the document's to report (documentsDidReadSettings, documentsDidLoadWorld);
-    // the forms of asset and entity tabs follow the live objects themselves.
-    if (!file.reload()) { LOG_ERROR_EDITOR("Reload: %s could not be read from disk", file.title().c_str()); }
-}
-
-int EditorLayer::revertUnsaved() {
-    stop();
-    int reverted = 0;
-    const FileDocumentList files = m_documents.list();
-    for (FileDocument *file : files.all) {
-        if (!file->isDirty() || file->path().empty()) { continue; } // a new world has nothing to go back to
-        LOG_INFO_EDITOR("Reverted %s.", file->title().c_str());
-        reloadFile(*file);
-        ++reverted;
-    }
-    return reverted;
-}
-
-EditorLayer::FileResolution EditorLayer::takeDiskVersion(FileDocument &file) {
-    if (file.isDirty()) { return resolveFileConflict(file); }
-    reloadFile(file);
-    return FileResolution::Reloaded;
-}
-
-bool EditorLayer::saveFile(FileDocument &file) {
-    // A file changed on disk since the editor read it is not overwritten in silence.
-    if (file.isChangedOnDisk()) { return resolveFileConflict(file) != FileResolution::Cancelled; }
-    if (!file.save()) { return false; }
-    LOG_INFO_EDITOR("Saved %s.", file.title().c_str());
-    if (&file == m_documents.activeWorld() && m_playing) {
-        // Save writes the world being edited. Play runs on its copy: what the simulation and the
-        // inspector change there lives until Stop.
-        LOG_INFO_EDITOR("The changes made while playing are not saved: Stop discards them.");
-    }
-    return true;
-}
-
-bool EditorLayer::saveAll() {
-    const FileDocumentList files = m_documents.list();
-    for (FileDocument *file : files.all) {
-        if (!file->isDirty()) { continue; }
-        if (!saveFile(*file)) { return false; }
-    }
-    return true;
-}
-
-void EditorLayer::reloadFromDisk() {
-    // A single synchronization of the editor with the disk (the Reload button / Cmd+R): the
-    // asset registry follows the project tree, then, by modification time, a file document
-    // changed on disk is reread; when the memory has edits too, the user picks the version that
-    // stays; Cancel aborts the rest. The script build is a step of its own before the worlds
-    // (nothing edits it in memory).
-    stop();
-    // The registry follows the tree first: a file put into the project since the last scan
-    // becomes an asset (its sidecar gets an id), a file that is gone leaves the registry. The ids
-    // of the known assets live in their sidecars and do not change, so nothing loaded is touched.
-    if (auto *assetHandler = AssetHandlerEditor::current()) {
-        assetHandler->rescanProject();
-        if (m_editorController) { m_editorController->refreshAssetPanels(); }
-    }
-    std::string reloaded;
-    bool scriptsChecked = false;
-    const auto reloadScripts = [&] {
-        scriptsChecked = true;
-        if (!m_loader.isScriptsChangedOnDisk()) { return; }
-        m_loader.reloadScriptsDll();
-        reloaded += reloaded.empty() ? "scripts" : ", scripts";
-    };
-    const FileDocumentList files = m_documents.list();
-    for (FileDocument *file : files.all) {
-        if (!scriptsChecked && m_documents.isWorldFile(file)) { reloadScripts(); }
-        if (!file->isChangedOnDisk()) { continue; }
-        const std::string title = file->title(); // the document may not outlive its reload
-        const FileResolution resolution = takeDiskVersion(*file);
-        if (resolution == FileResolution::Cancelled) { return; }
-        if (resolution != FileResolution::Reloaded) { continue; }
-        reloaded += (reloaded.empty() ? "" : ", ") + title;
-        if (file == &m_documents.projectSettingsFile() && reopenProjectForModules()) { return; }
-    }
-    if (!scriptsChecked && m_loader.hasOpenedProject()) { reloadScripts(); }
-    if (reloaded.empty()) {
-        LOG_INFO_EDITOR("Reload: everything is up to date");
-    } else {
-        LOG_INFO_EDITOR("Reload: %s", reloaded.c_str());
-    }
-}
-
-bool EditorLayer::openSettingsWindow(std::shared_ptr<PandaUI::View> root) {
-    return m_editorUI.openAuxiliaryWindow("Settings", PandaUI::Size(900.f, 640.f), std::move(root)) != nullptr;
-}
-
-void EditorLayer::closeSettingsWindow() {
-    m_editorUI.closeAuxiliaryWindow();
-}
-
-bool EditorLayer::reopenProjectForModules() {
-    const ProjectModuleSettings &modules = m_documents.projectSettings().get<ProjectModuleSettings>();
-    if (ProjectModules::loadNeeded(modules)) {
-        // A module switched on in the file: its contributions are needed before the asset registry
-        // and the world, so the project opens again — that reads everything fresh.
-        LOG_INFO_EDITOR("Reload: the module set has grown, the project is opened again");
-        const path_t projectPath = m_loader.getOpenedProjectPath();
-        runAfterUnsavedQuestion([this, projectPath]() {
-            saveOpenedProjectWindowState();
-            m_loader.openProject(projectPath);
-        });
-        return true;
-    }
-    if (ProjectModules::restartNeeded(modules)) {
-        LOG_WARN_EDITOR("Reload: a module was switched off in project.json. Restart the editor to drop it.");
-    }
-    return false;
-}
-
-void EditorLayer::setGizmoOperation(int mode) {
-    const Gizmos::Operation op = mode == 1   ? Gizmos::Operation::Rotate
-                                 : mode == 2 ? Gizmos::Operation::Scale
-                                             : Gizmos::Operation::Translate;
-    m_viewports.gizmo().setOperation(op);
-}
-
-void EditorLayer::setGizmoSpace(bool worldSpace) {
-    m_viewports.gizmo().setSpace(worldSpace ? Gizmos::Space::World : Gizmos::Space::Local);
-}
-
-void EditorLayer::resetCamera() {
-    m_viewports.cameraController().frame(glm::vec3(0.f), 1.5f, m_viewports.editorCamera().getFieldOfView());
-}
-
-// The camera flies to where the selection fits the frame: the box around the meshes of the
-// selected entities and of everything under them (a model is selected by its root), or a meter
-// around an entity that draws nothing (a light, an empty).
-void EditorLayer::focusSelection() {
-    if (!Editor::selection().hasEntities() || m_currentWorld == nullptr) { return; }
-    std::vector<UUID> ids;
-    std::vector<UUID> pending;
-    for (UUID id : Editor::selection().entityIds()) { pending.push_back(id); }
-    while (!pending.empty()) {
-        const UUID id = pending.back();
-        pending.pop_back();
-        Entity entity = m_currentWorld->getById(id);
-        if (!entity.isValid()) { continue; }
-        ids.push_back(id);
-        for (UUID child : entity.getChildEntities()) { pending.push_back(child); }
-    }
-    glm::vec3 center = Editor::selection().medianPosition();
-    float radius = 1.f;
-    glm::vec3 boundsMin, boundsMax;
-    if (m_viewports.worldView().meshBounds(boundsMin, boundsMax, &ids)) {
-        center = (boundsMin + boundsMax) * 0.5f;
-        radius = std::max(glm::length(boundsMax - boundsMin) * 0.5f, 0.1f);
-    }
-    m_viewports.cameraController().frame(center, radius, m_viewports.editorCamera().getFieldOfView());
-}
-
-TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
-    switch (scope) {
-        case SettingsScope::Project: return m_documents.projectSettings();
-        case SettingsScope::Editor: return m_documents.editorSettings();
-        case SettingsScope::World: break;
-    }
-    return editingWorld().context(); // the world scope is the coordinator's (the panels' world)
-}
-
-void EditorLayer::applyEditorSettings() {
-    m_viewportSettings = m_documents.editorSettings().get<EditorViewportSettings>();
-    m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
-    m_updater.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
-    m_pluginStore.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
-    m_editorUI.applyFonts(fontSettings()); // a changed font or size: the atlases reload and the texts re-measure
-}
-
-void EditorLayer::editorSettingsChanged() {
-    // The editor scope applies at once and is written on every change.
-    applyEditorSettings();
-    m_documents.editorSettingsFile().save();
-}
-
-void EditorLayer::documentsDidReadSettings(SettingsScope scope) {
-    // The file was reread (Reload, Don't Save, a revert): the scope applies, and the settings tab
-    // rereads its store.
-    if (scope == SettingsScope::Editor) { applyEditorSettings(); } // applied, not written back
-    if (scope == SettingsScope::Project) { m_loader.applyProjectSettings(); }
-    if (m_editorController) { m_editorController->settingsFileReloaded(scope); }
-}
-
-void EditorLayer::documentsDidWriteSettings(SettingsScope scope) {
-    // The editor scope applies before it is written; a saved project scope brings its shader features.
-    if (scope == SettingsScope::Project) { m_loader.applyProjectSettings(); }
-}
-
-bool EditorLayer::saveProjectSettings() {
-    return saveFile(m_documents.projectSettingsFile());
-}
-
-void EditorLayer::revertProjectSettings() {
-    m_documents.projectSettingsFile().reload();
-}
-
-void EditorLayer::projectSettingsEdited() {
-    m_documents.projectSettingsFile().markEdited();
-}
-
-bool EditorLayer::isProjectSettingsDirty() {
-    return m_documents.projectSettingsFile().isDirty();
 }
 
 void EditorLayer::updateViewportTools(double deltaTime) {
@@ -785,25 +332,6 @@ void EditorLayer::updateViewportTools(double deltaTime) {
     m_editorController->setViewportToolCapture(tools.anyDriving());
 }
 
-void EditorLayer::loadEditorParts() {
-    if (!m_loader.hasOpenedProject() || !m_editorController) { return; }
-    const size_t iconFolders = Editor::editorExtensions().iconFolders.size();
-    if (ProjectModules::loadEditorParts(m_documents.projectSettings().get<ProjectModuleSettings>()) > 0) {
-        // The editor parts register their editor-scope sections after settings.json was read: the
-        // sections kept as foreign values get their types now.
-        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettings());
-    }
-    const std::vector<path_t> &folders = Editor::editorExtensions().iconFolders;
-    if (folders.size() > iconFolders) {
-        std::vector<path_t> absolute; // module folders live in the bundle resources
-        for (size_t i = iconFolders; i < folders.size(); i++) {
-            absolute.push_back(Fern::getStaticResourcesPath() / folders[i]);
-        }
-        m_editorUI.loadIconFolders(absolute);
-    }
-    m_editorController->extensionsChanged();
-}
-
 void EditorLayer::updateViewportHelperLines() {
     // Helper lines are drawn with the editor camera over the world the Scene shows (the editing
     // world, or the playing copy in Play — the runtime state lives there). In a Game frame the
@@ -815,42 +343,18 @@ void EditorLayer::updateViewportHelperLines() {
         // the overlays of the modules (collider outlines from the nearest one).
         const glm::mat4 &viewProj = m_viewports.sceneViewProj();
         const PandaUI::Rect frame = m_editorController->viewportSceneFrame();
-        if (!m_playing) {
+        if (!isPlaying()) {
             for (const std::unique_ptr<Editor::ViewportTool> &tool : Editor::editorExtensions().viewportTools.tools()) {
                 tool->appendHelperLines(lines, viewProj, frame);
             }
         }
         for (const Editor::ViewportOverlay &overlay : Editor::editorExtensions().viewportOverlays) {
             if (overlay.appendHelperLines != nullptr) {
-                overlay.appendHelperLines(*m_currentWorld, lines, viewProj, frame);
+                overlay.appendHelperLines(*shownWorld(), lines, viewProj, frame);
             }
         }
     }
     m_editorController->setViewportHelperLines(std::move(lines));
-}
-
-void EditorLayer::scriptsWereBuilt() {
-    if (m_playing) {
-        m_scriptsBuiltWhilePlaying = true;
-        LOG_INFO_EDITOR("Scripts built: the editor loads them when the game stops.");
-        return;
-    }
-    m_loader.reloadScriptsDll();
-}
-
-void EditorLayer::rectSelect(
-    PandaUI::Point start, PandaUI::Point current, bool additive, Editor::RectSelectPhase phase
-) {
-    if (phase == Editor::RectSelectPhase::Drop) {
-        m_viewports.scene().dropRectSelection();
-        return;
-    }
-    m_viewports.scene().driveRectSelection(
-        IVec2(static_cast<int>(start.x), static_cast<int>(start.y)),
-        IVec2(static_cast<int>(current.x), static_cast<int>(current.y)),
-        additive,
-        phase == Editor::RectSelectPhase::Commit
-    );
 }
 
 void EditorLayer::updateGizmo() {
@@ -874,13 +378,15 @@ void EditorLayer::updateGizmo() {
     // At runtime the physics moves the selected bodies by itself, so the selection median (the gizmo
     // center and the inspector's Transform fields) is refreshed once per frame; otherwise the gizmo
     // freezes at the body's starting position.
-    if (m_currentWorld->isRunning() && Editor::selection().hasEntities()) { Editor::selection().transformChanged(); }
+    if (shownWorld()->isRunning() && Editor::selection().hasEntities()) { Editor::selection().transformChanged(); }
     const glm::mat4 view = m_viewports.sceneView(); // the editor camera: the Scene manipulates in its screen rays
     Gizmos &gizmo = m_viewports.gizmo();
     const bool visible = gizmo.manipulate(m_viewports.scene().getFrame(), input, &view);
     m_editorController->setGizmoVisible(visible);
     m_editorController->setGizmoActive(gizmo.isHovered()); // hover over a handle / drag → takes LMB from rect-select
 }
+
+/* ------------------------------ The events of the window ------------------------------ */
 
 void EditorLayer::onEvent(Fern::Event *event) {
     // Nobody is at the screen (--unattended): the mouse and the keyboard of the machine are not
@@ -890,7 +396,8 @@ void EditorLayer::onEvent(Fern::Event *event) {
         event->isHandled = true;
         return;
     }
-    if (m_menuBar.handleEvent(event, m_editorUI.context().modals().isPresenting())) { return; }
+    const bool modal = m_editorUI.context().modals().isPresenting();
+    if (m_menuBar.handleEvent(event, modal)) { return; }
 
     // The Settings window: its own UI tree takes its input; closing it is the controller's (the
     // documents of the window are its).
@@ -913,32 +420,21 @@ void EditorLayer::onEvent(Fern::Event *event) {
         return;
     }
 
-    // The focus and the minimizing of the editor window: the game's focus follows them
-    // (updateGameInput), a minimized editor pauses the playing world's scripts.
-    if (event->getWindow() == nullptr || event->getWindow() == m_window) {
-        switch (event->type) {
-            case Fern::EventType::WindowFocus: m_windowFocused = true; break;
-            case Fern::EventType::WindowLostFocus: m_windowFocused = false; break;
-            case Fern::EventType::WindowMinimized:
-                if (m_playing) { ScriptSystem::applicationPause(m_playingWorld, true); }
-                break;
-            case Fern::EventType::WindowRestored:
-                if (m_playing) { ScriptSystem::applicationPause(m_playingWorld, false); }
-                break;
-            default: break;
-        }
-    }
+    // The focus and the minimizing of the editor window: the game follows them.
+    m_play.windowEvent(*event);
 
     // The input of the window is either the game's or the editor's, never both. In Play, while
     // the Game renders, the game owns the pointer over the Game surface and the keys of the
-    // focused Game tab (eventBelongsToGame): its UI (m_gameUI) sees them first, the rest
-    // Application feeds to Panda::Input. Everything else is the editor's: the PandaUI chrome,
-    // whose Scene surface collects the camera navigation and the pointer of the gizmo and of the
-    // tools; none of it reaches Panda::Input.
+    // focused Game tab (PlaySession::ownsEvent): its UI sees them first, the rest Application
+    // feeds to Panda::Input. Everything else is the editor's: the PandaUI chrome, whose Scene
+    // surface collects the camera navigation and the pointer of the gizmo and of the tools; none
+    // of it reaches Panda::Input.
     if (isInputEvent(event)) {
-        if (m_playing && m_viewports.isGameLive() && eventBelongsToGame(event)) {
-            syncGameUiFrame();
-            if (m_gameUI.handleEvent(event)) { event->isHandled = true; }
+        if (isPlaying() && m_viewports.isGameLive() &&
+            m_play.ownsEvent(*event, m_editorController->isGameViewportFocused(), modal)) {
+            // A click on the game gives the Game tab the keyboard focus: the keys follow the mouse.
+            if (event->type == Fern::EventType::MouseButtonPressed) { m_editorController->focusGameView(); }
+            if (m_play.handleEvent(event)) { event->isHandled = true; }
             return;
         }
         m_editorUI.handleEvent(event);
@@ -955,10 +451,7 @@ void EditorLayer::onEvent(Fern::Event *event) {
         event->isHandled = true;
     } else if (event->type == Fern::EventType::WindowResize && event->getWindow() == m_window) {
         windowSizeChanged();
-        if (m_playing) {
-            syncGameUiFrame();
-            m_gameUI.syncWindow(event->getWindow());
-        }
+        m_play.windowResized();
     }
 }
 
@@ -968,52 +461,33 @@ void EditorLayer::windowSizeChanged() {
 #endif
 }
 
+/* ------------------------------ The worlds and the game ------------------------------ */
+
 void EditorLayer::play() {
-    if (m_playing) { return; }
+    if (isPlaying()) { return; }
     if (!hasWorld()) {
         LOG_WARN_EDITOR("Nothing to play: no world is open (File \xE2\x86\x92 New \xE2\x86\x92 World, or open a world file).");
         return;
     }
-    m_playing = true;
-    m_playingWorld = editingWorld();
-    m_currentWorld = &m_playingWorld;
-    Editor::selection().setWorld(m_currentWorld); // the same ids: the selection moves to the copy
-    GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
-    m_viewports.scene().setWorld(m_currentWorld);
-    m_pendingWorldLoad = AssetId(0);
-    m_gameInputActive = false; // updateGameInput hands the input to the game when its tab renders and has the focus
-    m_gameMouseButtons = 0;
-    Input::setFocused(false);
+    m_play.begin(editingWorld());
+    Editor::selection().setWorld(shownWorld()); // the same ids: the selection moves to the copy
+    m_viewports.scene().setWorld(shownWorld());
     // The Game tab opens (or comes to the front) and takes the focus: the frame and the input of
     // the game are there; the Scene tab stays the editor's view of the playing world.
     if (m_editorController) {
         m_editorController->openGameView();
         m_editorController->setActiveWorld(panelsWorld()); // panels → the live world
     }
-    syncViewports();
-    syncGameUiFrame();
-    m_gameUI.initialize();
-    m_playingWorld.startRunning();
-    loadPendingWorldRequest();
+    syncViewports(); // the Game surface has its size before the game starts
+    m_play.run();
     LOG_INFO_EDITOR("Entered Play mode");
 }
 
 void EditorLayer::stop() {
-    if (!m_playing) { return; }
-    m_playingWorld.finishRunning();
-    Fern::setCursorLocked(false);
-    m_gameUI.shutdown();
-    m_gameUI.clearMainViewportFrame();
-    m_playing = false;
-    m_gameInputActive = false;
-    m_gameMouseButtons = 0;
-    Input::setFocused(false);
-    Input::releaseAll(); // what the game still held: its releases go to the editor now
-    m_pendingWorldLoad = AssetId(0);
-    GameContext::setWorldLoadRequestHandler(nullptr);
-    m_currentWorld = &editingWorld();
-    Editor::selection().setWorld(m_currentWorld); // what the game created or destroyed leaves the selection
-    m_viewports.scene().setWorld(m_currentWorld);
+    if (!isPlaying()) { return; }
+    m_play.end();
+    Editor::selection().setWorld(shownWorld()); // what the game created or destroyed leaves the selection
+    m_viewports.scene().setWorld(shownWorld());
     if (m_editorController) {
         m_editorController->setActiveWorld(panelsWorld()); // panels → the editing world
         m_editorController->showSceneView();                // back to editing: the Scene tab comes to the front
@@ -1036,139 +510,44 @@ void EditorLayer::stop() {
     LOG_INFO_EDITOR("Returned to Edit mode");
 }
 
-void EditorLayer::requestWorldLoad(AssetId worldAssetId) {
-    m_pendingWorldLoad = worldAssetId;
-}
-
-void EditorLayer::loadPendingWorldRequest() {
-    if (!m_pendingWorldLoad || !m_playing) { return; }
-
-    AssetId worldAssetId = m_pendingWorldLoad;
-    m_pendingWorldLoad = AssetId(0);
-    if (!loadWorldAssetIntoPlayingWorld(worldAssetId)) {
-        LOG_ERROR_EDITOR("Failed to load requested world %u", (uint32_t)worldAssetId);
+void EditorLayer::scriptsWereBuilt() {
+    if (isPlaying()) {
+        m_scriptsBuiltWhilePlaying = true;
+        LOG_INFO_EDITOR("Scripts built: the editor loads them when the game stops.");
+        return;
     }
+    m_loader.reloadScriptsDll();
 }
 
-bool EditorLayer::loadWorldAssetIntoPlayingWorld(AssetId worldAssetId) {
+void EditorLayer::activateWorld(WorldFile &world) {
+    if (!isPlaying()) { m_documents.activateWorld(world); }
+}
+
+void EditorLayer::closeWorld(WorldFile &world) {
+    // The game plays a copy of the active world: it ends with that world.
+    if (&world == m_documents.activeWorld()) { stop(); }
+    m_documents.closeWorld(world);
+}
+
+void EditorLayer::openWorldAsset(AssetId worldAssetId) {
     AssetHandlerEditor *assetHandler = AssetHandlerEditor::current();
-    if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) {
-        LOG_ERROR_EDITOR("World asset %u not found", (uint32_t)worldAssetId);
-        return false;
+    const path_t worldPath = assetHandler != nullptr ? assetHandler->worldFilePath(worldAssetId) : path_t();
+    if (worldPath.empty()) { return; }
+    // Nothing is dropped: the world opens in a tab of its own next to the open ones. The game
+    // plays a copy of the active world, so it stops before another world takes that place.
+    stop();
+    if (m_documents.openWorld(worldPath) == nullptr) {
+        LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
+        return;
     }
-
-    AssetInfo assetInfo = assetHandler->getInfo(worldAssetId);
-    if (assetInfo.type != AssetType::WORLD) {
-        LOG_ERROR_EDITOR("Asset %u is not a world", (uint32_t)worldAssetId);
-        return false;
-    }
-
-    const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
-    if (assetRelativePath.empty()) {
-        LOG_ERROR_EDITOR("World asset %u has empty path", (uint32_t)worldAssetId);
-        return false;
-    }
-
-    path_t worldPath = assetHandler->getProjectPath() / assetRelativePath;
-    std::ifstream file(worldPath);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("World file not found: %s", worldPath.string().c_str());
-        return false;
-    }
-
-    bool wasRunning = m_playingWorld.isRunning();
-    if (wasRunning) { m_playingWorld.finishRunning(); }
-    Rain::JsonDecoder decoder;
-    const bool loaded = WorldMapper::load(m_playingWorld, decoder, file);
-    file.close();
-    if (!loaded) {
-        LOG_ERROR_EDITOR("Failed to decode world: %s", worldPath.string().c_str());
-        if (wasRunning) { m_playingWorld.startRunning(); }
-        return false;
-    }
-    m_playingWorld.updateScriptsAndFields();
-    m_viewports.scene().setWorld(&m_playingWorld);
-    if (wasRunning) { m_playingWorld.startRunning(); }
-    return true;
+    // Its tab comes forward, also when the world was open and active already (behind the Game tab).
+    if (m_editorController) { m_editorController->showSceneView(); }
 }
 
-void EditorLayer::showStartScreen() {
-    if (!m_startScreenController) { return; }
-    syncStartScreenModel();
-    if (m_uiRootMode == UIRootMode::StartScreen) { return; }
-    m_editorUI.setRootView(m_startScreenController->rootView());
-    m_uiRootMode = UIRootMode::StartScreen;
-}
-
-void EditorLayer::showEditorChrome() {
-    if (!m_editorController) { return; }
-    if (m_uiRootMode == UIRootMode::Editor) { return; }
-    m_editorUI.setRootView(m_editorController->rootView());
-    m_uiRootMode = UIRootMode::Editor;
-}
-
-void EditorLayer::syncStartScreenModel() {
-    if (!m_startScreenController) { return; }
-
-    // A 1:1 mirror of the recent list — the start screen indices match the loader indices.
-    std::vector<Editor::StartScreenRecentProject> projects;
-    const std::vector<RecentProject> &recentProjects = m_loader.getRecentProjectsList();
-    projects.reserve(recentProjects.size());
-    for (const RecentProject &project : recentProjects) {
-        std::string name = project.name.empty() ? path_t(project.path).filename().string() : project.name;
-        if (name.empty()) { name = project.path; }
-        std::error_code errorCode;
-        const bool missing = !std::filesystem::exists(project.path, errorCode);
-        projects.push_back({std::move(name), project.path, missing});
-    }
-    m_startScreenController->setRecentProjects(std::move(projects));
-}
-
-path_t EditorLayer::defaultProjectParentPath() const {
-    if (const char *home = std::getenv("HOME")) { return path_t(home); }
-    return std::filesystem::current_path();
-}
-
-void EditorLayer::syncGameUiFrame() {
-    Fern::Size dpi = m_window->getDpi();
-    // The game UI lives in the Game tab: drawn over the output of the Game while it renders.
-    m_gameUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height), m_viewports.gameTarget());
-}
-
-#pragma region Project loader output
-
-void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &path) {
-    // Game saves, when launched from the editor, live next to the project (the folder is made
-    // when a script asks for it).
-    GameContext::setPersistentDataPath(path / ".Panda" / "SaveData");
-    updateWindowState();
-    m_menuBar.rebuild();
-    // Asset panels rescan the new project (at startup the controller does not exist yet —
-    // then setWorld reads the registry right after creation).
-    if (m_editorController) { m_editorController->refreshAssetPanels(); }
-    loadEditorParts(); // at startup the controller does not exist yet — then after its creation (onAttach)
-    showEditorChrome();
-}
-
-// Several editors run at once, one project each: the window title and the label on the
-// application icon say which project this one holds. Followed every frame — the world file
-// changes on Open, New and Save As, and a comparison of two strings costs nothing.
-void EditorLayer::syncWindowIdentity() {
-    std::string project;
-    std::string title = "Welcome";
-    if (m_loader.hasOpenedProject()) {
-        project = m_loader.getOpenedProjectPath().filename().string();
-        // The project and the world in front; the project alone while no world is open.
-        title = hasWorld() ? project + " \xE2\x80\x94 " + m_documents.activeWorld()->name() : project; // an em dash, UTF-8
-    }
-    if (title != m_windowTitle) {
-        m_windowTitle = title;
-        m_window->setTitle(title.c_str());
-    }
-    if (project != m_iconLabel) {
-        m_iconLabel = project;
-        Fern::setApplicationIconLabel(project.c_str());
-    }
+void EditorLayer::newWorld() {
+    // A new world opens in a tab of its own next to the open ones: nothing is dropped.
+    stop();
+    m_documents.newWorld();
 }
 
 std::string EditorLayer::worldDisplayName() {
@@ -1181,10 +560,9 @@ void EditorLayer::documentsDidActivateWorld() {
     // The game plays a copy of the world that was active when it started: it ends before another
     // world takes that place (the tabs do not switch while it runs; opening a world stops it).
     stop();
-    m_currentWorld = &editingWorld();
-    m_viewports.scene().setWorld(m_currentWorld);
+    m_viewports.scene().setWorld(shownWorld());
     Editor::selection().deselectEntities(); // the selection is of one world, and ids repeat between worlds
-    Editor::selection().setWorld(m_currentWorld);
+    Editor::selection().setWorld(shownWorld());
     if (m_editorController) {
         m_editorController->worldContextChanged(); // the entity tabs point into the previous world
         m_editorController->setActiveWorld(panelsWorld());
@@ -1205,44 +583,6 @@ void EditorLayer::worldDidChange() {
     m_editorController->refreshFromWorld(); // the Hierarchy rereads the tree
     m_editorController->worldTabs().sync(); // no tab outlives its world
 }
-
-// The open project goes — Close Project, another project in this window, the same one read
-// again: what the editor holds of its worlds and its assets is let go here, in one place, while
-// they are still there. The ids of assets repeat between projects (two projects made from one
-// template), so nothing that names an asset by id may outlive its project.
-void EditorLayer::loaderWillCloseProject() {
-    m_playingWorld.clear();
-    Editor::selection().clear();
-    if (m_editorController) {
-        m_editorController->closeSettingsWindow(); // its pages are the project's
-        m_editorController->projectWillClose();    // the tabs of its entities and assets, the history
-    }
-    if (m_previews) { m_previews->clear(); } // the previews and the thumbnails hold its assets
-}
-
-// The forms of the open entity tabs show the scripts of the build that was loaded: a field
-// published since, a class that is gone.
-void EditorLayer::loaderDidReloadScripts() {
-    if (m_editorController) { m_editorController->refreshEntityForms(); }
-}
-
-void EditorLayer::loaderDidLoadCloseProject() {
-    m_sceneTexture = {};
-    m_sceneNative = {};
-    if (m_editorController) { m_editorController->setViewportSceneTexture({}, false); }
-    updateWindowState();
-    m_menuBar.rebuild();
-    if (m_editorController) { m_editorController->refreshFromWorld(); }
-    if (m_startScreenController) {
-        m_startScreenController->showRecentProjects();
-        m_startScreenController->setStatus("Select a project or create a new one.");
-    }
-    showStartScreen();
-}
-
-#pragma endregion
-
-#pragma region File documents output
 
 EditorCameraSettings EditorLayer::documentsEditorCamera() {
     EditorCameraSettings settings;
@@ -1271,9 +611,360 @@ void EditorLayer::documentsSetEditorCamera(const EditorCameraSettings &camera) {
     m_viewports.cameraController().setRotation(pose.rotation);
 }
 
-#pragma endregion
+/* ------------------------------ The Scene viewport ------------------------------ */
 
-#pragma region Menu bar output
+void EditorLayer::setGizmoOperation(int mode) {
+    const Gizmos::Operation op = mode == 1   ? Gizmos::Operation::Rotate
+                                 : mode == 2 ? Gizmos::Operation::Scale
+                                             : Gizmos::Operation::Translate;
+    m_viewports.gizmo().setOperation(op);
+}
+
+void EditorLayer::setGizmoSpace(bool worldSpace) {
+    m_viewports.gizmo().setSpace(worldSpace ? Gizmos::Space::World : Gizmos::Space::Local);
+}
+
+void EditorLayer::rectSelect(
+    PandaUI::Point start, PandaUI::Point current, bool additive, Editor::RectSelectPhase phase
+) {
+    if (phase == Editor::RectSelectPhase::Drop) {
+        m_viewports.scene().dropRectSelection();
+        return;
+    }
+    m_viewports.scene().driveRectSelection(
+        IVec2(static_cast<int>(start.x), static_cast<int>(start.y)),
+        IVec2(static_cast<int>(current.x), static_cast<int>(current.y)),
+        additive,
+        phase == Editor::RectSelectPhase::Commit
+    );
+}
+
+void EditorLayer::resetCamera() {
+    m_viewports.cameraController().frame(glm::vec3(0.f), 1.5f, m_viewports.editorCamera().getFieldOfView());
+}
+
+// The camera flies to where the selection fits the frame: the box around the meshes of the
+// selected entities and of everything under them (a model is selected by its root), or a meter
+// around an entity that draws nothing (a light, an empty).
+void EditorLayer::focusSelection() {
+    if (!Editor::selection().hasEntities()) { return; }
+    World &world = *shownWorld();
+    std::vector<UUID> ids;
+    std::vector<UUID> pending;
+    for (UUID id : Editor::selection().entityIds()) { pending.push_back(id); }
+    while (!pending.empty()) {
+        const UUID id = pending.back();
+        pending.pop_back();
+        Entity entity = world.getById(id);
+        if (!entity.isValid()) { continue; }
+        ids.push_back(id);
+        for (UUID child : entity.getChildEntities()) { pending.push_back(child); }
+    }
+    glm::vec3 center = Editor::selection().medianPosition();
+    float radius = 1.f;
+    glm::vec3 boundsMin, boundsMax;
+    if (m_viewports.worldView().meshBounds(boundsMin, boundsMax, &ids)) {
+        center = (boundsMin + boundsMax) * 0.5f;
+        radius = std::max(glm::length(boundsMax - boundsMin) * 0.5f, 0.1f);
+    }
+    m_viewports.cameraController().frame(center, radius, m_viewports.editorCamera().getFieldOfView());
+}
+
+/* ------------------------------ The settings ------------------------------ */
+
+TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
+    switch (scope) {
+        case SettingsScope::Project: return m_documents.projectSettings();
+        case SettingsScope::Editor: return m_documents.editorSettings();
+        case SettingsScope::World: break;
+    }
+    return editingWorld().context(); // the world scope is the coordinator's (the panels' world)
+}
+
+std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) {
+    switch (scope) {
+        case SettingsScope::Project: return m_documents.projectSettingsFile().path();
+        case SettingsScope::Editor: return m_documents.editorSettingsFile().path();
+        case SettingsScope::World: // the world settings live in the world file
+            return hasWorld() ? m_documents.activeWorld()->path() : std::filesystem::path();
+    }
+    return {};
+}
+
+void EditorLayer::applyEditorSettings() {
+    m_viewportSettings = m_documents.editorSettings().get<EditorViewportSettings>();
+    m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
+    m_updater.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_pluginStore.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_editorUI.applyFonts(m_appearance.fonts()); // a changed font or size: the atlases reload and the texts re-measure
+}
+
+void EditorLayer::editorSettingsChanged() {
+    // The editor scope applies at once and is written on every change.
+    applyEditorSettings();
+    m_documents.editorSettingsFile().save();
+}
+
+void EditorLayer::documentsDidReadSettings(SettingsScope scope) {
+    // The file was reread (Reload, Don't Save, a revert): the scope applies, and the settings tab
+    // rereads its store.
+    if (scope == SettingsScope::Editor) { applyEditorSettings(); } // applied, not written back
+    if (scope == SettingsScope::Project) { m_loader.applyProjectSettings(); }
+    if (m_editorController) { m_editorController->settingsFileReloaded(scope); }
+}
+
+void EditorLayer::documentsDidWriteSettings(SettingsScope scope) {
+    // The editor scope applies before it is written; a saved project scope brings its shader features.
+    if (scope == SettingsScope::Project) { m_loader.applyProjectSettings(); }
+}
+
+/* ------------------------------ The project and the window ------------------------------ */
+
+void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &path) {
+    // Game saves, when launched from the editor, live next to the project (the folder is made
+    // when a script asks for it).
+    GameContext::setPersistentDataPath(path / ".Panda" / "SaveData");
+    updateWindowState();
+    m_menuBar.rebuild();
+    // Asset panels rescan the new project (at startup the controller does not exist yet —
+    // then setWorld reads the registry right after creation).
+    if (m_editorController) { m_editorController->refreshAssetPanels(); }
+    loadEditorParts(); // at startup the controller does not exist yet — then after its creation (onAttach)
+    showEditorChrome();
+}
+
+// The open project goes — Close Project, another project in this window, the same one read
+// again: what the editor holds of its worlds and its assets is let go here, in one place, while
+// they are still there. The ids of assets repeat between projects (two projects made from one
+// template), so nothing that names an asset by id may outlive its project.
+void EditorLayer::loaderWillCloseProject() {
+    m_play.world().clear();
+    Editor::selection().clear();
+    if (m_editorController) {
+        m_editorController->closeSettingsWindow(); // its pages are the project's
+        m_editorController->projectWillClose();    // the tabs of its entities and assets, the history
+    }
+    if (m_previews) { m_previews->clear(); } // the previews and the thumbnails hold its assets
+}
+
+// The forms of the open entity tabs show the scripts of the build that was loaded: a field
+// published since, a class that is gone.
+void EditorLayer::loaderDidReloadScripts() {
+    if (m_editorController) { m_editorController->refreshEntityForms(); }
+}
+
+void EditorLayer::loaderDidLoadCloseProject() {
+    m_sceneTexture = {};
+    m_sceneNative = {};
+    if (m_editorController) { m_editorController->setViewportSceneTexture({}, false); }
+    updateWindowState();
+    m_menuBar.rebuild();
+    if (m_editorController) { m_editorController->refreshFromWorld(); }
+    if (m_startScreenController) {
+        m_startScreenController->showRecentProjects();
+        m_startScreenController->setStatus("Select a project or create a new one.");
+    }
+    showStartScreen();
+}
+
+void EditorLayer::loadEditorParts() {
+    if (!m_loader.hasOpenedProject() || !m_editorController) { return; }
+    const size_t iconFolders = Editor::editorExtensions().iconFolders.size();
+    if (ProjectModules::loadEditorParts(m_documents.projectSettings().get<ProjectModuleSettings>()) > 0) {
+        // The editor parts register their editor-scope sections after settings.json was read: the
+        // sections kept as foreign values get their types now.
+        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettings());
+    }
+    const std::vector<path_t> &folders = Editor::editorExtensions().iconFolders;
+    if (folders.size() > iconFolders) {
+        std::vector<path_t> absolute; // module folders live in the bundle resources
+        for (size_t i = iconFolders; i < folders.size(); i++) {
+            absolute.push_back(Fern::getStaticResourcesPath() / folders[i]);
+        }
+        m_editorUI.loadIconFolders(absolute);
+    }
+    m_editorController->extensionsChanged();
+}
+
+bool EditorLayer::reopenProjectForModules() {
+    const ProjectModuleSettings &modules = m_documents.projectSettings().get<ProjectModuleSettings>();
+    if (ProjectModules::loadNeeded(modules)) {
+        // A module switched on in the file: its contributions are needed before the asset registry
+        // and the world, so the project opens again — that reads everything fresh.
+        LOG_INFO_EDITOR("Reload: the module set has grown, the project is opened again");
+        const path_t projectPath = m_loader.getOpenedProjectPath();
+        m_documentActions.runAfterUnsavedQuestion([this, projectPath]() {
+            saveOpenedProjectWindowState();
+            m_loader.openProject(projectPath);
+        });
+        return true;
+    }
+    if (ProjectModules::restartNeeded(modules)) {
+        LOG_WARN_EDITOR("Reload: a module was switched off in project.json. Restart the editor to drop it.");
+    }
+    return false;
+}
+
+void EditorLayer::openProjectRequest() {
+    m_documentActions.runAfterUnsavedQuestion([this]() { openProjectFolderDialog(); });
+}
+
+void EditorLayer::openProjectFolderDialog() {
+    std::optional<path_t> optionalPath = SystemTools::openFolderDialog();
+    if (!optionalPath.has_value()) { return; }
+    path_t path = optionalPath.value();
+    saveOpenedProjectWindowState();
+    m_loader.openProject(path);
+}
+
+void EditorLayer::openProject(const path_t &path) {
+    if (path == m_loader.getOpenedProjectPath()) { return; }
+    m_documentActions.runAfterUnsavedQuestion([this, path]() {
+        saveOpenedProjectWindowState();
+        m_loader.openProject(path);
+    });
+}
+
+void EditorLayer::closeProjectRequest() {
+    m_documentActions.runAfterUnsavedQuestion([this]() { closeProject(); });
+}
+
+void EditorLayer::closeProject() {
+    saveOpenedProjectWindowState();
+    m_loader.closeProject(); // loaderWillCloseProject lets go of what names the project
+}
+
+void EditorLayer::closeAppRequest() {
+    m_documentActions.runAfterUnsavedQuestion([this]() { closeApp(); });
+}
+
+void EditorLayer::closeApp() {
+    saveOpenedProjectWindowState();
+    Application::get()->close();
+}
+
+void EditorLayer::restartEditor() {
+    // The same flow as Quit, the unsaved-changes dialog included; main() starts the new instance
+    // once this one has written its settings and torn the window down.
+    m_documentActions.runAfterUnsavedQuestion([this]() {
+        // The new instance opens the project of this one: the session file is shared by every
+        // running editor, the command line is not.
+        std::vector<std::string> arguments;
+        if (m_loader.hasOpenedProject()) {
+            arguments = {SystemTools::PROJECT_ARGUMENT, m_loader.getOpenedProjectPath().string()};
+        }
+        if (m_launch.mcpPort > 0) { // the agent that restarted the editor finds it on the same port
+            arguments.push_back(SystemTools::MCP_ARGUMENT);
+            arguments.push_back(std::to_string(m_launch.mcpPort));
+        }
+        if (SystemTools::isUserDataDirectoryOverridden()) { // the new instance keeps the settings of this one
+            arguments.push_back(SystemTools::USER_DATA_ARGUMENT);
+            arguments.push_back(SystemTools::userDataDirectory().string());
+        }
+        if (m_launch.unattended) { arguments.push_back(SystemTools::UNATTENDED_ARGUMENT); }
+        SystemTools::setRelaunchOnExit(true, std::move(arguments));
+        closeApp();
+    });
+}
+
+void EditorLayer::newWindow() {
+    // The session is written first: the new instance reads the recent projects from it.
+    m_loader.saveSession();
+    if (!SystemTools::startNewInstance({SystemTools::NEW_WINDOW_ARGUMENT})) {
+        LOG_ERROR_EDITOR("A new editor window could not be started");
+    }
+}
+
+void EditorLayer::showStartScreen() {
+    if (!m_startScreenController) { return; }
+    m_startScreenController->refreshRecentProjects();
+    if (m_uiRootMode == UIRootMode::StartScreen) { return; }
+    m_editorUI.setRootView(m_startScreenController->rootView());
+    m_uiRootMode = UIRootMode::StartScreen;
+}
+
+void EditorLayer::showEditorChrome() {
+    if (!m_editorController) { return; }
+    if (m_uiRootMode == UIRootMode::Editor) { return; }
+    m_editorUI.setRootView(m_editorController->rootView());
+    m_uiRootMode = UIRootMode::Editor;
+}
+
+void EditorLayer::updateWindowState() {
+    if (m_loader.hasOpenedProject()) {
+        m_window->setFlags(FERN_WINDOW_FLAGS_DEFAULT);
+        auto windowState = m_loader.getLastWindowState();
+        if (m_launch.unattended) {
+            // One size whatever the display and the last session: a UI test meets the same layout.
+            m_window->setState(Fern::WindowState::WindowStateNormal);
+            m_window->setSize({UNATTENDED_WINDOW_WIDTH, UNATTENDED_WINDOW_HEIGHT});
+        } else if (windowState.isFullScreen) {
+            m_window->setState(Fern::WindowState::WindowStateFullScreen);
+        } else {
+            // Normal size first (even before maximizing): "restore" from maximized after a
+            // restart brings back the previous window bounds.
+            if (windowState.isSizeValid()) {
+                m_window->setState(Fern::WindowState::WindowStateNormal);
+                m_window->setSize({(float)windowState.width, (float)windowState.height});
+            }
+            if (windowState.isMaximized || !windowState.isSizeValid()) {
+                m_window->setState(Fern::WindowState::WindowStateMaximized);
+            }
+        }
+    } else {
+        m_window->setFlags(FERN_WINDOW_FLAG_CLOSABLE);
+        m_window->setState(Fern::WindowState::WindowStateNormal);
+        m_window->setSize({800, 600});
+    }
+}
+
+void EditorLayer::saveOpenedProjectWindowState() {
+    if (!m_loader.hasOpenedProject()) { return; }
+
+    Fern::WindowState windowState = m_window->getState();
+    // The base is the previously saved values: the size is updated only from the Normal state,
+    // otherwise the size of a maximized/fullscreen window leaks into the config.
+    LastOpenedProjectWindowState savingState = m_loader.getLastWindowState();
+    savingState.isFullScreen = windowState == Fern::WindowState::WindowStateFullScreen;
+    savingState.isMaximized = windowState == Fern::WindowState::WindowStateMaximized;
+    if (windowState == Fern::WindowState::WindowStateNormal) {
+        savingState.width = m_window->getSize().width;
+        savingState.height = m_window->getSize().height;
+    }
+    m_loader.saveWindowState(savingState);
+    if (m_editorController) { m_loader.saveDockLayout(m_editorController->captureDockLayout()); }
+}
+
+// Several editors run at once, one project each: the window title and the label on the
+// application icon say which project this one holds. Followed every frame — the world file
+// changes on Open, New and Save As, and a comparison of two strings costs nothing.
+void EditorLayer::syncWindowIdentity() {
+    std::string project;
+    std::string title = "Welcome";
+    if (m_loader.hasOpenedProject()) {
+        project = m_loader.getOpenedProjectPath().filename().string();
+        // The project and the world in front; the project alone while no world is open.
+        title = hasWorld() ? project + " \xE2\x80\x94 " + m_documents.activeWorld()->name() : project; // an em dash, UTF-8
+    }
+    if (title != m_windowTitle) {
+        m_windowTitle = title;
+        m_window->setTitle(title.c_str());
+    }
+    if (project != m_iconLabel) {
+        m_iconLabel = project;
+        Fern::setApplicationIconLabel(project.c_str());
+    }
+}
+
+bool EditorLayer::openSettingsWindow(std::shared_ptr<PandaUI::View> root) {
+    return m_editorUI.openAuxiliaryWindow("Settings", PandaUI::Size(900.f, 640.f), std::move(root)) != nullptr;
+}
+
+void EditorLayer::closeSettingsWindow() {
+    m_editorUI.closeAuxiliaryWindow();
+}
+
+/* ------------------------------ The commands and the menu bar ------------------------------ */
 
 // The commands of the application and of the project: what the menu bar shows and the palette
 // lists. Their keys are the keymap's (UI/DefaultKeymap.cpp). A command of a project answers
@@ -1290,8 +981,8 @@ void EditorLayer::registerCommands() {
     command("file.newWorld", "File", "New World", [this] { newWorld(); });
     command("file.newWindow", "File", "New Window", [this] { newWindow(); }, anywhere);
     command("file.openProject", "File", "Open Project", [this] { openProjectRequest(); }, anywhere);
-    command("file.saveAll", "File", "Save All", [this] { saveAll(); });
-    command("file.reload", "File", "Reload", [this] { reloadFromDisk(); });
+    command("file.saveAll", "File", "Save All", [this] { m_documentActions.saveAll(); });
+    command("file.reload", "File", "Reload", [this] { m_documentActions.reloadFromDisk(); });
     command("file.showCppProject", "File", "Show C++ Project", [this] { m_builds.showFolder(BuildTargetKind::Scripts); });
     command("file.closeProject", "File", "Close Project", [this] { closeProjectRequest(); });
     command("app.exit", "File", "Exit", [this] { closeAppRequest(); }, anywhere);
@@ -1336,25 +1027,6 @@ void EditorLayer::registerCommands() {
     command("help.about", "Help", "About", [this] { showAbout(); }, anywhere);
 }
 
-// The keymap file in the external editor. A file that was never written gets an empty object, so
-// there is something to open; what a row holds is in PandaSDK/docs/editor.md.
-void EditorLayer::showKeymapFile() {
-    const path_t &path = m_commands.keymapPath();
-    if (path.empty()) {
-        LOG_ERROR_EDITOR("No user data directory: the keymap is not persisted");
-        return;
-    }
-    if (!std::filesystem::exists(path)) {
-        std::ofstream file(path);
-        file << "{\n}\n";
-    }
-    openInExternalEditor(path);
-}
-
-bool EditorLayer::menuBarHasOpenedProject() {
-    return m_loader.hasOpenedProject();
-}
-
 // "Open … File": the JSON of the scope in the external editor. A file that was never written (a
 // fresh install, a project made outside the editor) is written first with the values the editor
 // has, so there is something to open.
@@ -1372,42 +1044,75 @@ void EditorLayer::showSettingsFile(SettingsScope scope) {
     openInExternalEditor(path);
 }
 
-void EditorLayer::openProjectRequest() {
-    runAfterUnsavedQuestion([this]() { openProjectFolderDialog(); });
+// The keymap file in the external editor. A file that was never written gets an empty object, so
+// there is something to open; what a row holds is in PandaSDK/docs/editor.md.
+void EditorLayer::showKeymapFile() {
+    const path_t &path = m_commands.keymapPath();
+    if (path.empty()) {
+        LOG_ERROR_EDITOR("No user data directory: the keymap is not persisted");
+        return;
+    }
+    if (!std::filesystem::exists(path)) {
+        std::ofstream file(path);
+        file << "{\n}\n";
+    }
+    openInExternalEditor(path);
+}
+
+void EditorLayer::showAbout() {
+    Editor::AboutInfo info;
+    info.version = EditorUpdater::versionString();
+    info.channel = ENGINE_RELEASE_CHANNEL;
+    info.build = ENGINE_BUILD_NUMBER;
+    info.commit = ENGINE_BUILD_COMMIT;
+    info.platform = EditorUpdater::platformString();
+    info.updatesEnabled = EditorUpdater::isEnabled();
+    if (m_updater.state().kind != UpdateState::Kind::Idle) { info.updateStatus = m_updater.statusLine(); }
+    info.onCheckForUpdates = [this] { checkForUpdates(true); };
+    info.onReleaseNotes = [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); };
+    Editor::showAboutDialog(&m_editorUI.context(), info);
+}
+
+void EditorLayer::openInExternalEditor(const std::filesystem::path &path) {
+    if (path.empty()) { return; }
+    const std::string &command = m_documents.editorSettings().get<EditorExternalToolsSettings>().editor;
+    // The text form of the file: a text document opens as it is; a binary asset (a texture, a
+    // model) is described by its sidecar. A shader is a pair of files: both open.
+    static const char *TEXT_EXTENSIONS[] = {".world", ".mat",  ".json", ".hlsl", ".hlsli", ".txt",
+                                            ".md",    ".cpp",  ".hpp",  ".h",    ".c",     ".cmake",
+                                            ".gltf",  ".pmeta"};
+    const std::string extension = path.extension().string();
+    bool text = false;
+    for (const char *known : TEXT_EXTENSIONS) {
+        if (extension == known) { text = true; }
+    }
+    path_t target = path;
+    if (!text) {
+        path_t sidecar = path;
+        sidecar += ".pmeta";
+        if (std::filesystem::exists(sidecar)) { target = sidecar; }
+    }
+    SystemTools::openInEditor(command, target);
+    const std::string name = path.filename().string();
+    const std::string vertexSuffix = "vert.hlsl";
+    if (name.size() > vertexSuffix.size() && name.compare(name.size() - vertexSuffix.size(), vertexSuffix.size(), vertexSuffix) == 0) {
+        path_t fragment = path;
+        fragment.replace_filename(name.substr(0, name.size() - vertexSuffix.size()) + "frag.hlsl");
+        if (std::filesystem::exists(fragment)) { SystemTools::openInEditor(command, fragment); }
+    }
+}
+
+void EditorLayer::revealInFileManager(const std::filesystem::path &path) {
+    if (!path.empty()) { SystemTools::revealInFileManager(path); }
+}
+
+bool EditorLayer::menuBarHasOpenedProject() {
+    return m_loader.hasOpenedProject();
 }
 
 void EditorLayer::menuBarOpenProject(const RecentProject &project) {
     openProject(project.path);
 }
-
-void EditorLayer::openProject(const path_t &path) {
-    if (path == m_loader.getOpenedProjectPath()) { return; }
-    runAfterUnsavedQuestion([this, path]() {
-        saveOpenedProjectWindowState();
-        m_loader.openProject(path);
-    });
-}
-
-void EditorLayer::newWorld() {
-    // A new world opens in a tab of its own next to the open ones: nothing is dropped.
-    stop();
-    m_documents.newWorld();
-}
-
-namespace {
-
-    std::vector<std::string> titlesOf(const Editor::CreateActions &actions) {
-        std::vector<std::string> titles;
-        for (const Editor::CreateAction &action : actions) { titles.push_back(action.title); }
-        return titles;
-    }
-
-    // The list is made again at the click: the folder of the Content Browser is the one of now.
-    void runAction(const Editor::CreateActions &actions, size_t index) {
-        if (index < actions.size()) { actions[index].run(); }
-    }
-
-} // namespace
 
 std::vector<std::string> EditorLayer::menuBarNewEntityTitles() {
     return m_editorController ? titlesOf(m_editorController->newEntityActions()) : std::vector<std::string>();
@@ -1433,162 +1138,11 @@ const path_t &EditorLayer::menuBarGetOpenedProjectPath() {
     return m_loader.getOpenedProjectPath();
 }
 
-void EditorLayer::newWindow() {
-    // The session is written first: the new instance reads the recent projects from it.
-    m_loader.saveSession();
-    if (!SystemTools::startNewInstance({SystemTools::NEW_WINDOW_ARGUMENT})) {
-        LOG_ERROR_EDITOR("A new editor window could not be started");
-    }
-}
-
-void EditorLayer::reloadWorldAsset(AssetId worldAssetId) {
-    // Reimport in the Content Browser: a world is reread when it is open (unsaved edits ask which
-    // version stays; a broken file only logs an error). A world that is not open has nothing in
-    // memory to refresh.
-    auto *assetHandler = AssetHandlerEditor::current();
-    if (!assetHandler || !assetHandler->hasAsset(worldAssetId)) { return; }
-    const path_t assetRelativePath = assetHandler->assetPath(worldAssetId);
-    if (assetRelativePath.empty()) { return; }
-    WorldFile *world = m_documents.findWorld(assetHandler->getProjectPath() / assetRelativePath);
-    if (world == nullptr) { return; }
-    if (world == m_documents.activeWorld()) { stop(); }
-    takeDiskVersion(*world);
-}
-
-void EditorLayer::closeProjectRequest() {
-    runAfterUnsavedQuestion([this]() { closeProject(); });
-}
-
-void EditorLayer::loadPlugins() {
-    // Built-in plugins come from the editor resources, installed ones live next to the user data
-    // (the store uses Plugins/ and registry/ inside it). Icons become textures through the UI host.
-    m_pluginStore.initialize(
-        {Fern::getStaticResourcesPath() / "plugins"}, SystemTools::userDataDirectory(),
-        [this](const path_t &file) { return m_editorUI.loadImage(file); }
-    );
-    // An install, an update or a removal takes effect at once: the theme of the settings is read
-    // again (its files may have changed), or the editor falls back to the built-in dark one; the
-    // icons of the plugins replace or release the editor's.
-    m_pluginStore.setOnInstalledChanged([this] {
-        applyTheme(m_documents.editorSettings().get<EditorAppearanceSettings>().theme);
-        applyIconPlugins();
-    });
-    applyIconPlugins();
-}
-
-void EditorLayer::applyIconPlugins() {
-    std::vector<path_t> files; // install order: built-in plugins first, a later plugin wins a token
-    for (const InstalledPlugin &plugin : m_pluginStore.installed()) {
-        files.insert(files.end(), plugin.icons.begin(), plugin.icons.end());
-    }
-    m_editorUI.applyIconOverrides(files);
-}
-
-EditorUI::FontSettings EditorLayer::fontSettings() {
-    const EditorAppearanceSettings &appearance = m_documents.editorSettings().get<EditorAppearanceSettings>();
-    EditorUI::FontSettings settings;
-    settings.uiFamily = appearance.uiFont;
-    settings.monoFamily = appearance.monoFont;
-    settings.uiSize = appearance.uiFontSize;
-    return settings;
-}
-
-void EditorLayer::applyTheme(const std::string &themeId) {
-    if (const EditorTheme *theme = m_pluginStore.findTheme(themeId)) {
-        if (std::optional<PandaUI::Theme> loaded = EditorPlugins::loadTheme(theme->file)) {
-            PandaUI::setTheme(*loaded); // Context re-reads the colors of the whole tree
-            return;
-        }
-        LOG_ERROR_EDITOR("Theme %s can't be read: %s", themeId.c_str(), theme->file.string().c_str());
-    }
-    PandaUI::setTheme(PandaUI::Theme::dark());
-}
-
-std::vector<std::string> EditorLayer::themeNames() {
-    std::vector<std::string> names;
-    for (const EditorTheme &theme : m_pluginStore.themes()) { names.push_back(theme.name); }
-    return names;
-}
-
-int EditorLayer::currentThemeIndex() {
-    const std::vector<EditorTheme> &themes = m_pluginStore.themes();
-    const std::string &current = m_documents.editorSettings().get<EditorAppearanceSettings>().theme;
-    for (size_t i = 0; i < themes.size(); i++) {
-        if (themes[i].id == current) { return static_cast<int>(i); }
-    }
-    return -1;
-}
-
-void EditorLayer::selectThemeIndex(int index) {
-    const std::vector<EditorTheme> &themes = m_pluginStore.themes();
-    if (index < 0 || index >= static_cast<int>(themes.size())) { return; }
-    selectTheme(themes[static_cast<size_t>(index)].id);
-}
-
-std::string EditorLayer::currentThemeId() {
-    return m_documents.editorSettings().get<EditorAppearanceSettings>().theme;
-}
-
-void EditorLayer::selectTheme(const std::string &themeId) {
-    if (!m_pluginStore.findTheme(themeId)) { return; }
-    m_documents.editorSettings().get<EditorAppearanceSettings>().theme = themeId;
-    m_documents.editorSettingsFile().save();
-    applyTheme(themeId);
-}
-
-void EditorLayer::installDevPlugin() {
-    // The native folder dialog blocks: the store reports problems as a notice the tab shows.
-    std::optional<path_t> folder = SystemTools::openFolderDialog();
-    if (!folder.has_value()) { return; }
-    m_pluginStore.installDev(*folder);
-}
-
-PandaUI::FontFamily EditorLayer::fontFamilyForAsset(AssetId assetId) {
-    AssetRef<FontAsset> ref{assetId};
-    const FontAsset *font = ref.get();
-    if (!font || font->isEmpty()) { return PandaUI::FontFamily::Sans; }
-    return m_editorUI.fontFamilyForAsset(assetId, font->data());
-}
-
-PandaUI::Gallery::Host EditorLayer::galleryHost() {
-    PandaUI::Gallery::Host host;
-    host.createTexture = [this](const unsigned char *pixels, uint16_t width, uint16_t height) {
-        return m_editorUI.createTexture(pixels, width, height);
-    };
-    host.destroyTexture = [this](PandaUI::TextureHandle texture) { m_editorUI.destroyTexture(texture); };
-    if (!m_galleryLogo) { m_galleryLogo = m_editorUI.loadImage("panda-ui-gallery/ship_logo.png"); }
-    host.logo = m_galleryLogo;
-    // The "Fantasy" skin shows a serif: the first installed one of the usual names, found once.
-    if (!m_galleryFontSearched) {
-        m_galleryFontSearched = true;
-        for (const char *family : {"Georgia", "Palatino", "Baskerville", "Times New Roman", "DejaVu Serif", "Liberation Serif"}) {
-            if (m_editorUI.loadInstalledFace(family, 700, PandaUI::fontFamily("Fantasy"))) {
-                m_galleryDisplayFont = PandaUI::fontFamily("Fantasy");
-                break;
-            }
-        }
-    }
-    host.displayFont = m_galleryDisplayFont;
-    return host; // no openWindow (a tab, not a window), no applyTheme (the theme is the plugin chosen in Plugins)
-}
-
-void EditorLayer::showAbout() {
-    Editor::AboutInfo info;
-    info.version = EditorUpdater::versionString();
-    info.channel = ENGINE_RELEASE_CHANNEL;
-    info.build = ENGINE_BUILD_NUMBER;
-    info.commit = ENGINE_BUILD_COMMIT;
-    info.platform = EditorUpdater::platformString();
-    info.updatesEnabled = EditorUpdater::isEnabled();
-    if (m_updater.state().kind != UpdateState::Kind::Idle) { info.updateStatus = updateStatusLine(); }
-    info.onCheckForUpdates = [this] { checkForUpdates(true); };
-    info.onReleaseNotes = [this] { SystemTools::openUrl(m_updater.releaseNotesUrl()); };
-    Editor::showAboutDialog(&m_editorUI.context(), info);
-}
-
 bool EditorLayer::menuBarUpdateReady() {
     return m_updater.hasReadyUpdate();
 }
+
+/* ------------------------------ The editor updater ------------------------------ */
 
 void EditorLayer::checkForUpdates(bool manual) {
     if (!EditorUpdater::isEnabled()) {
@@ -1604,7 +1158,7 @@ void EditorLayer::checkForUpdates(bool manual) {
     m_updater.check(manual);
 }
 
-void EditorLayer::updateIndicatorAction() {
+void EditorLayer::updateIndicatorDidActivate() {
     const UpdateState &state = m_updater.state();
     switch (state.kind) {
         case UpdateState::Kind::Ready:
@@ -1628,79 +1182,8 @@ void EditorLayer::updateIndicatorAction() {
     }
 }
 
-void EditorLayer::updateIndicatorDismiss() {
+void EditorLayer::updateIndicatorDidDismiss() {
     m_updater.dismiss();
-}
-
-void EditorLayer::startScreenDidActivateUpdate() {
-    updateIndicatorAction();
-}
-
-void EditorLayer::startScreenDidDismissUpdate() {
-    m_updater.dismiss();
-}
-
-Editor::UpdateIndicatorModel EditorLayer::updateIndicatorModel() const {
-    using Kind = UpdateState::Kind;
-    using Shown = Editor::UpdateIndicatorKind;
-    Editor::UpdateIndicatorModel model;
-    const UpdateState &state = m_updater.state();
-    if (m_updater.isDismissed()) { return model; }
-    switch (state.kind) {
-        case Kind::Idle: break;
-        case Kind::Checking:
-            model.kind = Shown::Checking;
-            model.text = "Checking for updates…";
-            break;
-        case Kind::Downloading:
-            model.kind = Shown::Downloading;
-            model.progress = state.progress;
-            model.text = state.progress >= 0.f ? "Downloading update " + std::to_string(int(state.progress * 100.f)) + "%"
-                                               : "Downloading update…";
-            break;
-        case Kind::Installing:
-            model.kind = Shown::Installing;
-            model.text = "Installing update…";
-            break;
-        case Kind::Ready:
-            model.kind = Shown::Ready;
-            model.text = "Update ready · Restart";
-            model.clickable = true;
-            break;
-        case Kind::UpToDate:
-            model.kind = Shown::UpToDate;
-            model.text = "Panda is up to date";
-            break;
-        case Kind::Updated:
-            model.kind = Shown::Updated;
-            model.text = "Updated to " + state.version + " · Release notes";
-            model.clickable = true;
-            break;
-        case Kind::Error:
-            model.kind = Shown::Error;
-            model.text = "Update failed · Details";
-            model.clickable = true;
-            break;
-    }
-    return model;
-}
-
-std::string EditorLayer::updateStatusLine() const {
-    using Kind = UpdateState::Kind;
-    const UpdateState &state = m_updater.state();
-    std::string line = "Panda " + EditorUpdater::versionString();
-    if (ENGINE_BUILD_COMMIT[0] != '\0') { line += std::string(" (commit ") + ENGINE_BUILD_COMMIT + ")"; }
-    switch (state.kind) {
-        case Kind::Idle: return line;
-        case Kind::Checking: return line + ". Checking for updates…";
-        case Kind::Downloading: return line + ". Downloading " + state.version + "…";
-        case Kind::Installing: return line + ". Installing " + state.version + "…";
-        case Kind::Ready: return line + ". Update " + state.version + " is installed and runs after a restart.";
-        case Kind::UpToDate: return line + ". Up to date.";
-        case Kind::Updated: return line + ". Updated to " + state.version + ".";
-        case Kind::Error: return line + ". Update failed: " + state.message;
-    }
-    return line;
 }
 
 void EditorLayer::pushUpdateStatus() {
@@ -1709,7 +1192,7 @@ void EditorLayer::pushUpdateStatus() {
     if (state.revision == m_shownUpdateRevision && dismissed == m_shownUpdateDismissed) { return; }
     m_shownUpdateRevision = state.revision;
     m_shownUpdateDismissed = dismissed;
-    const Editor::UpdateIndicatorModel model = updateIndicatorModel();
+    const Editor::UpdateIndicatorModel model = Editor::updateIndicatorModel(m_updater);
     if (m_editorController) { m_editorController->setUpdateStatus(model); }
     if (m_startScreenController) { m_startScreenController->setUpdateStatus(model); }
     const bool ready = m_updater.hasReadyUpdate();
@@ -1717,233 +1200,6 @@ void EditorLayer::pushUpdateStatus() {
         m_shownUpdateReady = ready;
         m_menuBar.rebuild(); // "Restart to Update" appears and goes with the installed update
     }
-}
-
-void EditorLayer::startScreenDidRequestOpenProjectDialog() {
-    std::optional<path_t> optionalPath = SystemTools::openFolderDialog();
-    if (!optionalPath.has_value()) {
-        if (m_startScreenController) { m_startScreenController->setStatus("Project opening cancelled."); }
-        return;
-    }
-
-    m_loader.openProject(optionalPath.value());
-    if (!m_loader.hasOpenedProject() && m_startScreenController) {
-        m_startScreenController->setStatus("Could not open project: " + optionalPath->string());
-    }
-}
-
-void EditorLayer::startScreenDidRequestOpenRecentProject(size_t index) {
-    const std::vector<RecentProject> &recentProjects = m_loader.getRecentProjectsList();
-    if (index >= recentProjects.size()) { return; }
-
-    const path_t projectPath = recentProjects[index].path;
-    if (!std::filesystem::exists(projectPath)) {
-        if (m_startScreenController) { m_startScreenController->setStatus("Project not found: " + projectPath.string()); }
-        return;
-    }
-
-    m_loader.openProject(projectPath);
-    if (!m_loader.hasOpenedProject() && m_startScreenController) {
-        m_startScreenController->setStatus("Could not open project: " + projectPath.string());
-    }
-}
-
-void EditorLayer::startScreenDidRequestRemoveRecentProject(size_t index) {
-    const std::vector<RecentProject> &recentProjects = m_loader.getRecentProjectsList();
-    if (index >= recentProjects.size()) { return; }
-
-    const std::string name = recentProjects[index].name.empty()
-                                 ? path_t(recentProjects[index].path).filename().string()
-                                 : recentProjects[index].name;
-    m_loader.removeRecentProject(static_cast<int>(index));
-    m_loader.saveSession();
-    syncStartScreenModel();
-    if (m_startScreenController) { m_startScreenController->setStatus("Removed " + name + " from recent projects."); }
-}
-
-void EditorLayer::startScreenDidRequestCreateProject(const std::string &name, const std::string &location) {
-    const std::string projectName = name.empty() ? "UntitledGame" : name;
-    const path_t parentPath = location.empty() ? defaultProjectParentPath() : path_t(location);
-    const path_t projectPath = parentPath / projectName;
-
-    if (std::filesystem::exists(projectPath)) {
-        if (m_startScreenController) { m_startScreenController->setStatus("Project already exists: " + projectPath.string()); }
-        return;
-    }
-
-    m_loader.createProject(projectName, projectPath);
-    if (!m_loader.hasOpenedProject() && m_startScreenController) {
-        m_startScreenController->setStatus("Could not create project: " + projectPath.string());
-    }
-}
-
-void EditorLayer::startScreenDidRequestChooseProjectLocation() {
-    const std::string initialFolder = defaultProjectParentPath().string();
-    std::optional<path_t> optionalPath = SystemTools::openFolderDialog(initialFolder.c_str());
-    if (!optionalPath.has_value()) { return; }
-    if (m_startScreenController) { m_startScreenController->setNewProjectLocation(optionalPath->string()); }
-}
-
-#pragma endregion
-
-void EditorLayer::openProjectFolderDialog() {
-    std::optional<path_t> optionalPath = SystemTools::openFolderDialog();
-    if (!optionalPath.has_value()) { return; }
-    path_t path = optionalPath.value();
-    saveOpenedProjectWindowState();
-    m_loader.openProject(path);
-}
-
-void EditorLayer::updateWindowState() {
-    if (m_loader.hasOpenedProject()) {
-        m_window->setFlags(FERN_WINDOW_FLAGS_DEFAULT);
-        auto windowState = m_loader.getLastWindowState();
-        if (m_launch.unattended) {
-            // One size whatever the display and the last session: a UI test meets the same layout.
-            m_window->setState(Fern::WindowState::WindowStateNormal);
-            m_window->setSize({UNATTENDED_WINDOW_WIDTH, UNATTENDED_WINDOW_HEIGHT});
-        } else if (windowState.isFullScreen) {
-            m_window->setState(Fern::WindowState::WindowStateFullScreen);
-        } else {
-            // Normal size first (even before maximizing): "restore" from maximized after a
-            // restart brings back the previous window bounds.
-            if (windowState.isSizeValid()) {
-                m_window->setState(Fern::WindowState::WindowStateNormal);
-                m_window->setSize({(float)windowState.width, (float)windowState.height});
-            }
-            if (windowState.isMaximized || !windowState.isSizeValid()) {
-                m_window->setState(Fern::WindowState::WindowStateMaximized);
-            }
-        }
-    } else {
-        m_window->setFlags(FERN_WINDOW_FLAG_CLOSABLE);
-        m_window->setState(Fern::WindowState::WindowStateNormal);
-        m_window->setSize({800, 600});
-    }
-}
-
-void EditorLayer::closeProject() {
-    saveOpenedProjectWindowState();
-    m_loader.closeProject(); // loaderWillCloseProject lets go of what names the project
-}
-
-void EditorLayer::closeAppRequest() {
-    runAfterUnsavedQuestion([this]() { closeApp(); });
-}
-
-void EditorLayer::closeApp() {
-    saveOpenedProjectWindowState();
-    Application::get()->close();
-}
-
-void EditorLayer::restartEditor() {
-    // The same flow as Quit, the unsaved-changes dialog included; main() starts the new instance
-    // once this one has written its settings and torn the window down.
-    runAfterUnsavedQuestion([this]() {
-        // The new instance opens the project of this one: the session file is shared by every
-        // running editor, the command line is not.
-        std::vector<std::string> arguments;
-        if (m_loader.hasOpenedProject()) {
-            arguments = {SystemTools::PROJECT_ARGUMENT, m_loader.getOpenedProjectPath().string()};
-        }
-        if (m_launch.mcpPort > 0) { // the agent that restarted the editor finds it on the same port
-            arguments.push_back(SystemTools::MCP_ARGUMENT);
-            arguments.push_back(std::to_string(m_launch.mcpPort));
-        }
-        if (SystemTools::isUserDataDirectoryOverridden()) { // the new instance keeps the settings of this one
-            arguments.push_back(SystemTools::USER_DATA_ARGUMENT);
-            arguments.push_back(SystemTools::userDataDirectory().string());
-        }
-        if (m_launch.unattended) { arguments.push_back(SystemTools::UNATTENDED_ARGUMENT); }
-        SystemTools::setRelaunchOnExit(true, std::move(arguments));
-        closeApp();
-    });
-}
-
-void EditorLayer::saveOpenedProjectWindowState() {
-    if (!m_loader.hasOpenedProject()) { return; }
-
-    Fern::WindowState windowState = m_window->getState();
-    // The base is the previously saved values: the size is updated only from the Normal state,
-    // otherwise the size of a maximized/fullscreen window leaks into the config.
-    LastOpenedProjectWindowState savingState = m_loader.getLastWindowState();
-    savingState.isFullScreen = windowState == Fern::WindowState::WindowStateFullScreen;
-    savingState.isMaximized = windowState == Fern::WindowState::WindowStateMaximized;
-    if (windowState == Fern::WindowState::WindowStateNormal) {
-        savingState.width = m_window->getSize().width;
-        savingState.height = m_window->getSize().height;
-    }
-    m_loader.saveWindowState(savingState);
-    if (m_editorController) { m_loader.saveDockLayout(m_editorController->captureDockLayout()); }
-}
-
-void EditorLayer::runAfterUnsavedQuestion(std::function<void()> action) {
-    // The gate of everything that drops what is in memory (another world or project, closing,
-    // quitting): the unsaved file documents are named and saved, discarded or the action is
-    // cancelled.
-    stop();
-    std::vector<std::string> dirty;
-    {
-        const FileDocumentList files = m_documents.list();
-        for (FileDocument *file : files.all) {
-            if (file->isDirty()) { dirty.push_back(file->title()); }
-        }
-    }
-    if (dirty.empty()) {
-        if (action) { action(); }
-        return;
-    }
-    // The question names WHAT is unsaved: up to three documents by name, more — by count.
-    std::string title = "Save ";
-    if (dirty.size() > 3) {
-        title += std::to_string(dirty.size()) + " modified files";
-    } else {
-        for (size_t i = 0; i < dirty.size(); i++) {
-            if (i > 0) { title += i + 1 == dirty.size() ? " and " : ", "; }
-            title += dirty[i];
-        }
-    }
-    title += "?";
-    const SystemTools::SaveChangesChoice choice =
-        SystemTools::showSaveChangesDialog(title.c_str(), "Your changes will be lost otherwise.");
-    if (choice == SystemTools::SaveChangesChoice::Cancel) { return; }
-    if (choice == SystemTools::SaveChangesChoice::Save) {
-        if (!saveAll()) { return; } // Save As cancelled → stop
-    } else {
-        // Don't Save: the action drops the world and the assets with their edits. The project
-        // scope outlives it and is written again with the session (closing, switching), so its
-        // edits go back to the file here — a declined edit must not reach the disk later.
-        if (m_documents.projectSettingsFile().isDirty()) { reloadFile(m_documents.projectSettingsFile()); }
-    }
-    if (action) { action(); }
-}
-
-// Status indicators of the visibility strip: process RAM/VRAM, CPU load (fraction of a core,
-// like top) and GPU (GPU frame time over wall-clock frame time). Sampled every half second —
-// the metrics are cheap, but there is no point in polling them every frame, and running numbers
-// make reading harder.
-void EditorLayer::updateStripStatus(double deltaTime) {
-    m_stripStatusTimer += deltaTime;
-    if (m_stripStatusTimer < 0.5) { return; }
-    const double interval = m_stripStatusTimer;
-    m_stripStatusTimer = 0.0;
-    if (!m_editorController) { return; }
-
-    const Editor::SystemStats system = Editor::sampleSystemStats();
-    const Miren::GpuStats gpu = Miren::getGpuStats();
-    const double frameMs = interval * 1000.0 / std::max(1, m_stripFrameCounter);
-    const double gpuPercent =
-        frameMs > 0.01 ? std::clamp(gpu.frameMs / frameMs * 100.0, 0.0, 999.0) : 0.0;
-    m_stripFrameCounter = 0;
-
-    const auto gigabytes = [](uint64_t bytes) { return (double)bytes / (1024.0 * 1024.0 * 1024.0); };
-    char text[128];
-    snprintf(
-        text, sizeof(text), "MEM %.1fG   VRAM %.1fG   CPU %.0f%%   GPU %.0f%% %.1f ms",
-        gigabytes(system.residentBytes), gigabytes(gpu.allocatedBytes), system.cpuPercent,
-        gpuPercent, gpu.frameMs
-    );
-    m_editorController->setStripStatusText(text);
 }
 
 } // namespace Panda

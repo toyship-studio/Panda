@@ -84,6 +84,9 @@ public:
         return m_state.kind == UpdateState::Kind::Ready;
     }
     std::string releaseNotesUrl() const;
+    // The version of the editor and what the updater is doing, in a sentence: the UPDATES section
+    // of the settings and the About dialog show it.
+    std::string statusLine() const;
 
     // main(): finishes a staged update after the editor exited and its files are closed. macOS and
     // Linux swap the install folder here, Windows hands over to PandaUpdateHelper, which waits for

@@ -81,6 +81,9 @@ public:
     path_t assetPath(AssetId id) const {
         return assetSource(id).path;
     }
+    // The file of a world asset, with the folder of the project. Empty — there is no such asset
+    // or it is not a world: the log says which.
+    path_t worldFilePath(AssetId id);
     std::string getAssetName(AssetId id); // the file name of the asset
     // Total size of the asset's files in the project (bytes; 0 — no files). Shown in the inspector;
     // in the future the size in the runtime Asset Package (cooked form) will stand next to it.

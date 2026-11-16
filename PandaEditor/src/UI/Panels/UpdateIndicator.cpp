@@ -1,8 +1,55 @@
 #include "UI/Panels/UpdateIndicator.hpp"
 
+#include "App/EditorUpdater.hpp"
+
 namespace Editor {
 
 using namespace PandaUI;
+
+UpdateIndicatorModel updateIndicatorModel(const Panda::EditorUpdater &updater) {
+    using Kind = Panda::UpdateState::Kind;
+    using Shown = UpdateIndicatorKind;
+    UpdateIndicatorModel model;
+    const Panda::UpdateState &state = updater.state();
+    if (updater.isDismissed()) { return model; }
+    switch (state.kind) {
+        case Kind::Idle: break;
+        case Kind::Checking:
+            model.kind = Shown::Checking;
+            model.text = "Checking for updates…";
+            break;
+        case Kind::Downloading:
+            model.kind = Shown::Downloading;
+            model.progress = state.progress;
+            model.text = state.progress >= 0.f ? "Downloading update " + std::to_string(int(state.progress * 100.f)) + "%"
+                                               : "Downloading update…";
+            break;
+        case Kind::Installing:
+            model.kind = Shown::Installing;
+            model.text = "Installing update…";
+            break;
+        case Kind::Ready:
+            model.kind = Shown::Ready;
+            model.text = "Update ready · Restart";
+            model.clickable = true;
+            break;
+        case Kind::UpToDate:
+            model.kind = Shown::UpToDate;
+            model.text = "Panda is up to date";
+            break;
+        case Kind::Updated:
+            model.kind = Shown::Updated;
+            model.text = "Updated to " + state.version + " · Release notes";
+            model.clickable = true;
+            break;
+        case Kind::Error:
+            model.kind = Shown::Error;
+            model.text = "Update failed · Details";
+            model.clickable = true;
+            break;
+    }
+    return model;
+}
 
 UpdateIndicatorView::UpdateIndicatorView(UpdateIndicatorOutput *output)
     : m_output(output) {

@@ -74,7 +74,7 @@ public:
     }
     bool save() override {
         Panda::WorldFile *file = m_tabs.worldFile(m_worldId);
-        return file && m_tabs.m_app.saveWorld(*file);
+        return file && m_tabs.m_app.documentActions().saveWorld(*file);
     }
     std::filesystem::path filePath() override {
         const Panda::WorldFile *file = m_tabs.worldFile(m_worldId);

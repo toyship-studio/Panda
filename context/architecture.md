@@ -220,14 +220,34 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   (`RectSelectPhase::Drop`), not committed.
 - **Application** (`EditorLayer`): the frame and the events, and the owner of the parts the
   editor is made of — the file documents (`documents()`: the open worlds, the settings, the
-  assets), the project (`project()`), its builds (`builds()`), the viewports (`viewports()`),
-  the UI host (`ui()`), the commands (`commands()`), the plugin store. They are public: the coordinator and the MCP server
-  work with the parts themselves — a world tab holds the `WorldFile` it shows, the palette lists
-  the menu bar's own items — and ask the application for what crosses several of them (Play,
-  Save with its questions, a build, a reload). There is no interface between the chrome and the
-  application and no copy of the application's state on the chrome's side: the layer is one
-  object with one user of each kind, and an interface with one implementation only repeated
-  every call three times.
+  assets) and what Save and Reload do to them (`documentActions()`), the project (`project()`),
+  its builds (`builds()`), the viewports (`viewports()`), the UI host (`ui()`) and its look
+  (`appearance()`), the commands (`commands()`), the plugin store. They are public: the
+  coordinator and the MCP server work with the parts themselves — a world tab holds the
+  `WorldFile` it shows, the palette lists the menu bar's own items — and ask the application
+  for what joins several of them (Play and Stop, the world on screen, the project in the
+  window, a restart). There is no interface between the chrome and the application and no copy
+  of the application's state on the chrome's side: the layer is one object with one user of
+  each kind, and an interface with one implementation only repeated every call three times.
+  What a part does by itself is in the part, not in the layer: the layer starts and stops the
+  parts, gives each frame and each event of the window to the one it belongs to, and keeps what
+  is between them.
+  - `PlaySession` — the game inside the editor: the playing copy of the active world, the UI of
+    the game over the Game surface, the input of the window while the Game tab has it, the
+    world a script asks for, a script that quits. It knows the game and the viewports, not the
+    editor around them: `EditorLayer::play` and `stop` put the editor's own steps (the
+    selection, the Scene, the panels, the Game tab) around `begin` / `run` / `end`.
+  - `DocumentActions` — Save, Save All, Reload, the revert and the unsaved-changes gate, written
+    once over `FileDocument` (below).
+  - `EditorAppearance` — the theme and the icons of the installed plugins, the fonts of the
+    APPEARANCE settings, applied to the UI host.
+  - `EditorStatistics` — what the Statistics and Profiler panels and the status of the
+    visibility strip get, at the pace a person reads.
+  - The start screen chooses a project by itself: `StartScreenController` opens, creates and
+    forgets projects through the loader and says what came of it in its status line.
+  The world on screen is not a state of its own: `shownWorld()` is the playing copy while the
+  game plays and the world being edited otherwise, and what points at a world — the selection,
+  the Scene — is pointed again where that changes (Play, Stop, another active world).
 
 #### The document model
 
@@ -280,12 +300,12 @@ game plays a copy of the active world, so that world does not change while the g
 click is refused, a command that changes it (open, new, closing the active tab) stops the game
 first.
 
-Three operations are written once over them, in `EditorLayer`, whatever the file is:
+Three operations are written once over them, in `DocumentActions`, whatever the file is:
 
 - **Save** (Cmd+S) writes the document of the tab with the focus; **Save All** (Cmd+Alt+S, the
   toolbar button) writes every dirty one (`saveAll`). A file changed on disk since the editor
   read it is never overwritten in silence: the save asks which version stays
-  (`resolveFileConflict`: Save / Discard / Cancel).
+  (`resolveConflict`: Save / Discard / Cancel).
 - **Reload** rereads what changed on disk and asks the same question when the memory has edits
   too (`reloadFromDisk`, below).
 - **The unsaved-changes gate** (`runAfterUnsavedQuestion`) stands before everything that drops
@@ -501,9 +521,9 @@ Unity's Scene and Game views:
   every input event either to the game or to the editor chrome, never to both, and marks the
   editor's as handled so `Application` feeds `Input` nothing of them. In Play, while the Game
   renders, the game's are the pointer over the Game surface and the keys of the focused Game tab
-  (`eventBelongsToGame`; a button's release goes where its press went, so a drag may cross the
+  (`PlaySession::ownsEvent`; a button's release goes where its press went, so a drag may cross the
   surface edge either way); the game UI sees them first, then `Input`. A click on the game
-  focuses the tab. The game *has* the input (`Input::setFocused`, `EditorLayer::updateGameInput`)
+  focuses the tab. The game *has* the input (`Input::setFocused`, `PlaySession::updateInput`)
   while the Game tab renders and has the focus, the window is focused and no modal is up: a
   transition is the scripts' `onApplicationFocus`, the loss releases what the game held
   (`Input::releaseAll`) and the cursor lock (an FPS is left by clicking elsewhere; it locks again
@@ -515,7 +535,7 @@ Unity's Scene and Game views:
   `EditorViewports::beginFrame`; `takePointer` → the gizmo's `InputState` and
   `ViewportToolFrame::pointerPosition` / `pointerDown` of the tools). The camera therefore reads
   no input of its own, and the editor keeps no flags about whose input it is.
-- `EditorLayer` keeps the worlds and the states; `EditorViewports` owns the view of the world
+- `EditorLayer` keeps the worlds, `PlaySession` the game that plays; `EditorViewports` owns the view of the world
   (`WorldView`: the HDR frame and its look), the targets of the editor passes (`EditorPassTargets`:
   the selection mask, the id buffer), the surfaces, the editor camera, the gizmo and the
   selection (`SceneViewport`), the grid and the helpers, and renders the frame of the live
@@ -848,7 +868,7 @@ What follows from the rules:
   selection).
 - Play runs on a copy, and nothing flows back from it: Stop discards what the
   simulation and the inspector changed there, and Save (Cmd+S) in any state writes the world
-  being edited (`EditorLayer::saveWorld`). A value tuned in Play is carried over by hand after
+  being edited (`DocumentActions::saveWorld`). A value tuned in Play is carried over by hand after
   Stop.
 - The hierarchy has one entry, `World::setParent(entity, parent, keepWorldTransform)`; a parent
   that is not valid makes a root. Everything that depends on a link is kept together there: both
@@ -917,7 +937,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   command, with a radius per corner). v33 appended `invokeApplicationFocusAtScript` and
   `invokeApplicationPauseAtScript` to `ScriptPluginApi` (`Script::onApplicationFocus` /
   `onApplicationPause`): the editor fires the focus with the input of the Game tab
-  (`EditorLayer::updateGameInput`), the runtime with the focus of the window; the pause comes from
+  (`PlaySession::updateInput`), the runtime with the focus of the window; the pause comes from
   the window being minimized (`Fern` `WindowMinimized` / `WindowRestored`) and later from the
   background of a mobile platform.
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
@@ -1177,7 +1197,7 @@ result through the MCP server of the editor (the next section).
   restart. A loaded shader is also compared by the text its sources expand to
   (`ShaderCook::isStale`), so a changed fragment stage or include reloads it. A broken world or
   settings file is logged and the memory is left untouched. Orchestration:
-  `EditorLayer::reloadFromDisk`.
+  `DocumentActions::reloadFromDisk`.
 - What an agent gets: `PandaSDK/docs/*.md` are copied into the SDK; `.Panda/scripts-manifest.json`
   is written on every script bundle load (classes, script fields, field ids, types, `list`); the project
   template `Templates/GameProject` carries `AGENTS.md` (the rules and the file formats for any
@@ -1219,8 +1239,9 @@ second way to do what a text file already does. The user-facing page is
   `command` lists the commands of the registry, runs one by id and rebinds its keys: what the
   editor can be asked to do is asked by name, and a new ability of the editor an agent needs
   becomes a command or a tool — pressed keys and clicks are for testing the UI itself. A
-  tool acts as the user does, through the same functions of `EditorLayer` (`reloadFromDisk`,
-  `saveAll`, `play`, `restartEditor`), at the start of a frame, before the frame is built.
+  tool acts as the user does, through the same functions of the application (`EditorLayer::play`,
+  `restartEditor`; `DocumentActions::reloadFromDisk`, `saveAll`), at the start of a frame, before
+  the frame is built.
 - `pointer` and `key` are the hands for that look: when the editor itself is the work, an agent
   presses what it sees. A gesture is a list of steps played one a frame into the UI context of
   the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIFernHost` puts
@@ -1249,7 +1270,7 @@ second way to do what a text file already does. The user-facing page is
   and `--mcp` below), uses it by paths, and checks what the editor shows (the elements) and what
   it writes (the files of the copy: the contract of a project is its files). The tests and what
   runs them live with the project they run on, outside this repository.
-- `reload` with `discard` is "the disk wins": `EditorLayer::revertUnsaved` rereads every
+- `reload` with `discard` is "the disk wins": `DocumentActions::revertUnsaved` rereads every
   document that has unsaved edits, then the reload proper takes what changed on disk. Without it
   a reload only reads the files that changed, and a file that changed under unsaved edits is a
   conflict the tool reports.

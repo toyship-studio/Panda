@@ -935,8 +935,8 @@ Mcp::PendingResult EditorMcp::reload(const rapidjson::Value &arguments) {
     SystemTools::Unattended unattended(discard ? SaveChangesChoice::DontSave : SaveChangesChoice::Cancel);
     // With `discard` the disk wins everywhere: a document with unsaved edits is read again even
     // when its file has not changed.
-    if (discard) { m_editor.revertUnsaved(); }
-    m_editor.reloadFromDisk();
+    if (discard) { m_editor.documentActions().revertUnsaved(); }
+    m_editor.documentActions().reloadFromDisk();
     Mcp::ToolResult result;
     if (!discard && !unattended.questions().empty()) {
         result.isError = true;
@@ -953,7 +953,7 @@ Mcp::PendingResult EditorMcp::save(const rapidjson::Value &arguments) {
     const bool overwrite = Mcp::boolArgument(arguments, "overwrite", false);
     const uint64_t from = LogHistory::nextSequence();
     SystemTools::Unattended unattended(overwrite ? SaveChangesChoice::Save : SaveChangesChoice::Cancel);
-    const bool saved = m_editor.saveAll();
+    const bool saved = m_editor.documentActions().saveAll();
     Mcp::ToolResult result;
     if (!saved) {
         result.isError = true;

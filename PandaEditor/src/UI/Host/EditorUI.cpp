@@ -312,6 +312,28 @@ PandaUI::FontFamily EditorUI::fontFamilyForAsset(uint32_t assetId, const std::ve
     return family;
 }
 
+PandaUI::Gallery::Host EditorUI::galleryHost() {
+    PandaUI::Gallery::Host host;
+    host.createTexture = [this](const unsigned char *pixels, uint16_t width, uint16_t height) {
+        return createTexture(pixels, width, height);
+    };
+    host.destroyTexture = [this](PandaUI::TextureHandle texture) { destroyTexture(texture); };
+    if (!m_galleryLogo) { m_galleryLogo = loadImage("panda-ui-gallery/ship_logo.png"); }
+    host.logo = m_galleryLogo;
+    // The "Fantasy" skin shows a serif: the first installed one of the usual names, found once.
+    if (!m_galleryFontSearched) {
+        m_galleryFontSearched = true;
+        for (const char *family : {"Georgia", "Palatino", "Baskerville", "Times New Roman", "DejaVu Serif", "Liberation Serif"}) {
+            if (loadInstalledFace(family, 700, PandaUI::fontFamily("Fantasy"))) {
+                m_galleryDisplayFont = PandaUI::fontFamily("Fantasy");
+                break;
+            }
+        }
+    }
+    host.displayFont = m_galleryDisplayFont;
+    return host;
+}
+
 bool EditorUI::loadInstalledFace(const std::string &installedFamily, int weightClass, PandaUI::FontFamily as) {
     const std::optional<Fern::Fonts::Face> face = Fern::Fonts::find(installedFamily, weightClass);
     if (!face) { return false; }

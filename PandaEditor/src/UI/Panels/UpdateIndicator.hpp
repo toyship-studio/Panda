@@ -5,11 +5,16 @@
 #include <memory>
 #include <string>
 
+namespace Panda {
+class EditorUpdater;
+}
+
 namespace Editor {
 
 // What the update indicator shows (context/infrastructure.md, section 5): the state of the
 // editor updater as one line. The same model drives the indicator of the toolbar and of the start
-// screen; the application layer builds it from the updater and hides it after a dismiss.
+// screen; it is made of the state of the updater (updateIndicatorModel) and is hidden after a
+// dismiss.
 enum class UpdateIndicatorKind {
     Hidden,
     Checking,
@@ -34,6 +39,9 @@ struct UpdateIndicatorModel {
         return !(*this == other);
     }
 };
+
+// What the indicator shows for the updater as it is now.
+UpdateIndicatorModel updateIndicatorModel(const Panda::EditorUpdater &updater);
 
 class UpdateIndicatorOutput {
 public:
