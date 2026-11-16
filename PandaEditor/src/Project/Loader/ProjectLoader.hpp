@@ -62,6 +62,15 @@ public:
     path_t scriptSource(const std::string &className);
     void closeProject();
     void createProject(const std::string &name, const path_t &path);
+    // The session of the open project (.Panda/session.json): the worlds are the documents' to
+    // say when it is written; what the Export window is set to is kept here as it is chosen.
+    const ProjectSession &projectSession() const {
+        return m_projectSession;
+    }
+    void setExportChoice(std::string target, std::string configuration) {
+        m_projectSession.exportTarget = std::move(target);
+        m_projectSession.exportConfiguration = std::move(configuration);
+    }
     const std::vector<RecentProject> &getRecentProjectsList();
     bool hasOpenedProject();
     const path_t &getOpenedProjectPath();

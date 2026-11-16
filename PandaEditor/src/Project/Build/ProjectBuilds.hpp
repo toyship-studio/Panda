@@ -74,18 +74,13 @@ public:
     static std::vector<ExportProjectTarget> exportTargets();
     static const char *exportTargetName(ExportProjectTarget target); // "macOS", "iOS Simulator", …
     static const char *exportIdeName(ExportProjectTarget target);    // "Xcode", "Visual Studio"
-    ExportProjectTarget exportTarget() const {
-        return m_exportTarget;
-    }
-    void setExportTarget(ExportProjectTarget target) {
-        m_exportTarget = target;
-    }
-    BuildConfig exportConfig() const {
-        return m_exportConfig;
-    }
-    void setExportConfig(BuildConfig config) {
-        m_exportConfig = config;
-    }
+    // The choice is a file: it is kept in the session of the project (ProjectSession), so a
+    // project is exported next time the way it was last. A target chosen on another machine is
+    // not one of this machine: the first of its own stands in.
+    ExportProjectTarget exportTarget() const;
+    void setExportTarget(ExportProjectTarget target);
+    BuildConfig exportConfig() const;
+    void setExportConfig(BuildConfig config);
 
     // A start while a build runs does nothing. An export cooks the data of the game first — on
     // the main thread, which stops the editor for its time, so it waits for the frame that shows
@@ -205,8 +200,6 @@ private:
     ScriptsBuildOutput *m_output = nullptr;
     std::shared_ptr<State> m_state = std::make_shared<State>();
     BuildConfig m_scriptsConfig = BuildConfig::Debug;
-    ExportProjectTarget m_exportTarget;
-    BuildConfig m_exportConfig = BuildConfig::Debug;
     uint32_t m_cookCount = 0;
     // An export that began and waits for its cook: the frames left before it (start).
     struct PendingExport {

@@ -11,6 +11,8 @@
 #include "UI/Widgets/BuildLogView.hpp"
 
 #include <PandaEditorKit/EditorHost.hpp>
+#include <PandaEditorKit/SettingsCommands.hpp>
+#include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Icons.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -274,19 +276,11 @@ ExportWindowView::ExportWindowView(Panda::EditorLayer &app, std::function<void()
 
 void ExportWindowView::buildChoices(View &parent) {
     // What: the game starts in the start world of the project and carries what it reaches. The
-    // choice is a setting of the project — changed where the settings are.
-    auto startRow = rowPanel(Spacing::lg);
-    m_startWorld = std::make_shared<Label>("");
-    m_startWorld->setAccessibilityId("startWorld");
-    m_startWorld->setFont(Typo::ValueSmall);
-    m_startWorld->setClipsToBounds(true);
-    m_startWorld->layout().setFlexShrink(1.f);
-    startRow->addSubview(m_startWorld);
-    auto change = makeButton("Change", ButtonStyle::Link, "changeStartWorld", "Settings, Project, World");
-    change->setSize(ButtonSize::Small);
-    change->setOnClick([](Button &) { editorHost().openSettings(Panda::SettingsScope::Project, "WORLD"); });
-    startRow->addSubview(change);
-    parent.addSubview(std::make_shared<PropertyRow>("Start World", startRow));
+    // choice is a setting of the project (Settings, Project, World) and is made here too: the
+    // well of the row is put in by syncChoices, with the world the setting names.
+    m_startWorld = clearPanel();
+    m_startWorld->layout().setFlexDirection(FlexDirection::Column);
+    parent.addSubview(std::make_shared<PropertyRow>("Start World", m_startWorld));
 
     // For what. The targets are the ones this machine can build.
     m_target = std::make_shared<SegmentedControl>();
@@ -298,10 +292,7 @@ void ExportWindowView::buildChoices(View &parent) {
         if (m_targets[i] == m_builds.exportTarget()) { chosen = static_cast<int>(i); }
     }
     m_target->setSegments(std::move(names));
-    if (!m_targets.empty()) {
-        m_builds.setExportTarget(m_targets[chosen]); // a target of another machine is not kept
-        m_target->setSelectedIndex(chosen);
-    }
+    if (!m_targets.empty()) { m_target->setSelectedIndex(chosen); }
     m_target->setOnSelectionChanged([this](SegmentedControl &target) {
         const int index = target.selectedIndex();
         if (index < 0 || index >= static_cast<int>(m_targets.size())) { return; }
@@ -321,24 +312,19 @@ void ExportWindowView::buildChoices(View &parent) {
     });
     parent.addSubview(std::make_shared<PropertyRow>("Configuration", m_config, false));
 
-    // The name, the icon and the signing of the game are files of its Export project.
-    auto applicationRow = rowPanel(Spacing::lg);
-    auto application = std::make_shared<Label>("Name, icon, signing: the Export project");
-    application->setFont(Typo::Caption);
-    application->setTextRole(TextRole::Dim);
-    applicationRow->addSubview(application);
-    auto showProject = makeButton("Show Folder", ButtonStyle::Link, "showExportProject", "The Export folder of the project");
+    // The Export project of the game — the cmake project the game is built from, with its name,
+    // its icon and its signing: a folder of files, shown where files are.
+    auto showProject = makeButton("Show in Folder", ButtonStyle::Link, "showExportProject", "The name, the icon, the signing of the game");
     showProject->setSize(ButtonSize::Small);
     showProject->setOnClick([this](Button &) { m_builds.showFolder(BuildTargetKind::Export); });
-    applicationRow->addSubview(showProject);
-    parent.addSubview(std::make_shared<PropertyRow>("Application", applicationRow));
+    parent.addSubview(std::make_shared<PropertyRow>("Export Project", showProject, false));
 }
 
 void ExportWindowView::buildActions(View &parent) {
     auto buttons = rowPanel(Spacing::md);
-    m_export = makeButton("Export", ButtonStyle::Accent, "export", "Cook the data, then build the game");
-    m_export->setOnClick([this](Button &) { m_builds.start(BuildTargetKind::Export, BuildAction::Build); });
-    buttons->addSubview(m_export);
+    m_build = makeButton("Build", ButtonStyle::Accent, "build", "Cook the data, then build the game");
+    m_build->setOnClick([this](Button &) { m_builds.start(BuildTargetKind::Export, BuildAction::Build); });
+    buttons->addSubview(m_build);
     m_openIde = makeButton("Open in Xcode", ButtonStyle::Neutral, "openIde", "Cook the data, then open the Export project");
     m_openIde->setOnClick([this](Button &) { m_builds.openExportProject(); });
     buttons->addSubview(m_openIde);
@@ -480,9 +466,22 @@ void ExportWindowView::syncChoices() {
                                             : std::string();
     if (!m_choicesShown || startWorld != m_shownStartWorld) {
         m_shownStartWorld = startWorld;
-        m_startWorld->setText(startWorld.empty() ? "Not chosen" : startWorld);
-        m_startWorld->setTextRole(startWorld.empty() ? TextRole::Muted : TextRole::Primary);
         m_shownActions = -1;
+        // The well of the world the setting names. A choice made in it is an edit of the project
+        // settings like one made on their page: project.json has it when it is saved.
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+        const uint32_t current =
+            handler && !startWorld.empty() ? static_cast<uint32_t>(handler->getAssetId(handler->getProjectPath() / startWorld)) : 0;
+        auto well = makeAssetWell("world", current, [this](uint32_t id) {
+            Panda::AssetHandlerEditor *assets = Panda::AssetHandlerEditor::current();
+            Panda::ProjectWorldSettings settings = m_app.documents().projectSettings().get<Panda::ProjectWorldSettings>();
+            settings.startWorld = assets && id ? assets->assetPath(Panda::AssetId(id)).generic_string() : std::string();
+            commitSettings<Panda::ProjectWorldSettings>(Panda::SettingsScope::Project, settings);
+        });
+        well->setAccessibilityId("startWorld");
+        m_startWorld->removeAllSubviews();
+        m_startWorld->addSubview(well);
+        setNeedsLayout();
     }
     m_choicesShown = true;
 
@@ -518,7 +517,9 @@ void ExportWindowView::syncChoices() {
         label->setFont(Typo::Caption);
         label->setTextColor(ThemeColor::warning);
         label->setNumberOfLines(0);
+        label->layout().setFlexGrow(1.f); // the width of the row: a long list of documents wraps, a short line does not
         label->layout().setFlexShrink(1.f);
+        label->layout().setFlexBasis(0.f);
         row->addSubview(label);
         if (unsaved && text.rfind("Not saved", 0) == 0) {
             auto save = makeButton("Save All", ButtonStyle::Link, "saveAll", "Save every document");
@@ -601,7 +602,7 @@ void ExportWindowView::syncRun() {
     const int actions = (canStart ? 1 : 0) | (exportRunning ? 2 : 0) | (static_cast<int>(m_builds.exportTarget()) << 2);
     if (actions == m_shownActions) { return; }
     m_shownActions = actions;
-    m_export->setEnabled(canStart);
+    m_build->setEnabled(canStart);
     m_openIde->setEnabled(canStart);
     m_cook->setEnabled(canStart);
     m_stop->setHidden(!exportRunning); // there while there is something to stop
@@ -625,7 +626,7 @@ void ExportWindowView::syncGame() {
     std::string title, detail;
     if (game.product.empty()) {
         title = "Not built";
-        detail = m_targets.empty() ? std::string() : "Export builds the game for " + what + ".";
+        detail = m_targets.empty() ? std::string() : what;
     } else {
         // A build writes the executable again: its time tells when the size is to be summed again.
         const std::filesystem::path &stamp = game.executable.empty() ? game.product : game.executable;

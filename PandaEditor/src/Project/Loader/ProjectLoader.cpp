@@ -441,7 +441,10 @@ void ProjectLoader::saveProject() {
     // project.json is written only when it is not newer than what the editor read: an edit made on
     // disk and not taken by Reload yet stays.
     m_documents.projectSettingsFile().saveUnasked();
-    m_projectSession = m_documents.session();
+    ProjectSession session = m_documents.session(); // the open worlds
+    session.exportTarget = m_projectSession.exportTarget;
+    session.exportConfiguration = m_projectSession.exportConfiguration;
+    m_projectSession = std::move(session);
     const path_t sessionPath = projectDataDirectory(projectPath()) / "session.json";
     if (!writeJson(sessionPath, m_jsonEncoder, m_projectSession)) {
         LOG_ERROR("The session of the project could not be written to %s.", sessionPath.string().c_str());

@@ -92,14 +92,20 @@ struct SessionWorld final : public Rain::Codable {
 
 // The session of the project — `.Panda/session.json`, not in version control: where the user
 // was. The worlds open at the end of the last session, in the order of their tabs (none — the
-// start world), and the one that was active.
+// project opens with no world), and the one that was active; what the Export window was last set to — the target
+// ("macos", "ios", "ios-device", "windows": the platform of its build folder) and the
+// configuration ("debug", "release"); empty — the defaults of the machine.
 struct ProjectSession final : public Rain::Codable {
     std::vector<SessionWorld> worlds;
     std::string activeWorld;
+    std::string exportTarget;
+    std::string exportConfiguration;
 
     RAIN_FIELDS_BEGIN(ProjectSession)
     RAIN_FIELD(worlds)
     RAIN_FIELD(activeWorld)
+    RAIN_FIELD(exportTarget)
+    RAIN_FIELD(exportConfiguration)
     RAIN_FIELDS_END
 };
 

@@ -629,10 +629,7 @@ namespace {
             data->startWorld = handler && id ? handler->assetPath(Panda::AssetId(id)).generic_string() : std::string();
             emit();
         });
-        section.addContent(makeFormHint(
-            "The world the game starts in: an export carries it and what it reaches. The editor opens it when the "
-            "project has no session."
-        ));
+        section.addContent(makeFormHint("The world the game starts in: an export carries it and what it reaches."));
     }
 
     // The module set of the project: every module of the distribution, on by default; an entry

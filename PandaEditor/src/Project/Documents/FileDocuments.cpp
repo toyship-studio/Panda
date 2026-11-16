@@ -281,19 +281,14 @@ void FileDocuments::openWorlds(const ProjectSession &session) {
         if (entry.path.empty() || !std::filesystem::exists(path)) { continue; }
         WorldFile *world = loadWorld(path);
         if (world == nullptr) { continue; }
-        world->setCamera(entry.camera);
+        // A session that names a world without a camera (the one a new project comes with, one
+        // written by hand): no rotation is not a pose, and the world gets the camera of a new one.
+        const auto &rotation = entry.camera.rotation;
+        if (rotation.x != 0.f || rotation.y != 0.f || rotation.z != 0.f || rotation.w != 0.f) { world->setCamera(entry.camera); }
         if (active == nullptr || entry.path == session.activeWorld) { active = world; }
     }
-    if (m_worlds.empty()) { // the session had nothing to open: the start world of the project
-        const std::string &startWorld = m_projectSettings.settings().get<ProjectWorldSettings>().startWorld;
-        const path_t startPath = startWorld.empty() ? path_t() : m_projectPath / startWorld;
-        if (!startPath.empty() && !std::filesystem::exists(startPath)) {
-            LOG_WARN_EDITOR("The start world of the project does not exist: %s (project.json, \"world\")", startWorld.c_str());
-        } else if (!startPath.empty()) {
-            active = loadWorld(startPath);
-        }
-    }
-    // A project with nothing to open shows no world: File → New → World makes one.
+    // A session with nothing to open shows no world: a world opens from the Content Browser,
+    // File → New → World makes one.
     if (active != nullptr) { showWorld(active); }
 }
 

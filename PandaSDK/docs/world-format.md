@@ -186,8 +186,8 @@ key whose type is absent (the module is not loaded) survives load and save as is
 
 `.Panda/project.json` is the project scope of the same settings model: one JSON object of
 sections by name, in version control. The core sections are `world` (`startWorld` — the world
-the game starts in, relative to the project with forward slashes; the editor opens it when the
-project has no session; see [Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
+the game starts in, relative to the project with forward slashes; see
+[Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
 features the project enables, see `shaders.md`; without the section every feature is on),
 `modules` (`entries: [{id, version, enabled}]` — the module set, an entry with `enabled: false`
 switches a module of the distribution off; an empty list enables all) and `mcp` (`enabled`,
@@ -196,8 +196,9 @@ of their own; a section whose module is absent is preserved.
 
 `.Panda/session.json` is the state of the last editor session (`worlds`: the world files that
 were open, in tab order, each with the pose of the editor camera; `activeWorld`: the one that
-was in front); it is not in version control and may be deleted at any time — the project then
-opens its start world.
+was in front; `exportTarget` and `exportConfiguration`: what the Export window was last set
+to); it is not in version control and may be deleted at any time — the project then opens
+with no world, and you open one from the Content Browser.
 
 The editor's own settings (`settings.json`, the editor scope: the viewport display options, the
 theme, the sections of the modules) and its session live in the user data directory, not in the

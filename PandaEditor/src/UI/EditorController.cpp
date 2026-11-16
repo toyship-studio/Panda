@@ -853,9 +853,13 @@ void EditorController::commitSettings(Panda::SettingsScope scope, Foundation::Sh
             return;
         }
         case Panda::SettingsScope::Project: {
-            // An undo step of the project settings page of the Settings window (the only place that
-            // edits the scope); without the window — applied as is.
-            if (!m_settings->commitProjectSettings(command)) { command->execute(); }
+            // An undo step of the project settings page while the Settings window is open; an edit
+            // made elsewhere (the start world chosen in the Export window) is applied as it is.
+            // Either way project.json has an edit to save.
+            if (!m_settings->commitProjectSettings(command)) {
+                command->execute();
+                m_app.documents().projectSettingsFile().markEdited();
+            }
             return;
         }
         case Panda::SettingsScope::Editor: {

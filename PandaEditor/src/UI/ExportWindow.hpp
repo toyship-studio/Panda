@@ -23,7 +23,7 @@ class BuildLogView;
 // The content of the Export window (a second window of the editor, like Settings): the export of
 // the game from the first choice to the game itself, top to bottom in the order of doing.
 // What is exported — the start world of the project; for what — the target and the configuration;
-// what stands in the way — unsaved documents, no start world; the action — Export (the cook,
+// what stands in the way — unsaved documents, no start world; the action — Build (the cook,
 // cmake, the build), or only a part of it; how it goes — the three steps and the output; what
 // came of it — the game (Show, Run), what its pack holds, what the cook left out of it.
 //
@@ -87,11 +87,11 @@ private:
     Tab m_tab = Tab::Result;
     std::vector<LeftOut> m_leftOut; // as the Left Out tab lists them
 
-    std::shared_ptr<PandaUI::Label> m_startWorld;
+    std::shared_ptr<PandaUI::Panel> m_startWorld; // holds the well of the start world
     std::shared_ptr<PandaUI::SegmentedControl> m_target;
     std::shared_ptr<PandaUI::SegmentedControl> m_config;
     std::shared_ptr<PandaUI::Panel> m_notices;
-    std::shared_ptr<PandaUI::Button> m_export;
+    std::shared_ptr<PandaUI::Button> m_build;
     std::shared_ptr<PandaUI::Button> m_openIde;
     std::shared_ptr<PandaUI::Button> m_cook;
     std::shared_ptr<PandaUI::Button> m_stop;

@@ -36,17 +36,39 @@ namespace {
         return config == BuildConfig::Debug ? "cmake-build-debug" : "cmake-build-release";
     }
 
+    // The targets of the machine the editor runs on: an Xcode project is made on a Mac, a Visual
+    // Studio one on Windows.
+    constexpr ExportProjectTarget HOST_EXPORT_TARGETS[] = {
+#if defined(PLATFORM_MACOS)
+        ExportProjectTarget::XcodeMacOS,
+        ExportProjectTarget::XcodeIOSSimulator,
+        ExportProjectTarget::XcodeIOSDevice,
+#elif defined(PLATFORM_WINDOWS)
+        ExportProjectTarget::VisualStudioWindows,
+#else
+        ExportProjectTarget::XcodeMacOS, // nothing is exported here: exportTargets() is empty
+#endif
+    };
+
+    // The platform of a target as the files name it: the build folder, the session of the project.
+    const char *exportPlatformName(ExportProjectTarget target) {
+        switch (target) {
+            case ExportProjectTarget::XcodeMacOS: return "macos";
+            case ExportProjectTarget::XcodeIOSSimulator: return "ios";
+            case ExportProjectTarget::XcodeIOSDevice: return "ios-device";
+            case ExportProjectTarget::VisualStudioWindows: return "windows";
+        }
+        return "macos";
+    }
+
+    const char *exportConfigurationName(BuildConfig config) {
+        return config == BuildConfig::Debug ? "debug" : "release";
+    }
+
     // Export/build/<name>: the platform and the configuration, the names the shell scripts of a
     // project use too (configure_export.sh macos-release).
     std::string exportBuildDirectoryName(ExportProjectTarget target, BuildConfig config) {
-        const char *platform = "macos";
-        switch (target) {
-            case ExportProjectTarget::XcodeMacOS: platform = "macos"; break;
-            case ExportProjectTarget::XcodeIOSSimulator: platform = "ios"; break;
-            case ExportProjectTarget::XcodeIOSDevice: platform = "ios-device"; break;
-            case ExportProjectTarget::VisualStudioWindows: platform = "windows"; break;
-        }
-        return std::string(platform) + (config == BuildConfig::Debug ? "-debug" : "-release");
+        return std::string(exportPlatformName(target)) + "-" + exportConfigurationName(config);
     }
 
     // The configuration of the Export project, as Xcode and Visual Studio name it.
@@ -118,22 +140,35 @@ void ProjectBuilds::State::pushLine(std::string line) {
 ProjectBuilds::ProjectBuilds(ProjectLoader &project, FileDocuments &documents, std::function<void()> scriptsBuilt)
     : m_project(project)
     , m_documents(documents)
-    , m_scriptsBuilt(std::move(scriptsBuilt))
-#ifdef PLATFORM_WINDOWS
-    , m_exportTarget(ExportProjectTarget::VisualStudioWindows)
-#else
-    , m_exportTarget(ExportProjectTarget::XcodeMacOS)
-#endif
-{}
+    , m_scriptsBuilt(std::move(scriptsBuilt)) {}
 
 std::vector<ExportProjectTarget> ProjectBuilds::exportTargets() {
-#if defined(PLATFORM_MACOS)
-    return {ExportProjectTarget::XcodeMacOS, ExportProjectTarget::XcodeIOSSimulator, ExportProjectTarget::XcodeIOSDevice};
-#elif defined(PLATFORM_WINDOWS)
-    return {ExportProjectTarget::VisualStudioWindows};
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_WINDOWS)
+    return {std::begin(HOST_EXPORT_TARGETS), std::end(HOST_EXPORT_TARGETS)};
 #else
     return {};
 #endif
+}
+
+ExportProjectTarget ProjectBuilds::exportTarget() const {
+    const std::string &chosen = m_project.projectSession().exportTarget;
+    for (ExportProjectTarget target : HOST_EXPORT_TARGETS) {
+        if (chosen == exportPlatformName(target)) { return target; }
+    }
+    return HOST_EXPORT_TARGETS[0]; // not chosen yet, or chosen on another machine
+}
+
+void ProjectBuilds::setExportTarget(ExportProjectTarget target) {
+    m_project.setExportChoice(exportPlatformName(target), m_project.projectSession().exportConfiguration);
+}
+
+BuildConfig ProjectBuilds::exportConfig() const {
+    return m_project.projectSession().exportConfiguration == exportConfigurationName(BuildConfig::Release) ? BuildConfig::Release
+                                                                                                         : BuildConfig::Debug;
+}
+
+void ProjectBuilds::setExportConfig(BuildConfig config) {
+    m_project.setExportChoice(m_project.projectSession().exportTarget, exportConfigurationName(config));
 }
 
 const char *ProjectBuilds::exportTargetName(ExportProjectTarget target) {
@@ -177,7 +212,7 @@ path_t ProjectBuilds::folder(BuildTargetKind kind) {
 
 path_t ProjectBuilds::buildFolder(BuildTargetKind kind) {
     return kind == BuildTargetKind::Export
-               ? folder(kind) / "build" / exportBuildDirectoryName(m_exportTarget, m_exportConfig)
+               ? folder(kind) / "build" / exportBuildDirectoryName(exportTarget(), exportConfig())
                : folder(kind) / scriptsBuildDirectoryName(m_scriptsConfig);
 }
 
@@ -416,7 +451,7 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
             arguments.insert(arguments.end(), toolchain->scriptsArguments.begin(), toolchain->scriptsArguments.end());
         } else {
             arguments =
-                exportConfigureArguments(m_exportTarget, projectDirectory, buildDirectory, toolchain->sdkConfigDirectory);
+                exportConfigureArguments(exportTarget(), projectDirectory, buildDirectory, toolchain->sdkConfigDirectory);
         }
         steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
         if (scripts) { steps.push_back(stampStep(buildDirectory, signature)); }
@@ -427,16 +462,16 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
         // at the build.
         if (!scripts) {
             steps.push_back(exportStepMark(ExportStep::Build));
-            arguments.insert(arguments.end(), {"--config", exportConfigName(m_exportConfig)});
+            arguments.insert(arguments.end(), {"--config", exportConfigName(exportConfig())});
         }
         arguments.insert(arguments.end(), {"-j", jobsArgument()});
         steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
     }
     if (openWhenConfigured) {
-        m_openWhenConfigured = OpenRequest{buildDirectory, m_exportTarget};
+        m_openWhenConfigured = OpenRequest{buildDirectory, exportTarget()};
         LOG_INFO_EDITOR(
             "Configuring the Export project (%s): the project opens when cmake is done.",
-            exportBuildDirectoryName(m_exportTarget, m_exportConfig).c_str()
+            exportBuildDirectoryName(exportTarget(), exportConfig()).c_str()
         );
     }
     run(std::move(steps));
@@ -607,10 +642,10 @@ ProjectBuilds::BuiltGame ProjectBuilds::builtGame() {
     if (!m_project.hasOpenedProject()) { return game; }
     const std::string name = m_project.getOpenedProjectPath().filename().string();
     const path_t tree = buildFolder(BuildTargetKind::Export);
-    const std::string config = exportConfigName(m_exportConfig);
+    const std::string config = exportConfigName(exportConfig());
     // Where Xcode and Visual Studio put what they build: <tree>/<configuration>[-<sdk>]/.
     path_t executable;
-    switch (m_exportTarget) {
+    switch (exportTarget()) {
         case ExportProjectTarget::XcodeMacOS:
             game.product = tree / config / (name + ".app");
             executable = game.product / "Contents" / "MacOS" / name;

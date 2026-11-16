@@ -88,14 +88,17 @@ and background jobs (`PandaAsync`).
 
 - A project contains no absolute paths. `.Panda/project.json` is the project scope of the
   settings model (`context/plugins.md`, the `settings` registry): sections by name, the core's
-  `world` (`ProjectWorldSettings.startWorld`: the world the game starts in, and the one the
-  editor opens when the project has no session) and `modules` (`ProjectModuleSettings`),
+  `world` (`ProjectWorldSettings.startWorld`: the world the game starts in) and `modules`
+  (`ProjectModuleSettings`),
   the sections of modules after them
   (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
-  of the editor camera in each, and the one that was active) is `.Panda/session.json`,
-  outside version control. A project opens the worlds of its session, else its start world,
-  else a new world. The editor's own files are in the user data directory
+  of the editor camera in each, the one that was active, and what the Export window was last
+  set to) is `.Panda/session.json`, outside version control. A project opens the worlds of its
+  session and nothing else: a session that names none — the last tab was closed — or no session
+  at all (a fresh checkout) opens the editor with no world. A new project comes with a session
+  that names its world (`ProjectCreator` writes it). An entry without a camera gets the camera
+  of a new world. The editor's own files are in the user data directory
   (`SystemTools::userDataDirectory()`): `settings.json`, the editor scope (`viewport`,
   `appearance`, the sections of modules), written on every change, and `session.json` (recent
   projects, the window, the dock layout: the panels and their docks, the split weights, the active
@@ -287,7 +290,7 @@ the project from its file). Opening a world (`openWorld`) adds it next
 to the open ones and drops nothing, so there is no unsaved-changes question. `newWorld` adds a
 world with the starter content (not an edit: the world is clean until it is touched);
 `closeWorld` drops one — its neighbor becomes the active one, and after the last world none
-is. A project opens with the worlds of its session, else with its start world, else with none.
+is. A project opens with the worlds of its session, and with none when the session names none.
 With no world open the center of the editor is empty but for a quiet "+" (New World, the
 panels), the Hierarchy says so, Play is off, and the panels have no world to read
 (`EditorController::setActiveWorld(nullptr)`); the engine side of the editor points at an empty
@@ -454,7 +457,10 @@ going with it, not blocking it) with a UI tree of its own — `EditorUI::openAux
 gives it a `PandaUI::Context` over the renderer, the fonts and the theme of the chrome, drawn
 into the graphics context of that window through a Miren view of its own (a pass of the frame
 with that context for a target); the events of Fern carry their window, and each context
-takes its own. `Editor::SettingsWindow` (`UI/SettingsWindow`) builds the content and owns the
+takes its own. The host puts the content of every window of the editor — the main one with the
+editor or the start screen, the second one — into a frame one point wide, of the color of the
+lines between the panels (`framed` in `EditorUI.cpp`): a window has the color of what is behind
+it and would not be told from it. `Editor::SettingsWindow` (`UI/SettingsWindow`) builds the content and owns the
 three documents while the window is open (`show(page)`); the window is closed by its button, by
 Escape and with the project. The project settings page is the document of `project.json` (its
 own undo stack, dirty until saved): a footer with Save and Revert appears while it has unsaved
@@ -1179,15 +1185,25 @@ done now and then, with choices before it and a result after it: it has a window
   Configure followed by opening what cmake generated in its IDE.
 - **The Export window** (`UI/ExportWindow`; File → Export Game, the button of the toolbar, the
   command `export.open`) is the whole scenario in the order of doing: what is exported (the start
-  world, a setting of the project — the window shows it and leads to it), for what (the target,
-  Debug / Release), what stands in the way (unsaved documents with Save All, no start world), the
-  action (Export; Open in Xcode / Visual Studio; Cook Only), how it goes (the three steps, the
+  world: a setting of the project, chosen here as on its page of the settings — an edit of
+  `project.json`, in the game when it is saved), for what (the target, Debug / Release), the
+  Export project (shown in its folder: the name, the icon and the signing of the game are its
+  files), what stands in the way (unsaved documents with Save All, no start world), the
+  action (Build; Open in Xcode / Visual Studio; Cook Only), how it goes (the three steps, the
   output), what came of it (the game with Show in Folder and Run, what the pack holds by kind,
   the assets the cook left out — a row shows its asset in the Content Browser). The window keeps
   nothing of its own: every frame it shows what the builds and the files say — the run
   (`kind`, `action`, `lastResult`, `lastOutput`, `exportStep`), the built game on disk,
   `report.json` of the last cook (read again when `cookCount` changes). So it can be closed while
-  an export runs and opened again, also in another session.
+  an export runs and opened again, also in another session. What it is set to is a file too:
+  the target and the configuration are fields of the session of the project
+  (`ProjectSession::exportTarget`, `exportConfiguration`; `ProjectBuilds::exportTarget()` reads
+  them) — of the session and not of `project.json`, because the target is the machine's: a
+  project exported on a Mac for macOS is exported on Windows for Windows. The export is not a
+  page of the Settings window, though both are the second window: Settings are forms over the
+  files of settings, and the export is an action with a run and a result; what configures a game
+  for good already has its files — the start world in `project.json`, the name, the icon and
+  the signing in the Export project.
 - What is wrong before the first step — no cmake, no SDK, no project, a compiler of the toolchain
   that is not there, no start world to cook — is a line of the panel and a failed build; the log of the
   editor (the Output panel) says it too. A step that fails leaves one line in the log pointing at

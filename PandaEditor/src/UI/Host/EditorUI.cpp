@@ -26,6 +26,23 @@ namespace {
 } // namespace
 
 namespace {
+    // The content of a window of the editor in a frame one point wide, of the color of the lines
+    // between its panels: where the window ends is seen whatever stands behind it — the desktop,
+    // another window of the editor of the same color. The frame is a view around the content, not
+    // a border of the content: a part that reaches the edge (a dock, the list of the Settings
+    // pages) would cover its own border.
+    std::shared_ptr<PandaUI::View> framed(std::shared_ptr<PandaUI::View> content) {
+        auto frame = std::make_shared<PandaUI::Panel>();
+        frame->setBackgroundColor(PandaUI::ThemeColor::border);
+        frame->layout().setFlexDirection(PandaUI::FlexDirection::Column);
+        frame->layout().setWidth(PandaUI::Length::percent(100.f));
+        frame->layout().setHeight(PandaUI::Length::percent(100.f));
+        frame->layout().setPadding(1.f);
+        content->layout().setFlexGrow(1.f);
+        frame->addSubview(std::move(content));
+        return frame;
+    }
+
     // The whole window in pixels, as a view of the frame being built.
     Miren::ViewDescription windowView(Fern::Window *window, Fern::GraphicsContext *graphics) {
         const Fern::Size size = window->getSize();
@@ -62,7 +79,7 @@ void EditorUI::shutdown() {
 }
 
 void EditorUI::setRootView(std::shared_ptr<PandaUI::View> view) {
-    m_context.setRootView(std::move(view));
+    m_context.setRootView(view ? framed(std::move(view)) : nullptr);
 }
 
 void EditorUI::update(double deltaTime) {
@@ -87,7 +104,7 @@ PandaUI::Context *EditorUI::openAuxiliaryWindow(const char *title, PandaUI::Size
     m_auxiliary->window = window;
     m_auxiliary->platform.init(window, m_auxiliary->context);
     bindFonts(m_auxiliary->context);
-    m_auxiliary->context.setRootView(std::move(root));
+    m_auxiliary->context.setRootView(framed(std::move(root)));
     return &m_auxiliary->context;
 }
 

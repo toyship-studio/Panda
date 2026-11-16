@@ -1,6 +1,10 @@
 #include "ProjectCreator.hpp"
 #include "PandaSdkLocator.hpp"
 
+#include "Project/Settings/ProjectSettings.hpp"
+
+#include <Rain/Coders/JsonEncoder.hpp>
+
 #include <Fern/Fern.hpp>
 #include <filesystem>
 #include <fstream>
@@ -205,6 +209,23 @@ void createRuntimeCookedDirectories(const path_t &projectPath) {
     std::filesystem::create_directories(runtimeDataPath / "Meshes");
 }
 
+// The session of a new project names the world it comes with (the one its project.json starts
+// the game in). The editor opens the worlds of the session of a project and nothing else, so
+// without the file a project that was just made would show no world. The template cannot carry
+// it: the .gitignore a project gets from the template ignores the session.
+void createSession(const path_t &projectPath) {
+    const char *world = "Assets/world.world";
+    ProjectSession session;
+    session.worlds.push_back({});
+    session.worlds.back().path = world;
+    session.activeWorld = world;
+    std::ofstream file(projectPath / ".Panda" / "session.json", std::ios::trunc);
+    if (!file.is_open()) { return; } // the project opens with no world
+    Rain::JsonEncoder jsonEncoder(true);
+    Rain::Encoder *encoder = &jsonEncoder;
+    encoder->encode(file, session);
+}
+
 void ProjectCreator::createProject(const std::string &name, const Panda::path_t &path) {
     std::filesystem::create_directories(path);
 
@@ -222,6 +243,7 @@ void ProjectCreator::createProject(const std::string &name, const Panda::path_t 
 
     createZedTasks(name, path);
     createRuntimeCookedDirectories(path);
+    createSession(path);
 }
 
 } // namespace Panda

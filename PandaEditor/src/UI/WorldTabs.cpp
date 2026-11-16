@@ -63,7 +63,7 @@ public:
         return file ? file->name() : "World";
     }
     std::string icon() override {
-        return Ic::PanelViewport;
+        return Ic::AssetWorld; // the file the tab edits: the icon of a world in the Content Browser
     }
     std::shared_ptr<PandaUI::View> view() override {
         return m_host;

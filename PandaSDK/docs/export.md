@@ -6,15 +6,17 @@ Studio project made by cmake) and the **cooked data** it is built with
 
 ## The steps
 
-1. Choose the world the game starts in: **Settings → Project → World → Start World**
-   (`"world".startWorld` of `.Panda/project.json`).
-2. Save (**Save All**). The game is made from the files of the project: an edit that is not saved
-   is not in it, and the cook tells you which documents those are.
-3. Open **File → Export Game** (the export button of the toolbar opens the same window). Choose
-   the target — the platforms this machine can build — and Debug or Release, and press
-   **Export**: the editor cooks the data, configures the Export project and builds the game. The
-   window shows the three steps and what cmake says.
-4. When it is done, the window shows the game: **Show in Folder** opens the folder it is in,
+1. Open **File → Export Game** (the export button of the toolbar opens the same window).
+2. Choose what is exported: the world the game starts in — the **Start World** row; it is the
+   same setting as **Settings → Project → World** (`"world".startWorld` of
+   `.Panda/project.json`) — the target, which is one of the platforms this machine can build,
+   and Debug or Release. The target and the configuration are remembered with the project
+   (`.Panda/session.json`).
+3. Save. The game is made from the files of the project: an edit that is not saved is not in
+   it. The window names the documents that are not saved and has **Save All** next to them.
+4. Press **Build**: the editor cooks the data, configures the Export project and builds the
+   game. The window shows the three steps and what cmake says.
+5. When it is done, the window shows the game: **Show in Folder** opens the folder it is in,
    **Run** starts it. The build folder is `Export/build/<platform>-<debug|release>`
    (`macos-release`, `ios-device-debug`, `windows-debug`).
 
@@ -23,8 +25,8 @@ on Windows): the editor cooks the data, configures the project and opens it in t
 Only** makes the data alone, to see what the game would carry without building it.
 
 The name of the game, its icon, its bundle identifier and its signing are files of the Export
-project (`Export/CMakeLists.txt`, `Export/native/`): the Application row of the window shows the
-folder. Release means the code of your game — the scripts and the modules — is built optimized;
+project (`Export/CMakeLists.txt`, `Export/native/`): the Export Project row of the window shows
+the folder. Release means the code of your game — the scripts and the modules — is built optimized;
 the engine libraries are the ones the SDK ships.
 
 From a terminal the same build is `Scripts/<Project>/scripts/configure_export.sh <target>` and
