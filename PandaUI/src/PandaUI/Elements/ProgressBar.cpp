@@ -1,4 +1,5 @@
 #include "PandaUI/Elements/ProgressBar.hpp"
+#include <cstdio>
 
 #include "PandaUI/Core/Theme.hpp"
 #include "PandaUI/Rendering/UIRenderer.hpp"
@@ -112,6 +113,19 @@ void ProgressBar::draw(float offsetX, float offsetY) {
 
 void ProgressBar::themeChanged() {
     setNeedsDisplay(); // the tokens resolve at draw
+}
+
+
+void ProgressBar::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "progress";
+    if (m_indeterminate) {
+        accessibility.value = "indeterminate";
+    } else {
+        char buffer[32];
+        std::snprintf(buffer, sizeof(buffer), "%g", m_progress);
+        accessibility.value = buffer;
+    }
+    accessibility.atomic = true;
 }
 
 } // namespace PandaUI

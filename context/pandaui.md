@@ -98,6 +98,47 @@ height 24), not from `layout().setHeight`: fields that do not fit a forced heigh
 header box. A single-line `Label` is centered vertically even when the box is lower than the line
 (clamping to the top is kept for multiline text only).
 
+## Elements: what a UI test sees
+
+A UI test does not look at a picture and does not click at coordinates: it finds a control by
+what it is and reads what it shows. PandaUI gives that the way UIKit does — an identifier, a
+label, a value and the traits — and nothing of it costs a view that is not asked.
+
+- **What a view says about itself** (`Core/Accessibility.hpp`). `View::describeAccessibility`
+  fills a `role` ("button", "textField", "toggle", "property", "section", "tab", "row", "cell",
+  "menuItem", "dialog", …), a `label` (the text it shows: the title of a button, of a row; a
+  button of an icon alone goes by its tooltip), a `value` (the text of a field, "on" / "off",
+  "expanded" / "collapsed", the number of rows of a tree), `selected`, and `atomic` — its subviews
+  are its parts (the title of a button), not elements of their own. Every control of the library
+  describes itself; a new control overrides the one method. A view without a role is a plain
+  container and is not an element.
+- **The id** (`View::setAccessibilityId`) is the `accessibilityIdentifier` of UIKit: a name the
+  code that builds a screen gives a view, shown nowhere. It is for what a label cannot tell
+  apart or does not name: the three fields of a vector ("X", "Y", "Z"), a panel, a row whose
+  label is a number. A view that was only given an id is an element of the role "view".
+- **The tree** (`Runtime/AccessibilityTree.hpp`). `accessibilityTree(context)` is a snapshot of
+  everything the context shows, the lowest layer first (`Context::layers`: the root, the
+  overlays — popups, menus, modals — the tooltip). Plain containers are not in it: the elements
+  inside one stand in its place. An element carries its frame and the part of it a press can
+  reach (`visible`: what the frames of the views above leave — the rule of `View::hitTest`).
+  Hidden views are not elements.
+- **A path** names elements in a tree (`findAccessibilityElements`): segments separated by "/",
+  each one an element inside the one before it at any depth. A segment is an id; where nothing
+  there has such an id, a label; else a role. An element inside another one the same segment
+  names is the same thing said twice (the title label of a row) — the outer one counts.
+  `role:name` and `name[2]` tell apart what a name alone does not. A path that names nothing
+  comes back with how far it got and where the next segment was looked for, so the caller can
+  say what is there.
+- **Rows made on demand.** `TreeView` and `CollectionView` make only the rows in sight and reuse
+  them, so a row is named by the data, not by the view: `titleForItem` of the data source is the
+  label of the row that shows the item, and `View::revealAccessibilityElement(name)` scrolls to
+  an item that has no row yet. `ScrollView::scrollToVisible` brings a view of its content into
+  sight. A caller that wants to press an element reveals it, waits for it to stand still, and
+  asks `Context::viewAt` whether the press reaches it.
+- The library only describes. Who reads the description is outside: the editor's MCP server
+  answers with the tree and plays gestures at elements (`context/architecture.md`, "Editor: the
+  MCP server"). Nothing hands it to the assistive technology of a system yet.
+
 ## Integration
 
 - PandaUI knows neither Fern nor Miren; the engine joins them once, for every host of a context
@@ -126,5 +167,6 @@ header box. A single-line `Label` is centered vertically even when the box is lo
 ## Open items
 
 Anti-aliasing of fills and lines; scrolling of tall modal content (the content is squeezed into
-the window today); virtualization of `ListView`; clipboard and IME basics and accessibility
-basics (see `context/roadmap.md`).
+the window today); virtualization of `ListView`; clipboard and IME basics; accessibility for
+people — the elements exist ("Elements: what a UI test sees"), a bridge to the screen reader of a
+system does not (see `context/roadmap.md`).

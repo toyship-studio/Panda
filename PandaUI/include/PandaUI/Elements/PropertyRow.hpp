@@ -89,6 +89,11 @@ public:
     // The label starts this far to the right, the editors stay in their column: a row that
     // belongs to the one above it (the parameters of an effect under its toggle).
     void setIndent(float indent);
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "property";
+        accessibility.label = m_title;
+        if (m_mixed) { accessibility.value = "mixed"; }
+    }
 
     bool pointerDown(PointerEvent &event) override;
     bool pointerMove(PointerEvent &event) override;

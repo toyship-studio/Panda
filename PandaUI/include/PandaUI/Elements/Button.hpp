@@ -89,6 +89,7 @@ public:
     bool isPressed() const {
         return isHighlighted();
     }
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     void performPrimaryAction() override;

@@ -89,6 +89,9 @@ public:
     void scrollIndexIntoView(int index);
 
     bool keyDown(KeyEvent &event) override; // ↑/↓ — change the selection (when the list is focused)
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "list";
+    }
 
 protected:
     void focusChanged(bool focused) override; // active/inactive selection color

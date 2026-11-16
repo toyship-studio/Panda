@@ -70,6 +70,11 @@ public:
     void setOnSelectionChanged(SelectionChangedCallback callback);
 
     bool keyDown(KeyEvent &event) override; // open: ↑/↓ highlight, Enter — select, Esc — close; closed: ↑/↓ change the selection, Enter — open
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "combobox";
+        accessibility.value = selectedText();
+        accessibility.atomic = true;
+    }
 
 private:
     void performPrimaryAction() override;

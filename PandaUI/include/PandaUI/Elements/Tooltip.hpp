@@ -30,6 +30,9 @@ public:
     Tooltip(std::string text, Rect anchor);
 
     static TooltipAppearance &defaultAppearance(); // Appearance.hpp
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "tooltip";
+    }
 
 private:
     void viewDidCalculateLayout() override;

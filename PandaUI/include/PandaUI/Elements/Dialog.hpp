@@ -62,6 +62,7 @@ public:
 
     std::shared_ptr<Button>
     addAction(std::string title, DialogActionRole role, std::function<void()> handler = nullptr);
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     bool keyDown(KeyEvent &event) override;

@@ -164,6 +164,7 @@ Vector3Field::Vector3Field()
         field->setOnValueChanged([this](NumberField &) {
             if (m_onValueChanged) { m_onValueChanged(*this); }
         });
+        field->setAccessibilityId(AXIS_LETTERS[i]);
 
         // The axis letter is an overlay inside the field (on top of the inner TextField).
         auto axis = std::make_shared<AxisLabel>(AXIS_LETTERS[i], axisColors[i], field.get());

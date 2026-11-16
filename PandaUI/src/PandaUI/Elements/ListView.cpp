@@ -42,6 +42,12 @@ public:
         applyStyle();
     }
 
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "row";
+        if (m_label) { accessibility.label = m_label->getText(); }
+        accessibility.selected = m_selected;
+    }
+
 protected:
     bool pointerDown(PointerEvent &event) override {
         // The "multiple selection" modifier (⌘ on macOS / Ctrl on Win/Linux) is remembered on

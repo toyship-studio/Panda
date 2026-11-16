@@ -265,6 +265,10 @@ void EditorController::setActiveWorld(Panda::World *world) {
     if (m_worldSettingsView) { m_worldSettingsView->setStore(world ? &world->context() : nullptr); }
     m_lastStructureVersion = world ? world->getStructureVersion() : 0;
     m_hierarchyView->setWorld(world); // rereads the tree from World
+    // The forms of the entities follow the world: Play and Stop put another world under the open
+    // tabs — the same ids, other entities. A form left on the entities of the world that went
+    // shows what is no more and edits nothing.
+    if (m_editorTabs) { m_editorTabs->refreshEntityForms(); }
     refreshStatistics();
     selectionChanged();
 }
@@ -539,6 +543,13 @@ void EditorController::buildLayout() {
                       /*open*/ true, /*inStrip*/ false});
     panels.push_back({"profiler", "Profiler", Ic::PanelProfiler, m_profilerView, Dock::Bottom,
                       /*open*/ true, /*inStrip*/ false});
+
+    // What a UI test finds the parts of the window by (PandaUI/Core/Accessibility.hpp): a panel
+    // by its id, the same one `show` of the MCP server takes.
+    for (const DockPanel &panel : panels) { panel.content->setAccessibilityId(panel.id); }
+    m_toolbarView->setAccessibilityId("toolbar");
+    m_viewportView->setAccessibilityId("viewport");
+    m_gameView->setAccessibilityId("game");
 
     m_dockManager = std::make_unique<DockManager>(m_toolbarView, centerTabs, std::move(panels));
     m_editorTabs = std::make_unique<EditorTabs>(m_dockManager.get(), this);

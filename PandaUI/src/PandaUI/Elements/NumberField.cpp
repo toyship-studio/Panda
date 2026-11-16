@@ -166,4 +166,11 @@ void NumberField::syncText() {
     m_field->setText(buffer); // a programmatic setText does not trigger onTextChanged
 }
 
+
+void NumberField::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "numberField";
+    accessibility.value = m_mixed ? "mixed" : m_field->getText();
+    accessibility.atomic = true;
+}
+
 } // namespace PandaUI

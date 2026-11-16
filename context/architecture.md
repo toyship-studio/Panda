@@ -1204,7 +1204,7 @@ second way to do what a text file already does. The user-facing page is
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
   `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
-  `open_project`, `show`, `command`, `pointer`, `key`, `restart`, `quit`. `build` starts a build
+  `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `restart`, `quit`. `build` starts a build
   of the project (`ProjectBuilds::start`) and answers when it has ended with what cmake said
   (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
   answer, where the CMake panel alone would have them. `export` is the game as it will ship:
@@ -1225,11 +1225,30 @@ second way to do what a text file already does. The user-facing page is
   presses what it sees. A gesture is a list of steps played one a frame into the UI context of
   the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIFernHost` puts
   the events of the window), so a hover is a frame older than the press that follows it, as with
-  a hand. The coordinates are those of a `window` screenshot. While a gesture plays, the real
-  mouse is not heard (`EditorUI::setPointerOverridden`). The answer names the views under the
-  pointer from the innermost out, the cursor and the view in focus — state a picture does not
-  show. What reads the device instead of the events (the gizmo, the fly camera) does not follow.
-  This is still not a way to edit a project: the files are.
+  a hand. While a gesture plays, the real mouse is not heard (`EditorUI::setPointerOverridden`).
+  The Scene follows too: its surface is a view that collects the pointer for the gizmo, the
+  tools and the camera (`ViewportView`). This is still not a way to edit a project: the files
+  are.
+- `ui` is the same window as elements instead of pixels (`context/pandaui.md`, "Elements: what a
+  UI test sees"): what every control is, the id it was given, the label it shows, the value it
+  holds, its frame in the coordinates of a `window` screenshot. A `path` names elements, and
+  `pointer` and `key` take the same path as `target` in place of a point. The place of a
+  gesture is then found anew every frame until it is good (`EditorMcp::resolveTarget`): the
+  path names exactly one element, the element is enabled, a row a tree has not made yet is
+  asked for, the scroll views around it bring it into sight, it stands in the same place two
+  frames in a row (a section that opens moves what is in it), and the press reaches it
+  (`Context::viewAt`) — else the call fails after its `wait` and says why: nothing by that name
+  and what is there instead, several by that name, disabled, covered by a dialog. A click never
+  lands on something else. `ui` waits the same way for what it is asked about (`gone`, `count`,
+  `value`, `label`), so a script that drives the editor has no pauses in it. The parts of the
+  editor carry ids for this: a panel its dock id (`hierarchy`, `contentBrowser`), the form of an
+  entity `inspector`, its sections the names of their components, a field of a script the name
+  of the field in the class, the buttons of the toolbar what they do (`play`, `undo`).
+- A UI test of the editor is a client of these three tools and nothing more — the editor has no
+  test code in it. A test starts the editor on a copy of a project (`--unattended`, `--user-data`
+  and `--mcp` below), uses it by paths, and checks what the editor shows (the elements) and what
+  it writes (the files of the copy: the contract of a project is its files). The tests and what
+  runs them live with the project they run on, outside this repository.
 - `reload` with `discard` is "the disk wins": `EditorLayer::revertUnsaved` rereads every
   document that has unsaved edits, then the reload proper takes what changed on disk. Without it
   a reload only reads the files that changed, and a file that changed under unsaved edits is a
@@ -1266,6 +1285,14 @@ second way to do what a text file already does. The user-facing page is
   the plugins of the instance into that folder instead of the folder of the system, so the
   layout and the settings of the user stay as they are and a comparison of pictures does not
   depend on what the user did in between; a restart carries the flag over.
+- `--unattended` (`EditorLaunch::unattended`) is an editor nobody sits at, for its whole run: a
+  UI test, a script. The mouse and the keyboard of the machine are not its input
+  (`EditorLayer::onEvent` drops the input events of the window — what a test sends goes into
+  the UI context directly), so a hand on the machine cannot reach a test; the window has one
+  size whatever the display and the last session; it starts without taking the keyboard from
+  the application the user works in (`Fern::setStartsInBackground`); a native dialog is never
+  shown (an `Unattended` scope for the life of the layer); it does not look for updates. A
+  restart carries the flag over.
 
 ## Open items
 

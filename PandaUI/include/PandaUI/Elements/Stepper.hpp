@@ -60,6 +60,7 @@ public:
     void setOnValueChanged(ValueChangedCallback callback);
 
     bool keyDown(KeyEvent &event) override; // ↑/→ — step up, ↓/← — down (when the stepper is focused)
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     class StepperButton;

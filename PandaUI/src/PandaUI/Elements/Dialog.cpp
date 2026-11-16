@@ -116,4 +116,10 @@ bool Dialog::keyDown(KeyEvent &event) {
     return Modal::keyDown(event);
 }
 
+
+void Dialog::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "dialog";
+    accessibility.label = m_titleLabel->getText();
+}
+
 } // namespace PandaUI

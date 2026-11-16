@@ -107,6 +107,9 @@ public:
         return static_cast<int>(m_tabs.size());
     }
     std::uint64_t tabId(int index) const; // stable id of tab index (0 if out of range)
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "tabs";
+    }
 
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnReorder(ReorderCallback callback);     // (from, to) after a reorder within this bar

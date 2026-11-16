@@ -58,6 +58,14 @@ public:
         applyStyle();
     }
 
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "cell";
+        if (m_index >= 0 && m_index < m_owner->m_itemCount && m_owner->m_dataSource.titleForItem) {
+            accessibility.label = m_owner->m_dataSource.titleForItem(m_index);
+        }
+        accessibility.selected = m_selected;
+    }
+
     void setFrameRect(const Rect &frame) {
         layout().setPosition(Edge::Left, Length::points(frame.origin.x));
         layout().setPosition(Edge::Top, Length::points(frame.origin.y));
@@ -484,6 +492,22 @@ void CollectionView::moveSelection(NavDirection direction, bool extend) {
     }
     applySelectionToVisible();
     if (m_onSelectionChanged) { m_onSelectionChanged(*this); }
+}
+
+void CollectionView::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "collection";
+    accessibility.value = std::to_string(m_itemCount);
+}
+
+bool CollectionView::revealAccessibilityElement(const std::string &name) {
+    if (!m_dataSource.titleForItem) { return false; }
+    for (int index = 0; index < m_itemCount; ++index) {
+        if (m_visibleCells.count(index) != 0) { continue; } // it exists already
+        if (m_dataSource.titleForItem(index) != name) { continue; }
+        scrollIndexIntoView(index);
+        return true;
+    }
+    return false;
 }
 
 void CollectionView::scrollIndexIntoView(int index) {

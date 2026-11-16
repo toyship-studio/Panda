@@ -25,6 +25,8 @@ public:
     void dragEntered(const PandaUI::DragInfo &drag) override;
     void dragExited() override;
     bool performDrop(const PandaUI::DragInfo &drag) override;
+    // The value is the name the well shows: the asset, or "None (<kind>)".
+    void describeAccessibility(PandaUI::Accessibility &accessibility) const override;
 
 protected:
     void themeChanged() override;

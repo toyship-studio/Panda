@@ -151,6 +151,14 @@ void Button::setOnClick(ClickCallback callback) {
     m_onClick = std::move(callback);
 }
 
+void Button::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "button";
+    // A button without a title goes by what its tooltip says it does.
+    accessibility.label = getText().empty() ? getTooltip() : getText();
+    accessibility.selected = isSelected();
+    accessibility.atomic = true;
+}
+
 void Button::setFont(Font font) {
     m_appearance.font = font;
     m_titleLabel->setFont(font);

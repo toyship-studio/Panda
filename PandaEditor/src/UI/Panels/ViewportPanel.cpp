@@ -138,6 +138,7 @@ void ViewportPanelView::addSubviews() {
 
     // Scene surface (fills the column) — camera/picking input. Overlay toolbar on top.
     m_scene = std::make_shared<ViewportView>(this);
+    m_scene->setAccessibilityId("scene"); // the surface of the Scene, for a UI test
     m_sceneHost->addSubview(m_scene);
 
     m_helperLines = std::make_shared<HelperLinesOverlay>(); // helpers (colliders) — above the scene, below the gizmo

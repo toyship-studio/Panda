@@ -116,6 +116,15 @@ public:
     bool preview() const {
         return m_preview;
     }
+    // "unsaved" — the dot of a document with changes; "preview" — the tab is not pinned (italics).
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "tab";
+        accessibility.label = m_title;
+        accessibility.selected = m_selected;
+        if (m_dirty) { accessibility.value = "unsaved"; }
+        if (m_preview) { accessibility.value += accessibility.value.empty() ? "preview" : " preview"; }
+        accessibility.atomic = true;
+    }
     void setIcon(TextureHandle icon) {
         if (!icon.isValid()) {
             if (m_icon) {

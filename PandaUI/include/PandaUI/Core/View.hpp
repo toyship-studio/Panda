@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PandaUI/Core/Accessibility.hpp"
 #include "PandaUI/Core/Base.hpp"
 #include "PandaUI/Core/Cursor.hpp"
 #include "PandaUI/Core/DragAndDrop.hpp"
@@ -150,6 +151,24 @@ public:
     const std::string &getTooltip() const {
         return m_tooltip;
     }
+    /* ------------------------------ Accessibility ------------------------------ */
+    // The name a UI test finds the view by, given by the code that builds the screen (the
+    // accessibilityIdentifier of UIKit). Shown nowhere; empty by default.
+    void setAccessibilityId(std::string id) {
+        m_accessibilityId = std::move(id);
+    }
+    const std::string &getAccessibilityId() const {
+        return m_accessibilityId;
+    }
+    // What the view is and what it shows now (Core/Accessibility.hpp). A control fills its role,
+    // its label and its value; a plain container leaves the description as it is.
+    virtual void describeAccessibility(Accessibility &accessibility) const {}
+    // A view that makes its rows on demand (a tree, a collection: only the rows in sight exist)
+    // scrolls to the row that goes by `name`: the row exists after the next update. false — it
+    // has no such row.
+    virtual bool revealAccessibilityElement(const std::string &name) {
+        return false;
+    }
     void setClipsToBounds(bool clipsToBounds) {
         m_surface.setClipsToBounds(clipsToBounds);
     }
@@ -260,6 +279,7 @@ private:
     bool m_isHovered;
     Cursor m_cursor;
     std::string m_tooltip;
+    std::string m_accessibilityId;
     uint64_t m_themeGeneration; // the theme this view was last styled under
     void render(float offsetX, float offsetY);
     friend class Layout;

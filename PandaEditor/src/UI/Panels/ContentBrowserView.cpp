@@ -200,6 +200,7 @@ void ContentBrowserView::refresh() {
 void ContentBrowserView::addSubviews() {
     // --- Folder tree ---
     m_tree = std::make_shared<TreeView>();
+    m_tree->setAccessibilityId("folders"); // a folder is in the tree and in the grid: a UI test says which
     m_tree->setSelectionMode(TreeSelectionMode::Single);
     m_tree->setRowHeight(24.f); // the same row height as in Hierarchy
     TreeDataSource treeSource;
@@ -221,6 +222,7 @@ void ContentBrowserView::addSubviews() {
     // --- Grid: subfolders + files of the current folder (data/thumbnails from ContentBrowserDataSource) ---
     // A cell holds the preview and two lines of the name: a file name is rarely one short word.
     m_grid = std::make_shared<CollectionView>(std::make_shared<GridCollectionLayout>(Size(100.f, 108.f), 10.f, 6.f));
+    m_grid->setAccessibilityId("files");
     m_grid->setSelectionMode(CollectionSelectionMode::Multiple);
     m_grid->layout().setFlexGrow(1.f);
     CollectionViewDataSource gridSource;
@@ -237,6 +239,11 @@ void ContentBrowserView::addSubviews() {
                 m_dataSource.thumbnailFor(index), broken
             );
         }
+    };
+    gridSource.titleForItem = [this](int index) -> std::string {
+        if (Folder *folder = m_dataSource.folderAt(index)) { return folder->name; }
+        if (const FileEntry *file = m_dataSource.fileAt(index)) { return file->name; }
+        return {};
     };
     gridSource.prefetchItems = [this](const std::vector<int> &indices) { m_dataSource.prefetchItems(indices); };
     gridSource.cancelPrefetching = [this](const std::vector<int> &indices) {

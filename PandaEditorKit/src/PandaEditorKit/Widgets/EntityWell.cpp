@@ -184,6 +184,11 @@ void EntityWell::themeChanged() {
     refresh(); // the tint of the icon depends on the theme
 }
 
+void EntityWell::describeAccessibility(PandaUI::Accessibility &accessibility) const {
+    accessibility.role = "entityWell";
+    accessibility.value = m_label->getText();
+}
+
 void EntityWell::refresh() {
     Panda::Entity entity = m_entityId ? m_world->getById(m_entityId) : Panda::Entity();
     const bool hasValue = static_cast<bool>(m_entityId);

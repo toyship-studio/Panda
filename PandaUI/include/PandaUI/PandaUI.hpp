@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PandaUI/Core/Accessibility.hpp"
 #include "PandaUI/Core/Animation.hpp"
 #include "PandaUI/Core/Base.hpp"
 #include "PandaUI/Core/Clipboard.hpp"
@@ -57,6 +58,7 @@
 #include "PandaUI/Rendering/UICamera.hpp"
 #include "PandaUI/Rendering/UIRenderer.hpp"
 
+#include "PandaUI/Runtime/AccessibilityTree.hpp"
 #include "PandaUI/Runtime/Context.hpp"
 #include "PandaUI/Runtime/ModalManager.hpp"
 #include "PandaUI/Runtime/Window.hpp"

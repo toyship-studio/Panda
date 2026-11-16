@@ -100,10 +100,12 @@ void EntityEditorView::addSubviews() {
     addSubview(m_body);
 
     m_name = std::make_shared<TextField>();
+    m_name->setAccessibilityId("name"); // what a UI test finds the parts of the form by
     m_name->layout().setFlexGrow(1.f);
     // Static is a tag on the entity (not a component section): a flag next to the name, as in Unity.
     m_staticLabel = std::make_shared<Label>("Static");
     m_static = std::make_shared<Toggle>();
+    m_static->setAccessibilityId("static");
     auto nameRow = std::make_shared<Panel>();
     nameRow->setBackgroundColor(Color(0x00000000));
     nameRow->layout().setFlexDirection(FlexDirection::Row);
@@ -118,6 +120,7 @@ void EntityEditorView::addSubviews() {
     m_body->addContentSubview(makeThinDivider());
 
     auto transform = std::make_shared<CollapsibleSection>("TRANSFORM");
+    transform->setAccessibilityId("Transform"); // a section goes by the name of its component, not by its caps
     styleComponentSection(*transform);
     m_position = std::make_shared<Vector3Field>();
     m_positionRow = std::make_shared<PropertyRow>("Position", m_position);
@@ -293,6 +296,7 @@ EntityEditorView::buildComponentSection(const ComponentInspector &inspector, Pan
     std::string title = inspector.displayName;
     for (char &c : title) { c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
     auto section = std::make_shared<CollapsibleSection>(title);
+    section->setAccessibilityId(inspector.displayName);
     styleComponentSection(*section);
     const std::string component = inspector.component;
     addComponentHeaderMenu(
@@ -410,6 +414,7 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
         // The label is the name of the C++ field made readable; the name itself is the tooltip.
         auto row = std::make_shared<PropertyRow>(humanizeIdentifier(name), editor);
         row->setHelp(name);
+        row->setAccessibilityId(name); // a UI test finds the row by the name of the field in the class
         section->addContent(row);
     }
     // Where the class is written: the file that registers it, opened in the external editor.

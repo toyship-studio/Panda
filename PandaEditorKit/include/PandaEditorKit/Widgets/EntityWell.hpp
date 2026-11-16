@@ -27,6 +27,8 @@ public:
     void dragEntered(const PandaUI::DragInfo &drag) override;
     void dragExited() override;
     bool performDrop(const PandaUI::DragInfo &drag) override;
+    // The value is the name the well shows: the entity, or that there is none.
+    void describeAccessibility(PandaUI::Accessibility &accessibility) const override;
     void themeChanged() override;
 
 private:

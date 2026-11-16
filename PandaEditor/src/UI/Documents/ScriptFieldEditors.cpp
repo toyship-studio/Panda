@@ -361,6 +361,11 @@ void addScriptListRows(CollapsibleSection &section, ScriptListField field) {
         : type == Panda::ScriptFieldType::ENTITY ? name + " — drop an entity here to add it to the list"
                                                  : name + " — drop an asset or a folder of them here to add to the list"
     );
+    // What a UI test finds the rows by (PandaUI/Core/Accessibility.hpp): the header by the name
+    // of the field in the class, the row of an item by the name and the index — "levels.1". The
+    // rows of all the lists of a script lie side by side in its section.
+    header->setAccessibilityId(name);
+    summary->setAccessibilityId("summary");
     section.addContent(header);
 
     for (size_t index = 0; index < count; ++index) {
@@ -387,7 +392,9 @@ void addScriptListRows(CollapsibleSection &section, ScriptListField field) {
         cell->addSubview(editor);
         cell->addSubview(up);
         cell->addSubview(remove);
-        section.addContent(std::make_shared<ListItemRow>(model, index, cell));
+        auto row = std::make_shared<ListItemRow>(model, index, cell);
+        row->setAccessibilityId(name + "." + std::to_string(index));
+        section.addContent(row);
     }
 }
 

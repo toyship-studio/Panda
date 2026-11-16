@@ -33,6 +33,12 @@ public:
         setNeedsDisplay();
     }
 
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "button";
+        accessibility.label = m_isPlus ? "Increment" : "Decrement";
+        accessibility.atomic = true;
+    }
+
 protected:
     void performPrimaryAction() override {
         m_owner->step(m_isPlus ? 1.f : -1.f);
@@ -221,6 +227,12 @@ void Stepper::themeChanged() {
 void Stepper::updateBorder() {
     surface().setBorderColor(isFocused() ? m_appearance.focusBorder : m_appearance.border);
     setNeedsDisplay();
+}
+
+
+void Stepper::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "stepper";
+    accessibility.value = m_valueLabel->getText();
 }
 
 } // namespace PandaUI

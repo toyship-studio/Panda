@@ -109,6 +109,13 @@ void IconButton::setCornerRadius(float radius) {
     surface().setCornerRadius(radius);
 }
 
+void IconButton::describeAccessibility(PandaUI::Accessibility &accessibility) const {
+    accessibility.role = "button";
+    accessibility.label = m_title && !m_title->getText().empty() ? m_title->getText() : getTooltip();
+    accessibility.selected = m_active;
+    accessibility.atomic = true;
+}
+
 void IconButton::setTitle(const std::string &title) {
     if (!m_title) {
         m_title = std::make_shared<Label>(title);

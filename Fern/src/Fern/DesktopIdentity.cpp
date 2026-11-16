@@ -7,7 +7,16 @@ namespace Fern {
 namespace {
     std::string s_windowClass;
     std::string s_appId;
+    bool s_startsInBackground = false;
 } // namespace
+
+void setStartsInBackground(bool background) {
+    s_startsInBackground = background;
+}
+
+bool startsInBackground() {
+    return s_startsInBackground;
+}
 
 void setDesktopIdentity(const char *windowClass, const char *appId) {
     s_windowClass = windowClass ? windowClass : "";

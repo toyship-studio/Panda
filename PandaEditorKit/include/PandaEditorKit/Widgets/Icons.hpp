@@ -126,6 +126,8 @@ public:
     void setCornerRadius(float radius);
     // A word after the icon: the button keeps its height and grows as wide as the word.
     void setTitle(const std::string &title);
+    // The button goes by its word; a button of an icon alone — by what its tooltip says it does.
+    void describeAccessibility(PandaUI::Accessibility &accessibility) const override;
 
 private:
     void controlStateChanged(PandaUI::ControlState, PandaUI::ControlState) override;

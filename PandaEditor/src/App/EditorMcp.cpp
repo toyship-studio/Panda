@@ -15,6 +15,8 @@
 #include <Panda/Application/Application.hpp>
 #include <Panda/Base/Version.hpp>
 #include <Panda/Renderer/ShaderFeatures.hpp>
+#include <PandaUI/Elements/ScrollView.hpp>
+#include <PandaUI/Runtime/AccessibilityTree.hpp>
 #include <miniz.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
@@ -27,11 +29,6 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
-#include <typeinfo>
-
-#if defined(__GNUC__) || defined(__clang__)
-#    include <cxxabi.h>
-#endif
 
 namespace Panda {
 
@@ -167,6 +164,34 @@ struct EditorMcp::InputStep {
     bool alt = false;
     bool super = false;
     bool newClick = false; // Down: not the second click of a double click
+};
+
+// A gesture of the pointer as a call of `pointer` describes it.
+struct EditorMcp::Gesture {
+    std::string action = "click";
+    PandaUI::Point at; // window points
+    PandaUI::Point to; // drag: where it ends
+    PandaUI::PointerButton button = PandaUI::PointerButton::Left; // drag, down, up
+    bool shift = false;
+    bool control = false;
+    bool alt = false;
+    bool super = false;
+    int steps = 0;              // drag: the frames of the movement; scroll: the events of the swipe; 0 — the default
+    PandaUI::Point scrollDelta; // scroll
+    bool trackpad = false;      // scroll
+    float magnification = 0.f;  // pinch
+};
+
+// A place a gesture goes to, named by the path of an element (PandaUI/Runtime/AccessibilityTree.hpp).
+// The element is looked for anew every frame until it stands still where a press reaches it: the
+// form it is in may be on its way — rebuilt by the last call, scrolled, opening.
+struct EditorMcp::Target {
+    std::string path;
+    PandaUI::Point at = PandaUI::Point(0.5f, 0.5f); // where in the element, in shares of its size
+    bool takesPress = true; // the press of the gesture lands here: nothing may lie over it
+    PandaUI::Rect seen;     // the frame of the element a frame ago
+    bool wasSeen = false;
+    PandaUI::Point point; // the answer, window points
 };
 
 EditorMcp::EditorMcp(EditorLayer &editor)
@@ -372,18 +397,53 @@ void EditorMcp::registerTools() {
         [this](const rapidjson::Value &arguments) { return show(arguments); },
     });
     m_server.addTool({
+        "ui",
+        "The window of the editor as elements instead of pixels: what every control is (`role`: button, textField, "
+        "numberField, toggle, property, section, tab, row, cell, menuItem, dialog, …), the `id` it was given, the "
+        "`label` it shows, the `value` it holds (the text of a field, on / off, expanded / collapsed, the number of "
+        "rows of a tree) and its `frame` [x, y, width, height] in the coordinates of a `window` screenshot; "
+        "`disabled`, `selected`, `focused`, `outOfSight` when so. For the editor itself as the thing to test: find "
+        "a control and read what it shows without looking at a picture. Without `path`: everything, the lowest "
+        "layer first (the window, then the popups, menus and dialogs over it). `path` names elements: segments "
+        "separated by `/`, each one an element inside the one before it at any depth, the first one anywhere — "
+        "`inspector/Transform/Position/X`, `hierarchy/Camera`, `menu/Duplicate`. A segment is an id; where "
+        "nothing has such an id — a label; else a role. `role:name` is an element of that role with that id or "
+        "label (`tab:Player` where a row is named Player too); `name[2]` is the third of what the segment names. The "
+        "call waits up to `wait` seconds for what `path` names to be there — or, with them, for `gone`, `count`, "
+        "`value`, `label` to hold — and fails saying what is there instead. A row of a long list that is out of "
+        "sight is scrolled to. `pointer` and `key` take the same path as `target`.",
+        R"({"type":"object","properties":{)"
+        R"("path":{"type":"string","description":"The elements to answer with (and what is in them). Without it: the whole window."},)"
+        R"("depth":{"type":"integer","description":"How many levels inside each answered element to write; `more` then says how many elements were left out. Default: all."},)"
+        R"("wait":{"type":"number","description":"Seconds to wait for the path (and the expectation). Default 2, at most 30; 0 — answer at once."},)"
+        R"("gone":{"type":"boolean","description":"Wait until the path names nothing."},)"
+        R"("count":{"type":"integer","description":"Wait until the path names exactly this many elements."},)"
+        R"("value":{"type":"string","description":"Wait until the one element the path names has this value."},)"
+        R"("label":{"type":"string","description":"Wait until the one element the path names has this label."},)"
+        R"("window":{"type":"string","enum":["main","settings"],"description":"Default: the window in front — the Settings window while it is open."},)"
+        R"("of":{"type":"number","description":"The width of the screenshot the frames are for. Default 1280."}}})",
+        [this](const rapidjson::Value &arguments) { return ui(arguments); },
+    });
+    m_server.addTool({
         "pointer",
         "A gesture of the mouse in the editor window, made where the user would make it: for the editor itself as "
-        "the thing to test — a button, a menu, a field, a drag. The coordinates are those of a `window` screenshot "
-        "(of the default width; pass `of` when the screenshot was asked with another `width`). `click` presses and "
-        "releases; `drag` presses at x, y, moves to toX, toY over a few frames and releases; `down`, `move`, `up` "
-        "make a gesture in parts, with a screenshot in between; `scroll` turns the wheel by dx, dy (`trackpad` — a "
-        "two-finger swipe instead); `pinch` is the pinch of a trackpad. Answers with "
-        "what is under the pointer afterwards: the views from the innermost out, the cursor, the view in focus. "
-        "The viewport's own tools (the gizmo, the camera) read the real mouse and do not follow. While the Settings "
-        "window is open the gesture goes to it (it is in front): the coordinates are those of a `settings` screenshot.",
+        "the thing to test — a button, a menu, a field, a drag, the gizmo and the camera of the Scene. The place is "
+        "an element by its path (`target`, see `ui`: the gesture goes to its middle, or to `at` in it; the call "
+        "waits for the element to be there, scrolls it into sight, and fails when it is disabled or something "
+        "lies over it) or a point of a `window` screenshot (`x`, `y`; of the default width — pass `of` when the "
+        "screenshot was asked with another `width`). `click` presses and releases; `drag` presses, moves to "
+        "`toTarget` or toX, toY over a few frames and releases; `down`, `move`, `up` make a gesture in parts, with "
+        "a look in between; `scroll` turns the wheel by dx, dy (`trackpad` — a two-finger swipe instead); `pinch` "
+        "is the pinch of a trackpad. Answers with what is under the pointer afterwards: the elements from the "
+        "innermost out, the cursor, the element in focus. While the Settings window is open the gesture goes to "
+        "it (it is in front): the coordinates are those of a `settings` screenshot.",
         R"({"type":"object","properties":{)"
         R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll","pinch"],"description":"Default: click."},)"
+        R"("target":{"type":"string","description":"The path of the element the gesture goes to (see `ui`), in place of x, y."},)"
+        R"("at":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2,"description":"Where in the target, in shares of its width and height. Default [0.5, 0.5] — the middle."},)"
+        R"("toTarget":{"type":"string","description":"drag: the path of the element it ends on, in place of toX, toY."},)"
+        R"("toAt":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2,"description":"drag: where in toTarget. Default the middle."},)"
+        R"("wait":{"type":"number","description":"Seconds to wait for the targets. Default 2, at most 30."},)"
         R"("x":{"type":"number"},"y":{"type":"number"},)"
         R"("toX":{"type":"number","description":"drag: where it ends."},"toY":{"type":"number"},)"
         R"("button":{"type":"string","enum":["left","right","middle"],"description":"drag, down, up: the button. Default left."},)"
@@ -392,18 +452,20 @@ void EditorMcp::registerTools() {
         R"("scale":{"type":"number","description":"pinch: the share the fingers move apart by, 0.2 — 20% larger, negative — smaller."},)"
         R"("steps":{"type":"integer","description":"drag: the frames of the movement, default 8. scroll: the events of the swipe, each by dx, dy; default 1."},)"
         R"("of":{"type":"number","description":"The width of the screenshot the coordinates were read from. Default 1280."},)"
-        R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}},)"
-        R"("required":["x","y"]})",
+        R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
         [this](const rapidjson::Value &arguments) { return pointer(arguments); },
     });
     m_server.addTool({
         "key",
-        "Keys and text into the editor window, to the view in focus (click a field with `pointer` first): `text` "
-        "is typed character by character, `key` is pressed and released — a letter or a digit, or Enter, Escape, "
-        "Tab, Backspace, Delete, Space, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1..F12. With both, the "
-        "text goes first. Answers like `pointer`. While the Settings window is open the keys go to it.",
+        "Keys and text into the editor window, to the element in focus: `text` is typed character by character, "
+        "`key` is pressed and released — a letter or a digit, or Enter, Escape, Tab, Backspace, Delete, Space, Up, "
+        "Down, Left, Right, Home, End, PageUp, PageDown, F1..F12. With both, the text goes first. `target` (the "
+        "path of an element, see `ui`) is clicked first, so that it has the keyboard; without it click a field "
+        "with `pointer`. Answers like `pointer`. While the Settings window is open the keys go to it.",
         R"({"type":"object","properties":{)"
         R"("key":{"type":"string"},"text":{"type":"string"},)"
+        R"("target":{"type":"string","description":"The path of the element to click before the keys."},)"
+        R"("wait":{"type":"number","description":"Seconds to wait for the target. Default 2, at most 30."},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
         [this](const rapidjson::Value &arguments) { return key(arguments); },
     });
@@ -968,18 +1030,164 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
 
 namespace {
 
-    // The class of a view, for the answer of an input tool: "PandaUI::Toggle".
-    std::string viewClassName(const PandaUI::View &view) {
-        const char *raw = typeid(view).name();
-#if defined(__GNUC__) || defined(__clang__)
-        int status = 0;
-        char *demangled = abi::__cxa_demangle(raw, nullptr, nullptr, &status);
-        std::string name = status == 0 && demangled != nullptr ? demangled : raw;
-        std::free(demangled);
-        return name;
-#else
-        return raw;
-#endif
+    /* ------------------------------ the elements of the UI ------------------------------ */
+
+    using PandaUI::AccessibilityElement;
+
+    constexpr double TARGET_WAIT_SECONDS = 2.0; // how long a tool waits for the element a path names
+    constexpr size_t NAMES_IN_AN_ERROR = 24;
+
+    // What an element is, in a line of an answer: `button "Add Item"`, `view #inspector`.
+    std::string describeElement(const std::string &role, const std::string &id, const std::string &label) {
+        std::string text = role;
+        if (!id.empty()) { text += " #" + id; }
+        if (!label.empty()) { text += " \"" + label + "\""; }
+        return text;
+    }
+
+    std::string describeElement(const AccessibilityElement &element) {
+        return describeElement(element.role, element.id, element.label);
+    }
+
+    // The elements a view is in, the innermost first: the view itself when it is one, then the
+    // ones around it. A part of an element (the title of a button) is not named: the element is.
+    std::vector<std::string> elementsAround(PandaUI::View *view, size_t limit) {
+        std::vector<PandaUI::View *> chain;
+        for (; view != nullptr; view = view->getSuperview()) { chain.push_back(view); }
+        std::vector<std::string> names; // the outermost first
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            PandaUI::Accessibility described;
+            (*it)->describeAccessibility(described);
+            const std::string &id = (*it)->getAccessibilityId();
+            if (described.role == nullptr && id.empty()) { continue; }
+            names.push_back(describeElement(described.role != nullptr ? described.role : "view", id, described.label));
+            if (described.atomic) { break; }
+        }
+        std::reverse(names.begin(), names.end());
+        if (names.size() > limit) { names.resize(limit); }
+        return names;
+    }
+
+    bool isInside(const PandaUI::View *view, const PandaUI::View *container) {
+        for (; view != nullptr; view = view->getSuperview()) {
+            if (view == container) { return true; }
+        }
+        return false;
+    }
+
+    // Asks every view that makes its rows on demand, `view` and what is in it, for the row `name`.
+    bool revealIn(PandaUI::View &view, const std::string &name) {
+        bool revealed = view.revealAccessibilityElement(name);
+        for (const std::shared_ptr<PandaUI::View> &subview : view.getSubviews()) {
+            if (!subview->isHidden() && revealIn(*subview, name)) { revealed = true; }
+        }
+        return revealed;
+    }
+
+    void appendNames(const std::vector<AccessibilityElement> &elements, std::vector<std::string> &names) {
+        for (const AccessibilityElement &element : elements) {
+            const std::string &name = element.name();
+            if (std::find(names.begin(), names.end(), name) == names.end()) { names.push_back(name); }
+        }
+    }
+
+    std::string pathPrefix(const PandaUI::AccessibilityMatch &match, size_t count) {
+        std::string prefix;
+        for (size_t i = 0; i < count && i < match.segments.size(); ++i) {
+            if (i > 0) { prefix += "/"; }
+            prefix += match.segments[i];
+        }
+        return prefix;
+    }
+
+    // Why a path names nothing: the segment that names nothing, where it was looked for and what
+    // is there to name.
+    std::string missingText(const std::vector<AccessibilityElement> &tree, const PandaUI::AccessibilityMatch &match) {
+        std::string text = "No element `" + match.segments[match.resolved] + "`";
+        std::vector<std::string> names;
+        if (match.resolved == 0) {
+            text += " in the window.";
+            appendNames(tree, names);
+        } else {
+            text += " in `" + pathPrefix(match, match.resolved) + "`.";
+            for (const AccessibilityElement *element : match.scope) { appendNames(element->children, names); }
+        }
+        if (names.empty()) { return text + " Nothing is there."; }
+        text += " There: ";
+        for (size_t i = 0; i < names.size() && i < NAMES_IN_AN_ERROR; ++i) {
+            if (i > 0) { text += ", "; }
+            text += "`" + names[i] + "`";
+        }
+        if (names.size() > NAMES_IN_AN_ERROR) { text += ", and " + std::to_string(names.size() - NAMES_IN_AN_ERROR) + " more"; }
+        return text + ".";
+    }
+
+    std::string ambiguousText(const std::string &path, const PandaUI::AccessibilityMatch &match) {
+        std::string text = "`" + path + "` names " + std::to_string(match.elements.size()) + " elements:";
+        for (size_t i = 0; i < match.elements.size() && i < 6; ++i) { text += (i > 0 ? ", " : " ") + describeElement(*match.elements[i]); }
+        if (match.elements.size() > 6) { text += ", …"; }
+        return text + ". Say which one: `" + match.segments.back() + "[0]` is the first.";
+    }
+
+    // Window points per pixel of a screenshot of the window asked with the width `of`.
+    double pointsPerScreenshotPixel(Fern::Window &window, double of) {
+        const Fern::Size size = window.getSize();
+        const Fern::Size dpi = window.getDpi();
+        const double imageWidth = std::min(std::max(of, 1.0), static_cast<double>(size.width) * dpi.width);
+        return imageWidth > 0.0 ? static_cast<double>(size.width) / imageWidth : 1.0;
+    }
+
+    // `depth` — how many levels of what is inside the element are written; negative — all of them.
+    void writeElement(JsonWriter &writer, const AccessibilityElement &element, double scale, int depth) {
+        writer.StartObject();
+        writer.Key("role");
+        writeText(writer, element.role);
+        if (!element.id.empty()) {
+            writer.Key("id");
+            writeText(writer, element.id);
+        }
+        if (!element.label.empty()) {
+            writer.Key("label");
+            writeText(writer, element.label);
+        }
+        if (!element.value.empty()) {
+            writer.Key("value");
+            writeText(writer, element.value);
+        }
+        writer.Key("frame");
+        writer.StartArray();
+        for (float side : {element.frame.origin.x, element.frame.origin.y, element.frame.size.width, element.frame.size.height}) {
+            writer.Int(static_cast<int>(std::lround(side / scale)));
+        }
+        writer.EndArray();
+        if (!element.enabled) {
+            writer.Key("disabled");
+            writer.Bool(true);
+        }
+        if (element.selected) {
+            writer.Key("selected");
+            writer.Bool(true);
+        }
+        if (element.focused) {
+            writer.Key("focused");
+            writer.Bool(true);
+        }
+        if (!element.inSight()) {
+            writer.Key("outOfSight");
+            writer.Bool(true);
+        }
+        if (!element.children.empty()) {
+            if (depth == 0) {
+                writer.Key("more");
+                writer.Uint(static_cast<unsigned>(element.children.size()));
+            } else {
+                writer.Key("children");
+                writer.StartArray();
+                for (const AccessibilityElement &child : element.children) { writeElement(writer, child, scale, depth - 1); }
+                writer.EndArray();
+            }
+        }
+        writer.EndObject();
     }
 
     const char *cursorName(PandaUI::Cursor cursor) {
@@ -1066,19 +1274,17 @@ std::string EditorMcp::pointerJson() const {
     rapidjson::StringBuffer buffer;
     JsonWriter writer(buffer);
     writer.StartObject();
-    // The views under the pointer, from the innermost out: what a click there reaches.
+    // The elements under the pointer, from the innermost out: what a click there reaches.
     writer.Key("under");
     writer.StartArray();
-    int depth = 0;
-    for (PandaUI::View *view = context.getHoveredView(); view != nullptr && depth < 6; view = view->getSuperview(), ++depth) {
-        writeText(writer, viewClassName(*view));
-    }
+    for (const std::string &name : elementsAround(context.getHoveredView(), 6)) { writeText(writer, name); }
     writer.EndArray();
     writer.Key("cursor");
     writer.String(cursorName(context.getCurrentCursor()));
     writer.Key("focus");
-    if (PandaUI::View *focused = context.getFocusedView()) {
-        writeText(writer, viewClassName(*focused));
+    const std::vector<std::string> focused = elementsAround(context.getFocusedView(), 1);
+    if (!focused.empty()) {
+        writeText(writer, focused.front());
     } else {
         writer.Null();
     }
@@ -1172,39 +1378,123 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
     };
 }
 
-Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
-    Fern::Window *window = inputWindow();
-    if (window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
-    const Fern::Size size = window->getSize();
-    const Fern::Size dpi = window->getDpi();
-    if (size.width <= 0.f || size.height <= 0.f) { return Mcp::ready(Mcp::ToolResult::error("The window of the editor has no size")); }
-    // The coordinates are those of a screenshot of the window: its pixels, scaled down to `of`
-    // when the window is wider.
-    const double of = std::max(Mcp::numberArgument(arguments, "of", SCREENSHOT_DEFAULT_WIDTH), 1.0);
-    const double imageWidth = std::min(of, static_cast<double>(size.width) * dpi.width);
-    const double scale = static_cast<double>(size.width) / imageWidth;
-    auto toWindow = [scale](double x, double y) {
-        return PandaUI::Point(static_cast<float>(x * scale), static_cast<float>(y * scale));
-    };
-    const std::string action = Mcp::stringArgument(arguments, "action", "click");
-    const PandaUI::Point at = toWindow(Mcp::numberArgument(arguments, "x", 0.0), Mcp::numberArgument(arguments, "y", 0.0));
+bool EditorMcp::resolveTarget(PandaUI::Context &context, Target &target, std::string &why) {
+    const std::vector<AccessibilityElement> tree = PandaUI::accessibilityTree(context);
+    const PandaUI::AccessibilityMatch match = PandaUI::findAccessibilityElements(tree, target.path);
+    if (match.segments.empty()) {
+        why = "The path of the target is empty";
+        return false;
+    }
+    if (match.elements.empty()) {
+        // A row that a tree or a collection has not made: it is out of sight. Asked for, it is
+        // there after the next update.
+        const std::string &name = match.segments[match.resolved];
+        if (match.resolved == 0) {
+            for (PandaUI::View *layer : context.layers()) { revealIn(*layer, name); }
+        } else {
+            for (const AccessibilityElement *element : match.scope) { revealIn(*element->view, name); }
+        }
+        target.wasSeen = false;
+        why = missingText(tree, match);
+        return false;
+    }
+    if (match.elements.size() > 1) {
+        target.wasSeen = false;
+        why = ambiguousText(target.path, match);
+        return false;
+    }
+    const AccessibilityElement &element = *match.elements.front();
+    const std::string name = "`" + target.path + "` (" + describeElement(element) + ")";
+    if (!element.enabled) {
+        why = name + " is disabled";
+        return false;
+    }
+    // Cut by what it scrolls in: the scroll views around it bring it into sight, the inner first.
+    const bool cut = element.visible.size.width < element.frame.size.width || element.visible.size.height < element.frame.size.height;
+    if (cut) {
+        bool scrolled = false;
+        for (PandaUI::View *view = element.view->getSuperview(); view != nullptr; view = view->getSuperview()) {
+            auto *scroll = dynamic_cast<PandaUI::ScrollView *>(view);
+            if (scroll != nullptr && scroll->scrollToVisible(element.view->getWorldFrame())) { scrolled = true; }
+        }
+        if (scrolled) {
+            target.wasSeen = false;
+            why = name + " is being scrolled into sight";
+            return false;
+        }
+        if (!element.inSight()) {
+            why = name + " is out of sight: what it is in leaves no part of it in the window";
+            return false;
+        }
+    }
+    // It stands still: the same place two frames in a row (a section that opens, a popup that
+    // arrives move what is in them).
+    const PandaUI::Rect &frame = element.frame;
+    const bool still = target.wasSeen && frame.origin.x == target.seen.origin.x && frame.origin.y == target.seen.origin.y &&
+                       frame.size.width == target.seen.size.width && frame.size.height == target.seen.size.height;
+    target.seen = frame;
+    target.wasSeen = true;
+    if (!still) {
+        why = name + " is moving";
+        return false;
+    }
+    const PandaUI::Point point(
+        element.visible.origin.x + element.visible.size.width * std::clamp(target.at.x, 0.f, 1.f),
+        element.visible.origin.y + element.visible.size.height * std::clamp(target.at.y, 0.f, 1.f)
+    );
+    if (target.takesPress) {
+        // What a press at the point reaches is the element, a part of it, or — where the element
+        // takes no input itself (a label in a row) — what it is in. Anything else lies over it.
+        PandaUI::View *hit = context.viewAt(point);
+        if (hit == nullptr || (!isInside(hit, element.view) && !isInside(element.view, hit))) {
+            const std::vector<std::string> over = elementsAround(hit, 1);
+            why = name + " is covered" + (over.empty() ? std::string() : " by " + over.front());
+            return false;
+        }
+    }
+    target.point = point;
+    return true;
+}
 
+Mcp::PendingResult EditorMcp::playAtTargets(
+    std::vector<Target> targets, double wait, std::function<std::vector<InputStep>(const std::vector<PandaUI::Point> &)> steps
+) {
+    struct State {
+        std::vector<Target> targets;
+        double deadline = 0.0;
+        std::string why;
+        Mcp::PendingResult playing;
+    };
+    auto state = std::make_shared<State>();
+    state->targets = std::move(targets);
+    state->deadline = nowSeconds() + wait;
+    return [this, state, steps = std::move(steps)]() -> std::optional<Mcp::ToolResult> {
+        if (state->playing) { return state->playing(); }
+        PandaUI::Context &context = inputContext();
+        for (Target &target : state->targets) {
+            if (resolveTarget(context, target, state->why)) { continue; }
+            if (nowSeconds() < state->deadline) { return std::nullopt; }
+            return Mcp::ToolResult::error(state->why);
+        }
+        std::vector<PandaUI::Point> points;
+        for (const Target &target : state->targets) { points.push_back(target.point); }
+        state->playing = playInput(steps(points));
+        return state->playing();
+    };
+}
+
+std::vector<EditorMcp::InputStep> EditorMcp::gestureSteps(const Gesture &gesture) {
     InputStep base;
-    base.position = at;
-    base.shift = Mcp::boolArgument(arguments, "shift", false);
-    base.alt = Mcp::boolArgument(arguments, "alt", false);
-    base.control = Mcp::boolArgument(arguments, "ctrl", false);
-    base.super = Mcp::boolArgument(arguments, "super", false);
+    base.position = gesture.at;
+    base.shift = gesture.shift;
+    base.alt = gesture.alt;
+    base.control = gesture.control;
+    base.super = gesture.super;
     auto step = [&base](InputStep::Kind kind) {
         InputStep result = base;
         result.kind = kind;
         return result;
     };
-    // The button of a drag, a down and an up; a click names its button by its action.
-    const std::string buttonName = Mcp::stringArgument(arguments, "button", "left");
-    const PandaUI::PointerButton button = buttonName == "right"    ? PandaUI::PointerButton::Right
-                                          : buttonName == "middle" ? PandaUI::PointerButton::Middle
-                                                                   : PandaUI::PointerButton::Left;
     std::vector<InputStep> steps;
     auto press = [&](PandaUI::PointerButton which, bool newClick) {
         InputStep down = step(InputStep::Kind::Down);
@@ -1217,6 +1507,7 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
     };
     // The pointer arrives first: the hover of a frame is what the press of the next one meets.
     steps.push_back(step(InputStep::Kind::Move));
+    const std::string &action = gesture.action;
     if (action == "click") {
         press(PandaUI::PointerButton::Left, true);
     } else if (action == "doubleClick") {
@@ -1228,58 +1519,134 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
         // The move alone.
     } else if (action == "down") {
         InputStep down = step(InputStep::Kind::Down);
-        down.button = button;
+        down.button = gesture.button;
         down.newClick = true;
         steps.push_back(down);
     } else if (action == "up") {
         InputStep up = step(InputStep::Kind::Up);
-        up.button = button;
+        up.button = gesture.button;
         steps.push_back(up);
     } else if (action == "drag") {
-        const PandaUI::Point to =
-            toWindow(Mcp::numberArgument(arguments, "toX", 0.0), Mcp::numberArgument(arguments, "toY", 0.0));
-        const int count = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 8.0), 1.0, 240.0));
+        const int count = std::clamp(gesture.steps > 0 ? gesture.steps : 8, 1, 240);
         InputStep down = step(InputStep::Kind::Down);
-        down.button = button;
+        down.button = gesture.button;
         down.newClick = true;
         steps.push_back(down);
         for (int i = 1; i <= count; ++i) {
             const float t = static_cast<float>(i) / static_cast<float>(count);
             InputStep move = step(InputStep::Kind::Move);
-            move.position = PandaUI::Point(at.x + (to.x - at.x) * t, at.y + (to.y - at.y) * t);
+            move.position = PandaUI::Point(
+                gesture.at.x + (gesture.to.x - gesture.at.x) * t, gesture.at.y + (gesture.to.y - gesture.at.y) * t
+            );
             steps.push_back(move);
         }
+        // The pointer rests over the place of the drop for a frame: what lies there has answered
+        // whether it takes the drop before the button goes up.
+        InputStep rest = step(InputStep::Kind::Move);
+        rest.position = gesture.to;
+        steps.push_back(rest);
         InputStep up = step(InputStep::Kind::Up);
-        up.button = button;
-        up.position = to;
+        up.button = gesture.button;
+        up.position = gesture.to;
         steps.push_back(up);
     } else if (action == "scroll") {
         InputStep scroll = step(InputStep::Kind::Scroll);
-        scroll.delta = PandaUI::Point(
-            static_cast<float>(Mcp::numberArgument(arguments, "dx", 0.0)),
-            static_cast<float>(-Mcp::numberArgument(arguments, "dy", 0.0))
-        );
-        scroll.trackpad = Mcp::boolArgument(arguments, "trackpad", false);
+        scroll.delta = gesture.scrollDelta;
+        scroll.trackpad = gesture.trackpad;
         // A swipe is many events in a row, a frame apart: `steps` of them, each by dx, dy.
-        const int count = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 1.0), 1.0, 240.0));
+        const int count = std::clamp(gesture.steps > 0 ? gesture.steps : 1, 1, 240);
         for (int i = 0; i < count; ++i) { steps.push_back(scroll); }
     } else if (action == "pinch") {
         InputStep pinch = step(InputStep::Kind::Scroll);
         pinch.trackpad = true;
-        pinch.magnification = static_cast<float>(Mcp::numberArgument(arguments, "scale", 0.0));
+        pinch.magnification = gesture.magnification;
         steps.push_back(pinch);
-    } else {
-        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag, scroll or pinch"));
     }
     // What the gesture set off (a popover, a rebuilt form) is laid out and drawn before the answer.
     steps.push_back(step(InputStep::Kind::Idle));
     steps.push_back(step(InputStep::Kind::Idle));
-    return playInput(std::move(steps));
+    return steps;
+}
+
+Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
+    Fern::Window *window = inputWindow();
+    if (window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
+    const Fern::Size size = window->getSize();
+    if (size.width <= 0.f || size.height <= 0.f) { return Mcp::ready(Mcp::ToolResult::error("The window of the editor has no size")); }
+    // The coordinates are those of a screenshot of the window: its pixels, scaled down to `of`
+    // when the window is wider.
+    const double scale = pointsPerScreenshotPixel(*window, Mcp::numberArgument(arguments, "of", SCREENSHOT_DEFAULT_WIDTH));
+    auto toWindow = [scale](double x, double y) {
+        return PandaUI::Point(static_cast<float>(x * scale), static_cast<float>(y * scale));
+    };
+
+    Gesture gesture;
+    gesture.action = Mcp::stringArgument(arguments, "action", "click");
+    static const char *ACTIONS[] = {"click", "doubleClick", "rightClick", "move", "down", "up", "drag", "scroll", "pinch"};
+    if (std::find(std::begin(ACTIONS), std::end(ACTIONS), gesture.action) == std::end(ACTIONS)) {
+        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag, scroll or pinch"));
+    }
+    gesture.at = toWindow(Mcp::numberArgument(arguments, "x", 0.0), Mcp::numberArgument(arguments, "y", 0.0));
+    gesture.to = toWindow(Mcp::numberArgument(arguments, "toX", 0.0), Mcp::numberArgument(arguments, "toY", 0.0));
+    gesture.shift = Mcp::boolArgument(arguments, "shift", false);
+    gesture.alt = Mcp::boolArgument(arguments, "alt", false);
+    gesture.control = Mcp::boolArgument(arguments, "ctrl", false);
+    gesture.super = Mcp::boolArgument(arguments, "super", false);
+    // The button of a drag, a down and an up; a click names its button by its action.
+    const std::string buttonName = Mcp::stringArgument(arguments, "button", "left");
+    gesture.button = buttonName == "right"    ? PandaUI::PointerButton::Right
+                     : buttonName == "middle" ? PandaUI::PointerButton::Middle
+                                              : PandaUI::PointerButton::Left;
+    gesture.steps = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "steps", 0.0), 0.0, 240.0));
+    gesture.scrollDelta = PandaUI::Point(
+        static_cast<float>(Mcp::numberArgument(arguments, "dx", 0.0)), static_cast<float>(-Mcp::numberArgument(arguments, "dy", 0.0))
+    );
+    gesture.trackpad = Mcp::boolArgument(arguments, "trackpad", false);
+    gesture.magnification = static_cast<float>(Mcp::numberArgument(arguments, "scale", 0.0));
+
+    // The place of the gesture: a point of a screenshot, or an element by its path.
+    const std::string from = Mcp::stringArgument(arguments, "target");
+    const std::string to = Mcp::stringArgument(arguments, "toTarget");
+    const bool hasPoint = arguments.IsObject() && arguments.HasMember("x") && arguments.HasMember("y");
+    if (from.empty() && !hasPoint) {
+        return Mcp::ready(Mcp::ToolResult::error("Pass `target` (the path of an element, see `ui`) or `x` and `y` (a point of a `window` screenshot)"));
+    }
+    if (from.empty() && to.empty()) { return playInput(gestureSteps(gesture)); }
+
+    auto share = [&arguments](const char *name) {
+        double values[2] = {0.5, 0.5};
+        Mcp::numbersArgument(arguments, name, values, 2);
+        return PandaUI::Point(static_cast<float>(values[0]), static_cast<float>(values[1]));
+    };
+    std::vector<Target> targets;
+    int fromIndex = -1;
+    int toIndex = -1;
+    if (!from.empty()) {
+        fromIndex = static_cast<int>(targets.size());
+        Target &target = targets.emplace_back();
+        target.path = from;
+        target.at = share("at");
+    }
+    if (!to.empty()) {
+        toIndex = static_cast<int>(targets.size());
+        Target &target = targets.emplace_back();
+        target.path = to;
+        target.at = share("toAt");
+        target.takesPress = false; // the drop goes to whatever takes it there
+    }
+    const double wait = std::clamp(Mcp::numberArgument(arguments, "wait", TARGET_WAIT_SECONDS), 0.0, 30.0);
+    return playAtTargets(std::move(targets), wait, [gesture, fromIndex, toIndex](const std::vector<PandaUI::Point> &points) {
+        Gesture placed = gesture;
+        if (fromIndex >= 0) { placed.at = points[static_cast<size_t>(fromIndex)]; }
+        if (toIndex >= 0) { placed.to = points[static_cast<size_t>(toIndex)]; }
+        return gestureSteps(placed);
+    });
 }
 
 Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
     const std::string text = Mcp::stringArgument(arguments, "text");
     const std::string keyName = Mcp::stringArgument(arguments, "key");
+    const std::string targetPath = Mcp::stringArgument(arguments, "target");
     if (text.empty() && keyName.empty()) { return Mcp::ready(Mcp::ToolResult::error("Pass `key`, `text` or both")); }
     std::vector<InputStep> steps;
     for (uint32_t codepoint : codepointsOf(text)) {
@@ -1304,7 +1671,136 @@ Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
     }
     steps.push_back(InputStep{});
     steps.push_back(InputStep{});
-    return playInput(std::move(steps));
+    if (targetPath.empty()) { return playInput(std::move(steps)); }
+
+    // The element takes the keyboard by a click, as from the user; then the keys.
+    std::vector<Target> targets(1);
+    targets.front().path = targetPath;
+    const double wait = std::clamp(Mcp::numberArgument(arguments, "wait", TARGET_WAIT_SECONDS), 0.0, 30.0);
+    return playAtTargets(std::move(targets), wait, [steps = std::move(steps)](const std::vector<PandaUI::Point> &points) {
+        Gesture click;
+        click.at = points.front();
+        std::vector<InputStep> all = gestureSteps(click);
+        all.insert(all.end(), steps.begin(), steps.end());
+        return all;
+    });
+}
+
+Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
+    struct Query {
+        std::string path;
+        std::string window;
+        int depth = -1;
+        double of = SCREENSHOT_DEFAULT_WIDTH;
+        bool gone = false;
+        int count = -1;
+        bool hasValue = false;
+        std::string value;
+        bool hasLabel = false;
+        std::string label;
+        double deadline = 0.0;
+    };
+    auto query = std::make_shared<Query>();
+    query->path = Mcp::stringArgument(arguments, "path");
+    query->window = Mcp::stringArgument(arguments, "window");
+    query->depth = static_cast<int>(Mcp::numberArgument(arguments, "depth", -1.0));
+    query->of = Mcp::numberArgument(arguments, "of", SCREENSHOT_DEFAULT_WIDTH);
+    query->gone = Mcp::boolArgument(arguments, "gone", false);
+    query->count = static_cast<int>(Mcp::numberArgument(arguments, "count", -1.0));
+    if (arguments.IsObject() && arguments.HasMember("value") && arguments["value"].IsString()) {
+        query->hasValue = true;
+        query->value = arguments["value"].GetString();
+    }
+    if (arguments.IsObject() && arguments.HasMember("label") && arguments["label"].IsString()) {
+        query->hasLabel = true;
+        query->label = arguments["label"].GetString();
+    }
+    if (query->window != "" && query->window != "main" && query->window != "settings") {
+        return Mcp::ready(Mcp::ToolResult::error("window is \"main\" or \"settings\""));
+    }
+    if (query->path.empty() && (query->gone || query->count >= 0 || query->hasValue || query->hasLabel)) {
+        return Mcp::ready(Mcp::ToolResult::error("`gone`, `count`, `value` and `label` are about what `path` names: pass `path`"));
+    }
+    query->deadline = nowSeconds() + std::clamp(Mcp::numberArgument(arguments, "wait", TARGET_WAIT_SECONDS), 0.0, 30.0);
+
+    return [this, query]() -> std::optional<Mcp::ToolResult> {
+        // The window the user has in front, unless the call names one.
+        PandaUI::Context *context = &inputContext();
+        Fern::Window *window = inputWindow();
+        if (query->window == "main") {
+            context = &m_editor.ui().context();
+            window = m_editor.window();
+        } else if (query->window == "settings") {
+            context = m_editor.ui().auxiliaryContext();
+            window = m_editor.ui().auxiliaryWindow();
+            if (context == nullptr || window == nullptr) { return Mcp::ToolResult::error("The Settings window is not open"); }
+        }
+        if (window == nullptr) { return Mcp::ToolResult::error("The editor has no window"); }
+
+        const std::vector<AccessibilityElement> tree = PandaUI::accessibilityTree(*context);
+        std::vector<const AccessibilityElement *> answer;
+        std::string why;
+        bool done = false;
+        if (query->path.empty()) {
+            for (const AccessibilityElement &element : tree) { answer.push_back(&element); }
+            done = true;
+        } else {
+            const PandaUI::AccessibilityMatch match = PandaUI::findAccessibilityElements(tree, query->path);
+            if (match.segments.empty()) { return Mcp::ToolResult::error("The path is empty"); }
+            const size_t found = match.elements.size();
+            if (query->gone) {
+                done = found == 0;
+                why = "`" + query->path + "` is still there";
+            } else if (query->count >= 0 && found != static_cast<size_t>(query->count)) {
+                why = "`" + query->path + "` names " + std::to_string(found) + " element(s), not " + std::to_string(query->count);
+                // A row a tree or a collection has not made may be one of the wanted ones.
+                if (found == 0) { why += ". " + missingText(tree, match); }
+            } else if (found == 0 && query->count < 0) {
+                why = missingText(tree, match);
+            } else if (query->hasValue || query->hasLabel) {
+                // What an element holds or shows is asked about one element.
+                if (found != 1) {
+                    why = found == 0 ? missingText(tree, match) : ambiguousText(query->path, match);
+                } else {
+                    const AccessibilityElement &element = *match.elements.front();
+                    done = true;
+                    if (query->hasValue && element.value != query->value) {
+                        done = false;
+                        why = "The value of `" + query->path + "` is \"" + element.value + "\", not \"" + query->value + "\"";
+                    } else if (query->hasLabel && element.label != query->label) {
+                        done = false;
+                        why = "The label of `" + query->path + "` is \"" + element.label + "\", not \"" + query->label + "\"";
+                    }
+                }
+            } else {
+                done = true;
+            }
+            if (found == 0 && !query->gone && query->count != 0) {
+                // A row a tree or a collection has not made: asked for, it is there after the next update.
+                const std::string &name = match.segments[match.resolved];
+                if (match.resolved == 0) {
+                    for (PandaUI::View *layer : context->layers()) { revealIn(*layer, name); }
+                } else {
+                    for (const AccessibilityElement *element : match.scope) { revealIn(*element->view, name); }
+                }
+            }
+            if (!query->gone) { answer = match.elements; }
+        }
+        if (!done) {
+            if (nowSeconds() < query->deadline) { return std::nullopt; }
+            return Mcp::ToolResult::error(why);
+        }
+        const double scale = pointsPerScreenshotPixel(*window, query->of);
+        rapidjson::StringBuffer buffer;
+        JsonWriter writer(buffer);
+        writer.StartObject();
+        writer.Key("elements");
+        writer.StartArray();
+        for (const AccessibilityElement *element : answer) { writeElement(writer, *element, scale, query->depth); }
+        writer.EndArray();
+        writer.EndObject();
+        return textResult(takeText(buffer));
+    };
 }
 
 Mcp::PendingResult EditorMcp::build(const rapidjson::Value &arguments) {

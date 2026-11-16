@@ -99,6 +99,24 @@ void ScrollView::setContentOffset(Point offset) {
     setContentOffsetInternal(offset);
 }
 
+bool ScrollView::scrollToVisible(Rect worldRect) {
+    const Rect bounds = getWorldFrame();
+    // How far along one axis the content has to move for [start, start + length) to fit [0, size).
+    auto shift = [](float start, float length, float size) {
+        if (start < 0.f || length > size) { return start; }
+        if (start + length > size) { return start + length - size; }
+        return 0.f;
+    };
+    Point offset = m_contentOffset;
+    if (allowsHorizontalScroll()) { offset.x += shift(worldRect.origin.x - bounds.origin.x, worldRect.size.width, bounds.size.width); }
+    if (allowsVerticalScroll()) { offset.y += shift(worldRect.origin.y - bounds.origin.y, worldRect.size.height, bounds.size.height); }
+    offset = clampedContentOffset(offset);
+    if (offset.x == m_contentOffset.x && offset.y == m_contentOffset.y) { return false; }
+    setContentOffsetInternal(offset);
+    setNeedsDisplay();
+    return true;
+}
+
 void ScrollView::setScrollDirection(ScrollDirection direction) {
     if (m_scrollDirection == direction) { return; }
     m_scrollDirection = direction;

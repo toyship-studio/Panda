@@ -28,7 +28,9 @@ struct TreeDataSource {
     std::function<TreeItem(TreeItem item, int index)> childAt;   // index-th child of item (item != null)
     std::function<std::shared_ptr<View>()> cellForReuse;         // create an empty content cell
     std::function<void(View &cell, TreeItem item, int depth)> configureCell; // bind the data
-    std::function<std::string(TreeItem item)> titleForItem;      // opt.: label of the drag "ghost"
+    // opt.: the name of the item — the label of the drag "ghost" and what the row goes by for a UI
+    // test (Core/Accessibility.hpp); a row that is out of sight is found by it.
+    std::function<std::string(TreeItem item)> titleForItem;
     std::function<std::uint64_t(TreeItem item)> idForItem;       // opt.: item id → payload.items (external drop targets)
 };
 
@@ -139,6 +141,10 @@ public:
     void dragUpdated(const DragInfo &drag) override;
     void dragExited() override;
     bool performDrop(const DragInfo &drag) override;
+
+    // The value is the number of rows the tree unrolls now, in sight or not.
+    void describeAccessibility(Accessibility &accessibility) const override;
+    bool revealAccessibilityElement(const std::string &name) override;
 
 protected:
     void focusChanged(bool focused) override; // active/inactive selection color

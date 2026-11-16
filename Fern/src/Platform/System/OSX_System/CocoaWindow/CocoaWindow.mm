@@ -2,6 +2,7 @@
 #import "CocoaWindowDelegate.h"
 #import "WonderView.h"
 #import "Fern/Events/EventQueue.hpp"
+#import "Fern/Fern.hpp"
 #ifdef PANDA_GRAPHICS_METAL
 #import "GraphicsContext/OSX_MetalContext.h"
 #endif
@@ -286,7 +287,12 @@ CocoaWindow::CocoaWindow(
         [window setHasShadow:YES];
         [parent addChildWindow:window ordered:NSWindowAbove];
     }
-    [window makeKeyAndOrderFront:nil];
+    if (Fern::startsInBackground()) {
+        // Shown without the keyboard: the application the user works in keeps it.
+        [window orderFrontRegardless];
+    } else {
+        [window makeKeyAndOrderFront:nil];
+    }
     m_menuTargets = [[NSMutableArray alloc] init];
 #ifdef PANDA_GRAPHICS_METAL
     (void)sharedContext; // Metal shares resources via the shared device, GL sharing is not needed

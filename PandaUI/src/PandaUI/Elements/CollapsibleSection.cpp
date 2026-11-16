@@ -38,6 +38,10 @@ public:
     void setTitle(std::string title) {
         m_title->setText(std::move(title));
     }
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "header";
+        accessibility.label = m_title->getText();
+    }
     void setExpandedVisual(bool expanded) {
         if (m_expanded == expanded) { return; }
         m_expanded = expanded;

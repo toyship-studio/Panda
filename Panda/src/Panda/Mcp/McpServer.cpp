@@ -280,7 +280,9 @@ void Server::updateConnection(Connection &connection) {
     }
     connection.stream.update();
     const bool sent = connection.output.empty() && connection.stream.pendingSendBytes() == 0;
-    if (connection.closeWhenSent && sent) {
+    // A client that asked to close after the answer ("Connection: close") waits for the answer
+    // first: a tool that answers later has sent nothing yet.
+    if (connection.closeWhenSent && sent && !connection.pending) {
         connection.stream.close();
     } else if (!connection.pending && now - connection.lastActivity > IDLE_TIMEOUT_SECONDS) {
         connection.stream.close();

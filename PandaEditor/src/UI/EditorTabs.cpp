@@ -148,6 +148,7 @@ public:
     EntityDocument(EditorTabs *tabs, EntityEditorOutput *output)
         : m_tabs(tabs)
         , m_view(std::make_shared<EntityEditorView>(output)) {
+        m_view->setAccessibilityId("inspector"); // what a UI test finds the form of an entity by
         m_view->setScriptClassProvider([host = tabs->m_host] { return host->tabsScriptClasses(); });
     }
 
@@ -192,7 +193,9 @@ class EditorTabs::AssetDocument final : public Document {
 public:
     explicit AssetDocument(EditorTabs *tabs)
         : m_tabs(tabs)
-        , m_view(std::make_shared<AssetEditorView>([this] { m_tabs->documentEdited(this); })) {}
+        , m_view(std::make_shared<AssetEditorView>([this] { m_tabs->documentEdited(this); })) {
+        m_view->setAccessibilityId("assetEditor"); // what a UI test finds the form of an asset by
+    }
 
     std::string title() override {
         const TabEntry *entry = m_tabs->findEntry(this);

@@ -115,6 +115,10 @@ public:
         return m_textOutline;
     }
     Size measureText() const;
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "label";
+        accessibility.label = m_text;
+    }
 
 protected:
     Size intrinsicContentSize(Size availableSize) const override;

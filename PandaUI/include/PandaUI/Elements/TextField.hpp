@@ -88,6 +88,11 @@ public:
     void setClearsOnEscape(bool clears) {
         m_clearsOnEscape = clears;
     }
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "textField";
+        accessibility.label = m_placeholder;
+        accessibility.value = m_text;
+    }
 
     void update(double deltaTime) override;
     bool pointerDown(PointerEvent &event) override;

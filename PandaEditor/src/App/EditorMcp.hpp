@@ -3,8 +3,10 @@
 #include "Viewport/EditorViewports.hpp" // ViewportKind
 
 #include <Panda/Mcp/McpServer.hpp>
+#include <PandaUI/Core/Base.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,7 +34,10 @@ class EditorLayer;
 // screenshot of the whole window shows the agent the editor itself, when the editor is its work,
 // and `pointer` and `key` let it use what it sees as the user would: press a button, drag a
 // label, type into a field — the input goes into the UI of the editor where the mouse and the
-// keyboard of the user go.
+// keyboard of the user go. `ui` is the same window as elements instead of pixels — what every
+// control is, shows and holds (PandaUI/Runtime/AccessibilityTree.hpp) — and `pointer` and `key`
+// take the path of an element in place of a point: a UI test of the editor is written with
+// these three.
 // There are no tools that edit a world or an asset: that would be a second way to do what a text
 // file already does.
 //
@@ -55,6 +60,8 @@ public:
 private:
     struct Screenshot;
     struct InputStep;
+    struct Gesture;
+    struct Target;
     enum class Exit { None, Restart, Quit, OpenProject };
 
     void syncServer(); // the server follows the project and its "mcp" section
@@ -72,6 +79,7 @@ private:
     Mcp::PendingResult openWorld(const rapidjson::Value &arguments);
     Mcp::PendingResult openProject(const rapidjson::Value &arguments);
     Mcp::PendingResult show(const rapidjson::Value &arguments);
+    Mcp::PendingResult ui(const rapidjson::Value &arguments);
     Mcp::PendingResult pointer(const rapidjson::Value &arguments);
     Mcp::PendingResult key(const rapidjson::Value &arguments);
     Mcp::PendingResult command(const rapidjson::Value &arguments);
@@ -90,6 +98,15 @@ private:
 
     // Plays the steps of a gesture, one a frame, and answers with what is under the pointer.
     Mcp::PendingResult playInput(std::vector<InputStep> steps);
+    static std::vector<InputStep> gestureSteps(const Gesture &gesture);
+    // Where a gesture goes when its place is named by the path of an element. true — the element
+    // stands still where a press reaches it and target.point is in it; false — not yet, `why`
+    // says what is in the way (it becomes the error of the call when the wait runs out).
+    static bool resolveTarget(PandaUI::Context &context, Target &target, std::string &why);
+    // Waits for the targets (at most `wait` seconds), then plays what `steps` makes of their points.
+    Mcp::PendingResult playAtTargets(
+        std::vector<Target> targets, double wait, std::function<std::vector<InputStep>(const std::vector<PandaUI::Point> &)> steps
+    );
     std::string pointerJson() const;
     PandaUI::Context &inputContext() const;
     Fern::Window *inputWindow() const;

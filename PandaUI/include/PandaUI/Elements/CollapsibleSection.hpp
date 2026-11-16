@@ -77,6 +77,11 @@ public:
     void setOnToggled(std::function<void(CollapsibleSection &)> onToggled) {
         m_onToggled = std::move(onToggled);
     }
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "section";
+        accessibility.label = m_title;
+        accessibility.value = m_expanded ? "expanded" : "collapsed";
+    }
 
 private:
     class Header;

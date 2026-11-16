@@ -27,6 +27,8 @@ public:
         return m_color;
     }
     void setOnColorChanged(ColorChangedCallback callback);
+    // The color as "#RRGGBBAA".
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     void performPrimaryAction() override;

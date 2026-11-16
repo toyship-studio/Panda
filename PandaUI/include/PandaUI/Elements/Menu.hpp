@@ -67,6 +67,9 @@ public:
     }
     void moveHighlight(int delta); // ↑/↓ over the items (clamped)
     void activateHighlighted();    // Enter — run the highlighted item / open the submenu
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "menu";
+    }
 
 private:
     class RowBase;

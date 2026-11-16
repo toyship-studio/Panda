@@ -626,6 +626,19 @@ std::vector<View *> Context::overlaysAbove(View *overlay) const {
     return above;
 }
 
+std::vector<View *> Context::layers() const {
+    std::vector<View *> result;
+    if (m_rootView) { result.push_back(m_rootView.get()); }
+    for (const auto &overlay : m_overlays) {
+        // An overlay on its way out is no longer part of the window: it goes at the next update.
+        if (std::find(m_overlaysToRemove.begin(), m_overlaysToRemove.end(), overlay.get()) == m_overlaysToRemove.end()) {
+            result.push_back(overlay.get());
+        }
+    }
+    if (m_tooltipView) { result.push_back(m_tooltipView.get()); }
+    return result;
+}
+
 void Context::postDeferred(std::function<void()> task) {
     if (!task) { return; }
     m_deferredTasks.push_back(std::move(task));

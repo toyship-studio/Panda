@@ -57,6 +57,7 @@ public:
         return m_maximum;
     }
     void setOnValueChanged(ValueChangedCallback callback);
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     bool pointerDown(PointerEvent &event) override;

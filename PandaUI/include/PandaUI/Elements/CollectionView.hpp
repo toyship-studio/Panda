@@ -21,6 +21,9 @@ struct CollectionViewDataSource {
     std::function<int()> numberOfItems;
     std::function<std::shared_ptr<View>()> cellForReuse;
     std::function<void(View &cell, int index)> configureCell;
+    // The name of an item (optional): what its cell goes by for a UI test (Core/Accessibility.hpp);
+    // a cell that is out of sight is found by it.
+    std::function<std::string(int index)> titleForItem;
     // Drag source (optional): canDragItem(index) allows dragging a cell; fillDragPayload receives
     // the dragged indices (the whole multi-selection if the cell is part of it, otherwise only the
     // cell itself) and fills type/items/ghostText. The collection sets source itself. Without these
@@ -97,6 +100,10 @@ public:
 
     void update(double deltaTime) override;
     bool keyDown(KeyEvent &event) override; // ↑/↓ — change the selection (when the collection is focused)
+
+    // The value is the number of items, in sight or not.
+    void describeAccessibility(Accessibility &accessibility) const override;
+    bool revealAccessibilityElement(const std::string &name) override;
 
 protected:
     bool pointerDown(PointerEvent &event) override; // right-click on an empty grid area → context menu (index<0)

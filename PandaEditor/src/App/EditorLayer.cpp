@@ -51,6 +51,10 @@ namespace Panda {
 
 namespace {
 
+    // The window of an unattended editor (--unattended), in points: it fits the screen of a laptop.
+    constexpr float UNATTENDED_WINDOW_WIDTH = 1280.f;
+    constexpr float UNATTENDED_WINDOW_HEIGHT = 800.f;
+
     // The input of the window: EditorLayer::onEvent gives every such event either to the game or
     // to the editor chrome, and nothing else of it reaches Panda::Input.
     bool isInputEvent(const Fern::Event *event) {
@@ -85,6 +89,7 @@ EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
     , m_gameUI(window)
     , m_viewports() {
     m_launch = std::move(launch);
+    if (m_launch.unattended) { m_unattended = std::make_unique<SystemTools::Unattended>(); }
     m_currentWorld = &editingWorld();
     registerCommands();
     m_commands.addKeymapListener([this] { m_menuBar.rebuild(); }); // the menu shows the keys
@@ -185,7 +190,8 @@ void EditorLayer::onAttach() {
         showStartScreen();
     }
     // After the settings and the chrome: the first check runs at once when automatic updates are on.
-    m_updater.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    // Nobody is at the screen: the run is the same whatever was published since.
+    if (!m_launch.unattended) { m_updater.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); }
     m_pluginStore.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
     m_mcp = std::make_unique<EditorMcp>(*this); // listens once a project with the "mcp" section on is open
 
@@ -877,6 +883,13 @@ void EditorLayer::updateGizmo() {
 }
 
 void EditorLayer::onEvent(Fern::Event *event) {
+    // Nobody is at the screen (--unattended): the mouse and the keyboard of the machine are not
+    // the input of the editor or of the game. What a UI test sends goes straight into the UI
+    // (EditorMcp), not through the window.
+    if (m_launch.unattended && isInputEvent(event)) {
+        event->isHandled = true;
+        return;
+    }
     if (m_menuBar.handleEvent(event, m_editorUI.context().modals().isPresenting())) { return; }
 
     // The Settings window: its own UI tree takes its input; closing it is the controller's (the
@@ -1785,7 +1798,11 @@ void EditorLayer::updateWindowState() {
     if (m_loader.hasOpenedProject()) {
         m_window->setFlags(FERN_WINDOW_FLAGS_DEFAULT);
         auto windowState = m_loader.getLastWindowState();
-        if (windowState.isFullScreen) {
+        if (m_launch.unattended) {
+            // One size whatever the display and the last session: a UI test meets the same layout.
+            m_window->setState(Fern::WindowState::WindowStateNormal);
+            m_window->setSize({UNATTENDED_WINDOW_WIDTH, UNATTENDED_WINDOW_HEIGHT});
+        } else if (windowState.isFullScreen) {
             m_window->setState(Fern::WindowState::WindowStateFullScreen);
         } else {
             // Normal size first (even before maximizing): "restore" from maximized after a
@@ -1837,6 +1854,7 @@ void EditorLayer::restartEditor() {
             arguments.push_back(SystemTools::USER_DATA_ARGUMENT);
             arguments.push_back(SystemTools::userDataDirectory().string());
         }
+        if (m_launch.unattended) { arguments.push_back(SystemTools::UNATTENDED_ARGUMENT); }
         SystemTools::setRelaunchOnExit(true, std::move(arguments));
         closeApp();
     });

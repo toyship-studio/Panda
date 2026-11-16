@@ -23,6 +23,9 @@ public:
     // lives until the popup is dismissed).
     void presentSubmenu(std::shared_ptr<View> content, Rect anchor);
     void hideSubmenu(View *content);
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "popup";
+    }
 
     // The popup is focusable: a click on NON-focusable content (e.g. a menu item) resolves
     // focusTargetFor up to the popup itself — it is inside its own focus scope, so the scope does not

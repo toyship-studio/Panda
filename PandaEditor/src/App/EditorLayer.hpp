@@ -9,6 +9,7 @@
 #include "Project/Build/ProjectBuilds.hpp"
 #include "Project/Loader/ProjectLoader.hpp"
 #include "Project/Plugins/PluginStore.hpp"
+#include "Project/System/SystemTools.hpp"
 #include "UI/Host/EditorUI.hpp"
 #include "UI/Panels/StartScreen.hpp"
 #include "UI/Panels/ViewportView.hpp" // Editor::ScenePointer
@@ -35,6 +36,7 @@ struct EditorLaunch final {
     bool openLastProject = true; // false — a second window: the start screen, not the project of the last session
     path_t project;              // --project <path>: this project instead of the one of the last session
     int mcpPort = 0;             // --mcp <port>: the MCP server listens on it whatever is open; 0 — the project decides
+    bool unattended = false;     // --unattended: nobody is at the screen (SystemTools::UNATTENDED_ARGUMENT)
 };
 
 class EditorLayer : public Layer,
@@ -325,6 +327,8 @@ private:
     AssetId m_pendingWorldLoad;
     Fern::Window *m_window;
     EditorLaunch m_launch;
+    // --unattended: no native dialog for as long as the editor runs.
+    std::unique_ptr<SystemTools::Unattended> m_unattended;
     std::string m_windowTitle; // what syncWindowIdentity has set: "<project> — <world file>"
     std::string m_iconLabel;   // the project name on the application icon (empty — none)
     Editor::Commands m_commands; // the commands of the editor and their keys

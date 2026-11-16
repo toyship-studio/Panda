@@ -60,6 +60,8 @@ public:
     // Number of digits after the decimal point in the DISPLAY. -1 (default) — compact %g. ≥0 — fixed,
     // e.g. 2 → "1.50" (the value keeps full precision; a tiny float drift is shown as "0.00").
     void setDecimals(int decimals);
+    // The value as the field shows it ("0.50"); "mixed" while the selected objects differ.
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 private:
     void handleTextChanged();

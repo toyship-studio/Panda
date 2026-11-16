@@ -57,6 +57,13 @@ public:
     virtual bool isSubmenuRow() const {
         return false;
     }
+    // "submenu" — the row opens a menu of its own.
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "menuItem";
+        accessibility.label = m_label->getText();
+        if (isSubmenuRow()) { accessibility.value = "submenu"; }
+        accessibility.atomic = true;
+    }
 
 protected:
     virtual bool isRowHighlighted() const {

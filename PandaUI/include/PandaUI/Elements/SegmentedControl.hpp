@@ -62,6 +62,10 @@ public:
     void setOnSelectionChanged(SelectionChangedCallback callback);
 
     bool keyDown(KeyEvent &event) override; // ←/↑ — previous segment, →/↓ — next (when focused)
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "segmentedControl";
+        accessibility.value = selectedText();
+    }
 
 private:
     class Segment;

@@ -42,6 +42,13 @@ public:
         applyStyle();
     }
 
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "segment";
+        accessibility.label = m_label->getText();
+        accessibility.selected = m_selected;
+        accessibility.atomic = true;
+    }
+
 protected:
     void performPrimaryAction() override {
         m_owner->selectFromUser(m_index);

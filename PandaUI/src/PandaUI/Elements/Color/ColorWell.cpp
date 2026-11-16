@@ -1,4 +1,7 @@
 #include "PandaUI/Elements/Color/ColorWell.hpp"
+#include <cstdio>
+#include <cmath>
+#include <algorithm>
 
 #include "PandaUI/Core/KeyboardEvent.hpp"
 #include "PandaUI/Core/Theme.hpp"
@@ -116,6 +119,16 @@ bool ColorWell::keyDown(KeyEvent &event) {
         return true;
     }
     return Control::keyDown(event); // Enter/Space → performPrimaryAction → openPicker (guarded against duplicates)
+}
+
+
+void ColorWell::describeAccessibility(Accessibility &accessibility) const {
+    auto byte = [](float channel) { return static_cast<unsigned>(std::lround(std::clamp(channel, 0.f, 1.f) * 255.f)); };
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X%02X", byte(m_color.r), byte(m_color.g), byte(m_color.b), byte(m_color.a));
+    accessibility.role = "colorWell";
+    accessibility.value = buffer;
+    accessibility.atomic = true;
 }
 
 } // namespace PandaUI

@@ -56,6 +56,9 @@ public:
     const std::shared_ptr<View> &getContent() const {
         return m_content;
     }
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "modal";
+    }
 
     // A click on a NON-focusable spot of the content resolves the focus up to the modal — the
     // keyboard stays inside (Escape/Enter keep working) instead of going under the overlay.

@@ -88,6 +88,12 @@ public:
     // project turns its own server on in its settings.
     static constexpr const char *MCP_ARGUMENT = "--mcp";
     static constexpr const char *USER_DATA_ARGUMENT = "--user-data";
+    // `--unattended`: nobody is at the screen for the whole run — a UI test, a script that drives
+    // the editor through its MCP server. The mouse and the keyboard of the machine are not the
+    // editor's input (a hand that happens to move does not reach the test), the window has one
+    // size whatever the display and the last session, a native dialog is never shown (Unattended
+    // below), the editor does not look for updates.
+    static constexpr const char *UNATTENDED_ARGUMENT = "--unattended";
     // Starts a program without waiting for it or wiring its pipes (the update helper, the new
     // editor after an update).
     static bool startDetached(const path_t &executable, const std::vector<std::string> &args);

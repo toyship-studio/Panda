@@ -108,6 +108,13 @@ public:
     void requestRemoveOverlay(View *overlay);
     // Overlays lying above the given one (bottom to top): a modal removes its popups when it closes.
     std::vector<View *> overlaysAbove(View *overlay) const;
+    // Everything the window shows, the lowest first: the root view, the overlays (popups, menus,
+    // modals), the tooltip. What lies higher takes the pointer first; the tooltip takes none.
+    std::vector<View *> layers() const;
+    // The view a press at the point reaches: the innermost one of the topmost layer there.
+    View *viewAt(Point position) {
+        return hitTest(position);
+    }
 
     // Blocking modals (Modal/Dialog) are shown only through the manager: stack + ownership.
     ModalManager &modals() {

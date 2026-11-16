@@ -54,6 +54,11 @@ Large directions that are still ahead. Finished work is one line with a pointer 
   reference from a number, a field may be a list (`std::vector` of a field type), and the cook
   needs no list of assets kept by hand (`context/export.md`, `context/architecture.md`, "SDK
   API").
+- **The editor can be tested through its UI**: a view says what it is, shows and holds, the
+  window is a tree of such elements, a control is named by a path instead of a point, and an
+  editor nobody sits at (`--unattended`) is driven through its MCP server by a test that lives
+  outside this repository (`context/pandaui.md`, "Elements: what a UI test sees";
+  `context/architecture.md`, "Editor: the MCP server").
 
 ## Ahead (order is open to discussion)
 
@@ -85,8 +90,9 @@ Large directions that are still ahead. Finished work is one line with a pointer 
    registry in `.Panda/` (path → id, mtime), needed only at tens of thousands of assets; a cache
    is never the truth and never goes into git.
 10. **Skeletal animation**: import, runtime pose, clips, skinning, preview.
-11. **UI and text**: clipboard and IME basics, accessibility basics, richer controls. A view
-    hierarchy debugger for game UI in the editor (Play → Pause → snapshot of all UI windows →
+11. **UI and text**: clipboard and IME basics, accessibility for people (the elements of a
+    window exist for UI tests; a bridge to the screen reader of a system does not), richer
+    controls. A view hierarchy debugger for game UI in the editor (Play → Pause → snapshot of all UI windows →
     tree, properties and a frozen preview) is planned but not started.
 12. **Editor scene UX, next steps**: better hierarchy, prefab workflow, scene operations.
     The command palette exists (⇧⌘P: the commands of the editor and the items of the menus);

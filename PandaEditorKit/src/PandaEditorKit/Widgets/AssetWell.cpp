@@ -157,6 +157,11 @@ void AssetWell::openPicker() {
     );
 }
 
+void AssetWell::describeAccessibility(PandaUI::Accessibility &accessibility) const {
+    accessibility.role = "assetWell";
+    accessibility.value = m_label->getText();
+}
+
 void AssetWell::refresh() {
     const std::string name = (m_assetId && m_nameFor) ? m_nameFor(m_assetId) : std::string();
     m_label->setText(name.empty() ? ("None (" + m_kind + ")") : name);

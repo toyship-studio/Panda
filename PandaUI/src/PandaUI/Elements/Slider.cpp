@@ -1,4 +1,5 @@
 #include "PandaUI/Elements/Slider.hpp"
+#include <cstdio>
 
 #include "PandaUI/Core/Theme.hpp"
 
@@ -221,6 +222,15 @@ void Slider::updateAppearance() {
     // Focus indicator — a soft translucent halo behind the thumb (a child view, not a surface border).
     m_focusRing->setBackgroundColor(a.focusHalo);
     m_focusRing->setHidden(!hasControlState(ControlState::Focused));
+}
+
+
+void Slider::describeAccessibility(Accessibility &accessibility) const {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%g", m_value);
+    accessibility.role = "slider";
+    accessibility.value = buffer;
+    accessibility.atomic = true;
 }
 
 } // namespace PandaUI

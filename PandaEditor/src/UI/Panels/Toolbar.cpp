@@ -49,12 +49,14 @@ void ToolbarPanelView::addSubviews() {
     // Selection history (editor tabs): back/forward, like in a browser. Restoring a closed
     // tab is also "back": the history stores objects, the tab is recreated by the selection.
     m_back = std::make_shared<IconButton>(Ic::ChevronLeft, Ic::ToolbarSize, ACTION_SIZE);
+    m_back->setAccessibilityId("back"); // a UI test finds a button by what it does: its tooltip carries the keys
     m_back->setTooltip("Back (selection history)");
     m_back->setOnClick([this] { m_output->toolbarDidNavigateBack(); });
     m_back->setEnabled(false); // there is no history at startup
     left->addSubview(m_back);
 
     m_forward = std::make_shared<IconButton>(Ic::ChevronRight, Ic::ToolbarSize, ACTION_SIZE);
+    m_forward->setAccessibilityId("forward");
     m_forward->setTooltip("Forward (selection history)");
     m_forward->setOnClick([this] { m_output->toolbarDidNavigateForward(); });
     m_forward->setEnabled(false);
@@ -63,24 +65,29 @@ void ToolbarPanelView::addSubviews() {
     left->addSubview(makeDivider());
 
     m_undo = std::make_shared<IconButton>(Ic::Undo, Ic::ToolbarSize, ACTION_SIZE);
+    m_undo->setAccessibilityId("undo");
     m_undo->setOnClick([this] { m_output->toolbarDidUndo(); });
     left->addSubview(m_undo);
 
     m_redo = std::make_shared<IconButton>(Ic::Redo, Ic::ToolbarSize, ACTION_SIZE);
+    m_redo->setAccessibilityId("redo");
     m_redo->setOnClick([this] { m_output->toolbarDidRedo(); });
     left->addSubview(m_redo);
 
     left->addSubview(makeDivider());
 
     m_reload = std::make_shared<IconButton>(Ic::Reload, Ic::ToolbarSize, ACTION_SIZE);
+    m_reload->setAccessibilityId("reload");
     m_reload->setOnClick([this] { m_output->toolbarDidTapReload(); });
     left->addSubview(m_reload);
 
     m_save = std::make_shared<IconButton>(Ic::Save, Ic::ToolbarSize, ACTION_SIZE);
+    m_save->setAccessibilityId("save");
     m_save->setOnClick([this] { m_output->toolbarDidSave(); });
     left->addSubview(m_save);
 
     auto exportButton = std::make_shared<IconButton>(Ic::Export, Ic::ToolbarSize, ACTION_SIZE);
+    exportButton->setAccessibilityId("export");
     exportButton->setTooltip("Export Game: cook the runtime data");
     exportButton->setOnClick([this] { m_output->toolbarDidExport(); });
     left->addSubview(exportButton);
@@ -107,10 +114,12 @@ void ToolbarPanelView::addSubviews() {
     };
 
     m_play = makeTransport(Ic::Play, ThemeColor::success);
+    m_play->setAccessibilityId("play");
     m_play->setOnClick([this] { m_output->toolbarDidTapPlay(); });
     capsule->addSubview(m_play);
 
     m_stop = makeTransport(Ic::Stop, ThemeColor::danger);
+    m_stop->setAccessibilityId("stop");
     m_stop->setOnClick([this] { m_output->toolbarDidTapStop(); });
     capsule->addSubview(m_stop);
 

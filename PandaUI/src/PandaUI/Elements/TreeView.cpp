@@ -87,6 +87,15 @@ public:
         applyStyle();
     }
 
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "row";
+        if (m_item != nullptr && m_tree->m_dataSource.titleForItem) {
+            accessibility.label = m_tree->m_dataSource.titleForItem(m_item);
+        }
+        if (m_expandable) { accessibility.value = m_expanded ? "expanded" : "collapsed"; }
+        accessibility.selected = m_selected;
+    }
+
 protected:
     bool pointerDown(PointerEvent &event) override {
         if (event.button == PointerButton::Right) {
@@ -268,6 +277,22 @@ void TreeView::setSelectedItems(const std::vector<TreeItem> &items) {
 void TreeView::revealItem(TreeItem item) {
     m_pendingReveal = item;
     setNeedsDisplay();
+}
+
+void TreeView::describeAccessibility(Accessibility &accessibility) const {
+    accessibility.role = "tree";
+    accessibility.value = std::to_string(m_flat.size());
+}
+
+bool TreeView::revealAccessibilityElement(const std::string &name) {
+    if (!m_dataSource.titleForItem) { return false; }
+    for (size_t index = 0; index < m_flat.size(); ++index) {
+        if (m_visibleRows.count(static_cast<int>(index)) != 0) { continue; } // it exists already
+        if (m_dataSource.titleForItem(m_flat[index].item) != name) { continue; }
+        revealItem(m_flat[index].item);
+        return true;
+    }
+    return false;
 }
 
 void TreeView::flashItem(TreeItem item) {

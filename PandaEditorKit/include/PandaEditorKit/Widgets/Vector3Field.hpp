@@ -33,6 +33,10 @@ public:
     void setMixed(bool x, bool y, bool z);
 
     void setOnValueChanged(ValueChangedCallback callback);
+    // The three number fields go by "X", "Y" and "Z".
+    void describeAccessibility(PandaUI::Accessibility &accessibility) const override {
+        accessibility.role = "vector3";
+    }
 
 private:
     std::shared_ptr<PandaUI::NumberField> m_fields[3];

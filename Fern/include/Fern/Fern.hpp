@@ -20,6 +20,11 @@ void terminate();
 void setDesktopIdentity(const char *windowClass, const char *appId);
 const char *getDesktopWindowClass(); // empty — not set
 const char *getDesktopAppId();       // empty — not set
+/// The application starts behind the one the user works in: its window is shown and does not take
+/// the keyboard. For a run nobody attends (a UI test), which must not interrupt who is at the
+/// machine. Call before initialize(). Only macOS follows it so far.
+void setStartsInBackground(bool background);
+bool startsInBackground();
 /// The window is created with a context of the build's active graphics API
 /// (Foundation::ACTIVE_GRAPHICS_API; selected by the PANDA_SHADER_BACKEND CMake option).
 /// Never explicitly delete the window, use disposeWindow() instead.

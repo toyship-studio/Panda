@@ -36,6 +36,10 @@ public:
     Point getContentOffset() const {
         return m_contentOffset;
     }
+    // Scrolls as little as it takes for a rectangle of the window (the world frame of a view of
+    // the content) to be in sight; what is taller than the view shows its top. true — the offset
+    // has changed.
+    bool scrollToVisible(Rect worldRect);
     void setScrollEnabled(bool enabled) {
         m_scrollEnabled = enabled;
     }

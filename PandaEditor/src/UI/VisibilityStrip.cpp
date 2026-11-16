@@ -27,6 +27,7 @@ namespace {
 
 VisibilityStripView::VisibilityStripView(VisibilityStripDelegate *delegate)
     : m_delegate(delegate) {
+    setAccessibilityId("panelStrip");
     layout().setFlexDirection(FlexDirection::Column);
     layout().setHeight(Length::points(STRIP_HEIGHT));
     layout().setFlexShrink(0.f);
@@ -98,6 +99,7 @@ void VisibilityStripView::setItems(const std::vector<StripItem> &items) {
 std::shared_ptr<IconButton> VisibilityStripView::makeButton(const StripItem &item) {
     auto btn = std::make_shared<IconButton>(item.icon, ICON, BTN_H);
     btn->setButtonSize(BTN_W, BTN_H);
+    btn->setAccessibilityId("show." + item.id); // a UI test finds the button of a panel by the id of the panel
     if (!item.open) { btn->setIconColor(ThemeColor::textDim); } // a closed panel — a dim icon
     btn->setActive(item.active);
     const std::string id = item.id;

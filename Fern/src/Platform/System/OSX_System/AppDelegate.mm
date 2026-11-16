@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 #import "Fern/Events/EventQueue.hpp"
+#import "Fern/Fern.hpp"
 
 using namespace Fern;
 
@@ -31,7 +32,7 @@ EventQueue* getEventQueue();
     };
     keyUpMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
                                                          handler:block];
-    [NSApp activateIgnoringOtherApps:YES];
+    if (!Fern::startsInBackground()) { [NSApp activateIgnoringOtherApps:YES]; }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

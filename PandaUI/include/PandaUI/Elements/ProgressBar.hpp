@@ -37,6 +37,7 @@ public:
     bool isIndeterminate() const {
         return m_indeterminate;
     }
+    void describeAccessibility(Accessibility &accessibility) const override;
 
 protected:
     void update(double deltaTime) override;

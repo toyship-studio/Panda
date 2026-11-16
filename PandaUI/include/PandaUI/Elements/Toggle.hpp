@@ -51,6 +51,11 @@ public:
     }
 
     void setOnValueChanged(ValueChangedCallback callback);
+    void describeAccessibility(Accessibility &accessibility) const override {
+        accessibility.role = "toggle";
+        accessibility.value = isOn() ? "on" : "off";
+        accessibility.atomic = true;
+    }
 
 private:
     void update(double deltaTime) override;
