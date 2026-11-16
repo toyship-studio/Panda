@@ -670,17 +670,29 @@ namespace InternalCalls {
 
     /// CONSOLE
 
+    // A line a script logs is for the user: in the editor it goes to the Output panel, and the
+    // log of the editor writes it to the console as well — one call, or the console has it twice.
     void console_Log(int type, const char *message) {
         const char *safeMessage = message ? message : "";
+        const bool editor = Foundation::EditorLogger::isInitialized();
         if (type == 0) {
-            if (Foundation::EditorLogger::isInitialized()) { LOG_INFO_EDITOR("%s", safeMessage); }
-            LOG_INFO("%s", safeMessage);
+            if (editor) {
+                LOG_INFO_EDITOR("%s", safeMessage);
+            } else {
+                LOG_INFO("%s", safeMessage);
+            }
         } else if (type == 1) {
-            if (Foundation::EditorLogger::isInitialized()) { LOG_WARN_EDITOR("%s", safeMessage); }
-            LOG_WARN("%s", safeMessage);
+            if (editor) {
+                LOG_WARN_EDITOR("%s", safeMessage);
+            } else {
+                LOG_WARN("%s", safeMessage);
+            }
         } else if (type == 2) {
-            if (Foundation::EditorLogger::isInitialized()) { LOG_ERROR_EDITOR("%s", safeMessage); }
-            LOG_ERROR("%s", safeMessage);
+            if (editor) {
+                LOG_ERROR_EDITOR("%s", safeMessage);
+            } else {
+                LOG_ERROR("%s", safeMessage);
+            }
         }
     }
 } // namespace InternalCalls

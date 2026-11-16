@@ -176,8 +176,8 @@ namespace InternalCalls {
         script->endSensorOverlap(Bamboo::EntityHandle(sensorEntityHandle));
     }
 
-    void setFieldValue(Handle entityHandle, Handle scriptID, FieldHandle fieldId, void *value) {
-        Bamboo::getScriptRegistry()->setFieldValue(entityHandle, scriptID, fieldId, value);
+    void setFieldValue(Handle entityHandle, Handle scriptID, FieldHandle fieldId, const void *values, uint32_t count) {
+        Bamboo::getScriptRegistry()->setFieldValue(entityHandle, scriptID, fieldId, values, count);
     }
 
     void entityWillBeDeleted(Handle entityHandle) {

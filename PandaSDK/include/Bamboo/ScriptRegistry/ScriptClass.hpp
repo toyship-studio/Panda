@@ -16,19 +16,25 @@ using FieldHandle = Panda::FieldHandle;
 using Handle = Panda::Handle;
 using ScriptID = Panda::Handle;
 
+// Writes the values the engine holds for a field into the field of an instance: `values` is an
+// array of `count` 4-byte items (Panda::Scripting::SetFieldValueFn).
+using AssignScriptFieldFunction = void (*)(void *field, const void *values, uint32_t count);
+
 struct ScriptFieldInfo final {
-    constexpr ScriptFieldInfo(ScriptFieldType type, const char *name, uint32_t offset, uint32_t size, uint32_t align)
+    constexpr ScriptFieldInfo(
+        ScriptFieldType type, bool list, const char *name, uint32_t offset, AssignScriptFieldFunction assign
+    )
         : type(type)
+        , list(list)
         , name(name)
         , offset(offset)
-        , size(size)
-        , align(align) {}
+        , assign(assign) {}
 
-    ScriptFieldType type;
+    ScriptFieldType type; // what one value is
+    bool list;            // the field is a std::vector of them
     const char *name;
     uint32_t offset;
-    uint32_t size;
-    uint32_t align;
+    AssignScriptFieldFunction assign; // null for a type that is not a field type (UNKNOWN)
 };
 
 struct ScriptFieldDefinition final {

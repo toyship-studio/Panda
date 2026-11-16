@@ -19,23 +19,23 @@ namespace SpriteRendererComponentAPI {
     }
 
     void setMaterial(EntityHandle entity, MaterialHandle material) {
-        Panda::ExternalCalls::spriteRendererComponent_SetMaterial(entity.id, material.id);
+        Panda::ExternalCalls::spriteRendererComponent_SetMaterial(entity.id, material.id());
     }
 
     MaterialHandle getMaterial(EntityHandle entity) {
         Panda::Handle handle = 0;
         Panda::ExternalCalls::spriteRendererComponent_GetMaterial(entity.id, &handle);
-        return MaterialHandle(handle);
+        return Internal::HandleAccess::make<MaterialHandle>(handle);
     }
 
     void setTexture(EntityHandle entity, TextureHandle texture) {
-        Panda::ExternalCalls::spriteRendererComponent_SetTexture(entity.id, texture.id);
+        Panda::ExternalCalls::spriteRendererComponent_SetTexture(entity.id, texture.id());
     }
 
     TextureHandle getTexture(EntityHandle entity) {
         Panda::Handle handle = 0;
         Panda::ExternalCalls::spriteRendererComponent_GetTexture(entity.id, &handle);
-        return TextureHandle{handle};
+        return Internal::HandleAccess::make<TextureHandle>(handle);
     }
 } // namespace SpriteRendererComponentAPI
 

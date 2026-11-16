@@ -39,16 +39,20 @@ unsaved documents in a warning and goes on.
 the `Assets` folder). An asset is in the game when something in the game leads to it:
 
 1. the start world;
-2. what `"export".include` of `project.json` names (`ProjectExportSettings`; the EXPORT
-   section of the project settings lists the paths, adds an asset by a picker and removes a
-   row) — a file or a folder with everything in it, relative to the project. This is for what
-   only code knows: an asset a script asks for by its id;
-3. what a used asset names, followed until nothing new is found (`collectUsage`): what a world
+2. what a used asset names, followed until nothing new is found (`collectUsage`): what a world
    shows and what its scripts are given (a world among that: the worlds a game can go to are
-   the ones a script field holds), the shader and the textures of a material, the materials of a
-   model, the materials of a postprocessing chain, what a file of a module kind names.
+   the ones a script field holds — one, or a list of them), the shader and the textures of a
+   material, the materials of a model, the materials of a postprocessing chain, what a file of
+   a module kind names.
 
-There is no list of scenes: a world is in the game because the game can get to it.
+There is no list of scenes: a world is in the game because the game can get to it. And there is
+no list of assets kept by hand: **what a game can use at run time is exactly what its files
+name.** A component holds an asset by an id in the world file; a script holds one in a field
+and cannot make one from a number — the handles of the script API have no public constructor
+from an id (`BAMBOO_RESOURCE_HANDLE`; `context/architecture.md`, "SDK API"). A script that
+chooses among assets at run time publishes a list field. So the editor, where every asset of the
+project is at hand, and the game, which has the reached ones only, cannot disagree about a
+script: nothing works in Play and is missing after an export.
 
 **How a reference is found.** A reference to an asset is always written as an id (`AssetRef`, a
 `UUID` field of a DTO, a script field of an asset type). `ReferenceCollector`
@@ -87,9 +91,8 @@ the cook, not in the game.
 and its scene shaders), every file of the pack from the largest (`files`; `detail` says what a
 file holds where the cook knows it — the size, the format and the mips of a texture, the
 vertices and indices of a model, the entities of a world: why the file is as large as it is),
-the assets left out (`unused`, `unusedBytes`) and the warnings (a texture with no cooked form, a model that could
-not be read, an include that names nothing). `ProjectBuilds::readCookReport` reads the last one
-back.
+the assets left out (`unused`, `unusedBytes`) and the warnings (a texture with no cooked form, a
+model that could not be read). `ProjectBuilds::readCookReport` reads the last one back.
 
 **The assets of a project are the files of its `Assets` folder**
 (`AssetHandlerEditor::ASSETS_FOLDER`): the registry is built from that tree and nowhere else.
@@ -161,6 +164,10 @@ back, a file that is not one is refused.
    the shader cache) and nothing else.
 4. The save folder of a game (`Bamboo::ApplicationAPI::getPersistentDataPath`) is made when the
    game asks for it: a game that keeps nothing, and a check run, leave nothing on the disk.
+5. Nothing reaches an asset around the files. A new way for a game to name an asset — a call of
+   the script API that takes a path or an id, a table a module reads at run time — is a hole in
+   the cook and brings back a list kept by hand. A reference is a field: an id in a document the
+   cook encodes; a module kind that names assets in its own file has `encodeReferences`.
 
 ## Open items
 

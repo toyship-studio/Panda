@@ -64,7 +64,9 @@ public:
     void entityDidRemoveComponent(const std::string &component) override;
     void entityDidAddScript(const std::string &className) override;
     void entityDidRemoveScript(int scriptIndex) override;
-    void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) override;
+    void entityDidEditScriptField(
+        int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value, bool structural
+    ) override;
     void entityDidClickBackground() override;
 
 private:

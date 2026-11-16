@@ -43,26 +43,13 @@ struct ModuleRef final : public Rain::Codable {
 // of sections by name, the settings registry; the modules add their own sections the same way,
 // EditorSettingsTypes registers these). Paths are relative to the project, with forward slashes.
 
-// "world": the main world of the project. The editor opens it when the session has no worlds;
-// the list of worlds and the start world of the export are ahead (context/roadmap.md).
+// "world": the start world of the project. A game starts in it and carries what it reaches
+// (context/export.md); the editor opens it when the session has no worlds.
 struct ProjectWorldSettings final : public Rain::Codable {
     std::string startWorld;
 
     RAIN_FIELDS_BEGIN(ProjectWorldSettings)
     RAIN_FIELD(startWorld)
-    RAIN_FIELDS_END
-};
-
-// "export": what the cook of the game takes besides what it finds. The cook puts into the game
-// every world of the project and everything the worlds name; `include` lists the files and the
-// folders of the project (relative paths) the game needs although no world names them — what a
-// script asks for by an id written in code. Everything else of the project stays out of the game
-// and is named in the report of the cook.
-struct ProjectExportSettings final : public Rain::Codable {
-    std::vector<std::string> include;
-
-    RAIN_FIELDS_BEGIN(ProjectExportSettings)
-    RAIN_FIELD(include)
     RAIN_FIELDS_END
 };
 

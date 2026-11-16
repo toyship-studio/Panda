@@ -115,9 +115,14 @@ public:
         }
         m_tabs->refreshTab(m_tabId);
     }
-    void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) override {
-        TargetGuard g(m_host, targets());
-        out().entityDidEditScriptField(scriptIndex, fieldName, std::move(value));
+    void entityDidEditScriptField(
+        int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value, bool structural
+    ) override {
+        {
+            TargetGuard g(m_host, targets());
+            out().entityDidEditScriptField(scriptIndex, fieldName, std::move(value), structural);
+        }
+        if (structural) { m_tabs->refreshTab(m_tabId); }
     }
     void entityDidClickBackground() override {
         out().entityDidClickBackground(); // globally: clear the selection

@@ -178,12 +178,14 @@ namespace {
     struct ScriptFieldManifestDto : public Rain::Codable {
         uint32_t fieldId = 0;
         std::string name;
-        std::string type;
+        std::string type; // what one value of the field is
+        bool list = false; // the field is a list: its "value" in a world is an array of them
 
         RAIN_FIELDS_BEGIN(ScriptFieldManifestDto)
         RAIN_FIELD(fieldId)
         RAIN_FIELD(name)
         RAIN_FIELD(type)
+        RAIN_FIELD(list)
         RAIN_FIELDS_END
     };
 
@@ -230,7 +232,7 @@ namespace {
             classDto.name = scriptClass.name;
             for (const auto &field : scriptClass.fields) {
                 classDto.scriptFields.push_back(
-                    {{}, field.handle, field.name, scriptFieldTypeName(field.type)}
+                    {{}, field.handle, field.name, scriptFieldTypeName(field.type), field.list}
                 );
             }
         }

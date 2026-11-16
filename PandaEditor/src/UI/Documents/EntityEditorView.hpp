@@ -43,7 +43,11 @@ public:
     virtual void entityDidRemoveComponent(const std::string &component) = 0;
     virtual void entityDidAddScript(const std::string &className) = 0;
     virtual void entityDidRemoveScript(int scriptIndex) = 0;
-    virtual void entityDidEditScriptField(int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value) = 0;
+    // The new value of a field of a script. structural — the items of a list were added, removed
+    // or moved: the edit is a step of the history of its own and the form is built again.
+    virtual void entityDidEditScriptField(
+        int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value, bool structural
+    ) = 0;
     virtual void entityDidClickBackground() = 0; // click on the background → clear selection
 };
 
@@ -86,6 +90,8 @@ private:
     std::shared_ptr<PandaUI::CollapsibleSection>
     buildComponentSection(const ComponentInspector &inspector, Panda::Entity primary);
     std::shared_ptr<PandaUI::CollapsibleSection> buildScriptSection(Panda::ExternalScript &script, int scriptIndex);
+    // The field of a script of the primary target as the world holds it now; nullptr — it is gone.
+    Panda::ScriptField *scriptField(int scriptIndex, const std::string &fieldName);
 
     // "..." in the section header → the menu of the component: Copy Values, Paste Values and Reset
     // for a component with a text form (type — its entry in the registry of the engine; nullptr —

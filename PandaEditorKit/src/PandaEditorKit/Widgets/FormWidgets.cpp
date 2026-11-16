@@ -89,15 +89,18 @@ std::shared_ptr<Label> makeFormHint(const std::string &text) {
     return hint;
 }
 
+std::shared_ptr<View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set) {
+    return std::make_shared<AssetWell>(
+        value, kind, [](uint32_t id) { return editorHost().assetTitle(Panda::AssetId(id)); }, std::move(set),
+        [](uint32_t id) { editorHost().selectAsset(Panda::AssetId(id)); }
+    );
+}
+
 std::shared_ptr<PropertyRow> addAssetRow(
     CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
     std::function<void(uint32_t)> set
 ) {
-    auto well = std::make_shared<AssetWell>(
-        value, kind, [](uint32_t id) { return editorHost().assetTitle(Panda::AssetId(id)); }, std::move(set),
-        [](uint32_t id) { editorHost().selectAsset(Panda::AssetId(id)); }
-    );
-    auto row = std::make_shared<PropertyRow>(title, well);
+    auto row = std::make_shared<PropertyRow>(title, makeAssetWell(kind, value, std::move(set)));
     section.addContent(row);
     return row;
 }

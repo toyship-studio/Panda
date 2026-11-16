@@ -356,21 +356,6 @@ bool GameExporter::collectUsage(AssetHandlerEditor &assetHandler, const ExportSe
     // The game starts here; everything else is in the game because something in it leads there.
     use(assetHandler, assetHandler.getAssetId(projectPath / settings.startWorld));
 
-    // What the project names itself: a file or a folder with everything in it.
-    for (const std::string &entry : settings.include) {
-        const std::string wanted = path_t(entry).lexically_normal().generic_string();
-        const std::string folder = !wanted.empty() && wanted.back() == '/' ? wanted : wanted + "/";
-        bool found = false;
-        for (const auto &[id, info] : registry) {
-            const std::string path = assetHandler.assetPath(id).generic_string();
-            if (path == wanted || path + "/" == folder || path.compare(0, folder.size(), folder) == 0) {
-                use(assetHandler, id);
-                found = true;
-            }
-        }
-        if (!found) { warn("\"export\".include of project.json names " + entry + ": no asset of the project is there."); }
-    }
-
     // What a used asset names is used too: what a world shows and what its scripts are given
     // (another world among that), the shader and the textures of a material, the materials of a
     // model, the materials of a postprocessing chain, what a file of a module kind says it names.

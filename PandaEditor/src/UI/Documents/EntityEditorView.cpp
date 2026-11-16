@@ -1,5 +1,6 @@
 #include "UI/Documents/EntityEditorView.hpp"
 
+#include "UI/Documents/ScriptFieldEditors.hpp"
 #include "UI/EditorDialogs.hpp"
 #include <PandaEditorKit/ComponentCommands.hpp>
 #include <PandaEditorKit/EditorHost.hpp>
@@ -383,56 +384,33 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
     }
     for (Panda::ScriptField &field : script.getFields()) {
         const std::string name = field.name;
-        // The label is the name of the C++ field made readable; the name itself is the tooltip.
-        const std::string title = humanizeIdentifier(name);
-        auto set = [this, scriptIndex, name](Panda::ScriptFieldValue value) {
-            m_output->entityDidEditScriptField(scriptIndex, name, std::move(value));
-        };
-        std::shared_ptr<PropertyRow> row;
-        switch (field.type) {
-            case Panda::ScriptFieldType::INTEGER: {
-                // A field of a script has no range of its own.
-                auto widget = std::make_shared<NumberField>();
-                widget->setFont(Typo::Value);
-                widget->setStep(1.f);
-                widget->setValue(static_cast<float>(std::get<int32_t>(field.value)));
-                widget->setOnValueChanged([set](NumberField &f) {
-                    set(Panda::ScriptFieldValue(static_cast<int32_t>(std::lround(f.getValue()))));
-                });
-                row = std::make_shared<PropertyRow>(title, widget);
-                section->addContent(row);
-                break;
-            }
-            case Panda::ScriptFieldType::FLOAT: {
-                auto widget = std::make_shared<NumberField>();
-                widget->setFont(Typo::Value);
-                widget->setValue(std::get<float>(field.value));
-                widget->setOnValueChanged([set](NumberField &f) { set(Panda::ScriptFieldValue(f.getValue())); });
-                row = std::make_shared<PropertyRow>(title, widget);
-                section->addContent(row);
-                break;
-            }
-            case Panda::ScriptFieldType::TEXTURE:
-            case Panda::ScriptFieldType::MATERIAL:
-            case Panda::ScriptFieldType::WORLD:
-            case Panda::ScriptFieldType::FONT: {
-                const char *kind = field.type == Panda::ScriptFieldType::TEXTURE  ? "texture"
-                                 : field.type == Panda::ScriptFieldType::MATERIAL ? "material"
-                                 : field.type == Panda::ScriptFieldType::FONT     ? "font"
-                                                                                  : "world";
-                row = addAssetRow(*section, title.c_str(), kind, static_cast<uint32_t>(std::get<Panda::UUID>(field.value)),
-                                  [set](uint32_t id) { set(Panda::ScriptFieldValue(Panda::UUID(id))); });
-                break;
-            }
-            case Panda::ScriptFieldType::ENTITY: {
-                if (world == nullptr) { break; }
-                row = addEntityRow(*section, title.c_str(), *world, std::get<Panda::UUID>(field.value),
-                                   [set](Panda::UUID id) { set(Panda::ScriptFieldValue(id)); });
-                break;
-            }
-            default: break; // UNKNOWN
+        if (field.isList()) {
+            // The rows of a list reach the value through the world: they outlive an edit of
+            // another row, and an edit of the list itself is applied after the click is over.
+            ScriptListField list;
+            list.name = name;
+            list.type = field.type;
+            list.world = world;
+            list.read = [this, weak = weak_from_this(), scriptIndex, name](Panda::ScriptFieldValue &value) {
+                Panda::ScriptField *live = weak.expired() ? nullptr : scriptField(scriptIndex, name);
+                if (live == nullptr) { return false; }
+                value = live->value;
+                return true;
+            };
+            list.commit = [this, weak = weak_from_this(), scriptIndex, name](Panda::ScriptFieldValue value, bool structural) {
+                if (!weak.expired()) { m_output->entityDidEditScriptField(scriptIndex, name, std::move(value), structural); }
+            };
+            addScriptListRows(*section, std::move(list));
+            continue;
         }
-        if (row) { row->setHelp(name); }
+        auto editor = makeScriptValueEditor(field.type, world, scriptItemOf(field.value), [this, scriptIndex, name](ScriptItem item) {
+            m_output->entityDidEditScriptField(scriptIndex, name, scriptValueOf(item), false);
+        });
+        if (!editor) { continue; }
+        // The label is the name of the C++ field made readable; the name itself is the tooltip.
+        auto row = std::make_shared<PropertyRow>(humanizeIdentifier(name), editor);
+        row->setHelp(name);
+        section->addContent(row);
     }
     // Where the class is written: the file that registers it, opened in the external editor.
     const Panda::path_t source = editorHost().scriptSource(script.getName());
@@ -445,6 +423,16 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
         section->addContent(open);
     }
     return section;
+}
+
+Panda::ScriptField *EntityEditorView::scriptField(int scriptIndex, const std::string &fieldName) {
+    if (m_entities.empty() || !m_entities.front().isValid()) { return nullptr; }
+    Panda::Entity primary = m_entities.front();
+    if (!primary.hasComponent<Panda::ScriptListComponent>()) { return nullptr; }
+    std::vector<Panda::ExternalScript> &scripts = primary.getComponent<Panda::ScriptListComponent>().scripts;
+    if (scriptIndex < 0 || scriptIndex >= static_cast<int>(scripts.size())) { return nullptr; }
+    Panda::ExternalScript &script = scripts[static_cast<size_t>(scriptIndex)];
+    return script.hasField(fieldName.c_str()) ? &script.getField(fieldName.c_str()) : nullptr;
 }
 
 void EntityEditorView::showMode(Mode mode) {

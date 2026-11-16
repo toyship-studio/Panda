@@ -8,11 +8,14 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 33;
+constexpr uint32_t SCRIPT_ABI_VERSION = 34;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
-using SetFieldValueFn = void (*)(Handle entityHandle, Handle scriptID, FieldHandle fieldId, void *value);
+// v34: the values of a field as an array of 4-byte items (ScriptFieldType): one item for a plain
+// field, any number of them, none included, for a list.
+using SetFieldValueFn =
+    void (*)(Handle entityHandle, Handle scriptID, FieldHandle fieldId, const void *values, uint32_t count);
 using InvokeUpdateAtScriptFn = void (*)(Handle entityHandle, Handle scriptID, float deltaTime);
 // v27: before every physics step, with the step length.
 using InvokeFixedUpdateAtScriptFn = void (*)(Handle entityHandle, Handle scriptID, float stepTime);

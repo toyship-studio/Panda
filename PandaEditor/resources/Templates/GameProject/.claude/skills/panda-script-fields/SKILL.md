@@ -30,10 +30,15 @@ the file is missing, build the scripts and reload.
 ```
 
 - `name` — the name of the C++ class (`REGISTER_SCRIPT`).
-- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world
+- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font
   (the manifest has the same types as words).
 - `value`: integer/float — a number; entity — the id of an entity of THIS world; texture/
-  material/world — the asset id from the asset's `.pmeta` sidecar (`<file>.pmeta`, key `id`).
+  material/world/font — the asset id from the asset's `.pmeta` sidecar (`<file>.pmeta`, key `id`).
+- A list field — `"list": true` in the manifest, a `std::vector` of one of the types in the
+  class — has an array of such values: `{ "name": "levels", "fieldId": 37856845, "type": 5,
+  "value": [3100002001, 3100002002] }`; an empty list is `[]`.
+- An asset reaches a script only through a field: a handle cannot be made from an id in the
+  C++ code. What a script picks from at run time (levels, skins, frames) is a list field.
 - List EVERY field of the script: a field that is not listed is written as zero when Play
   starts — the initializer in the C++ class is not used.
 - A script without parameters: `{ "name": "MyScript", "scriptFields": [] }`.

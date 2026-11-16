@@ -23,7 +23,7 @@ public:
             std::vector<Scripting::ScriptFieldInfo> &fields = s_fields.emplace_back();
             fields.reserve(clazz.fields.size());
             for (const Bamboo::ScriptFieldDefinition &field : clazz.fields) {
-                fields.push_back({field.handle, field.info.name, static_cast<Scripting::ScriptFieldType>(field.info.type)});
+                fields.push_back({field.handle, field.info.name, field.info.type, field.info.list});
             }
             s_classes.push_back({clazz.name, clazz.order, fields.data(), static_cast<uint32_t>(fields.size())});
         }

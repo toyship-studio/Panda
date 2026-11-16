@@ -25,7 +25,11 @@
 #include <Panda/Renderer/WorldView.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/Extensions/Settings.hpp>
+#include <Panda/Serialization/ComponentDtos.hpp>
+#include <Panda/Serialization/ReferenceCollector.hpp>
 #include <Panda/Serialization/WorldMapper.hpp>
+#include <Rain/Coders/BinaryDecoder.hpp>
+#include <Rain/Coders/BinaryEncoder.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 #include <Panda/Packages/PackageLoader.hpp>
@@ -554,6 +558,67 @@ int main(int argc, const char **argv) {
         report("tag removed", !tagged.hasComponent<Panda::IsStaticComponent>());
         world->destroy(clone);
         world->destroy(tagged);
+    }
+
+    // A list field of a script (a std::vector in the class): an array in the world file, the
+    // same list back from the file and from the binary world of a game, and every id of it seen
+    // by the reference collector. The last one is what lets the cook of a game find the assets
+    // and the worlds a script chooses among, with no list kept by hand (context/export.md).
+    std::printf("script list fields\n");
+    {
+        const auto field = [](const char *name, Panda::ScriptFieldType type, Panda::ScriptFieldValue value) {
+            Panda::ScriptFieldDto dto;
+            dto.name = name;
+            dto.fieldId = 7;
+            dto.type = type;
+            dto.value = std::move(value);
+            return dto;
+        };
+        const std::vector<Panda::ScriptFieldDto> fields = {
+            field("levels", Panda::ScriptFieldType::WORLD, std::vector<Panda::UUID>{Panda::UUID(101), Panda::UUID(102)}),
+            field("delays", Panda::ScriptFieldType::FLOAT, std::vector<float>{0.5f, 1.5f}),
+            field("counts", Panda::ScriptFieldType::INTEGER, std::vector<int32_t>{}),
+            field("speed", Panda::ScriptFieldType::FLOAT, 2.f),
+            field("texture", Panda::ScriptFieldType::TEXTURE, Panda::UUID(103)),
+        };
+        const Panda::ScriptListComponentDto written = {{}, {Panda::ExternalScriptDto("Menu", fields)}};
+        const auto same = [&fields](const Panda::ScriptListComponentDto &read) {
+            if (read.scripts.size() != 1 || read.scripts[0].scriptFields.size() != fields.size()) { return false; }
+            for (size_t i = 0; i < fields.size(); i++) {
+                const Panda::ScriptFieldDto &back = read.scripts[0].scriptFields[i];
+                if (back.name != fields[i].name || back.type != fields[i].type) { return false; }
+                if (Panda::isScriptFieldList(back.value) != Panda::isScriptFieldList(fields[i].value)) { return false; }
+                const Panda::ScriptFieldItems a = Panda::scriptFieldItems(back.value);
+                const Panda::ScriptFieldItems b = Panda::scriptFieldItems(fields[i].value);
+                if (a.count != b.count || std::memcmp(a.data, b.data, a.count * sizeof(uint32_t)) != 0) { return false; }
+            }
+            return true;
+        };
+
+        std::stringstream text;
+        Rain::JsonEncoder jsonEncoder(true);
+        static_cast<Rain::Encoder &>(jsonEncoder).encode(text, written);
+        Panda::ScriptListComponentDto fromText;
+        Rain::JsonDecoder jsonDecoder;
+        const bool textRead = static_cast<Rain::Decoder &>(jsonDecoder).decode(text, fromText);
+        report("a list field survives the world file", textRead && same(fromText));
+
+        std::stringstream binary(std::ios::in | std::ios::out | std::ios::binary);
+        Rain::BinaryEncoder binaryEncoder;
+        static_cast<Rain::Encoder &>(binaryEncoder).encode(binary, written);
+        Panda::ScriptListComponentDto fromBinary;
+        Rain::BinaryDecoder binaryDecoder;
+        const bool binaryRead = static_cast<Rain::Decoder &>(binaryDecoder).decode(binary, fromBinary);
+        report("a list field survives the binary world of a game", binaryRead && same(fromBinary));
+
+        Panda::ReferenceCollector references;
+        std::ostringstream sink;
+        static_cast<Rain::Encoder &>(references).encode(sink, written);
+        report(
+            "every id of a list is a reference the cook sees",
+            references.ids().count(Panda::UUID(101)) == 1 && references.ids().count(Panda::UUID(102)) == 1 &&
+                references.ids().count(Panda::UUID(103)) == 1
+        );
     }
 
     // Round trip of the world file: world → JSON → world → JSON. Catches a forgotten line in the

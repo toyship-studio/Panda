@@ -50,6 +50,10 @@ Large directions that are still ahead. Finished work is one line with a pointer 
   that plays some frames and leaves (`context/export.md`).
 - **Several worlds in a game**: the game starts in the start world of the project settings and
   carries the worlds its scripts are given; there is no scene list (`context/export.md`).
+- **A game is what its files name**: a script gets an asset from a field and cannot make a
+  reference from a number, a field may be a list (`std::vector` of a field type), and the cook
+  needs no list of assets kept by hand (`context/export.md`, `context/architecture.md`, "SDK
+  API").
 
 ## Ahead (order is open to discussion)
 

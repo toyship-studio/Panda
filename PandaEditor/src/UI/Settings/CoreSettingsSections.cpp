@@ -5,7 +5,6 @@
 #include "Project/Settings/EditorSettings.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
 #include "Project/System/SystemTools.hpp"
-#include "UI/EditorDialogs.hpp"
 
 #include <Fern/Fonts/FontCatalog.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
@@ -708,77 +707,6 @@ namespace {
         ));
     }
 
-    // What a game carries although nothing in it names it (`"export".include`, GameExporter): the
-    // assets only the code knows. A row per path; an asset is added by picking it, a folder is
-    // typed into project.json.
-    void buildProjectExport(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::ProjectExportSettings>(store.get<Panda::ProjectExportSettings>());
-        auto emit = [data] { commitSettings<Panda::ProjectExportSettings>(SettingsScope::Project, *data); };
-        auto list = std::make_shared<Panel>();
-        list->setBackgroundColor(Color(0x00000000));
-        list->layout().setFlexDirection(FlexDirection::Column);
-        const std::weak_ptr<Panel> weakList = list;
-
-        // The rows are made again after every change. A row is removed by its own button, so the
-        // rebuild waits for the start of the next tick (Context::postDeferred). The Add button
-        // owns the function; the rows know it weakly.
-        auto fill = std::make_shared<std::function<void()>>();
-        const std::weak_ptr<std::function<void()>> weakFill = fill;
-        const auto refill = [weakList, weakFill] {
-            const auto list = weakList.lock();
-            const auto fill = weakFill.lock();
-            if (!list || !fill) { return; }
-            if (Context *context = list->getContext()) {
-                context->postDeferred([fill] { (*fill)(); });
-            } else {
-                (*fill)();
-            }
-        };
-        *fill = [data, emit, weakList, refill] {
-            const auto list = weakList.lock();
-            if (!list) { return; }
-            list->removeAllSubviews();
-            for (const std::string &path : data->include) {
-                auto remove = makeFormButton("Remove", ButtonStyle::Neutral, [data, emit, refill, path] {
-                    std::erase(data->include, path);
-                    emit();
-                    refill();
-                });
-                auto row = std::make_shared<PropertyRow>(path, remove, false);
-                row->setPlacement(PropertyRowPlacement::Trailing);
-                list->addSubview(row);
-            }
-            list->setNeedsLayout();
-        };
-        (*fill)();
-
-        section.addContent(makeFormHint(
-            "A game carries what its start world reaches. Listed here is what only the code knows — an asset a "
-            "script asks for by its id — and it goes into the game with everything it uses."
-        ));
-        section.addContent(list);
-        section.addContent(makeFormButtonRow({makeFormButton("Add Asset…", ButtonStyle::Neutral, [data, emit, fill, weakList] {
-            const auto list = weakList.lock();
-            Context *context = list ? list->getContext() : nullptr;
-            if (context == nullptr) { return; }
-            auto ids = std::make_shared<std::vector<uint32_t>>();
-            std::vector<PickerItem> items = projectAssetItems(*ids);
-            showPalette(context, "An asset the game always carries…", std::move(items), [data, emit, fill, ids](int index) {
-                Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-                if (handler == nullptr || index < 0 || index >= static_cast<int>(ids->size())) { return; }
-                const std::string path = handler->assetPath(Panda::AssetId((*ids)[static_cast<size_t>(index)])).generic_string();
-                if (path.empty() || std::find(data->include.begin(), data->include.end(), path) != data->include.end()) { return; }
-                data->include.push_back(path);
-                emit();
-                (*fill)();
-            });
-        })}));
-        section.addContent(makeFormHint(
-            "A folder with everything in it is typed into \"export\".include of project.json. What an export left "
-            "out is named in the Output panel after every cook."
-        ));
-    }
-
     // The MCP server of the editor for this project: an AI agent in the project folder looks at
     // the editor and drives it through it (App/EditorMcp). Follows the section at once.
     void buildProjectMcp(CollapsibleSection &section, Panda::TypeContext &store) {
@@ -824,7 +752,6 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});
     extensions.settingsSections.push_back({SettingsScope::Project, "MODULES", buildProjectModules});
-    extensions.settingsSections.push_back({SettingsScope::Project, "EXPORT", buildProjectExport});
     extensions.settingsSections.push_back({SettingsScope::Project, "MCP SERVER", buildProjectMcp});
 }
 

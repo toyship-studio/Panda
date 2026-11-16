@@ -13,18 +13,21 @@ namespace Panda {
 
 // Edit of one field of a script on an entity. The value is written into the world and, while the
 // world runs, into the script instance — by execute, undo and redo alike, so the running script
-// always holds what the inspector shows. A series of ticks of one field = one command.
+// always holds what the inspector shows. A series of ticks of one field = one command; a discrete
+// edit — an item of a list added, removed or moved — is a step of its own.
 class EditScriptFieldCommand : public WorldCommand {
 public:
     EditScriptFieldCommand(
-        Entity entity, size_t scriptIndex, std::string fieldName, ScriptFieldValue before, ScriptFieldValue after
+        Entity entity, size_t scriptIndex, std::string fieldName, ScriptFieldValue before, ScriptFieldValue after,
+        bool discrete = false
     )
         : m_entity(entity)
         , m_scriptIndex(scriptIndex)
         , m_fieldName(std::move(fieldName))
-        , m_before(before)
-        , m_after(after)
-        , m_lastEdit(std::chrono::steady_clock::now()) {}
+        , m_before(std::move(before))
+        , m_after(std::move(after))
+        , m_lastEdit(std::chrono::steady_clock::now())
+        , m_sealed(discrete) {}
 
     bool execute() override {
         return apply(m_after);
@@ -34,8 +37,9 @@ public:
     }
     bool canMerge(WorldCommand &command) override {
         auto *other = dynamic_cast<EditScriptFieldCommand *>(&command);
-        return other && !m_sealed && other->m_entity == m_entity && other->m_scriptIndex == m_scriptIndex &&
-               other->m_fieldName == m_fieldName && withinMergeWindow(m_lastEdit);
+        return other && !m_sealed && !other->m_sealed && other->m_entity == m_entity &&
+               other->m_scriptIndex == m_scriptIndex && other->m_fieldName == m_fieldName &&
+               withinMergeWindow(m_lastEdit);
     }
     void merge(WorldCommand &command) override {
         m_after = static_cast<EditScriptFieldCommand &>(command).m_after;

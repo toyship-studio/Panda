@@ -109,10 +109,12 @@ place:
   load with the class names, the fields, their `fieldId` and types. **Always take `fieldId` from
   there**, do not compute it. If the file is missing, build the scripts and reload.
 - `name` — the name of the C++ class (`REGISTER_SCRIPT`).
-- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world (the
+- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font (the
   manifest has the same types as words).
 - `value`: integer/float — a number; entity — the id of an entity of THIS world; texture/
-  material/world — the asset id from the asset's `.pmeta` sidecar.
+  material/world/font — the asset id from the asset's `.pmeta` sidecar. A list field
+  (`"list": true` in the manifest, a `std::vector` in the class) has an array of such values:
+  `"value": [3100002001, 3100002002]`, `[]` when empty.
 - List EVERY field of the script: a field that is not listed is written as zero when Play
   starts — the initializer in the C++ class is not used.
 - A script without parameters: `{ "name": "MyScript", "scriptFields": [] }`.
@@ -139,10 +141,10 @@ The game starts in the start world of the project (`"world".startWorld` of
 scripts hold in `WorldHandle` fields, and what those use. An asset nothing reaches is left out,
 and the cook names it in a warning. So:
 
-- give a script what it needs through a published field (`PANDA_FIELD`), not through an id
-  written in the code;
-- when an id in the code is unavoidable, list the file or its folder in `"export".include` of
-  `.Panda/project.json`;
+- a script gets an asset through a published field (`PANDA_FIELD`) and from nowhere else: a
+  handle of an asset cannot be made from an id in the code (it does not compile);
+- a script that chooses among several assets publishes a list — `std::vector<WorldHandle> levels`
+  — and takes an item of it;
 - to check an export: `save`, `export` (read the warnings and the list of what was left out),
   `build` with `target: "export"`, then `export` with `action: "run"` and look at the picture.
 

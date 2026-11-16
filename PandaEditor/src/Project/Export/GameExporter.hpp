@@ -27,9 +27,6 @@ struct ExportSettings {
     // Enabled modules of the project that have an engine part (ProjectModules::enabledIds):
     // the export project links only those (modules.txt in the cooked data).
     std::vector<std::string> modules;
-    // Files and folders of the project the game needs although nothing in it names them (a script
-    // asks for an asset by its id): `"export".include` of project.json, relative paths.
-    std::vector<std::string> include;
 };
 
 // What a cook made (report.json next to the cooked data, and the answer of the `export` tool of
@@ -101,8 +98,9 @@ struct ExportResult {
 
 // The cook of a game: the cooked data the Export project builds the game from. It is a function
 // of the files of the project. It finds what the game uses — everything the start world reaches
-// through references (its assets, the worlds its scripts are given, and what those name in turn),
-// and what `"export".include` names — brings each of those assets to the form the runtime loads
+// through references: its assets, the worlds its scripts are given, and what those name in turn.
+// Nothing else can be in a game: a script gets an asset from a field, never from a number in the
+// code (Bamboo/Base.hpp). The cook brings each of those assets to the form the runtime loads
 // (a world, a material and a postprocessing chain in binary; a texture as cooked by the import; a
 // model as arrays of vertices; a shader as the text of every backend) and writes them into one
 // pack (AssetPack). An asset nothing reaches stays in the project and is named in the report.

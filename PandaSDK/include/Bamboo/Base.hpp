@@ -8,6 +8,8 @@ namespace Bamboo {
 
 #define BAMBOO_INVALID_HANDLE 0
 
+// An entity of the world: its id. A script gets one from the world — a field set in the
+// inspector, a search by tag, a collision — and may keep the number and make a handle from it.
 #define BAMBOO_HANDLE(name)                                                                                            \
     struct name {                                                                                                      \
         name(uint32_t id)                                                                                              \
@@ -20,12 +22,55 @@ namespace Bamboo {
         }                                                                                                              \
     };
 
+namespace Internal {
+    struct HandleAccess;
+}
+
+// A reference to something the engine holds: an asset of the project, or a mesh or a texture the
+// script created. A script is given one — by a field set in the inspector, by a call of the API —
+// and does not make one from a number: a game carries the assets its worlds name (docs/export.md),
+// and a number written in code names nothing the cook of the game can see. The id is there to
+// tell handles apart, for a log and for a save file; a saved id becomes a handle again by looking
+// for it among the handles the script was given (a list field).
+#define BAMBOO_RESOURCE_HANDLE(name)                                                                                   \
+    struct name {                                                                                                      \
+        name() = default;                                                                                              \
+        uint32_t id() const {                                                                                          \
+            return m_id;                                                                                               \
+        }                                                                                                              \
+        bool isValid() const {                                                                                         \
+            return m_id != BAMBOO_INVALID_HANDLE;                                                                      \
+        }                                                                                                              \
+        bool operator==(const name &other) const {                                                                     \
+            return m_id == other.m_id;                                                                                 \
+        }                                                                                                              \
+        bool operator!=(const name &other) const {                                                                     \
+            return m_id != other.m_id;                                                                                 \
+        }                                                                                                              \
+                                                                                                                       \
+    private:                                                                                                           \
+        friend struct Internal::HandleAccess;                                                                          \
+        explicit name(uint32_t id)                                                                                     \
+            : m_id(id) {}                                                                                              \
+        uint32_t m_id = BAMBOO_INVALID_HANDLE;                                                                         \
+    };
+
 BAMBOO_HANDLE(EntityHandle);
-BAMBOO_HANDLE(TextureHandle);
-BAMBOO_HANDLE(MaterialHandle);
-BAMBOO_HANDLE(MeshHandle);
-BAMBOO_HANDLE(WorldHandle);
-BAMBOO_HANDLE(FontHandle); // a font asset (.ttf / .otf): Bamboo::UI::font puts it into a PandaUI::Font
+BAMBOO_RESOURCE_HANDLE(TextureHandle);
+BAMBOO_RESOURCE_HANDLE(MaterialHandle);
+BAMBOO_RESOURCE_HANDLE(MeshHandle);
+BAMBOO_RESOURCE_HANDLE(WorldHandle);
+BAMBOO_RESOURCE_HANDLE(FontHandle); // a font asset (.ttf / .otf): Bamboo::UI::font puts it into a PandaUI::Font
+
+namespace Internal {
+    // How the SDK itself makes a handle from the id the engine gave it. Not for the code of a game.
+    struct HandleAccess {
+        template<typename HandleType>
+        static HandleType make(uint32_t id) {
+            return HandleType(id);
+        }
+    };
+} // namespace Internal
 
 struct Vec2 {
     union {

@@ -13,14 +13,53 @@
 
 namespace Panda {
 
-using ScriptFieldValue = std::variant<int32_t, float, UUID>;
+// The value of a script field: one value, or a list of them for a field that is a std::vector in
+// the class. The type of the field (ScriptFieldType) says what one value is: an int32_t, a float,
+// or the id of an entity or of an asset. A list has the shape of the value and no flag of its
+// own: the world file writes it as an array, the inspector shows rows.
+using ScriptFieldValue =
+    std::variant<int32_t, float, UUID, std::vector<int32_t>, std::vector<float>, std::vector<UUID>>;
 
-inline void *getScriptFieldValuePointer(ScriptFieldValue &value) {
-    return std::visit([](auto &actualValue) -> void * { return &actualValue; }, value);
+inline bool isScriptFieldList(const ScriptFieldValue &value) {
+    return std::visit([](const auto &actual) { return requires { actual.size(); }; }, value);
 }
 
-inline const void *getScriptFieldValuePointer(const ScriptFieldValue &value) {
-    return std::visit([](const auto &actualValue) -> const void * { return &actualValue; }, value);
+// The value a field starts with: zero, no reference, an empty list.
+inline ScriptFieldValue defaultScriptFieldValue(ScriptFieldType type, bool list) {
+    switch (type) {
+        case ScriptFieldType::FLOAT:
+            return list ? ScriptFieldValue(std::vector<float>()) : ScriptFieldValue(0.f);
+        case ScriptFieldType::ENTITY:
+        case ScriptFieldType::TEXTURE:
+        case ScriptFieldType::MATERIAL:
+        case ScriptFieldType::WORLD:
+        case ScriptFieldType::FONT:
+            return list ? ScriptFieldValue(std::vector<UUID>()) : ScriptFieldValue(UUID(0));
+        case ScriptFieldType::INTEGER:
+        case ScriptFieldType::UNKNOWN:
+            break;
+    }
+    return list ? ScriptFieldValue(std::vector<int32_t>()) : ScriptFieldValue(int32_t(0));
+}
+
+// A value as the script ABI takes it (SetFieldValueFn): an array of 4-byte items.
+struct ScriptFieldItems {
+    const void *data;
+    uint32_t count;
+};
+
+inline ScriptFieldItems scriptFieldItems(const ScriptFieldValue &value) {
+    static_assert(sizeof(UUID) == sizeof(uint32_t), "an id crosses the script ABI as 4 bytes");
+    return std::visit(
+        [](const auto &actual) -> ScriptFieldItems {
+            if constexpr (requires { actual.size(); }) {
+                return {actual.data(), static_cast<uint32_t>(actual.size())};
+            } else {
+                return {&actual, 1};
+            }
+        },
+        value
+    );
 }
 
 struct ScriptField {
@@ -29,6 +68,10 @@ struct ScriptField {
     std::string name;
     ScriptFieldType type;
     ScriptFieldValue value;
+
+    bool isList() const {
+        return isScriptFieldList(value);
+    }
 
     ScriptField(
         Handle instanceId, Handle fieldId, const std::string &name, ScriptFieldType type, ScriptFieldValue value
@@ -152,7 +195,8 @@ public:
     // an instance gets every field when it is created.
     void applyField(ScriptField &field) {
         if (!id) { return; }
-        ExternalCalls::setFieldValue(entityId, id, field.fieldId, getScriptFieldValuePointer(field.value));
+        const ScriptFieldItems items = scriptFieldItems(field.value);
+        ExternalCalls::setFieldValue(entityId, id, field.fieldId, items.data, items.count);
     }
 
 private:

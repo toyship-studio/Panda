@@ -55,9 +55,13 @@ entity under the pointer; a drag with the left button selects by a rectangle. Th
 what you selected opens when the button is released.
 
 A script of an entity is a section of its inspector with the fields the class publishes
-(`PANDA_FIELD`). A class that publishes none says so, a class the last script build does not
-have is marked, and the link under the section opens the source of the class in your text
-editor (Settings → Editor → External Tools).
+(`PANDA_FIELD`). A list field (a `std::vector` in the class) is a block of rows: **+** in its
+header adds an item, the bin of a row removes it, and a row dragged by its index onto another
+takes that place. An asset, an entity or a whole folder of the Content Browser dropped on the
+header becomes items of the list. A class that
+publishes none says so, a class the last script build does not have is marked, and the link
+under the section opens the source of the class in your text editor (Settings → Editor →
+External Tools).
 
 A click on a world file in the Content Browser shows that world in the preview tab (its title
 is in italics): the next world clicked takes the same tab. A double click on the file or on the
@@ -65,10 +69,13 @@ tab keeps it open, and so does the first edit. The tabs of the worlds can be dra
 another order. A world tab closes like any other tab; with the last one closed the center is
 empty — the "+" in the middle makes a new world, a click on a world file opens one.
 
-The Content Browser shows the `Assets` folder of the project as it is on disk. A right click on
-the empty space makes a folder or an asset in the folder shown; a right click on a folder opens
-it, makes something inside it (New), or deletes it with everything in it — the editor asks
-first, and the files do not come back with Undo.
+The Content Browser shows the `Assets` folder of the project as it is on disk, the names in the
+order a person reads them (`level2` before `level10`). A right click on the empty space makes a
+folder or an asset in the folder shown; a right click on a folder opens it, makes something
+inside it (New), or deletes it with everything in it — the editor asks first, and the files do
+not come back with Undo. An asset is dragged from here onto a field that takes it and into the
+viewport; a folder is dragged onto the header of a list field of a script and gives it every
+asset of the kind of the list.
 
 Play needs the scripts of the project. In a project where they were never built, Play offers to
 build them; the CMake panel shows the build and the editor loads the result. Build Scripts

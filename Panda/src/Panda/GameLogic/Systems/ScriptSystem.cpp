@@ -16,24 +16,6 @@ namespace {
     constexpr uint32_t ASYNC_MAX_COMPLETIONS_PER_FRAME = 32;
     constexpr double ASYNC_MAX_MILLISECONDS_PER_FRAME = 2.0;
 
-    ScriptFieldValue defaultValueFor(ScriptFieldType type) {
-        switch (type) {
-            case ScriptFieldType::INTEGER:
-                return int(0);
-            case ScriptFieldType::FLOAT:
-                return float(0.f);
-            case ScriptFieldType::ENTITY:
-            case ScriptFieldType::TEXTURE:
-            case ScriptFieldType::MATERIAL:
-            case ScriptFieldType::WORLD:
-            case ScriptFieldType::FONT:
-                return UUID(0);
-            case ScriptFieldType::UNKNOWN:
-                break;
-        }
-        return int(0);
-    }
-
     // All script containers of live entities in class order (stable — within a
     // class it is the order of the registry entities).
     std::vector<ExternalScript *> inExecutionOrder(World &world) {
@@ -95,15 +77,17 @@ void syncWithManifest(World &world) {
                 if (!container.hasField(fieldManifest.name.c_str())) {
                     container.addField(ScriptField(
                         0, fieldManifest.handle, fieldManifest.name, fieldManifest.type,
-                        defaultValueFor(fieldManifest.type)
+                        defaultScriptFieldValue(fieldManifest.type, fieldManifest.list)
                     ));
                     continue;
                 }
                 ScriptField &field = container.getField(fieldManifest.name.c_str());
                 field.fieldId = fieldManifest.handle;
-                if (field.type != fieldManifest.type) {
+                // The class decides what the field is: a value of another type, or one value
+                // where the class now has a list, cannot be kept.
+                if (field.type != fieldManifest.type || field.isList() != fieldManifest.list) {
                     field.type = fieldManifest.type;
-                    field.value = defaultValueFor(fieldManifest.type);
+                    field.value = defaultScriptFieldValue(fieldManifest.type, fieldManifest.list);
                 }
             }
         }

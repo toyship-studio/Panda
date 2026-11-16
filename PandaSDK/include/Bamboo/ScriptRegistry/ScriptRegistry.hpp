@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 #include <unordered_map>
+#include <vector>
 
 namespace Bamboo {
 
@@ -19,6 +21,60 @@ private:
     template<typename T>
     static auto addFieldsIfHas(ScriptClass &info) -> std::enable_if_t<hasFields<T>> {
         info.fields = StripType<T>::getFields();
+    }
+
+    // What a field of the class is to the engine: `Item` is one value — an int, a float or a
+    // handle — and the field is one of them or a std::vector of them.
+    template<typename T>
+    struct FieldShape {
+        using Item = T;
+        static constexpr bool list = false;
+    };
+    template<typename T>
+    struct FieldShape<std::vector<T>> {
+        using Item = T;
+        static constexpr bool list = true;
+    };
+
+    template<typename T>
+    static constexpr ScriptFieldType getType() {
+        if constexpr (std::is_same_v<T, int>) { return ScriptFieldType::INTEGER; }
+        if constexpr (std::is_same_v<T, float>) { return ScriptFieldType::FLOAT; }
+        if constexpr (std::is_same_v<T, Bamboo::EntityHandle>) { return ScriptFieldType::ENTITY; }
+        if constexpr (std::is_same_v<T, Bamboo::TextureHandle>) { return ScriptFieldType::TEXTURE; }
+        if constexpr (std::is_same_v<T, Bamboo::MaterialHandle>) { return ScriptFieldType::MATERIAL; }
+        if constexpr (std::is_same_v<T, Bamboo::WorldHandle>) { return ScriptFieldType::WORLD; }
+        if constexpr (std::is_same_v<T, Bamboo::FontHandle>) { return ScriptFieldType::FONT; }
+        return ScriptFieldType::UNKNOWN;
+    }
+
+    // One value out of the array the engine sent: a number as it is, a handle from its id.
+    template<typename Item>
+    static Item fieldItem(const void *values, uint32_t index) {
+        const void *source = static_cast<const uint8_t *>(values) + index * sizeof(uint32_t);
+        if constexpr (std::is_arithmetic_v<Item>) {
+            static_assert(sizeof(Item) == sizeof(uint32_t), "a value of a script field is 4 bytes");
+            Item item;
+            memcpy(&item, source, sizeof(Item));
+            return item;
+        } else {
+            uint32_t id = 0;
+            memcpy(&id, source, sizeof(id));
+            return Internal::HandleAccess::make<Item>(id);
+        }
+    }
+
+    template<typename FieldType>
+    static void assignField(void *field, const void *values, uint32_t count) {
+        using Item = typename FieldShape<FieldType>::Item;
+        if constexpr (FieldShape<FieldType>::list) {
+            FieldType &list = *static_cast<FieldType *>(field);
+            list.clear();
+            list.reserve(count);
+            for (uint32_t i = 0; i < count; i++) { list.push_back(fieldItem<Item>(values, i)); }
+        } else if (count > 0) {
+            *static_cast<FieldType *>(field) = fieldItem<Item>(values, 0);
+        }
     }
 
     struct ScriptEntry {
@@ -42,22 +98,8 @@ public:
         return m_scriptClasses;
     }
 
-    template<typename T>
-    ScriptFieldType getType() {
-        if constexpr (std::is_same_v<T, int>) { return ScriptFieldType::INTEGER; }
-        if constexpr (std::is_same_v<T, float>) { return ScriptFieldType::FLOAT; }
-        if constexpr (std::is_same_v<T, Bamboo::EntityHandle>) { return ScriptFieldType::ENTITY; }
-        if constexpr (std::is_same_v<T, Bamboo::TextureHandle>) { return ScriptFieldType::TEXTURE; }
-        if constexpr (std::is_same_v<T, Bamboo::MaterialHandle>) { return ScriptFieldType::MATERIAL; }
-        if constexpr (std::is_same_v<T, Bamboo::WorldHandle>) { return ScriptFieldType::WORLD; }
-        if constexpr (std::is_same_v<T, Bamboo::FontHandle>) { return ScriptFieldType::FONT; }
-        return ScriptFieldType::UNKNOWN;
-    }
-
     template<typename FieldType>
     ScriptFieldInfo makeFieldInfo(const char *fieldName, uint32_t offset) {
-        ScriptFieldType type = getType<FieldType>();
-
         using TypeRemovedExtents = std::remove_all_extents_t<FieldType>;
         using TypeRemovedRefs = std::remove_reference_t<TypeRemovedExtents>;
         using TypeRemovedPtrs = RemoveAllPointers<TypeRemovedRefs>;
@@ -67,7 +109,12 @@ public:
         static_assert(!isConst, "Const types in script fields not supported");
         static_assert(!isRef, "Reference types in script fields not supported");
 
-        return ScriptFieldInfo(type, fieldName, offset, sizeof(FieldType), alignof(FieldType));
+        constexpr ScriptFieldType type = getType<typename FieldShape<FieldType>::Item>();
+        if constexpr (type == ScriptFieldType::UNKNOWN) {
+            return ScriptFieldInfo(type, false, fieldName, offset, nullptr);
+        } else {
+            return ScriptFieldInfo(type, FieldShape<FieldType>::list, fieldName, offset, &assignField<FieldType>);
+        }
     }
 
     template<typename T>
@@ -99,7 +146,9 @@ public:
         return instances.at(id);
     }
 
-    void setFieldValue(Handle entityHandle, Handle scriptId, FieldHandle fieldId, void *value) {
+    void setFieldValue(
+        Handle entityHandle, Handle scriptId, FieldHandle fieldId, const void *values, uint32_t count
+    ) {
         ScriptEntry scriptEntry = getEntryWithId(entityHandle, scriptId);
         if (!scriptEntry.script) { return; }
         Handle classHandle = scriptEntry.classHandle;
@@ -110,59 +159,12 @@ public:
                 return field.handle == fieldId;
             });
         if (fieldIt == clazz.fields.end()) { return; }
-        ScriptFieldInfo &info = fieldIt->info;
-        void *fieldPtr = addOffset(scriptEntry.script.get(), info.offset);
-        switch (info.type) {
-            case ScriptFieldType::INTEGER:
-            case ScriptFieldType::FLOAT: {
-                memcpy(fieldPtr, value, info.size);
-                break;
-            }
-            case ScriptFieldType::ENTITY: {
-                using FieldType = Bamboo::EntityHandle;
-                uint32_t *id = (uint32_t *)value;
-                FieldType value = FieldType(*id);
-                FieldType *field = static_cast<FieldType *>(fieldPtr);
-                *field = value;
-                break;
-            }
-            case ScriptFieldType::TEXTURE: {
-                using FieldType = Bamboo::TextureHandle;
-                uint32_t *id = (uint32_t *)value;
-                FieldType value = FieldType(*id);
-                FieldType *field = static_cast<FieldType *>(fieldPtr);
-                *field = value;
-                break;
-            }
-            case ScriptFieldType::MATERIAL: {
-                using FieldType = Bamboo::MaterialHandle;
-                uint32_t *id = (uint32_t *)value;
-                FieldType value = FieldType(*id);
-                FieldType *field = static_cast<FieldType *>(fieldPtr);
-                *field = value;
-                break;
-            }
-            case ScriptFieldType::WORLD: {
-                using FieldType = Bamboo::WorldHandle;
-                uint32_t *id = (uint32_t *)value;
-                FieldType value = FieldType(*id);
-                FieldType *field = static_cast<FieldType *>(fieldPtr);
-                *field = value;
-                break;
-            }
-            case ScriptFieldType::FONT: {
-                using FieldType = Bamboo::FontHandle;
-                uint32_t *id = (uint32_t *)value;
-                FieldType value = FieldType(*id);
-                FieldType *field = static_cast<FieldType *>(fieldPtr);
-                *field = value;
-                break;
-            }
-            case ScriptFieldType::UNKNOWN: {
-                LOG_ERROR("BAMBOO: UNKNOWN FIELD TYPE: %d", info.type);
-                break;
-            }
+        const ScriptFieldInfo &info = fieldIt->info;
+        if (!info.assign) {
+            LOG_ERROR("BAMBOO: the field %s is of a type a script field cannot have", info.name);
+            return;
         }
+        info.assign(addOffset(scriptEntry.script.get(), info.offset), values, count);
     }
 
     void entityWillBeDeleted(Handle entityHandle) {

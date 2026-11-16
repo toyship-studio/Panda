@@ -141,7 +141,8 @@ An agent gets the project as files, and the files say everything it needs to cha
   fields, assets and materials, building scripts). `CLAUDE.md` imports it; `.claude/skills/`
   carries the same rules as skills for Claude Code.
 - `.Panda/scripts-manifest.json`: the exact `name`, `fieldId` and `type` of every script field
-  for binding values in a world. An agent never computes a `fieldId`.
+  (and `list` for a field that holds several values) for binding values in a world. An agent
+  never computes a `fieldId`.
 - `docs/` in the SDK package: these pages.
 
 The rules an agent follows, in short:

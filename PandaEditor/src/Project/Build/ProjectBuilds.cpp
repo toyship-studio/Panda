@@ -475,7 +475,6 @@ bool ProjectBuilds::cook() {
     settings.startWorld = startWorld;
     settings.appName = projectPath.filename().string();
     settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().get<ProjectModuleSettings>());
-    settings.include = m_documents.projectSettings().get<ProjectExportSettings>().include;
     LOG_INFO_EDITOR("Cooking the runtime data to %s", settings.runtimeDataDirectory.string().c_str());
 
     GameExporter exporter;
@@ -502,7 +501,8 @@ bool ProjectBuilds::cook() {
                                  CookReport::sizeText(report.unusedBytes) +
                                  ") are not reached from the start world and were left out of the game";
         const std::string advice = "The whole list is in " + settings.reportFile.string() +
-                                   "; what a script asks for by id goes into \"export\".include of project.json.";
+                                   ". An asset the game needs is named by a world of the game: in a field of a "
+                                   "component or of a script.";
         std::string names;
         const size_t shown = std::min<size_t>(report.unused.size(), 5);
         for (size_t i = 0; i < shown; i++) { names += (i > 0 ? ", " : "") + report.unused[i].path; }
@@ -520,7 +520,7 @@ bool ProjectBuilds::cook() {
             "    The whole list: " + settings.reportFile.lexically_relative(projectPath).generic_string()
         );
         m_cookMessages.push_back(
-            "    What a script asks for by id is added in Settings → Project → Export (\"export\".include of project.json)."
+            "    An asset the game needs is named by a world of the game: in a field of a component or of a script."
         );
     }
     return true;

@@ -242,12 +242,31 @@ void ContentBrowserView::addSubviews() {
     gridSource.cancelPrefetching = [this](const std::vector<int> &indices) {
         m_dataSource.cancelPrefetching(indices);
     };
-    // Drag-source: registered files only. Payload "asset.<kind>" + AssetId.
+    // Drag source. A registered file: payload "asset.<kind>" + AssetId (a selection of several
+    // kinds: "asset"). A folder is dragged as what it holds — payload "folder" + the ids of every
+    // asset in it and in the folders under it, in the order the browser shows them. Its type is
+    // its own, so only a target that takes many assets answers to it (a list field of a script);
+    // a well and the viewport do not.
     gridSource.canDragItem = [this](int index) {
+        if (m_dataSource.folderAt(index) != nullptr) { return true; }
         const FileEntry *file = m_dataSource.fileAt(index);
         return file && file->assetId != 0;
     };
     gridSource.fillDragPayload = [this](DragPayload &payload, const std::vector<int> &indices) {
+        if (indices.size() == 1) {
+            if (const Folder *folder = m_dataSource.folderAt(indices.front())) {
+                const auto collect = [&payload](const auto &self, const Folder &from) -> void {
+                    for (const FileEntry &file : from.files) {
+                        if (file.assetId != 0) { payload.items.push_back(static_cast<std::uint64_t>(file.assetId)); }
+                    }
+                    for (const std::shared_ptr<Folder> &child : from.children) { self(self, *child); }
+                };
+                collect(collect, *folder);
+                payload.type = "folder";
+                payload.ghostText = folder->name;
+                return;
+            }
+        }
         std::string kind;
         bool uniform = true;
         std::string firstName;

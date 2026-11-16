@@ -75,12 +75,58 @@ REGISTER_SCRIPT(MoveScript)
 ## Fields
 
 `PANDA_FIELD(name)` publishes a class member: it appears in the editor's inspector and gets its
-value from the world (`scriptFields`). Supported: `int`, `float`, references to an
-entity/texture/material/world/font (the id types `EntityHandle`, `TextureHandle`, `MaterialHandle`,
-`WorldHandle`, `FontHandle`). A field is also how an exported game learns what the script
-needs: the game carries the assets and the worlds that the fields of its scripts hold, and an
-asset a script names only by an id in the code has to be listed in `"export".include`
-([Exporting a game](export.md)).
+value from the world (`scriptFields`). A field is one value — `int`, `float`, a reference to an
+entity, a texture, a material, a world or a font (`EntityHandle`, `TextureHandle`,
+`MaterialHandle`, `WorldHandle`, `FontHandle`) — or a list of them, a `std::vector` of one of
+those types:
+
+```cpp
+std::vector<Bamboo::WorldHandle> levels;      // the levels of the game, in order
+std::vector<Bamboo::TextureHandle> frames;
+std::vector<Bamboo::EntityHandle> waypoints;
+std::vector<float> delays;
+
+PANDA_FIELDS_BEGIN(Menu)
+PANDA_FIELD(levels)
+PANDA_FIELD(frames)
+PANDA_FIELD(waypoints)
+PANDA_FIELD(delays)
+PANDA_FIELDS_END
+```
+
+A list is a block of rows in the inspector. **+** adds an empty item, the bin removes one, and
+an item is moved by dragging its index onto another row (the arrow moves it up by one). Values
+come by a drop on the **header** of the list: an asset from the Content Browser, an entity from
+the Hierarchy — and a **folder** from the Content Browser, which adds every asset of the kind of
+the list that lies in it and under it, in the order of their names. A drop on the value of an
+item replaces that value, as on any field. An edit of the list itself — a drop of a whole folder
+included — is one step of Undo.
+
+**A script gets an asset from a field and from nowhere else.** A handle of an asset has no
+constructor from a number: `WorldHandle(3100002001)` does not compile. This is what lets an
+exported game carry exactly what it uses — the cook reads the fields of the scripts of a world
+and takes the assets and the worlds they hold ([Exporting a game](export.md)); an id written in
+the code would name nothing it can see. So:
+
+- a script that chooses among several assets — levels, skins, frames, variants — publishes a list
+  and takes an item of it;
+- `handle.id()` is the id of the asset: for a log, for comparing, and for a save file or a
+  network message. A saved id becomes a handle again by looking for it among the handles the
+  script was given:
+
+  ```cpp
+  Bamboo::WorldHandle levelById(uint32_t id) const {
+      for (Bamboo::WorldHandle level : levels) {
+          if (level.id() == id) { return level; }
+      }
+      return {};
+  }
+  ```
+
+- an `EntityHandle` is the id of an entity and may be made from one: entities are not cooked.
+
+A handle a call returns — `SpriteRendererComponentAPI::getTexture`, a mesh or a texture the
+script created with `AssetManagerAPI` — is used like the handle of a field.
 
 The world is the only source of a published field: when Play starts the engine writes every field
 of the script from the world, and a field the world does not list is written as zero. The
@@ -115,8 +161,9 @@ On every (re)load of the script bundle the editor writes out a manifest:
 ```
 
 This is where an agent takes the exact `name`/`fieldId`/`type` for binding values in `.world`
-(see world-format.md) — there is no need to compute `fieldId` by hand. The file does not exist
-until the scripts have been loaded in the editor at least once.
+(see world-format.md) — there is no need to compute `fieldId` by hand. A list field has
+`"list": true` next to the type of one of its values. The file does not exist until the scripts
+have been loaded in the editor at least once.
 
 ## Build and reload
 

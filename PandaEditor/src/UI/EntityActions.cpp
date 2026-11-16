@@ -50,15 +50,6 @@ namespace {
         return result;
     }
 
-    // The value a field of a script starts with, by its type (the fields of a new ExternalScript).
-    Panda::ScriptFieldValue defaultScriptValue(Panda::ScriptFieldType type) {
-        switch (type) {
-            case Panda::ScriptFieldType::INTEGER: return int32_t(0);
-            case Panda::ScriptFieldType::FLOAT: return 0.f;
-            default: return Panda::UUID(0); // ENTITY/TEXTURE/MATERIAL/WORLD/UNKNOWN — a reference by UUID
-        }
-    }
-
     std::vector<Panda::Entity> entitiesOf(Panda::World &world, const std::vector<Panda::UUID> &ids) {
         std::vector<Panda::Entity> entities;
         for (Panda::UUID id : ids) {
@@ -413,7 +404,9 @@ void EntityActions::entityDidAddScript(const std::string &className) {
         if (!entity.hasComponent<Panda::ScriptListComponent>()) { entity.addComponent<Panda::ScriptListComponent>(); }
         std::vector<Panda::ScriptField> fields;
         for (const Panda::ScriptFieldManifest &field : clazz.fields) {
-            fields.emplace_back(0u, field.handle, field.name, field.type, defaultScriptValue(field.type));
+            fields.emplace_back(
+                0u, field.handle, field.name, field.type, Panda::defaultScriptFieldValue(field.type, field.list)
+            );
         }
         entity.addScript(
             Panda::ExternalScript(static_cast<Panda::Handle>(entity.getId()), 0u, clazz.name, fields, clazz.order)
@@ -435,7 +428,7 @@ void EntityActions::entityDidRemoveScript(int scriptIndex) {
 }
 
 void EntityActions::entityDidEditScriptField(
-    int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value
+    int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value, bool structural
 ) {
     Panda::World *shown = world();
     Panda::Entity primary = primaryTarget();
@@ -447,9 +440,11 @@ void EntityActions::entityDidEditScriptField(
     // The command writes the value: into the world and, in Play, into the running script — the
     // same on undo and redo.
     Panda::EditScriptFieldCommand command(
-        primary, static_cast<size_t>(scriptIndex), fieldName, script.getField(fieldName.c_str()).value, std::move(value)
+        primary, static_cast<size_t>(scriptIndex), fieldName, script.getField(fieldName.c_str()).value,
+        std::move(value), structural
     );
     shown->getCommandHistory().execute(command);
+    if (structural) { m_workspace.selectionChanged(); } // the rows of the list are other rows now
 }
 
 void EntityActions::entityDidClickBackground() {

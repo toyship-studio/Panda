@@ -198,6 +198,9 @@ struct PrimitiveMeshComponentDto : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+// A field of a script as a world file holds it. "value" is one value, or an array of them for a
+// list (a std::vector field of the class): the shape of the value says which, and "type" says
+// what one value is. A reference — to an entity, to an asset — is an id.
 struct ScriptFieldDto : public Rain::Codable {
     std::string name;
     uint32_t fieldId;
@@ -209,31 +212,18 @@ struct ScriptFieldDto : public Rain::Codable {
         encoder->encode("name", data.name);
         encoder->encode("fieldId", data.fieldId);
         encoder->encode("type", data.type);
-        switch (data.type) {
-            case ScriptFieldType::INTEGER: {
-                int value = std::get<int32_t>(data.value);
-                encoder->encode("value", value);
-                break;
-            }
-            case ScriptFieldType::FLOAT: {
-                float value = std::get<float>(data.value);
-                encoder->encode("value", value);
-                break;
-            }
-            case ScriptFieldType::ENTITY:
-            case ScriptFieldType::TEXTURE:
-            case ScriptFieldType::MATERIAL:
-            case ScriptFieldType::WORLD:
-            case ScriptFieldType::FONT: {
-                UUID value = std::get<UUID>(data.value);
-                encoder->encode("value", value);
-                break;
-            }
-            default: {
-                PND_ASSERT(false, "Unknown field type");
-                break;
-            }
-        }
+        std::visit(
+            [encoder](const auto &value) {
+                if constexpr (requires { value.size(); }) {
+                    encoder->beginArray("value");
+                    for (const auto &item : value) { encoder->encode(nullptr, item); }
+                    encoder->endArray();
+                } else {
+                    encoder->encode("value", value);
+                }
+            },
+            data.value
+        );
         encoder->endObject();
     }
 
@@ -242,34 +232,24 @@ struct ScriptFieldDto : public Rain::Codable {
         decoder->decode("name", data.name);
         decoder->decode("fieldId", data.fieldId);
         decoder->decode("type", data.type);
-        switch (data.type) {
-            case ScriptFieldType::INTEGER: {
-                int value = 0;
-                decoder->decode("value", value);
-                data.value = value;
-                break;
-            }
-            case ScriptFieldType::FLOAT: {
-                float value = 0;
-                decoder->decode("value", value);
-                data.value = value;
-                break;
-            }
-            case ScriptFieldType::MATERIAL:
-            case ScriptFieldType::TEXTURE:
-            case ScriptFieldType::ENTITY:
-            case ScriptFieldType::WORLD:
-            case ScriptFieldType::FONT: {
-                UUID value = 0;
-                decoder->decode("value", value);
-                data.value = value;
-                break;
-            }
-            default: {
-                PND_ASSERT(false, "Unknown field type");
-                break;
-            }
-        }
+        const bool list = decoder->beginArray("value");
+        data.value = defaultScriptFieldValue(data.type, list);
+        std::visit(
+            [decoder](auto &value) {
+                if constexpr (requires { value.size(); }) {
+                    while (decoder->arrayHasElement()) {
+                        typename std::remove_reference_t<decltype(value)>::value_type item(0);
+                        decoder->decode(nullptr, item);
+                        value.push_back(item);
+                        decoder->arrayNext();
+                    }
+                    decoder->endArray();
+                } else {
+                    decoder->decode("value", value);
+                }
+            },
+            data.value
+        );
         decoder->endObject();
         return true;
     }

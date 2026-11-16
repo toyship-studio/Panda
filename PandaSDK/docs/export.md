@@ -28,8 +28,8 @@ The game starts in the start world and carries **what it can reach from there**:
 
 - the start world and every asset it uses — models, materials, their shaders and textures, the
   environment map, the fonts and sounds its entities and scripts are given;
-- the worlds its scripts are given (a `WorldHandle` field of a script), with everything those
-  use, and so on;
+- the worlds its scripts are given (a `WorldHandle` field of a script, or a list of them), with
+  everything those use, and so on;
 - the engine's own shaders and the registry of the game.
 
 There is no list of scenes to keep: a world is in the game because the game can get to it.
@@ -45,18 +45,11 @@ out of the game: Assets/Environment/studio_small_09.hdr, Assets/world.world, …
 
 Read it: it is how you notice a file the game was meant to have.
 
-**What only code knows** has to be named. A script that loads an asset by an id written in the
-code — not through a field of the script — leaves no trace in a world, so the cook cannot see
-it. Add such assets in **Settings → Project → Export** (Add Asset…), or name the files — or a
-folder with everything in it — in `.Panda/project.json`:
-
-```json
-"export": {
-    "include": ["Assets/Levels", "Assets/UI/title.png"]
-}
-```
-
-The paths are relative to the project. What an included asset uses comes with it.
+**There is nothing to fill in by hand.** A game cannot use an asset its worlds do not name: a
+component holds the asset, or a field of a script does, and a script cannot make a reference from
+a number in the code ([Scripting](scripting.md), "Fields"). An asset the warning names and the
+game needs is put into a field — for a script that chooses among many, a list field
+(`std::vector<Bamboo::WorldHandle> levels`).
 
 Only the files of the `Assets` folder are assets: a picture of a README or a file of the Export
 project is not in the game and not in the registry.

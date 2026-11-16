@@ -16,13 +16,36 @@ namespace Editor {
 namespace {
 
 
-    // Sorting of FS entries by name, ignoring case.
+    // The order of FS entries, as a person reads names: the case does not matter and a run of
+    // digits is a number — "level2" is before "level10". It is also the order a dragged folder
+    // gives its assets in (the items of a list field).
     bool nameLess(const std::string &a, const std::string &b) {
-        return std::lexicographical_compare(
-            a.begin(), a.end(), b.begin(), b.end(), [](unsigned char x, unsigned char y) {
-                return std::tolower(x) < std::tolower(y);
+        const auto digit = [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; };
+        size_t i = 0;
+        size_t j = 0;
+        while (i < a.size() && j < b.size()) {
+            if (digit(a[i]) && digit(b[j])) {
+                size_t endA = i;
+                size_t endB = j;
+                while (endA < a.size() && digit(a[endA])) { endA++; }
+                while (endB < b.size() && digit(b[endB])) { endB++; }
+                while (i + 1 < endA && a[i] == '0') { i++; } // leading zeros do not make a number larger
+                while (j + 1 < endB && b[j] == '0') { j++; }
+                if (endA - i != endB - j) { return endA - i < endB - j; }
+                const int order = a.compare(i, endA - i, b, j, endB - j);
+                if (order != 0) { return order < 0; }
+                i = endA;
+                j = endB;
+                continue;
             }
-        );
+            const int x = std::tolower(static_cast<unsigned char>(a[i]));
+            const int y = std::tolower(static_cast<unsigned char>(b[j]));
+            if (x != y) { return x < y; }
+            i++;
+            j++;
+        }
+        if (a.size() - i != b.size() - j) { return a.size() - i < b.size() - j; }
+        return a < b; // the same name but for the case or the zeros: any order, always the same
     }
 
 } // namespace

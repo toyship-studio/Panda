@@ -89,8 +89,7 @@ and background jobs (`PandaAsync`).
 - A project contains no absolute paths. `.Panda/project.json` is the project scope of the
   settings model (`context/plugins.md`, the `settings` registry): sections by name, the core's
   `world` (`ProjectWorldSettings.startWorld`: the world the game starts in, and the one the
-  editor opens when the project has no session), `modules` (`ProjectModuleSettings`) and `export`
-  (`ProjectExportSettings.include`: what the game carries besides what its start world reaches),
+  editor opens when the project has no session) and `modules` (`ProjectModuleSettings`),
   the sections of modules after them
   (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
@@ -121,7 +120,7 @@ and background jobs (`PandaAsync`).
   starts in the start world and carries the worlds it can get to from there — the ones a script
   field holds (`context/export.md`, "The cook").
 - World files are ordinary assets: Content Browser, drag and drop, script fields, loading by
-  handle from the SDK.
+  the handle a field gave from the SDK.
 
 ### Editor UI: panels, MVC, Input/Output
 
@@ -347,7 +346,16 @@ to another place of its bar only). World tabs
   a module registers its components, and there is no other path. A script section is never
   empty: it shows the published fields of the class, or says that the class publishes none and
   how to publish one (`PANDA_FIELD`), or — for a class the loaded script build does not have —
-  that the script is not in the build; a link under it opens the source of the class in the
+  that the script is not in the build. A field is a row; a list field is a header (the count,
+  the button that adds an item) and a row per item with the editor of one value and the buttons
+  that move it up and remove it — one value editor (`makeScriptValueEditor`) serves both
+  (`UI/Documents/ScriptFieldEditors`). The rows of a list share a model that reads the value
+  from the world at the moment of an edit. The header is a drop target: assets of the kind of
+  the list (`asset.<kind>`; out of `asset` — a selection of several kinds — and of `folder`,
+  those that are of the kind) and entities (`entity`) become items at the end, in one step of
+  the history. An item row is dragged by its index (payload `scriptList.item`, the model as the
+  source — a row of another list does not take it) onto another row and takes its place. A link
+  under the fields opens the source of the class in the
   external editor (`EditorHost::scriptSource`: the file of `Scripts/` with its
   `REGISTER_SCRIPT`). The forms are read again when the scripts are rebuilt
   (`ProjectLoaderOutput::loaderDidReloadScripts`). The edits dirty the world and
@@ -395,6 +403,15 @@ the folder shown, the New submenu of a folder makes them inside it. A folder is 
 the disk and nothing else — it has no id and no sidecar; deleting one
 (`contentDidRequestDeleteFolder`) removes the assets under it through the asset database first,
 so the files derived from them and the loaded objects go too, and then the directory.
+
+The Content Browser is a drag source (`ContentBrowserView`, the grid). A registered file is
+dragged as `asset.<kind>` with its id — a selection of several kinds as `asset`. A folder is
+dragged as what it holds: `folder` with the ids of every asset in it and under it, in the order
+the browser shows names (`nameLess`: the case does not matter, a run of digits is a number). The
+type of a folder is its own on purpose: a target has to ask for many assets to get them (a list
+field of a script), and a well or the viewport, which take `asset.<kind>`, do not react to a
+folder. A selection cannot be dragged into the form of an entity — selecting assets replaces
+that form — which is why the folder is the way to give a list many assets at once.
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). A world is a document, not an asset with parameters: a click on a
@@ -953,6 +970,23 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   during Play reaches the running instance at once: the edit is `EditScriptFieldCommand`, whose
   execute, undo and redo write the value into the world and through `ExternalScript::applyField`
   into the instance. Nothing is read back: a value the script changes itself is not shown.
+- A field is one value or a list of values of one type (`ScriptFieldType`: an int, a float, the
+  id of an entity or of an asset — 4 bytes each). In the class a list is a `std::vector` of the
+  type (`ScriptRegistry::FieldShape`); the manifest says `list`; the engine holds the value as
+  `ScriptFieldValue` — a variant of the three scalars and the three vectors, whose shape *is*
+  the list flag; a world file writes a list as an array in `value` (`ScriptFieldDto`); the ABI
+  sets a field with an array of items and their count (`SetFieldValueFn`, one item for a plain
+  field). An edit of the items of a list — added, removed, moved — is a history step of its
+  own (`EditScriptFieldCommand`, `discrete`), an edit of one item merges like any value.
+- **A script gets an asset from a field, never from a number.** The handles of what the engine
+  holds (`TextureHandle`, `MaterialHandle`, `WorldHandle`, `FontHandle`, `MeshHandle` —
+  `BAMBOO_RESOURCE_HANDLE`) have no public constructor from an id: the SDK makes them
+  (`Bamboo::Internal::HandleAccess`) from a field the engine set or from the answer of a call,
+  and `id()` only reads. This is what makes the cook of a game complete without a list kept by
+  hand: every asset a game can touch is named by a file the cook reads
+  (`context/export.md`). An `EntityHandle` stays a number — entities are not cooked. C++ does
+  not stop a script from forging a handle through memory; that is outside the contract, and
+  such a handle works only for an asset that is in the game anyway.
 - PandaUI is used in the SDK directly (it is not duplicated in Bamboo). Only events, draw data
   and handles cross the ABI, not the object model.
 - `Bamboo::Net` (`PandaSDK/include/Bamboo/Net.hpp`): HTTP, TCP and UDP for scripts, a thin layer
@@ -1145,7 +1179,7 @@ result through the MCP server of the editor (the next section).
   settings file is logged and the memory is left untouched. Orchestration:
   `EditorLayer::reloadFromDisk`.
 - What an agent gets: `PandaSDK/docs/*.md` are copied into the SDK; `.Panda/scripts-manifest.json`
-  is written on every script bundle load (classes, script fields, field ids, types); the project
+  is written on every script bundle load (classes, script fields, field ids, types, `list`); the project
   template `Templates/GameProject` carries `AGENTS.md` (the rules and the file formats for any
   coding agent; `CLAUDE.md` only imports it) and `.claude/skills/*` for Claude Code. The
   user-facing version is `PandaSDK/docs/zed-and-agents.md`.

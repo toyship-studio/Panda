@@ -7,7 +7,7 @@ namespace Bamboo {
 namespace WorldAPI {
     void load(WorldHandle world) {
         if (!Internal::requireMainThreadApi("WorldAPI::load")) { return; }
-        Panda::ExternalCalls::world_Load(world.id);
+        Panda::ExternalCalls::world_Load(world.id());
     }
 
     EntityHandle findByTag(const char *tag) {

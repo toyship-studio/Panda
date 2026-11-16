@@ -150,3 +150,20 @@ engine. Still, the version is there so that a mismatch is a `nullptr` and not a 
   ABI. Callbacks from the engine into scripts (events) are not a part of a module table — the
   four contact and sensor callbacks of the physics live in the core `ScriptPluginApi` as
   generic contact events, and a new event kind would be added there.
+
+## Assets in a script API
+
+A script gets an asset from a field of the script or from a component of an entity — never from
+a path or a number in the code. This is what lets the cook of a game find everything the game
+uses without a list kept by hand ([Exporting a game](../export.md)): a function of a module that
+took the path or the id of an asset would name an asset no file names, and the game would work
+in the editor and lack the asset after an export. So:
+
+- a sound, a terrain, a mesh the script API acts on is the one a **component** holds (the
+  script names the entity: `AudioSourceComponentAPI::play(entity)`), or a handle the script was
+  given;
+- the SDK part reads the id of a handle with `handle.id()` and makes a handle from the id the
+  engine returned with `Bamboo::Internal::HandleAccess::make<MeshHandle>(id)` — the handles of
+  the engine's resources have no public constructor from a number;
+- a kind of asset a script should hold in a field of its own is a field type of the core
+  (`ScriptFieldType`), added there.

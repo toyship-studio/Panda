@@ -15,6 +15,7 @@ struct ScriptFieldManifest final {
     FieldHandle handle = 0;
     std::string name;
     ScriptFieldType type = ScriptFieldType::UNKNOWN;
+    bool list = false; // a std::vector of values of the type in the class
 
     operator bool() const {
         return !name.empty();
@@ -60,7 +61,9 @@ struct ScriptBundleManifest final {
             clazz.fields.reserve(classInfo.fieldCount);
             for (uint32_t f = 0; classInfo.fields != nullptr && f < classInfo.fieldCount; f++) {
                 const Scripting::ScriptFieldInfo &fieldInfo = classInfo.fields[f];
-                clazz.fields.push_back({fieldInfo.handle, fieldInfo.name != nullptr ? fieldInfo.name : "", fieldInfo.type});
+                clazz.fields.push_back(
+                    {fieldInfo.handle, fieldInfo.name != nullptr ? fieldInfo.name : "", fieldInfo.type, fieldInfo.list}
+                );
             }
         }
         return manifest;

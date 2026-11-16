@@ -11,8 +11,8 @@ namespace Bamboo::UI {
 
 PandaUI::FontFamily registerFont(FontHandle font) {
     if (!Bamboo::Internal::requireMainThreadApi("UI::registerFont")) { return PandaUI::FontFamily::Sans; }
-    if (font.id == BAMBOO_INVALID_HANDLE) { return PandaUI::FontFamily::Sans; }
-    const PandaUI::FontFamily family = PandaUI::fontFamily("asset:" + std::to_string(font.id));
+    if (font.id() == BAMBOO_INVALID_HANDLE) { return PandaUI::FontFamily::Sans; }
+    const PandaUI::FontFamily family = PandaUI::fontFamily("asset:" + std::to_string(font.id()));
     WindowRegistry &registry = UIRuntime::Internal::registry();
     if (registry.hasFont(family)) { return family; }
     std::vector<unsigned char> data = FontAPI::readData(font);

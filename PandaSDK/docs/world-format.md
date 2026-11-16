@@ -172,11 +172,14 @@ key whose type is absent (the module is not loaded) survives load and save as is
 - `name` — the name of the script's C++ class (`REGISTER_SCRIPT`).
 - `fieldId` and `type` — **take them from `.Panda/scripts-manifest.json`** (see scripting.md),
   do not compute them by hand.
-- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world.
-  `value` for entity — the id of an entity of this world; for texture/material/world — an asset
-  id from the registry (see assets.md); for integer/float — a number.
+- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font.
+  `value` for entity — the id of an entity of this world; for texture/material/world/font — an
+  asset id from the registry (see assets.md); for integer/float — a number.
+- A list field (`"list": true` in the manifest, a `std::vector` in the class) has an array in
+  `value`, of values of its `type`: `{ "name": "levels", "fieldId": 37856845, "type": 5,
+  "value": [3100002001, 3100002002] }`. An empty list is `[]`.
 - **List every field of the script.** The engine takes all field values from the world: a field
-  that is not listed gets zero (0, 0.0, no reference) when Play starts, and the initializer
+  that is not listed gets zero (0, 0.0, no reference, an empty list) when Play starts, and the initializer
   written in the C++ class is not used.
 
 ## The project files
@@ -184,8 +187,7 @@ key whose type is absent (the module is not loaded) survives load and save as is
 `.Panda/project.json` is the project scope of the same settings model: one JSON object of
 sections by name, in version control. The core sections are `world` (`startWorld` — the world
 the game starts in, relative to the project with forward slashes; the editor opens it when the
-project has no session), `export` (`include` — files and folders the game carries although
-nothing in it names them, see [Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
+project has no session; see [Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
 features the project enables, see `shaders.md`; without the section every feature is on),
 `modules` (`entries: [{id, version, enabled}]` — the module set, an entry with `enabled: false`
 switches a module of the distribution off; an empty list enables all) and `mcp` (`enabled`,

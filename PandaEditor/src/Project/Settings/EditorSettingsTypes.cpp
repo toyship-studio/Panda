@@ -11,7 +11,6 @@ void registerEditorSettingsTypes(SettingsRegistry &registry) {
     registry.add(settingsType<ProjectWorldSettings>(SettingsScope::Project, "world"));
     registry.add(settingsType<ProjectModuleSettings>(SettingsScope::Project, "modules"));
     registry.add(settingsType<ProjectMcpSettings>(SettingsScope::Project, "mcp"));
-    registry.add(settingsType<ProjectExportSettings>(SettingsScope::Project, "export"));
     registry.add(settingsType<EditorViewportSettings>(SettingsScope::Editor, "viewport"));
     registry.add(settingsType<EditorAppearanceSettings>(SettingsScope::Editor, "appearance"));
     registry.add(settingsType<EditorUpdateSettings>(SettingsScope::Editor, "updates"));
