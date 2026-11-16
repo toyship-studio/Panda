@@ -55,7 +55,7 @@ public:
 private:
     struct Screenshot;
     struct InputStep;
-    enum class Exit { None, Restart, Quit };
+    enum class Exit { None, Restart, Quit, OpenProject };
 
     void syncServer(); // the server follows the project and its "mcp" section
     void registerTools();
@@ -70,11 +70,15 @@ private:
     Mcp::PendingResult stop();
     Mcp::PendingResult camera(const rapidjson::Value &arguments);
     Mcp::PendingResult openWorld(const rapidjson::Value &arguments);
+    Mcp::PendingResult openProject(const rapidjson::Value &arguments);
     Mcp::PendingResult show(const rapidjson::Value &arguments);
     Mcp::PendingResult pointer(const rapidjson::Value &arguments);
     Mcp::PendingResult key(const rapidjson::Value &arguments);
     Mcp::PendingResult command(const rapidjson::Value &arguments);
     Mcp::PendingResult build(const rapidjson::Value &arguments);
+    Mcp::PendingResult exportGame(const rapidjson::Value &arguments);
+    // Runs the built game as a check run and answers with its log and the picture of its last frame.
+    Mcp::PendingResult runBuiltGame(const rapidjson::Value &arguments);
     Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.
@@ -103,7 +107,8 @@ private:
     uint32_t m_windowCaptureHeight = 0;
     int m_port = 0; // the port the server was last asked to listen on; 0 — off
     Exit m_exit = Exit::None;
-    int m_exitFrames = 0; // frames since the answer to "restart" / "quit" has left
+    int m_exitFrames = 0; // frames since the answer to "restart" / "quit" / "open_project" has left
+    path_t m_projectToOpen; // open_project: the project that takes the place of the open one
 };
 
 } // namespace Panda

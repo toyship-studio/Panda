@@ -832,12 +832,18 @@ void EditorLayer::scriptsWereBuilt() {
     m_loader.reloadScriptsDll();
 }
 
-void EditorLayer::rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) {
+void EditorLayer::rectSelect(
+    PandaUI::Point start, PandaUI::Point current, bool additive, Editor::RectSelectPhase phase
+) {
+    if (phase == Editor::RectSelectPhase::Drop) {
+        m_viewports.scene().dropRectSelection();
+        return;
+    }
     m_viewports.scene().driveRectSelection(
         IVec2(static_cast<int>(start.x), static_cast<int>(start.y)),
         IVec2(static_cast<int>(current.x), static_cast<int>(current.y)),
         additive,
-        committed
+        phase == Editor::RectSelectPhase::Commit
     );
 }
 
@@ -1119,14 +1125,11 @@ void EditorLayer::syncGameUiFrame() {
 #pragma region Project loader output
 
 void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &path) {
-    // Game saves, when launched from the editor, live next to the project.
-    const path_t saveDataPath = path / ".Panda" / "SaveData";
-    std::filesystem::create_directories(saveDataPath);
-    GameContext::setPersistentDataPath(saveDataPath);
+    // Game saves, when launched from the editor, live next to the project (the folder is made
+    // when a script asks for it).
+    GameContext::setPersistentDataPath(path / ".Panda" / "SaveData");
     updateWindowState();
     m_menuBar.rebuild();
-    // The thumbnail cache belongs to the previous project: asset ids may coincide between projects.
-    if (m_previews) { m_previews->clear(); }
     // Asset panels rescan the new project (at startup the controller does not exist yet —
     // then setWorld reads the registry right after creation).
     if (m_editorController) { m_editorController->refreshAssetPanels(); }
@@ -1190,10 +1193,27 @@ void EditorLayer::worldDidChange() {
     m_editorController->worldTabs().sync(); // no tab outlives its world
 }
 
-void EditorLayer::loaderDidLoadCloseProject() {
+// The open project goes — Close Project, another project in this window, the same one read
+// again: what the editor holds of its worlds and its assets is let go here, in one place, while
+// they are still there. The ids of assets repeat between projects (two projects made from one
+// template), so nothing that names an asset by id may outlive its project.
+void EditorLayer::loaderWillCloseProject() {
     m_playingWorld.clear();
-    Editor::selection().clear(); // the assets of the project go with it
-    if (m_editorController) { m_editorController->worldContextChanged(); }
+    Editor::selection().clear();
+    if (m_editorController) {
+        m_editorController->closeSettingsWindow(); // its pages are the project's
+        m_editorController->projectWillClose();    // the tabs of its entities and assets, the history
+    }
+    if (m_previews) { m_previews->clear(); } // the previews and the thumbnails hold its assets
+}
+
+// The forms of the open entity tabs show the scripts of the build that was loaded: a field
+// published since, a class that is gone.
+void EditorLayer::loaderDidReloadScripts() {
+    if (m_editorController) { m_editorController->refreshEntityForms(); }
+}
+
+void EditorLayer::loaderDidLoadCloseProject() {
     m_sceneTexture = {};
     m_sceneNative = {};
     if (m_editorController) { m_editorController->setViewportSceneTexture({}, false); }
@@ -1344,11 +1364,14 @@ void EditorLayer::openProjectRequest() {
 }
 
 void EditorLayer::menuBarOpenProject(const RecentProject &project) {
-    path_t projectPath = project.path;
-    if (projectPath == m_loader.getOpenedProjectPath()) { return; }
-    runAfterUnsavedQuestion([this, projectPath]() {
+    openProject(project.path);
+}
+
+void EditorLayer::openProject(const path_t &path) {
+    if (path == m_loader.getOpenedProjectPath()) { return; }
+    runAfterUnsavedQuestion([this, path]() {
         saveOpenedProjectWindowState();
-        m_loader.openProject(projectPath);
+        m_loader.openProject(path);
     });
 }
 
@@ -1783,10 +1806,8 @@ void EditorLayer::updateWindowState() {
 }
 
 void EditorLayer::closeProject() {
-    if (m_editorController) { m_editorController->closeSettingsWindow(); } // its pages are the project's
     saveOpenedProjectWindowState();
-    m_previews->clear(); // project assets die — previews/thumbnails must not hold ids
-    m_loader.closeProject();
+    m_loader.closeProject(); // loaderWillCloseProject lets go of what names the project
 }
 
 void EditorLayer::closeAppRequest() {

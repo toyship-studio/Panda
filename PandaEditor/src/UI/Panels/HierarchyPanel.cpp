@@ -84,6 +84,7 @@ void HierarchyPanelView::addSubviews() {
     // field is the tree again.
     m_searchField = std::make_shared<TextField>();
     m_searchField->setPlaceholder("Search entities…");
+    m_searchField->setClearsOnEscape(true);
     m_searchField->layout().setMargin(Edge::Horizontal, 8.f);
     m_searchField->layout().setMargin(Edge::Top, 6.f);
     m_searchField->layout().setMargin(Edge::Bottom, 4.f);
@@ -237,11 +238,9 @@ bool HierarchyPanelView::pointerDown(PointerEvent &) {
 // editor (EditorController::registerCommands): they act on the selection with the keyboard in
 // the Hierarchy or in the viewport alike. A key the tree does not use goes on to them.
 bool HierarchyPanelView::keyDown(KeyEvent &event) {
-    // Escape in the search field empties it and hands the keyboard back to the tree.
+    // Escape in the search field: the field takes its text back first (the whole tree again);
+    // Escape in the empty field comes here and hands the keyboard back to the tree.
     if (event.key == Key::Escape && m_searchField->isFocused()) {
-        m_searchField->setText("");
-        m_search.clear();
-        reload();
         if (Context *context = getContext()) { context->setFocusedView(m_tree.get()); }
         return true;
     }

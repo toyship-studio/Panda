@@ -177,11 +177,7 @@ std::filesystem::path GLFW_System::getPersistentDataPath(const char *appName) {
         }
     }
     if (root.empty()) { root = std::filesystem::current_path(); }
-    std::filesystem::path result =
-        root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
-    std::error_code errorCode;
-    std::filesystem::create_directories(result, errorCode);
-    return result;
+    return root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
 }
 
 Foundation::StreamReaderI *GLFW_System::createStaticResourceReader(const std::filesystem::path &path) {

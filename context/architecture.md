@@ -70,7 +70,7 @@ and background jobs (`PandaAsync`).
   OpenGL functions (glad) once through it, on its render thread with the context current. `Miren`
   depends on `Fern` for the context interface, never the other way.
 - Editor logic lives in `PandaEditor`. Runtime asset loading lives in `PandaRuntime` and reads
-  cooked `.Panda` data, not authoring formats.
+  the cooked data of the game — one pack — not authoring formats (`context/export.md`).
 - `PandaEditorKit` depends on `Panda` and `PandaUI`, not on `PandaEditor`: the editor implements
   `EditorHost` and walks the registries; domain UI (terrain) lives in the editor part of its module
   and knows only the Kit and the engine.
@@ -88,8 +88,10 @@ and background jobs (`PandaAsync`).
 
 - A project contains no absolute paths. `.Panda/project.json` is the project scope of the
   settings model (`context/plugins.md`, the `settings` registry): sections by name, the core's
-  `world` (`ProjectWorldSettings.startWorld`, the main world) and `modules`
-  (`ProjectModuleSettings`), the sections of modules after them
+  `world` (`ProjectWorldSettings.startWorld`: the world the game starts in, and the one the
+  editor opens when the project has no session), `modules` (`ProjectModuleSettings`) and `export`
+  (`ProjectExportSettings.include`: what the game carries besides what its start world reaches),
+  the sections of modules after them
   (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
   of the editor camera in each, and the one that was active) is `.Panda/session.json`,
@@ -103,9 +105,21 @@ and background jobs (`PandaAsync`).
   The stores (`TypeContext`) of both scopes are file documents (`SettingsFile`, below); they
   read and write their files with `SettingsMapper`. `ProjectLoader` is the life of the project:
   opening, creating and closing it, its modules, its script build, its shader features and the
-  two sessions.
-- Several worlds (scenes) are part of the project model. The scene list is still ahead (see
-  "Multiple worlds / scene management" in `context/roadmap.md`).
+  two sessions. Before the project leaves — a switch to another project or Close Project, both
+  through `ProjectLoader::releaseOpenedProject` — the loader tells the application
+  (`ProjectLoaderOutput::loaderWillCloseProject`), and everything that holds an asset of the
+  project lets go while the registry is still there: the game stops, the selection is cleared,
+  the asset and entity tabs close, the Settings window closes, the previews are dropped. After
+  that the documents and the registry are closed. A reference kept across this point names an
+  asset the next project does not have.
+- **The assets of a project are the files of its `Assets` folder**
+  (`AssetHandlerEditor::ASSETS_FOLDER`): the registry is built from that tree, the Content Browser
+  shows it. What lies elsewhere in the project — the scripts, the Export project and what it
+  builds, the pictures of a README — is no asset and gets no sidecar. A world saved outside the
+  folder is still a file the editor edits; nothing can refer to it.
+- Several worlds (scenes) are part of the project model, and there is no list of them: the game
+  starts in the start world and carries the worlds it can get to from there — the ones a script
+  field holds (`context/export.md`, "The cook").
 - World files are ordinary assets: Content Browser, drag and drop, script fields, loading by
   handle from the SDK.
 
@@ -196,6 +210,15 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   ancestors expand and the tree scrolls to its row when it is out of view
   (`HierarchyPanelView::revealEntity` → `TreeView::revealItem`, applied after the rows are
   rebuilt). A multi-selection has no primary entity and moves nothing.
+  **A selection gesture of the viewport is one thing from the press to the release**
+  (`ViewportView`, `RectSelectPhase`): the press picks what is under the pointer, a move within
+  the click slop changes nothing (the hand trembles), a move past it stretches a rectangle, the
+  release commits — a click with the point of the press, so a click selects one entity however
+  the view moved under it. The tabs the selection opens wait for the release
+  (`EditorController::m_tabsAwaitGesture`, `ViewportPanel::isSelecting`): a tab that opens
+  resizes the viewport, and a viewport that changes its frame under a pressed button would turn
+  the click into a rectangle. A gesture whose view did change its frame is dropped
+  (`RectSelectPhase::Drop`), not committed.
 - **Application** (`EditorLayer`): the frame and the events, and the owner of the parts the
   editor is made of — the file documents (`documents()`: the open worlds, the settings, the
   assets), the project (`project()`), its builds (`builds()`), the viewports (`viewports()`),
@@ -240,7 +263,8 @@ A file document exists without a tab (a loaded texture, the settings with their 
 **The open worlds.** A project has any number of worlds open, each a `WorldFile` — or none: a
 world is a document like any other, and its tab closes like any other. At most one is
 **active** (`FileDocuments::activeWorld`, null when no world is open): the editor shows and
-edits it, Play plays its copy, the export cooks it. Opening a world (`openWorld`) adds it next
+edits it and Play plays its copy (the export does not look at it: it cooks the start world of
+the project from its file). Opening a world (`openWorld`) adds it next
 to the open ones and drops nothing, so there is no unsaved-changes question. `newWorld` adds a
 world with the starter content (not an edit: the world is clean until it is touched);
 `closeWorld` drops one — its neighbor becomes the active one, and after the last world none
@@ -320,7 +344,13 @@ to another place of its bar only). World tabs
   `EntityEditorView` over the live targets: the name, the transform and the scripts are the
   form's own, every component section comes from `componentInspectors` — the core registers
   its camera, lights, sprite, meshes and sky there (`registerCoreComponentInspectors`) the way
-  a module registers its components, and there is no other path. The edits dirty the world and
+  a module registers its components, and there is no other path. A script section is never
+  empty: it shows the published fields of the class, or says that the class publishes none and
+  how to publish one (`PANDA_FIELD`), or — for a class the loaded script build does not have —
+  that the script is not in the build; a link under it opens the source of the class in the
+  external editor (`EditorHost::scriptSource`: the file of `Scripts/` with its
+  `REGISTER_SCRIPT`). The forms are read again when the scripts are rebuilt
+  (`ProjectLoaderOutput::loaderDidReloadScripts`). The edits dirty the world and
   go into its stack; adding and removing a component go through a per-tab proxy that
   substitutes the selection with the tab's targets;
 - an **asset tab** (`EditorTabs::AssetDocument`): the document of the asset — dirty state, Save
@@ -411,6 +441,15 @@ Unity's Scene and Game views:
 
 - **Scene** — the editor's view of the active world through the editor camera: selection and its
   outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
+  The outline is made in two steps: the selected entities, each with everything under it (a
+  model is an entity per node and its root has no geometry of its own), are drawn as a
+  silhouette into a mask of the pixel size of the frame (`EditorWorldPasses::renderSelectionOverlay`,
+  `RenderingMode::GEOMETRY_ONLY`: no depth, both sides — what stands in front does not cut the
+  outline, the selection is found behind a wall); the composite of the viewport
+  (`ViewportComposite`, `selection_highlight.frag`) draws the band just outside the silhouette,
+  two points wide on any display (`EditorPassTargets::outlineStep`). The object itself is not
+  tinted. With nothing selected, and in the Game, the composite passes the frame through
+  untouched.
   The grid marks the plane y = 0 and is drawn a little under it (two thousandths of the camera
   height: a floor modelled at y = 0 covers it instead of flickering through it); the grid, the
   helper icons, the postprocessing and the wireframe are display options of the viewport
@@ -529,7 +568,10 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 
 - **Popover** (`PandaEditor/src/UI/EditorDialogs.hpp`: `showNameDialog`, `showScriptPicker`,
   `showAssetPicker`): quick in-place input and pickers at the click point. The UI underneath
-  stays live.
+  stays live. A search field takes the first Escape for itself — it clears what was typed
+  (`TextField::setClearsOnEscape`) — and an empty one lets the key through: the picker or the
+  palette closes, a panel gives the keyboard back to its list. Every search field of the editor
+  is set so (the pickers and the palettes, the Hierarchy, the Keymap, the Plugins).
 - **Modal**: confirmations (`showConfirmDialog`; a destructive action gets a button in the danger
   color), About, and FORMS of one-off operations with parameters. Domain forms live in the editor
   part of their module (the first one is `TerrainDialogs` in `Modules/Terrain/editor`): a
@@ -1056,12 +1098,15 @@ loaded, play.
   `ProjectBuilds.cpp` (macOS, iOS Simulator, iOS Device → Xcode; Windows → Visual Studio x64), the
   SDK is passed with `-DPandaSDK_DIR`, and the build directories are
   `Export/build/<macos-debug|ios-debug|ios-device-debug|windows-debug>`. The runtime data is
-  cooked before cmake starts (`cook`: the open world as it is edited, the assets, the list of
-  modules → `.Panda/Cooked/Runtime`). `openExportProject` (File → Export Game → Open Xcode / Visual
+  cooked before cmake starts (`cook`: the start world of the project and everything it reaches,
+  in one pack, with the manifest and the list of modules → `.Panda/Cooked/Runtime`; what is
+  cooked, what is left out and the pack are `context/export.md`). `builtGame` names the
+  executable a build of the chosen target left, for a check run. `openExportProject` (File →
+  Export Game → Open Xcode / Visual
   Studio, the Open button of the panel) is the same Configure followed by opening what cmake
   generated.
 - What is wrong before the first step — no cmake, no SDK, no project, a compiler of the toolchain
-  that is not there, no world to cook — is a line of the panel and a failed build; the log of the
+  that is not there, no start world to cook — is a line of the panel and a failed build; the log of the
   editor (the Output panel) says it too. A step that fails leaves one line in the log pointing at
   the panel.
 
@@ -1088,7 +1133,7 @@ plus C++ scripts, so an AI coding agent works with the project files directly, a
 result through the MCP server of the editor (the next section).
 
 - Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk: first the asset
-  registry follows the project tree (`AssetHandlerEditor::rescanProject`: a new file becomes an
+  registry follows the `Assets` folder (`AssetHandlerEditor::rescanProject`: a new file becomes an
   asset with an id in its sidecar, ids of known assets do not change), then, by modification
   time, one walk over the file documents (see "The document model"): editor settings →
   project settings → assets → the script build → the world. A file changed on disk is reread; a
@@ -1124,11 +1169,17 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `camera`, `open_world`, `show`,
-  `command`, `pointer`, `key`, `restart`, `quit`. `build` starts a build of the project
-  (`ProjectBuilds::start`) and answers when it has ended with what cmake said
+  `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
+  `open_project`, `show`, `command`, `pointer`, `key`, `restart`, `quit`. `build` starts a build
+  of the project (`ProjectBuilds::start`) and answers when it has ended with what cmake said
   (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
-  answer, where the CMake panel alone would have them. `show` brings a panel, the settings, the tab of an asset
+  answer, where the CMake panel alone would have them. `export` is the game as it will ship:
+  it cooks the data and answers with the account of the cook — what the pack holds by kind, its
+  largest files, what was left out — lists the files of the pack, and plays the built game by
+  itself for a number of frames, answering with its log, how it ended and the picture of its
+  last frame (`context/export.md`, "A check run"). `open_project` switches the editor to
+  another project the way File → Open Project does (the answer first, the switch a few frames
+  later, like `restart`). `show` brings a panel, the settings, the tab of an asset
   or the inspector of an entity in front — a click, not an edit: with the `window` screenshot
   (`settings` for the Settings window) it is how an agent looks at the editor's own UI.
   `command` lists the commands of the registry, runs one by id and rebinds its keys: what the
@@ -1184,7 +1235,6 @@ second way to do what a text file already does. The user-facing page is
 
 ## Open items
 
-- Project model: the scene list and the start scene in project settings (`context/roadmap.md`).
 - Worlds: a game cannot yet load a second world file into the running world (additive
   loading). The engine side exists (`WorldMapper::loadEntities`, `World::importEntity`); the
   script API and the rules for the ids of the loaded entities do not.

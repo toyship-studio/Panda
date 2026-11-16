@@ -4,6 +4,7 @@
 #include <Foundation/GraphicsAPI.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
+#include <Panda/Renderer/Std140Buffer.hpp>
 
 namespace Panda {
 
@@ -44,9 +45,13 @@ EditorPassTargets::~EditorPassTargets() {
 
 void EditorPassTargets::init(Size size) {
     m_size = size;
-    // The id buffer is at the pixel size of the frame; the selection mask samples by uv and keeps
-    // the point size.
-    m_selection = Miren::createTexture(renderTarget(size, Miren::TextureFormat::RGBA8, false));
+    // Both are at the pixel size of the frame: an id is read at a pixel, and the outline of the
+    // selection is as sharp as the frame it lies on. The mask is filtered: the outline samples it
+    // between the texels.
+    Miren::TextureCreate mask = renderTarget(size, Miren::TextureFormat::RGBA8, true);
+    mask.m_minFiltering = Miren::LINEAR;
+    mask.m_magFiltering = Miren::LINEAR;
+    m_selection = Miren::createTexture(mask);
     m_ids = Miren::createTexture(renderTarget(size, Miren::TextureFormat::R32UI, true));
     m_idsDepth = Miren::createTexture(renderTarget(size, Miren::TextureFormat::DEPTH24STENCIL8, true));
     createFrameBuffers();
@@ -60,7 +65,7 @@ void EditorPassTargets::resize(Size size) {
     const Fern::Size dpi = windowDpi();
     const uint32_t width = size.width * dpi.width;
     const uint32_t height = size.height * dpi.height;
-    Miren::resizeTexture(m_selection, size.width, size.height);
+    Miren::resizeTexture(m_selection, width, height);
     Miren::resizeTexture(m_ids, width, height);
     Miren::resizeTexture(m_idsDepth, width, height);
     deleteFrameBuffers();
@@ -82,9 +87,21 @@ void EditorPassTargets::deleteFrameBuffers() {
 Miren::ViewId EditorPassTargets::addSelectionView() const {
     return Miren::addView({
         .frameBuffer = m_selectionFB,
-        .viewport = Miren::Rect(0, 0, m_size.width, m_size.height),
+        .viewport = pixelRect(m_size),
         .clearColor = 0x00000000,
     });
+}
+
+glm::vec4 EditorPassTargets::outlineStep() const {
+    // The outline is OUTLINE_WIDTH points wide on any display: in uv of the mask that is the
+    // width over the size of the viewport in points.
+    constexpr float OUTLINE_WIDTH = 2.f;
+    if (m_size.width < 1.f || m_size.height < 1.f) { return glm::vec4(0.f); }
+    const Fern::Size dpi = windowDpi();
+    return glm::vec4(
+        OUTLINE_WIDTH / m_size.width, OUTLINE_WIDTH / m_size.height, 1.f / (m_size.width * dpi.width),
+        1.f / (m_size.height * dpi.height)
+    );
 }
 
 Miren::ViewId EditorPassTargets::addIdsView() const {
@@ -148,10 +165,15 @@ void ViewportComposite::init() {
     m_initialized = true;
 }
 
-void ViewportComposite::draw(Miren::ViewId view, Miren::TextureHandle color, Miren::TextureHandle selectionMask) const {
+void ViewportComposite::draw(
+    Miren::ViewId view, Miren::TextureHandle color, Miren::TextureHandle selectionMask, const glm::vec4 &outlineStep
+) const {
+    Std140Buffer block;
+    block.addVec4(outlineStep.x, outlineStep.y, outlineStep.z, outlineStep.w);
     Miren::setState(0);
     Miren::addInputTexture("colorTexture", color);
     Miren::addInputTexture("selectedGeometryTexture", selectionMask);
+    Miren::addInputUniformBuffer("SELECTION_OUTLINE", block.getData(), block.getSize());
     Miren::setVertexBuffer(m_vertexBuffer);
     Miren::setIndexBuffer(m_indexBuffer, 0, 6);
     Miren::submit(view, m_program);

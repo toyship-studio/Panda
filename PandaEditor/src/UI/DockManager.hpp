@@ -42,7 +42,8 @@ struct DockPanel {
     bool preview = false; // unpinned (the title is dimmed); a double click on the tab pins it
     bool dirty = false;   // the "unsaved" dot of the tab (setPanelDirty)
     // false — the tab stays in its dock: it is dragged to another place of the bar only and has
-    // no "Dock ..." items (a world tab: the viewport lives in the center).
+    // no "Dock ..." items (a world tab: the viewport lives in the center). Such a tab is what its
+    // dock is for and opens before the tabs that can leave (openTransientPanel).
     bool movable = true;
     // false — a transient tab its owner reopens itself (the worlds of the project session): it
     // is not saved among the pinned tabs of the layout.

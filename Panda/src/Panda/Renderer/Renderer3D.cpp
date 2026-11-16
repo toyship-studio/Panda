@@ -149,7 +149,7 @@ void Renderer3D::submit(UUID id, glm::mat4 &model, const RuntimeMesh &mesh, Asse
                 break;
             }
             case RenderingMode::GEOMETRY_ONLY: {
-                Miren::setState(MIREN_STATE_WIREFRAME | MIREN_STATE_CULL_FACE);
+                Miren::setState(0); // the silhouette of the geometry: no depth, both sides
                 material = StaticResources::selectedGeometryMaterial;
                 break;
             }
@@ -362,7 +362,7 @@ void Renderer3D::submit(
             break;
         }
         case RenderingMode::GEOMETRY_ONLY: {
-            Miren::setState(MIREN_STATE_WIREFRAME | MIREN_STATE_CULL_FACE);
+            Miren::setState(0); // the silhouette of the geometry: no depth, both sides
             material = StaticResources::selectedGeometryMaterial;
             break;
         }

@@ -2,19 +2,26 @@
 #include "Project/Assets/ShaderCook.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/Assets/Base/CookedMesh.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
 #include "Panda/Serialization/AssetsMapper.hpp"
+#include "Panda/Serialization/ReferenceCollector.hpp"
 #include "Panda/Serialization/WorldMapper.hpp"
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 
 #include <Rain/Coders/JsonDecoder.hpp>
+#include <Rain/Coders/JsonEncoder.hpp>
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <fstream>
+#include <sstream>
 
 namespace {
 
+// The layout of the cooked data: the paths of the entries of the pack, the ones the registry of
+// the game names.
 Panda::path_t stripPandaPrefix(const Panda::path_t &path) {
     Panda::path_t result;
     auto it = path.begin();
@@ -34,7 +41,8 @@ Panda::path_t getRuntimeMaterialPath(Panda::path_t materialPath) {
     return Panda::path_t("Materials") / materialPath;
 }
 
-Panda::path_t getRuntimeMeshPath(const Panda::path_t &meshPath) {
+Panda::path_t getRuntimeMeshPath(Panda::path_t meshPath) {
+    meshPath.replace_extension(".pmesh");
     return Panda::path_t("Meshes") / meshPath;
 }
 
@@ -48,71 +56,100 @@ Panda::path_t getRuntimeWorldPath(Panda::path_t worldPath) {
     return Panda::path_t("Worlds") / worldPath;
 }
 
-Panda::path_t getRuntimeCookedShadersPath() {
-    return Panda::path_t("Shaders") / "cooked";
+// The name of a kind as the report says it ("texture", "terrain2d").
+std::string kindName(Panda::AssetType type) {
+    if (const Panda::AssetKind *kind = Panda::GameContext::getExtensions().assetKinds.find(type)) { return kind->name; }
+    return "asset";
 }
 
-// The shaders of the game for every backend of the export: the project shaders and the engine's
-// scene shaders (Extensions::sceneShaders), cooked with the project's shader features (ShaderCook —
-// the same chain as the editor). The cooked pairs land in <project>/.Panda/Shaders/cooked and are
-// copied into the runtime data as a whole.
-bool cookShadersForExport(const Panda::path_t &projectPath, Panda::AssetHandlerEditor &assetHandler) {
-    constexpr std::array<Foundation::GraphicsAPI, 4> backends = {
-        Foundation::GraphicsAPI::OpenGL,
-        Foundation::GraphicsAPI::OpenGLES,
-        Foundation::GraphicsAPI::Metal,
-        Foundation::GraphicsAPI::D3D11,
-    };
-    for (const auto &[id, info] : assetHandler.getRegistry()) {
-        if (info.type != Panda::AssetType::SHADER) { continue; }
-        const Panda::path_t vertexPath = assetHandler.assetPath(id);
-        if (vertexPath.empty()) {
-            LOG_WARN_EDITOR("Shader %u has empty source paths", (uint32_t)id);
-            return false;
-        }
-        const Panda::path_t fragmentPath = Panda::replaceLastChars(vertexPath, "frag.hlsl");
-        if (!std::filesystem::exists(projectPath / vertexPath) ||
-            !std::filesystem::exists(projectPath / fragmentPath)) {
-            LOG_WARN_EDITOR("Shader %u source files not found", (uint32_t)id);
-            return false;
-        }
-        Panda::ShaderCookRequest request;
-        request.vertexSource = projectPath / vertexPath;
-        request.fragmentSource = projectPath / fragmentPath;
-        request.vertexLogical = vertexPath;
-        request.fragmentLogical = fragmentPath;
-        request.projectPath = projectPath;
-        for (Foundation::GraphicsAPI backend : backends) {
-            Panda::ShaderCookResult result;
-            if (!Panda::ShaderCook::cook(request, backend, result)) {
-                LOG_ERROR_EDITOR("Shader %s failed to cook for %s", vertexPath.string().c_str(),
-                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
-                return false;
-            }
+const char *ENGINE_KIND = "engine"; // what is in the pack and is no asset of the project
+
+// A texture format as the report names it.
+const char *formatName(Miren::TextureFormat format) {
+    switch (format) {
+        case Miren::TextureFormat::R8: return "R8";
+        case Miren::TextureFormat::RG8: return "RG8";
+        case Miren::TextureFormat::RGB8: return "RGB8";
+        case Miren::TextureFormat::RGBA8: return "RGBA8";
+        case Miren::TextureFormat::RGBA8_SRGB: return "RGBA8 sRGB";
+        case Miren::TextureFormat::RGBA16F: return "RGBA16F";
+        case Miren::TextureFormat::BC7: return "BC7";
+        case Miren::TextureFormat::BC7_SRGB: return "BC7 sRGB";
+        default: return "?";
+    }
+}
+
+// "2048×2048 BC7 sRGB, 12 mips": what a cooked texture is, from its header.
+std::string textureDetail(const Panda::path_t &cookedFile) {
+    Panda::AssetImporterBase::CookedTextureInfo info;
+    if (!Panda::AssetImporterBase::readCookedTextureInfo(cookedFile, info)) { return {}; }
+    std::string detail = std::to_string(info.width) + "×" + std::to_string(info.height) + " " + formatName(info.format);
+    // A block format carries its mip levels; the others get them generated on the device.
+    if (info.dataMips > 1) { detail += ", " + std::to_string(info.dataMips) + " mips"; }
+    return detail;
+}
+
+std::string meshDetail(const std::vector<Panda::ImportedMeshData> &meshes) {
+    size_t primitives = 0, vertices = 0, indices = 0;
+    for (const Panda::ImportedMeshData &mesh : meshes) {
+        primitives += mesh.primitives.size();
+        for (const auto &primitive : mesh.primitives) {
+            vertices += primitive.vertices.size();
+            indices += primitive.indices.size();
         }
     }
-    for (const Panda::SceneShader &shader : Panda::GameContext::getExtensions().sceneShaders.shaders()) {
-        for (Foundation::GraphicsAPI backend : backends) {
-            Panda::ShaderCookResult result;
-            if (!Panda::ShaderCook::cookSceneShader(shader, projectPath, backend, result)) {
-                LOG_ERROR_EDITOR("Scene shader %s failed to cook for %s", shader.vertex.c_str(),
-                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
-                return false;
-            }
-        }
+    return std::to_string(meshes.size()) + (meshes.size() == 1 ? " mesh, " : " meshes, ") + std::to_string(primitives) +
+           (primitives == 1 ? " primitive, " : " primitives, ") + std::to_string(vertices) + " vertices, " +
+           std::to_string(indices) + " indices";
+}
+
+std::string worldDetail(Panda::World &world) {
+    size_t entities = 0;
+    for (auto handle : world.getAllEntitiesWith<Panda::IdComponent>()) {
+        if (world.isValidEntt(handle)) { ++entities; }
     }
-    return true;
+    return std::to_string(entities) + (entities == 1 ? " entity" : " entities");
+}
+
+constexpr std::array<Foundation::GraphicsAPI, 4> SHADER_BACKENDS = {
+    Foundation::GraphicsAPI::OpenGL,
+    Foundation::GraphicsAPI::OpenGLES,
+    Foundation::GraphicsAPI::Metal,
+    Foundation::GraphicsAPI::D3D11,
+};
+
+template<typename T>
+bool readJsonFile(const Panda::path_t &path, T &data) {
+    std::ifstream file(path);
+    if (!file.is_open()) { return false; }
+    Rain::JsonDecoder jsonDecoder;
+    Rain::Decoder *decoder = &jsonDecoder;
+    return decoder->decode(file, data);
 }
 
 } // namespace
 
 namespace Panda {
 
+std::string CookReport::sizeText(uint64_t bytes) {
+    char text[32];
+    if (bytes >= 1024ull * 1024 * 1024) {
+        std::snprintf(text, sizeof(text), "%.2f GB", static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0));
+    } else if (bytes >= 1024ull * 1024) {
+        std::snprintf(text, sizeof(text), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    } else if (bytes >= 1024ull) {
+        std::snprintf(text, sizeof(text), "%.1f KB", static_cast<double>(bytes) / 1024.0);
+    } else {
+        std::snprintf(text, sizeof(text), "%llu B", static_cast<unsigned long long>(bytes));
+    }
+    return text;
+}
+
 GameExporter::GameExporter()
     : m_binaryEncoder(true) {}
 
 std::vector<std::string>
-GameExporter::validate(const path_t &projectPath, const std::string &worldPath, AssetHandlerEditor &assetHandler) {
+GameExporter::validate(const path_t &projectPath, const std::string &startWorld, AssetHandlerEditor &assetHandler) {
     std::vector<std::string> errors;
 
     // Check that a project is open
@@ -121,21 +158,26 @@ GameExporter::validate(const path_t &projectPath, const std::string &worldPath, 
         return errors;
     }
 
-    // The game starts in the world that is open in the editor: it has to be a file.
-    if (worldPath.empty()) {
-        errors.emplace_back("No world to start the game in. Open a world, or save the new one, and export again.");
-    }
-
-    // Check that the world file exists
-    if (!worldPath.empty()) {
-        path_t fullWorldPath = projectPath / worldPath;
-        if (!std::filesystem::exists(fullWorldPath)) {
-            errors.push_back("World file not found: " + fullWorldPath.string());
+    // The game starts in the start world of the project: a world asset, read from its file.
+    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
+    if (startWorld.empty()) {
+        errors.emplace_back(
+            "The project has no start world, so the game has nowhere to start. Choose it in Settings → Project → "
+            "World (\"world\".startWorld of project.json)."
+        );
+    } else if (!std::filesystem::exists(projectPath / startWorld)) {
+        errors.push_back("The start world of the project is not found: " + startWorld + " (\"world\".startWorld of project.json)");
+    } else {
+        const AssetId id = assetHandler.getAssetId(projectPath / startWorld);
+        if (!id || !registry.contains(id) || registry.at(id).type != AssetType::WORLD) {
+            errors.push_back(
+                "The start world " + startWorld + " is not a world asset of the project: it has to lie in the " +
+                AssetHandlerEditor::ASSETS_FOLDER + " folder."
+            );
         }
     }
 
     // Check that all registered assets exist
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
     int missingCount = 0;
     for (const auto &[id, info] : registry) {
         if (!assetHandler.assetFilesExist(id)) { missingCount++; }
@@ -162,71 +204,64 @@ GameExporter::validate(const path_t &projectPath, const std::string &worldPath, 
     return errors;
 }
 
-ExportResult GameExporter::exportGame(
-    const ExportSettings &settings, const path_t &projectPath, AssetHandlerEditor &assetHandler, World &world
-) {
+ExportResult
+GameExporter::exportGame(const ExportSettings &settings, const path_t &projectPath, AssetHandlerEditor &assetHandler) {
     ExportResult result;
+    m_pack = AssetPack::Writer();
+    m_used.clear();
+    m_pending.clear();
+    m_kinds.clear();
+    m_details.clear();
+    m_warnings.clear();
+    const auto fail = [&result](std::string what) {
+        result.errorMessage = std::move(what);
+        return result;
+    };
 
-    LOG_INFO_EDITOR("[1/10] Preparing cooked runtime data directory...");
+    LOG_INFO_EDITOR("[1/5] Preparing the folder of the cooked data...");
     if (!createRuntimeDataDirectory(settings.runtimeDataDirectory)) {
-        result.errorMessage = "Failed to prepare cooked runtime data directory";
-        return result;
+        return fail("Failed to prepare the folder of the cooked data");
     }
-
-    LOG_INFO_EDITOR("[2/10] Exporting runtime manifest...");
-    if (!exportRuntimeManifest(settings.runtimeDataDirectory, settings.appName)) {
-        result.errorMessage = "Failed to export runtime manifest";
-        return result;
+    if (!exportRuntimeManifest(settings.runtimeDataDirectory, settings)) {
+        return fail("Failed to write the runtime manifest");
     }
-
-    LOG_INFO_EDITOR("[3/10] Exporting module list...");
     if (!exportModuleList(settings.runtimeDataDirectory, settings.modules)) {
-        result.errorMessage = "Failed to export module list";
-        return result;
+        return fail("Failed to write the module list");
     }
 
-    LOG_INFO_EDITOR("[4/10] Exporting asset registry...");
-    if (!exportAssetRegistry(settings.runtimeDataDirectory, assetHandler)) {
-        result.errorMessage = "Failed to export asset registry";
-        return result;
-    }
+    LOG_INFO_EDITOR("[2/5] Finding what the game uses, from its start world %s...", settings.startWorld.c_str());
+    if (!collectUsage(assetHandler, settings)) { return fail("A world of the game could not be cooked"); }
 
-    LOG_INFO_EDITOR("[5/10] Exporting main world...");
-    if (!exportWorld(settings.runtimeDataDirectory, world)) {
-        result.errorMessage = "Failed to export world";
-        return result;
-    }
+    LOG_INFO_EDITOR(
+        "[3/5] Cooking %zu of the %zu assets of the project...", m_used.size(), assetHandler.getRegistry().size()
+    );
+    exportAssetRegistry(assetHandler);
+    exportMaterials(assetHandler);
+    exportPostprocessing(assetHandler);
+    exportTextures(assetHandler);
+    exportMeshes(assetHandler);
+    exportFileBasedAssets(assetHandler);
 
-    LOG_INFO_EDITOR("[6/10] Exporting registered worlds...");
-    if (!exportRegisteredWorlds(settings.runtimeDataDirectory, assetHandler)) {
-        result.errorMessage = "Failed to export registered worlds";
-        return result;
-    }
+    LOG_INFO_EDITOR("[4/5] Cooking the shaders...");
+    if (!exportShaders(assetHandler)) { return fail("Failed to cook the shaders"); }
 
-    LOG_INFO_EDITOR("[7/10] Exporting materials...");
-    if (!exportMaterials(settings.runtimeDataDirectory, assetHandler)) {
-        result.errorMessage = "Failed to export materials";
-        return result;
-    }
+    LOG_INFO_EDITOR("[5/5] Writing the pack...");
+    const path_t packFile = settings.runtimeDataDirectory / AssetPack::FILE_NAME;
+    std::string error;
+    if (!m_pack.write(packFile, error)) { return fail(error); }
 
-    LOG_INFO_EDITOR("[8/10] Exporting postprocessing chains...");
-    if (!exportPostprocessing(settings.runtimeDataDirectory, assetHandler)) {
-        result.errorMessage = "Failed to export postprocessing chains";
-        return result;
+    result.report = makeReport(assetHandler, packFile);
+    result.report.startWorld = settings.startWorld;
+    if (!settings.reportFile.empty()) {
+        std::ofstream reportStream(settings.reportFile, std::ios::trunc);
+        if (reportStream.is_open()) {
+            Rain::JsonEncoder jsonEncoder(true);
+            Rain::Encoder *encoder = &jsonEncoder;
+            encoder->encode(reportStream, result.report);
+        } else {
+            LOG_WARN_EDITOR("The report of the cook could not be written: %s", settings.reportFile.string().c_str());
+        }
     }
-
-    LOG_INFO_EDITOR("[9/10] Exporting file-based assets of modules...");
-    if (!exportFileBasedAssets(settings.runtimeDataDirectory, assetHandler)) {
-        result.errorMessage = "Failed to export file-based assets";
-        return result;
-    }
-
-    LOG_INFO_EDITOR("[10/10] Copying cooked runtime assets...");
-    if (!copyRuntimeAssets(settings.runtimeDataDirectory, projectPath, assetHandler)) {
-        result.errorMessage = "Failed to copy cooked runtime assets";
-        return result;
-    }
-
     result.success = true;
     return result;
 }
@@ -244,30 +279,13 @@ bool GameExporter::createRuntimeDataDirectory(const path_t &runtimeDataDir) {
         LOG_ERROR_EDITOR("Failed to create directory %s", runtimeDataDir.string().c_str());
         return false;
     }
-
-    std::filesystem::create_directories(runtimeDataDir / "Textures", ec);
-    std::filesystem::create_directories(runtimeDataDir / getRuntimeCookedShadersPath(), ec);
-    std::filesystem::create_directories(runtimeDataDir / "Worlds", ec);
-    std::filesystem::create_directories(runtimeDataDir / "Materials", ec);
-    std::filesystem::create_directories(runtimeDataDir / "Postfx", ec);
-    std::filesystem::create_directories(runtimeDataDir / "Meshes", ec);
-    // Folders of the modules' file-based kinds (.terrain etc.) come from the asset kind registry.
-    for (const AssetKind &kind : GameContext::getExtensions().assetKinds.kinds()) {
-        if (kind.fileBased() && !kind.folder.empty()) {
-            std::filesystem::create_directories(runtimeDataDir / kind.folder, ec);
-        }
-    }
-    if (ec) {
-        LOG_ERROR_EDITOR("Failed to create runtime data subdirectories: %s", ec.message().c_str());
-        return false;
-    }
     return true;
 }
 
-bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const std::string &appName) {
+bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const ExportSettings &settings) {
     RuntimeManifest runtimeManifest;
-    runtimeManifest.worldPath = "Worlds/main.pworld";
-    runtimeManifest.gameName = appName; // save directory in the OS persistent path
+    runtimeManifest.worldPath = getRuntimeWorldPath(settings.startWorld).generic_string();
+    runtimeManifest.gameName = settings.appName; // save directory in the OS persistent path
     // The shader features of the project: the shaders of the game are cooked for this set
     // (ShaderCook), the runtime enables exactly it (ShaderFeatures).
     runtimeManifest.shaderFeatures = ShaderFeatures::enabled().names();
@@ -300,12 +318,121 @@ bool GameExporter::exportModuleList(const path_t &runtimeDataDir, const std::vec
     return true;
 }
 
-bool GameExporter::exportAssetRegistry(const path_t &runtimeDataDir, AssetHandlerEditor &assetHandler) {
+/* ------------------------------ What the game uses ------------------------------ */
+
+void GameExporter::use(AssetHandlerEditor &assetHandler, AssetId id) {
+    if (id == AssetId(0) || m_used.contains(id) || !assetHandler.getRegistry().contains(id)) { return; }
+    m_used.insert(id);
+    m_pending.push_back(id);
+}
+
+bool GameExporter::cookWorld(AssetHandlerEditor &assetHandler, AssetId id, Rain::Encoder &references) {
+    const path_t worldPath = assetHandler.assetPath(id);
+    const path_t sourcePath = assetHandler.getProjectPath() / worldPath;
+    std::ifstream sourceFile(sourcePath);
+    if (!sourceFile.is_open()) {
+        LOG_ERROR_EDITOR("Export: the world %s could not be opened.", worldPath.generic_string().c_str());
+        return false;
+    }
+    // Entities live only in a world: editor JSON → temporary world → runtime binary.
+    World scratch;
+    Rain::JsonDecoder jsonDecoder;
+    if (!WorldMapper::load(scratch, jsonDecoder, sourceFile)) {
+        LOG_ERROR_EDITOR("Export: the world %s could not be read.", worldPath.generic_string().c_str());
+        return false;
+    }
+    std::ostringstream stream(std::ios::binary);
+    WorldMapper::save(scratch, m_binaryEncoder, stream);
+    addBytes(getRuntimeWorldPath(worldPath).generic_string(), stream.str(), kindName(AssetType::WORLD), worldDetail(scratch));
+    std::ostringstream sink;
+    WorldMapper::save(scratch, references, sink); // what it names: its assets, the worlds its scripts are given
+    return true;
+}
+
+bool GameExporter::collectUsage(AssetHandlerEditor &assetHandler, const ExportSettings &settings) {
     const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
+    const path_t &projectPath = assetHandler.getProjectPath();
+
+    // The game starts here; everything else is in the game because something in it leads there.
+    use(assetHandler, assetHandler.getAssetId(projectPath / settings.startWorld));
+
+    // What the project names itself: a file or a folder with everything in it.
+    for (const std::string &entry : settings.include) {
+        const std::string wanted = path_t(entry).lexically_normal().generic_string();
+        const std::string folder = !wanted.empty() && wanted.back() == '/' ? wanted : wanted + "/";
+        bool found = false;
+        for (const auto &[id, info] : registry) {
+            const std::string path = assetHandler.assetPath(id).generic_string();
+            if (path == wanted || path + "/" == folder || path.compare(0, folder.size(), folder) == 0) {
+                use(assetHandler, id);
+                found = true;
+            }
+        }
+        if (!found) { warn("\"export\".include of project.json names " + entry + ": no asset of the project is there."); }
+    }
+
+    // What a used asset names is used too: what a world shows and what its scripts are given
+    // (another world among that), the shader and the textures of a material, the materials of a
+    // model, the materials of a postprocessing chain, what a file of a module kind says it names.
+    ReferenceCollector references;
+    std::ostringstream sink;
+    int worlds = 0;
+    while (!m_pending.empty()) {
+        const AssetId id = m_pending.back();
+        m_pending.pop_back();
+        const AssetInfo &info = registry.at(id);
+        references.clear();
+        references.encode(sink, info); // its import settings: the shader of a material, the materials of a model
+        const path_t file = projectPath / assetHandler.assetPath(id);
+        if (info.type == AssetType::WORLD) {
+            if (!cookWorld(assetHandler, id, references)) { return false; }
+            worlds++;
+        } else if (info.type == AssetType::MATERIAL) {
+            MaterialDataDto data;
+            if (readJsonFile(file, data)) { references.encode(sink, data); }
+        } else if (info.type == AssetType::POSTPROCESSING) {
+            PostprocessingDataDto data;
+            if (readJsonFile(file, data)) { references.encode(sink, data); }
+        } else if (const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);
+                   kind != nullptr && kind->encodeReferences != nullptr) {
+            kind->encodeReferences(file, references);
+        }
+        for (const UUID &referenced : references.ids()) {
+            if (referenced != id) { use(assetHandler, referenced); }
+        }
+    }
+    LOG_INFO_EDITOR("Cooked %d world(s)", worlds);
+    return true;
+}
+
+/* ------------------------------ The files of the pack ------------------------------ */
+
+void GameExporter::addBytes(const std::string &path, std::string bytes, const std::string &kind, std::string detail) {
+    if (m_pack.contains(path)) { return; }
+    m_kinds[path] = kind;
+    if (!detail.empty()) { m_details[path] = std::move(detail); }
+    m_pack.add(path, std::move(bytes));
+}
+
+void GameExporter::addFile(const std::string &path, const path_t &source, const std::string &kind, std::string detail) {
+    if (m_pack.contains(path)) { return; }
+    m_kinds[path] = kind;
+    if (!detail.empty()) { m_details[path] = std::move(detail); }
+    m_pack.addFile(path, source);
+}
+
+void GameExporter::warn(std::string text) {
+    LOG_WARN_EDITOR("Export: %s", text.c_str());
+    m_warnings.push_back(std::move(text));
+}
+
+void GameExporter::exportAssetRegistry(AssetHandlerEditor &assetHandler) {
     AssetRegistryDto registryDto;
-    for (const auto &[id, info] : registry) {
-        // The path in the pair is ALREADY in the runtime layout: the runtime loader does not need
-        // the editor rules (for a shader — the vert source, the cook paths are deterministic from it).
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (!isUsed(id)) { continue; }
+        // The path in the pair is ALREADY in the layout of the cooked data — the name of the entry
+        // of the pack: the runtime loader does not need the editor rules (for a shader — the vert
+        // source, the cook paths are deterministic from it).
         AssetRegistryEntryDto entry;
         entry.info = info;
         entry.source = assetHandler.assetSource(id); // subPath (future containers) travels as is
@@ -322,111 +449,28 @@ bool GameExporter::exportAssetRegistry(const path_t &runtimeDataDir, AssetHandle
             entry.source.path = getRuntimePostfxPath(editorPath);
         } else if (const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);
                    kind != nullptr && kind->fileBased()) {
-            entry.source.path = path_t(kind->folder) / editorPath; // a copy of the file as is
+            entry.source.path = path_t(kind->folder) / editorPath; // the file as it is
         } // shader: the original relative path as is
         registryDto.assets.push_back(std::move(entry));
     }
-
-    path_t binPath = runtimeDataDir / "assets.bin";
-    std::ofstream file(binPath, std::ios::binary);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("Failed to create %s", binPath.string().c_str());
-        return false;
-    }
+    std::ostringstream stream(std::ios::binary);
     Rain::Encoder *encoder = &m_binaryEncoder;
-    encoder->encode(file, registryDto);
-    file.close();
-    LOG_INFO_EDITOR("Exported %d assets", (int)registryDto.assets.size());
-    return true;
+    encoder->encode(stream, registryDto);
+    addBytes("assets.bin", stream.str(), ENGINE_KIND);
 }
 
-bool GameExporter::exportWorld(const path_t &runtimeDataDir, World &world) {
-    path_t worldsDir = runtimeDataDir / "Worlds";
-    path_t binPath = worldsDir / "main.pworld";
-    std::ofstream file(binPath, std::ios::binary);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("Failed to create %s", binPath.string().c_str());
-        return false;
-    }
-    WorldMapper::save(world, m_binaryEncoder, file);
-    file.close();
-    LOG_INFO_EDITOR("Exported world");
-    return true;
-}
-
-bool GameExporter::exportRegisteredWorlds(const path_t &runtimeDataDir, AssetHandlerEditor &assetHandler) {
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
+void GameExporter::exportMaterials(AssetHandlerEditor &assetHandler) {
     const path_t &projectPath = assetHandler.getProjectPath();
-    int exportedCount = 0;
-
-    for (const auto &[id, info] : registry) {
-        if (info.type != AssetType::WORLD) { continue; }
-
-        const path_t worldPath = assetHandler.assetPath(id);
-        if (worldPath.empty()) {
-            LOG_WARN_EDITOR("World asset %u has empty path", (uint32_t)id);
-            continue;
-        }
-
-        path_t sourcePath = projectPath / worldPath;
-        std::ifstream sourceFile(sourcePath);
-        if (!sourceFile.is_open()) {
-            LOG_WARN_EDITOR("World source not found: %s", sourcePath.string().c_str());
-            return false;
-        }
-
-        // Entities live only in a world: editor JSON → temporary world → runtime binary.
-        World scratch;
-        Rain::JsonDecoder jsonDecoder;
-        if (!WorldMapper::load(scratch, jsonDecoder, sourceFile)) {
-            LOG_WARN_EDITOR("Failed to decode world: %s", sourcePath.string().c_str());
-            return false;
-        }
-        sourceFile.close();
-
-        path_t binPath = runtimeDataDir / getRuntimeWorldPath(worldPath);
-        std::error_code ec;
-        std::filesystem::create_directories(binPath.parent_path(), ec);
-        if (ec) {
-            LOG_WARN_EDITOR("Failed to create world directory %s: %s", binPath.string().c_str(), ec.message().c_str());
-            return false;
-        }
-
-        std::ofstream binFile(binPath, std::ios::binary);
-        if (!binFile.is_open()) {
-            LOG_WARN_EDITOR("Failed to create %s", binPath.string().c_str());
-            return false;
-        }
-        WorldMapper::save(scratch, m_binaryEncoder, binFile);
-        binFile.close();
-        exportedCount++;
-    }
-
-    LOG_INFO_EDITOR("Exported %d registered worlds", exportedCount);
-    return true;
-}
-
-bool GameExporter::exportMaterials(const path_t &runtimeDataDir, AssetHandlerEditor &assetHandler) {
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
-    const path_t &projectPath = assetHandler.getProjectPath();
-    int exportedCount = 0;
-
-    for (const auto &[id, info] : registry) {
-        if (info.type != AssetType::MATERIAL) { continue; }
+    int cooked = 0;
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (info.type != AssetType::MATERIAL || !isUsed(id)) { continue; }
         auto meta = std::get<AssetInfo::MaterialSettings>(info.settings);
         const path_t materialPath = assetHandler.assetPath(id);
-        path_t sourcePath = projectPath / materialPath;
-
-        std::ifstream sourceFile(sourcePath);
-        if (!sourceFile.is_open()) {
-            LOG_WARN_EDITOR("Material source not found: %s", sourcePath.string().c_str());
+        MaterialDataDto dataDto;
+        if (!readJsonFile(projectPath / materialPath, dataDto)) {
+            warn("The material " + materialPath.generic_string() + " could not be read: it is not in the game.");
             continue;
         }
-        MaterialDataDto dataDto;
-        Rain::JsonDecoder jsonDecoder;
-        Rain::Decoder *decoder = &jsonDecoder;
-        decoder->decode(sourceFile, dataDto);
-        sourceFile.close();
 
         // The .mat on disk may lag behind the template of a built-in shader (not saved after an
         // engine update) — MATERIAL_FIELDS is packed in field order, a shortage = garbage in the UBO.
@@ -453,202 +497,190 @@ bool GameExporter::exportMaterials(const path_t &runtimeDataDir, AssetHandlerEdi
             }
         }
 
-        path_t binPath = runtimeDataDir / getRuntimeMaterialPath(materialPath);
-
-        std::error_code ec;
-        std::filesystem::create_directories(binPath.parent_path(), ec);
-
-        std::ofstream binFile(binPath, std::ios::binary);
-        if (!binFile.is_open()) {
-            LOG_WARN_EDITOR("Failed to create %s", binPath.string().c_str());
-            continue;
-        }
+        std::ostringstream stream(std::ios::binary);
         Rain::Encoder *encoder = &m_binaryEncoder;
-        encoder->encode(binFile, dataDto);
-        binFile.close();
-        exportedCount++;
+        encoder->encode(stream, dataDto);
+        addBytes(getRuntimeMaterialPath(materialPath).generic_string(), stream.str(), kindName(info.type));
+        cooked++;
     }
-    LOG_INFO_EDITOR("Exported %d materials", exportedCount);
-    return true;
+    LOG_INFO_EDITOR("Cooked %d material(s)", cooked);
 }
 
-bool GameExporter::exportPostprocessing(const path_t &runtimeDataDir, AssetHandlerEditor &assetHandler) {
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
+void GameExporter::exportPostprocessing(AssetHandlerEditor &assetHandler) {
     const path_t &projectPath = assetHandler.getProjectPath();
-    int exportedCount = 0;
-
-    for (const auto &[id, info] : registry) {
-        if (info.type != AssetType::POSTPROCESSING) { continue; }
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (info.type != AssetType::POSTPROCESSING || !isUsed(id)) { continue; }
         const path_t dataPath = assetHandler.assetPath(id);
-        path_t sourcePath = projectPath / dataPath;
-
-        std::ifstream sourceFile(sourcePath);
-        if (!sourceFile.is_open()) {
-            LOG_WARN_EDITOR("Postprocessing source not found: %s", sourcePath.string().c_str());
-            continue;
-        }
         PostprocessingDataDto dataDto;
-        Rain::JsonDecoder jsonDecoder;
-        Rain::Decoder *decoder = &jsonDecoder;
-        decoder->decode(sourceFile, dataDto);
-        sourceFile.close();
-
-        path_t binPath = runtimeDataDir / getRuntimePostfxPath(dataPath);
-
-        std::error_code ec;
-        std::filesystem::create_directories(binPath.parent_path(), ec);
-
-        std::ofstream binFile(binPath, std::ios::binary);
-        if (!binFile.is_open()) {
-            LOG_WARN_EDITOR("Failed to create %s", binPath.string().c_str());
+        if (!readJsonFile(projectPath / dataPath, dataDto)) {
+            warn("The postprocessing chain " + dataPath.generic_string() + " could not be read: it is not in the game.");
             continue;
         }
+        std::ostringstream stream(std::ios::binary);
         Rain::Encoder *encoder = &m_binaryEncoder;
-        encoder->encode(binFile, dataDto);
-        binFile.close();
-        exportedCount++;
+        encoder->encode(stream, dataDto);
+        addBytes(getRuntimePostfxPath(dataPath).generic_string(), stream.str(), kindName(info.type));
     }
-    LOG_INFO_EDITOR("Exported %d postprocessing chains", exportedCount);
-    return true;
 }
 
-// File-based kinds from the registry (terrains, plugin assets): one format for the editor and the
-// runtime — a copy.
-bool GameExporter::exportFileBasedAssets(const path_t &runtimeDataDir, AssetHandlerEditor &assetHandler) {
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
+// A texture goes as the import cooked it (.Panda/Textures): the same bytes the editor loads.
+void GameExporter::exportTextures(AssetHandlerEditor &assetHandler) {
     const path_t &projectPath = assetHandler.getProjectPath();
-    int exportedCount = 0;
-
-    for (const auto &[id, info] : registry) {
-        const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);
-        if (kind == nullptr || !kind->fileBased()) { continue; }
-        const path_t assetPath = assetHandler.assetPath(id);
-        path_t sourcePath = projectPath / assetPath;
-        if (!std::filesystem::exists(sourcePath)) {
-            LOG_WARN_EDITOR("%s source not found: %s", kind->displayName.c_str(), sourcePath.string().c_str());
-            continue;
-        }
-        path_t destinationPath = runtimeDataDir / kind->folder / assetPath;
-        std::error_code ec;
-        std::filesystem::create_directories(destinationPath.parent_path(), ec);
-        std::filesystem::copy_file(
-            sourcePath, destinationPath, std::filesystem::copy_options::overwrite_existing, ec
-        );
-        if (ec) {
-            LOG_WARN_EDITOR("Failed to copy %s %s", kind->displayName.c_str(), sourcePath.string().c_str());
-            continue;
-        }
-        exportedCount++;
-    }
-    LOG_INFO_EDITOR("Exported %d file-based assets", exportedCount);
-    return true;
-}
-
-bool GameExporter::copyRuntimeAssets(
-    const path_t &runtimeDataDir, const path_t &projectPath, AssetHandlerEditor &assetHandler
-) {
-    const std::map<AssetId, AssetInfo> &registry = assetHandler.getRegistry();
-
-    for (const auto &[id, info] : registry) {
-        if (info.type != AssetType::TEXTURE) { continue; }
+    int cooked = 0;
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (info.type != AssetType::TEXTURE || !isUsed(id)) { continue; }
         const path_t texturePath = assetHandler.assetPath(id);
-        if (texturePath.empty()) { continue; }
-        path_t sourcePath = projectPath / AssetImporterBase::getCookedTextureAssetPath(texturePath);
-        path_t destPath = runtimeDataDir / getRuntimeTexturePath(texturePath);
-        if (std::filesystem::exists(sourcePath)) {
-            std::error_code ec;
-            std::filesystem::create_directories(destPath.parent_path(), ec);
-            std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) {
-                LOG_WARN_EDITOR("Failed to copy texture %s: %s", sourcePath.string().c_str(), ec.message().c_str());
-                return false;
-            }
+        const path_t sourcePath = projectPath / AssetImporterBase::getCookedTextureAssetPath(texturePath);
+        if (!std::filesystem::exists(sourcePath)) {
+            warn("The texture " + texturePath.generic_string() + " has no cooked form (its file cannot be read): the game shows a placeholder.");
+            continue;
         }
+        addFile(getRuntimeTexturePath(texturePath).generic_string(), sourcePath, kindName(info.type), textureDetail(sourcePath));
+        cooked++;
     }
-
-    if (!cookShadersForExport(projectPath, assetHandler)) { return false; }
-
-    path_t shadersDir = projectPath / ".Panda" / "Shaders" / "cooked";
-    path_t destShadersDir = runtimeDataDir / getRuntimeCookedShadersPath();
-    if (std::filesystem::exists(shadersDir)) {
-        if (!copyDirectoryContents(shadersDir, destShadersDir)) { return false; }
-    }
-
-    for (const auto &[id, info] : registry) {
-        if (info.type != AssetType::IMPORTED_MESH) { continue; }
-        const path_t gltfPath = assetHandler.assetPath(id);
-        if (gltfPath.empty()) { continue; }
-        path_t sourcePath = projectPath / gltfPath;
-        path_t destPath = runtimeDataDir / getRuntimeMeshPath(gltfPath);
-        if (std::filesystem::exists(sourcePath)) {
-            std::error_code ec;
-            std::filesystem::create_directories(destPath.parent_path(), ec);
-            std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) {
-                LOG_WARN_EDITOR("Failed to copy mesh %s: %s", sourcePath.string().c_str(), ec.message().c_str());
-                return false;
-            }
-
-            std::filesystem::directory_iterator it(sourcePath.parent_path(), ec);
-            if (ec) {
-                LOG_WARN_EDITOR(
-                    "Failed to scan mesh directory %s: %s",
-                    sourcePath.parent_path().string().c_str(),
-                    ec.message().c_str()
-                );
-                return false;
-            }
-            for (const auto &entry : it) {
-                if (entry.path().extension() != ".bin") { continue; }
-                path_t binSource = entry.path();
-                path_t binDest = destPath.parent_path() / entry.path().filename();
-                ec.clear();
-                std::filesystem::copy_file(binSource, binDest, std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) {
-                    LOG_WARN_EDITOR(
-                        "Failed to copy mesh buffer %s: %s", binSource.string().c_str(), ec.message().c_str()
-                    );
-                    return false;
-                }
-            }
-        }
-    }
-
-    LOG_INFO_EDITOR("Copied cooked runtime assets");
-    return true;
+    LOG_INFO_EDITOR("Cooked %d texture(s)", cooked);
 }
 
-bool GameExporter::copyDirectoryContents(const path_t &source, const path_t &destination) {
-    if (!std::filesystem::exists(source)) { return true; }
-    std::error_code ec;
-    std::filesystem::create_directories(destination, ec);
-    if (ec) {
-        LOG_WARN_EDITOR("Failed to create directory %s: %s", destination.string().c_str(), ec.message().c_str());
-        return false;
-    }
-
-    std::filesystem::recursive_directory_iterator it(source, ec);
-    if (ec) {
-        LOG_WARN_EDITOR("Failed to iterate directory %s: %s", source.string().c_str(), ec.message().c_str());
-        return false;
-    }
-
-    for (const auto &entry : it) {
-        if (entry.path().filename() == ".DS_Store") { continue; }
-        path_t relativePath = std::filesystem::relative(entry.path(), source);
-        path_t destPath = destination / relativePath;
-        if (entry.is_directory()) {
-            std::filesystem::create_directories(destPath, ec);
-        } else {
-            std::filesystem::create_directories(destPath.parent_path(), ec);
-            std::filesystem::copy_file(entry.path(), destPath, std::filesystem::copy_options::overwrite_existing, ec);
+// A model goes as its geometry (CookedMesh): the glTF is read here, once.
+void GameExporter::exportMeshes(AssetHandlerEditor &assetHandler) {
+    const path_t &projectPath = assetHandler.getProjectPath();
+    int cooked = 0;
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (info.type != AssetType::IMPORTED_MESH || !isUsed(id)) { continue; }
+        const path_t gltfPath = assetHandler.assetPath(id);
+        const std::vector<ImportedMeshData> meshes = AssetImporterBase::loadGltfMesh(projectPath / gltfPath);
+        if (meshes.empty()) {
+            warn("The model " + gltfPath.generic_string() + " could not be read: the game shows a placeholder.");
+            continue;
         }
-        if (ec) {
-            LOG_WARN_EDITOR("Failed to copy %s: %s", entry.path().string().c_str(), ec.message().c_str());
+        std::ostringstream stream(std::ios::binary);
+        CookedMesh::write(stream, meshes);
+        addBytes(getRuntimeMeshPath(gltfPath).generic_string(), stream.str(), kindName(info.type), meshDetail(meshes));
+        cooked++;
+    }
+    LOG_INFO_EDITOR("Cooked %d model(s)", cooked);
+}
+
+// File-based kinds from the registry (fonts, terrains, sounds, plugin assets): one format for the
+// editor and the runtime — the file as it is.
+void GameExporter::exportFileBasedAssets(AssetHandlerEditor &assetHandler) {
+    const path_t &projectPath = assetHandler.getProjectPath();
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);
+        if (kind == nullptr || !kind->fileBased() || !isUsed(id)) { continue; }
+        const path_t assetPath = assetHandler.assetPath(id);
+        const path_t sourcePath = projectPath / assetPath;
+        if (!std::filesystem::exists(sourcePath)) {
+            warn("The file of " + assetPath.generic_string() + " is gone: the game shows a placeholder.");
+            continue;
+        }
+        addFile((path_t(kind->folder) / assetPath).generic_string(), sourcePath, kind->name);
+    }
+}
+
+// The shaders of the game for every backend of an export: the project shaders the game uses and
+// the engine's scene shaders (Extensions::sceneShaders), cooked with the project's shader features
+// (ShaderCook — the same chain as the editor). The cooked pairs land in the cache of the project
+// (<project>/.Panda/Shaders/cooked) and go into the pack under the same names.
+bool GameExporter::exportShaders(AssetHandlerEditor &assetHandler) {
+    const path_t &projectPath = assetHandler.getProjectPath();
+    const path_t cookedRoot = projectPath / ".Panda" / "Shaders" / "cooked";
+    const auto add = [&](const ShaderCookResult &cooked, const std::string &kind) {
+        for (const path_t &file : {cooked.cookedVertex, cooked.cookedFragment}) {
+            const path_t relative = file.lexically_normal().lexically_relative(cookedRoot);
+            addFile((path_t("Shaders") / "cooked" / relative).generic_string(), file, kind);
+        }
+    };
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        if (info.type != AssetType::SHADER || !isUsed(id)) { continue; }
+        const path_t vertexPath = assetHandler.assetPath(id);
+        const path_t fragmentPath = replaceLastChars(vertexPath, "frag.hlsl");
+        if (vertexPath.empty() || !std::filesystem::exists(projectPath / vertexPath) ||
+            !std::filesystem::exists(projectPath / fragmentPath)) {
+            LOG_ERROR_EDITOR("The sources of the shader %s are not found", vertexPath.string().c_str());
             return false;
         }
+        ShaderCookRequest request;
+        request.vertexSource = projectPath / vertexPath;
+        request.fragmentSource = projectPath / fragmentPath;
+        request.vertexLogical = vertexPath;
+        request.fragmentLogical = fragmentPath;
+        request.projectPath = projectPath;
+        for (Foundation::GraphicsAPI backend : SHADER_BACKENDS) {
+            ShaderCookResult cooked;
+            if (!ShaderCook::cook(request, backend, cooked)) {
+                LOG_ERROR_EDITOR("Shader %s failed to cook for %s", vertexPath.string().c_str(),
+                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
+                return false;
+            }
+            add(cooked, kindName(info.type));
+        }
+    }
+    for (const SceneShader &shader : GameContext::getExtensions().sceneShaders.shaders()) {
+        for (Foundation::GraphicsAPI backend : SHADER_BACKENDS) {
+            ShaderCookResult cooked;
+            if (!ShaderCook::cookSceneShader(shader, projectPath, backend, cooked)) {
+                LOG_ERROR_EDITOR("Scene shader %s failed to cook for %s", shader.vertex.c_str(),
+                                 Foundation::getGraphicsAPITraits(backend).shaderBackendName);
+                return false;
+            }
+            add(cooked, ENGINE_KIND);
+        }
     }
     return true;
+}
+
+/* ------------------------------ The report ------------------------------ */
+
+CookReport GameExporter::makeReport(AssetHandlerEditor &assetHandler, const path_t &packFile) {
+    const path_t &projectPath = assetHandler.getProjectPath();
+    CookReport report;
+    report.pack = packFile.string();
+    report.packFiles = static_cast<uint32_t>(m_pack.entries().size());
+    std::error_code sizeError;
+    const uintmax_t packBytes = std::filesystem::file_size(packFile, sizeError);
+    report.packBytes = sizeError ? 0 : packBytes;
+    report.warnings = m_warnings;
+
+    // The files of the pack, the largest first, and what each kind takes.
+    std::map<std::string, CookReportKind> kinds;
+    for (const AssetPack::Entry &entry : m_pack.entries()) {
+        const std::string &kind = m_kinds[entry.path];
+        CookReportFile file;
+        file.path = entry.path;
+        file.kind = kind;
+        file.bytes = entry.size;
+        if (const auto detail = m_details.find(entry.path); detail != m_details.end()) { file.detail = detail->second; }
+        report.files.push_back(std::move(file));
+        kinds[kind].kind = kind;
+        kinds[kind].bytes += entry.size;
+    }
+    const auto larger = [](const CookReportFile &a, const CookReportFile &b) { return a.bytes > b.bytes; };
+    std::stable_sort(report.files.begin(), report.files.end(), larger);
+
+    // The assets of the project: the ones the game uses are counted by kind, the rest is named.
+    for (const auto &[id, info] : assetHandler.getRegistry()) {
+        const std::string kind = kindName(info.type);
+        if (isUsed(id)) {
+            kinds[kind].kind = kind;
+            kinds[kind].assets++;
+            continue;
+        }
+        CookReportFile unused;
+        unused.path = assetHandler.assetPath(id).generic_string();
+        unused.kind = kind;
+        std::error_code error;
+        const uintmax_t bytes = std::filesystem::file_size(projectPath / unused.path, error);
+        unused.bytes = error ? 0 : bytes;
+        report.unusedBytes += unused.bytes;
+        report.unused.push_back(std::move(unused));
+    }
+    std::stable_sort(report.unused.begin(), report.unused.end(), larger);
+    for (auto &[name, kind] : kinds) { report.kinds.push_back(kind); }
+    std::stable_sort(report.kinds.begin(), report.kinds.end(), [](const CookReportKind &a, const CookReportKind &b) {
+        return a.bytes > b.bytes;
+    });
+    return report;
 }
 
 } // namespace Panda

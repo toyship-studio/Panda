@@ -62,7 +62,8 @@ the world does not run:
   — a pass over the world: after the sky and the sprites, before the meshes of the
   core. It is called in every rendering mode; the renderer holds the mode (`getMode()`):
   `DEFAULT` is the scene, `SHADOW_DEPTH` a depth pass of a shadow cascade or of a lamp, `IDS`
-  the id pass of the editor's picking, `GEOMETRY_ONLY` the selection outline. The scene pass
+  the id pass of the editor's picking, `GEOMETRY_ONLY` the mask of a silhouette (the editor
+  outlines the selection from it). The scene pass
   is the first traversal of a frame: a system that follows the camera (a LOD pyramid, streamed
   blocks) moves its state there, once, and the other passes of the frame traverse what it
   prepared — the same geometry in the shadow as in the scene. (The GPU runs the depth passes

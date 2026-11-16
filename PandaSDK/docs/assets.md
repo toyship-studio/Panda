@@ -1,13 +1,16 @@
 # Assets and the project registry
 
-A project is a folder with `Assets/` (files), `Scripts/<ProjectName>/` (C++ scripts) and
-`.Panda/` (service data: project settings, cooked data, caches).
+A project is a folder with `Assets/` (the assets), `Scripts/<ProjectName>/` (C++ scripts),
+`Export/` (the build setup of the game) and `.Panda/` (service data: project settings, cooked
+data, caches). **The assets of a project are the files of `Assets/`**: a file elsewhere in the
+project — a picture of the README, something the Export project built — is not an asset and
+gets no sidecar.
 
 ## Registry: `.pmeta` sidecars
 
 There is no single registry file. Every asset has a sidecar next to its file, `X.<ext>` →
 `X.<ext>.pmeta`: `{"id", "type", "meta"}`. The editor builds the registry in memory by scanning
-the project tree.
+the `Assets` folder.
 
 - `id` — a random uint32, the stable identity of the asset: worlds (`importedMesh`, script
   fields) and materials (`value` of texture fields) refer to it.
@@ -17,7 +20,7 @@ the project tree.
   (`minFiltering`, `magFiltering`), `numMips`. Material: `shader`. Mesh: slot materials. A world
   has no `meta`. Paths are not stored: an asset is located by where its file lies.
 
-**The editor maintains the registry** (it scans the project tree: new files are registered and
+**The editor maintains the registry** (it scans the `Assets` folder: new files are registered and
 ids are assigned). The right workflow for an agent: put the file into `Assets/` → the editor
 picks it up on Reload (the `reload` tool), on the Refresh button of the Content Browser and when
 the project is opened; the id is then in the sidecar. Do not edit sidecars by hand; if you
@@ -36,11 +39,14 @@ glTF material a file `<material-name>.mat` on the PBR shader is created next to 
 Added to a world, a glTF is an entity named after the file with an entity per node of its scene
 under it (world-format.md). `.world`, `.mat`, `.hlsl`,
 `.postfx`, `.terrain` are registered as is. `.ttf`, `.otf`, `.ttc` — fonts: registered as is (no
-`meta`, the file is the asset; the export copies it into `Fonts/`), shown in the editor with a
+`meta`, the file is the asset; the game carries the file as it is), shown in the editor with a
 preview of the face; a script takes one through a `FontHandle` field (scripting.md, "Fonts in the
 UI"). `.wav`, `.ogg`, `.mp3`, `.flac` — audio clips of the Audio module: registered as is (the
-file is the asset; the export copies it into `Audio/`), the tab plays them; a kind of a module has
+file is the asset; the game carries the file as it is), the tab plays them; a kind of a module has
 a hashed `type` id (`AssetKind::idOf("audio")`), not a small number.
+
+A game carries the assets its start world reaches, not everything in `Assets/`: an asset nothing
+uses stays in the project ([Exporting a game](export.md)).
 
 ## Material `.mat`
 

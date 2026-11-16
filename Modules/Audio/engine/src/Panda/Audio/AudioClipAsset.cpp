@@ -1,5 +1,7 @@
 #include "Panda/Audio/AudioClipAsset.hpp"
 
+#include <Panda/Runtime/GameFiles.hpp>
+
 #include "AudioClipProbe.hpp"
 
 #include <Foundation/Foundation.hpp>
@@ -24,14 +26,13 @@ namespace {
 } // namespace
 
 Asset *load(Foundation::AllocatorI *allocator, const path_t &absolutePath) {
-    std::ifstream file(absolutePath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) { return nullptr; }
-    const std::streamsize size = file.tellg();
-    if (size <= 0) { return nullptr; }
-    AudioClipAsset::Bytes bytes(static_cast<size_t>(size));
-    file.seekg(0, std::ios::beg);
-    file.read(reinterpret_cast<char *>(bytes.data()), size);
-    if (!file) { return nullptr; }
+    size_t size = 0;
+    Foundation::Memory file = GameFiles::read(absolutePath, size); // a file of the project, or of the pack of a game
+    if (file.data == nullptr) { return nullptr; }
+    const uint8_t *data = static_cast<const uint8_t *>(file.data);
+    AudioClipAsset::Bytes bytes(data, data + size);
+    file.release();
+    if (bytes.empty()) { return nullptr; }
     AudioClipInfo info;
     if (!probeClip(bytes.data(), bytes.size(), info)) {
         LOG_ERROR("AUDIO: %s is not a readable audio file", absolutePath.string().c_str());

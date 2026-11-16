@@ -465,8 +465,8 @@ int Terrain2DAsset::render(
     const AssetRef<Asset> &materialOverride
 ) {
     if (!m_data.isValid()) { return 0; }
-    // The selection highlight (GEOMETRY_ONLY) does not draw the terrain — a wireframe of the
-    // whole map does not read as a selection.
+    // The selection outline (GEOMETRY_ONLY) does not draw the terrain: the silhouette of the
+    // whole map is the edge of the world and does not read as a selection.
     if (renderer.getMode() == RenderingMode::GEOMETRY_ONLY) { return 0; }
     AssetRef<MaterialAsset> material = materialOverride.as<MaterialAsset>();
     if (!material.get()) { material = Terrain::Resources::material2D; }

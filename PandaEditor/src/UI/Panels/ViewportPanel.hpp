@@ -18,10 +18,12 @@ namespace Editor {
 class ViewportPanelOutput {
 public:
     virtual ~ViewportPanelOutput() = default;
-    // LMB selection in the viewport: rect-select (a click = 1×1 = single selection). start/current —
-    // local points, additive — adding to the selection, committed=true on release. GPU picking via
-    // the IDS-FBO is done by the engine.
-    virtual void viewportDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) = 0;
+    // LMB selection in the viewport: a click picks one entity, a drag stretches a rectangle
+    // (ViewportViewOutput). start/current — local points, additive — adding to the selection. GPU
+    // picking via the IDS-FBO is done by the engine.
+    virtual void viewportDidRectSelect(
+        PandaUI::Point start, PandaUI::Point current, bool additive, RectSelectPhase phase
+    ) = 0;
     virtual void viewportDidPickGizmo(int mode) = 0;        // 0 — Move, 1 — Rotate, 2 — Scale
     virtual void viewportDidResetCamera() = 0;              // scene camera reset
     virtual void viewportDidPickSpace(bool worldSpace) = 0; // gizmo: world (true) / local space
@@ -89,6 +91,10 @@ public:
     bool sceneHasFocus() const {
         return m_scene && m_scene->isFocused();
     }
+    // A selection gesture is in flight over the Scene (ViewportView::isSelecting).
+    bool isSelecting() const {
+        return m_scene && m_scene->isSelecting();
+    }
     // The tool of the gizmo: 0 — Move, 1 — Rotate, 2 — Scale. As a press of its toolbar button.
     void setGizmoMode(int mode) {
         applyGizmoMode(mode);
@@ -110,7 +116,9 @@ private:
     bool performDrop(const PandaUI::DragInfo &drag) override;
 
     // ViewportViewOutput.
-    void viewportViewDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override;
+    void viewportViewDidRectSelect(
+        PandaUI::Point start, PandaUI::Point current, bool additive, RectSelectPhase phase
+    ) override;
 
     void selectGizmo(int mode);      // highlight the active tool in the group (radio)
     void applyGizmoMode(int mode);   // highlight + outward intent (the toolbar buttons, the commands)

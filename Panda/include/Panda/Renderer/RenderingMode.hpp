@@ -5,7 +5,8 @@ namespace Panda {
 enum class RenderingMode {
     // Default render
     DEFAULT,
-    // Rendering wiferame geometry to highlight selected objects
+    // The geometry alone, as a mask of its silhouette: no material, no depth test, both sides.
+    // A tool outlines what it draws this way (the selection of the editor)
     GEOMETRY_ONLY,
     // Rendering ids for mouse picking
     IDS,

@@ -14,6 +14,8 @@
 
 namespace Panda {
 
+struct CookReport;
+
 class FileDocuments;
 class ProjectLoader;
 
@@ -83,10 +85,25 @@ public:
         return m_lastOutput;
     }
 
-    // The data of the game: the open world as it is edited, the assets, the list of modules →
-    // .Panda/Cooked/Runtime. What it does and what is wrong goes to the log of the editor.
-    // false — nothing usable was written.
+    // The data of the game (GameExporter), from the files of the project: the start world of the
+    // project settings and everything it reaches, in one pack; the manifest and the list of
+    // modules → .Panda/Cooked/Runtime. What is wrong, what is not saved and what the project has
+    // that the game does not reach goes to the log of the editor and into cookMessages(); the
+    // whole account — cookReportFile(). false — nothing usable was written.
     bool cook();
+    // What the last cook said — its errors, its warnings, the summary of the pack — as lines of
+    // the panel: an Export build shows them before the output of cmake.
+    const std::vector<std::string> &cookMessages() const {
+        return m_cookMessages;
+    }
+    // The game the Export project built for this machine, to run it (a check run): the
+    // executable of the chosen export target; empty — it is not built, or the target is of
+    // another platform (an iOS build does not run here).
+    path_t builtGame();
+    // .Panda/Cooked/report.json: what the last cook made (CookReport).
+    path_t cookReportFile() const;
+    // The report of the last cook of the project, read from that file; false — no cook was made.
+    bool readCookReport(CookReport &report) const;
     void showFolder(BuildTargetKind kind); // the folder of the cmake project, in the file manager
     // Where the cmake project is built in its chosen configuration: Scripts/<name>/cmake-build-debug,
     // Export/build/macos-debug.
@@ -142,6 +159,7 @@ private:
 
     ProjectLoader &m_project;
     FileDocuments &m_documents;
+    std::vector<std::string> m_cookMessages;
     std::function<void()> m_scriptsBuilt;
     ProjectBuildsOutput *m_output = nullptr;
     std::shared_ptr<State> m_state = std::make_shared<State>();

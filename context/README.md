@@ -33,6 +33,9 @@ contract moves.
   (vertices, tiles, fields), what a tree or grass export has to look like, the impostor baker.
 - `plugins.md`: modules (engine systems) and plugins (editor data), the engine and editor
   registries, the package layout and manifest.
+- `export.md`: how a project becomes a game — the cook (what the game uses, from the start
+  world; what is left out and how it is said), the pack and the files of a game (`AssetPack`,
+  `GameFiles`), the check run of a built game.
 - `physics.md`: the Physics module, the physics step, 3D bodies and joints (the wheel joint),
   the physics script API, what the vehicle models of PhysicsTest taught the API.
 - `audio.md`: the Audio module: clips as assets, the mixer of the application on miniaudio
@@ -62,7 +65,8 @@ documentation site (`context/infrastructure.md`, section 4).
 - Clean and simple code matters more than keeping old temporary solutions.
 - The game runtime does not depend on editor subsystems; the user of an exported game gets
   PandaSDK and the project, not the engine sources.
-- The runtime consumes cooked resources, not authoring files (png, hlsl, json).
+- The runtime consumes cooked resources, not authoring files (png, hlsl, json, gltf), from one
+  pack (`export.md`).
 - PandaUI is the retained-mode UI for both games and the editor (the whole editor chrome is
   built on it).
 - The scripting ABI stays compact: large subsystems (PandaUI) are SDK libraries; only frame

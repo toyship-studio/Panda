@@ -360,11 +360,27 @@ void EntityEditorView::addComponentHeaderMenu(
     section.setHeaderAccessory(more);
 }
 
+// A script section always says something: the fields the class publishes; for a class without
+// them — how one gets here; for a class the loaded build does not have — that it will not run;
+// and where the class is written, one click from the external editor.
 std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::ExternalScript &script, int scriptIndex) {
     auto section = std::make_shared<CollapsibleSection>(script.getName().empty() ? "SCRIPT" : script.getName());
     styleComponentSection(*section);
     addComponentHeaderMenu(*section, [this, scriptIndex] { m_output->entityDidRemoveScript(scriptIndex); });
     Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
+    const std::vector<std::string> classes = m_scriptClassProvider ? m_scriptClassProvider() : std::vector<std::string>{};
+    const bool inBuild = std::find(classes.begin(), classes.end(), script.getName()) != classes.end();
+    if (!inBuild) {
+        auto note = makeFormHint(
+            classes.empty() ? "The scripts of the project are not built: the class does not run. Build them in the CMake panel."
+                            : "The script build has no class of this name: it does not run. Build the scripts, or the "
+                              "class was renamed or is no longer registered (REGISTER_SCRIPT)."
+        );
+        note->setTextColor(ThemeColor::warning);
+        section->addContent(note);
+    } else if (script.getFields().empty()) {
+        section->addContent(makeFormHint("No published fields. PANDA_FIELD(member) in the class shows a member here."));
+    }
     for (Panda::ScriptField &field : script.getFields()) {
         const std::string name = field.name;
         // The label is the name of the C++ field made readable; the name itself is the tooltip.
@@ -417,6 +433,16 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
             default: break; // UNKNOWN
         }
         if (row) { row->setHelp(name); }
+    }
+    // Where the class is written: the file that registers it, opened in the external editor.
+    const Panda::path_t source = editorHost().scriptSource(script.getName());
+    if (!source.empty()) {
+        auto open = makeFormButton(source.filename().string(), ButtonStyle::Link, [source] {
+            editorHost().openInExternalEditor(source);
+        });
+        open->setTooltip("Open " + source.string() + " in the external editor");
+        open->layout().setAlignSelf(Align::Start);
+        section->addContent(open);
     }
     return section;
 }

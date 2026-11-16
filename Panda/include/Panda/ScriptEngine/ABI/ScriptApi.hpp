@@ -51,6 +51,7 @@ using ApplicationGetTimeFn = float (*)();
 using ApplicationIsCursorLockedFn = bool (*)();
 using ApplicationSetCursorLockedFn = void (*)(bool locked);
 // Game save directory (editor: <project>/.Panda/SaveData; runtime: the OS path for the game).
+// It is made when a game asks for it.
 // The "return the size / fill the buffer" pattern (like ui_LoadStaticResource): returns the path
 // length without the null byte; destination null — a length query only.
 using ApplicationGetPersistentDataPathFn = uint32_t (*)(void *destination, uint32_t destinationSize);

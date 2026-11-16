@@ -51,10 +51,7 @@ const std::filesystem::path& IOS_System::getStaticResourcesPath() {
 
 std::filesystem::path IOS_System::getPersistentDataPath(const char*) {
     NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    std::filesystem::path result = [[paths firstObject] UTF8String];
-    std::error_code errorCode;
-    std::filesystem::create_directories(result, errorCode);
-    return result;
+    return std::filesystem::path([[paths firstObject] UTF8String]); // Documents: the system made it
 }
 
 Foundation::StreamReaderI* IOS_System::createStaticResourceReader(

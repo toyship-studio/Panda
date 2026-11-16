@@ -1,5 +1,6 @@
 #pragma once
 
+#include <PandaEditorKit/Widgets/Picker.hpp>
 #include <PandaUI/PandaUI.hpp>
 
 #include <cstdint>
@@ -45,6 +46,10 @@ void showAssetPicker(
     PandaUI::Context *context, PandaUI::Point at, const std::string &kind,
     std::function<void(uint32_t)> onPick
 );
+// Every asset of the project as the rows of a picker — the name, the folder, the icon of the
+// kind — sorted by name; ids gets the asset of each row. For the lists that offer any asset
+// (Go to, what an export always carries).
+std::vector<PickerItem> projectAssetItems(std::vector<uint32_t> &ids);
 // The "About" modal window: the version, the build and the commit (the manifest of the release
 // workflow names the same build, context/infrastructure.md), the state of the updater, and the
 // actions of the Help menu. Copy puts the version line on the clipboard for a report.

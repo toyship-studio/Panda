@@ -90,8 +90,10 @@ void EditorViewports::render(World &world, const EditorViewportSettings &setting
     if (!surface.isReady()) { return; }
     if (isSceneLive()) { renderScenePasses(world, settings); }
     const Miren::TextureHandle color = develop(world, settings, time);
+    const bool outlined = isSceneLive(); // the selection is shown in the Scene, never in the game
     m_composite.draw(
-        surface.addView(), color, isSceneLive() ? m_passTargets.selectionMask() : m_composite.emptyMask()
+        surface.addView(), color, outlined ? m_passTargets.selectionMask() : m_composite.emptyMask(),
+        outlined ? m_passTargets.outlineStep() : glm::vec4(0.f)
     );
 }
 

@@ -72,7 +72,7 @@ int run() {
     Miren::terminate();
     Fern::disposeWindow(window);
     Fern::terminate();
-    return 0;
+    return Panda::RuntimeLayer::exitCode(); // 0, or the verdict of a check run
 #endif
 }
 

@@ -82,6 +82,12 @@ public:
 
     void setOnTextChanged(TextChangedCallback callback);
     void setOnSubmit(SubmitCallback callback);
+    // A field that searches: Escape in it takes the typed text back (the whole list again, as
+    // the text change says) and only an empty field lets Escape go on — to the popover or the
+    // window that closes on it. One Escape never throws away both the query and the place.
+    void setClearsOnEscape(bool clears) {
+        m_clearsOnEscape = clears;
+    }
 
     void update(double deltaTime) override;
     bool pointerDown(PointerEvent &event) override;
@@ -166,6 +172,7 @@ private:
     size_t m_selectionAnchorIndex;
     double m_caretBlinkElapsed;
     bool m_caretVisible;
+    bool m_clearsOnEscape = false;
     bool m_isSelectingWithPointer;
     PointerType m_selectionPointerType;
     int m_selectionPointerId;

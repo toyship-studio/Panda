@@ -682,6 +682,14 @@ void EditorTabs::closeAllEntityTabs() {
     for (const std::string &id : toClose) { m_docks->closeTransientPanel(id); }
 }
 
+void EditorTabs::closeAllAssetTabs() {
+    std::vector<std::string> toClose;
+    for (TabEntry &entry : m_entries) {
+        if (!entry.assetIds.empty()) { toClose.push_back(entry.id); }
+    }
+    for (const std::string &id : toClose) { m_docks->closeTransientPanel(id); }
+}
+
 /* ------------------------------ Selection history ------------------------------ */
 
 void EditorTabs::pushHistory(HistoryEntry entry) {

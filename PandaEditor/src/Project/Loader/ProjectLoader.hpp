@@ -8,6 +8,9 @@
 #include "Project/System/ProjectCreator.hpp"
 
 #include <Rain/Coders/JsonEncoder.hpp>
+
+#include <string>
+#include <unordered_map>
 #include <Rain/Coders/JsonDecoder.hpp>
 
 namespace Panda {
@@ -16,7 +19,16 @@ class ProjectLoaderOutput {
 public:
     virtual ~ProjectLoaderOutput() = default;
     virtual void loaderDidLoadProject(const std::string &name, const path_t &path) = 0;
+    // The open project is about to go — Close Project, another project in this window, the same
+    // one read again. Its worlds and its assets are still there: whatever of the editor names
+    // them (the selection, the tabs of entities and assets, the previews, the Settings window)
+    // lets go now.
+    virtual void loaderWillCloseProject() = 0;
+    // No project is open any more (Close Project): the start screen.
     virtual void loaderDidLoadCloseProject() = 0;
+    // The script build was loaded, or loading it failed: the classes and their fields are the
+    // new ones — whoever shows them reads them again.
+    virtual void loaderDidReloadScripts() = 0;
 };
 
 // The life of a project in the editor (context/architecture.md, "Project model"): opening,
@@ -44,6 +56,10 @@ public:
     // The script build on disk is newer than the loaded one (a step of Reload; the build is not
     // a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
+    // The source file a script class is registered in (REGISTER_SCRIPT(Name)), found in the
+    // Scripts folder of the project; empty — no file registers it. The sources are read once and
+    // again after the script build is loaded: the files may have moved by then.
+    path_t scriptSource(const std::string &className);
     void closeProject();
     void createProject(const std::string &name, const path_t &path);
     const std::vector<RecentProject> &getRecentProjectsList();
@@ -65,6 +81,9 @@ private:
     // The files of the open project nobody asked to write (a switch, closing, the exit):
     // project.json, unless it was changed on disk, and the session of the project.
     void saveProject();
+    // The open project goes: it is saved, the editor is told (loaderWillCloseProject), then its
+    // worlds are released, then the registry of its assets.
+    void releaseOpenedProject();
     void loadRecentProject();
     void appendRecentProject();
     void finalizeOpenedProject();
@@ -77,6 +96,9 @@ private:
     Rain::JsonEncoder m_jsonEncoder;
     Rain::JsonDecoder m_jsonDecoder;
     std::filesystem::file_time_type m_scriptsDllTime{};
+    // Script class → the source file that registers it (scriptSource); read on the first question.
+    std::unordered_map<std::string, path_t> m_scriptSources;
+    bool m_scriptSourcesRead = false;
     EditorSession m_session;
     ProjectSession m_projectSession;
     ProjectCreator m_projectCreator;

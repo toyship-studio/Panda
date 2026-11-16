@@ -35,8 +35,9 @@ private:
     path_t m_runtimeDataPath;
     Rain::BinaryDecoder m_binaryDecoder;
     std::map<AssetId, AssetInfo> m_registry;
-    // Sources of the pairs from assets.bin — the paths are ALREADY in the runtime layout (the exporter
-    // converts them); for a shader — the vert source, the cooked file names are deterministic from it.
+    // Sources of the pairs from assets.bin — the paths are ALREADY in the layout of the cooked
+    // data (the exporter converts them): the names of the entries of the game's pack. For a shader
+    // — the vert source, the cooked file names are deterministic from it.
     std::map<AssetId, AssetFileReference> m_assetSources;
 };
 

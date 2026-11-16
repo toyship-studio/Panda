@@ -44,6 +44,12 @@ Large directions that are still ahead. Finished work is one line with a pointer 
   (`context/lighting.md`, "Fog").
 - **Compressed textures**: BC7 at cook time with the mips in the file, decoded where the device
   has no block formats (`context/rendering.md`, "Compressed textures").
+- **Cooking and packaging**: the game is cooked from the files of the project — its start world
+  and what that reaches — into one pack the runtime reads through `GameFiles`; a model is cooked
+  to arrays, an asset nothing reaches is left out and named; a built game is checked by a run
+  that plays some frames and leaves (`context/export.md`).
+- **Several worlds in a game**: the game starts in the start world of the project settings and
+  carries the worlds its scripts are given; there is no scene list (`context/export.md`).
 
 ## Ahead (order is open to discussion)
 
@@ -65,13 +71,15 @@ Large directions that are still ahead. Finished work is one line with a pointer 
    editor side are done; ahead are music across world switches, import settings per clip, a clip
    field type for scripts, the iOS audio session.
 5. **Demo games**: bring workflows to production quality regularly (quality, not quantity).
-6. **Multiple worlds / scene management**: a scene list and a start scene in project settings.
+6. **Loading a world into a running one** (additive): the engine side exists, the script API and
+   the rules for the ids of the loaded entities do not (`context/architecture.md`, "Open items").
 7. **Prefabs**: after world, assets and script fields stabilize; a prefab is an asset with
    overrides.
 8. **Input actions**: a mapping layer over raw input (mobile, gamepad, remapping).
-9. **Cooking and packaging**: finish "the runtime never reads authoring formats". Deferred: a
-   cached snapshot of the asset registry in `.Panda/` (path → id, mtime), needed only at tens of
-   thousands of assets; a cache is never the truth and never goes into git.
+9. **Cooking, next steps** (`context/export.md`, "Open items"): the shaders of one backend per
+   export target, a cook that reuses unchanged entries. Deferred: a cached snapshot of the asset
+   registry in `.Panda/` (path → id, mtime), needed only at tens of thousands of assets; a cache
+   is never the truth and never goes into git.
 10. **Skeletal animation**: import, runtime pose, clips, skinning, preview.
 11. **UI and text**: clipboard and IME basics, accessibility basics, richer controls. A view
     hierarchy debugger for game UI in the editor (Play → Pause → snapshot of all UI windows →

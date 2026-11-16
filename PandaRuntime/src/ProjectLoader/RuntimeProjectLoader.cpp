@@ -2,6 +2,8 @@
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
+#include "Panda/Runtime/AssetPack.hpp"
+#include "Panda/Runtime/GameFiles.hpp"
 #include "Panda/Serialization/WorldMapper.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
@@ -16,6 +18,17 @@ RuntimeProjectLoader::RuntimeProjectLoader()
 
 bool RuntimeProjectLoader::load(const path_t &runtimeDataPath, AssetHandlerRuntime &assetHandler, World &world) {
     m_runtimeDataPath = runtimeDataPath;
+
+    // 0. The files of the game are the entries of its pack: every loader that opens a file under
+    // the data folder gets it from there (GameFiles).
+    auto pack = std::make_unique<AssetPack>();
+    const path_t packPath = runtimeDataPath / AssetPack::FILE_NAME;
+    if (!pack->open(packPath)) {
+        LOG_ERROR("RUNTIME: The pack of the game is not at %s, or is not a pack of this engine", packPath.string().c_str());
+        return false;
+    }
+    LOG_INFO("RUNTIME: Mounted %s: %d files", packPath.string().c_str(), (int)pack->entries().size());
+    GameFiles::mount(runtimeDataPath, std::move(pack));
 
     // 1. Load asset registry
     assetHandler.setRuntimeDataPath(runtimeDataPath);
@@ -111,10 +124,8 @@ bool RuntimeProjectLoader::loadWorldAsset(AssetId worldAssetId, AssetHandlerRunt
 }
 
 bool RuntimeProjectLoader::loadWorldFile(const path_t &worldPath, World &world) {
-    std::ifstream binFile(worldPath, std::ios::binary);
-    if (binFile.is_open()) {
-        const bool loaded = WorldMapper::load(world, m_binaryDecoder, binFile);
-        binFile.close();
+    if (const std::unique_ptr<std::istream> binFile = GameFiles::open(worldPath)) {
+        const bool loaded = WorldMapper::load(world, m_binaryDecoder, *binFile);
         if (loaded) {
             LOG_INFO("RUNTIME: Loaded world from %s", worldPath.string().c_str());
             return true;

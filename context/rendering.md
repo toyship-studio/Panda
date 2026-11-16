@@ -207,8 +207,8 @@ of RGBA8 — for color and for data alike (RGB and RGBA, the alpha kept).
   rows of blocks shared out among the cores. The cook is derived data: it is redone when the
   source is newer, when the file is of another version of the format, when `compressed`
   changed, and for a compressed texture when `srgb` changed (the mips depend on it). The first
-  opening of a project compresses its textures once; the export copies the cooked files as they
-  are.
+  opening of a project compresses its textures once; the export puts the cooked files into the
+  pack of the game as they are (`context/export.md`).
 - **The device.** `Miren::TextureFormat::BC7` / `BC7_SRGB`: Metal on macOS and D3D11 create
   them (`MTLPixelFormatBC7_RGBAUnorm`, `DXGI_FORMAT_BC7_UNORM`) and upload the levels of the
   data; such a texture is shader-read only — never a render target, not updated, not read back.

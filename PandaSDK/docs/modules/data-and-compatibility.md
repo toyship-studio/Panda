@@ -13,7 +13,7 @@ or without it. This page lists what a module writes and what it must not change.
 | `settings.json` of the user | a key per editor settings section | JSON |
 | `X.<ext>.pmeta` | the numeric kind id of the module's assets (`type`); the shader id of a material on a module shader (`meta.shader`) | JSON |
 | the module's asset files | the module's own format, read by `load` and written by `save` | the module |
-| the cooked data of an export | the same values in the binary world format; the module's asset files copied as they are; `modules.txt` | the export |
+| the cooked data of an export | the same values in the binary world format and the module's asset files as they are, in the pack of the game (only what the game reaches); `modules.txt` | the export |
 
 ## What never changes
 

@@ -2,6 +2,8 @@
 
 #include "App/EditorLayer.hpp"
 #include "App/SystemStats.hpp"
+#include "Project/Export/GameExporter.hpp"
+#include <Panda/Runtime/CheckRun.hpp>
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "UI/EditorController.hpp"
@@ -18,10 +20,13 @@
 #include <rapidjson/writer.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <thread>
 #include <typeinfo>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -221,6 +226,8 @@ void EditorMcp::performExit() {
     SystemTools::Unattended unattended(SaveChangesChoice::DontSave);
     if (kind == Exit::Restart) {
         m_editor.restartEditor();
+    } else if (kind == Exit::OpenProject) {
+        m_editor.openProject(m_projectToOpen);
     } else {
         m_editor.closeAppRequest();
     }
@@ -340,6 +347,18 @@ void EditorMcp::registerTools() {
         [this](const rapidjson::Value &arguments) { return openWorld(arguments); },
     });
     m_server.addTool({
+        "open_project",
+        "Opens another project in this editor window, as File → Open Project does: the open project is saved and "
+        "closed, the other one takes its place. The answer comes first, then the editor switches; its server "
+        "follows the `mcp` section of the project it opens — the same address when the editor was started with "
+        "`--mcp <port>`, otherwise the port of that project (poll `status`). Fails when documents are unsaved.",
+        R"({"type":"object","properties":{)"
+        R"("path":{"type":"string","description":"The folder of the project (the one that holds .Panda/project.json), absolute."},)"
+        R"("discard":{"type":"boolean","description":"Switch although documents are unsaved: their changes are lost. Default false."}},)"
+        R"("required":["path"]})",
+        [this](const rapidjson::Value &arguments) { return openProject(arguments); },
+    });
+    m_server.addTool({
         "show",
         "Brings a part of the editor in front, as a click of the user would, so that a `screenshot` of the "
         "`window` shows it. One of: `panel` — a panel by its id; `settings` — the settings; `asset` — selects "
@@ -414,6 +433,28 @@ void EditorMcp::registerTools() {
         R"("action":{"type":"string","enum":["build","configure","clean"]},)"
         R"("lines":{"type":"number","description":"How many of the last lines of the output to answer with. Default 80."}}})",
         [this](const rapidjson::Value &arguments) { return build(arguments); },
+    });
+    m_server.addTool({
+        "export",
+        "The data of the game as it will ship. `action`: `cook` (the default) — cooks it from the files of the "
+        "project (an unsaved edit is not in it: `save` first): the start world of the project settings "
+        "(\"world\".startWorld of project.json) and everything it reaches — its assets, the worlds its scripts "
+        "are given, what those name — in one pack (.Panda/Cooked/Runtime/Assets.pak); answers with what the pack "
+        "holds by kind, its largest files, the warnings, and the assets of the project the game does not reach — "
+        "those are left out (what only a script names by id goes into \"export\".include of project.json). "
+        "`report` — the same account of the "
+        "last cook, without cooking. `files` — every file of the pack with its size (`filter`: a part of the "
+        "path). The whole report is .Panda/Cooked/report.json. `build` with target `export` then builds the game, "
+        "and `run` plays the built game by itself (a check run: `frames` frames, then it leaves) and answers with "
+        "what it logged, how it ended and the picture of its last frame — the game as the player will see it, "
+        "from the pack. The order of a full check: cook, build (target export), run.",
+        R"({"type":"object","properties":{)"
+        R"("action":{"type":"string","enum":["cook","report","files","run"]},)"
+        R"("filter":{"type":"string","description":"files: only the paths that contain this text."},)"
+        R"("limit":{"type":"number","description":"How many of the largest files and of the unused assets to list; run: how many of the last lines of the log. Default 15; run: 40."},)"
+        R"("frames":{"type":"number","description":"run: how many frames the game plays before it leaves. Default 120."},)"
+        R"("width":{"type":"number","description":"run: the picture is scaled down to this width. Default 1280."}}})",
+        [this](const rapidjson::Value &arguments) { return exportGame(arguments); },
     });
     m_server.addTool({
         "restart",
@@ -1405,6 +1446,242 @@ Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
         return Mcp::ready(textResult("The entity is selected: its tab is open."));
     }
     return Mcp::ready(Mcp::ToolResult::error("Say what to show: panel, settings, asset or entity"));
+}
+
+namespace {
+
+    // The account of a cook as text: what the pack holds, what was left out.
+    std::string cookReportText(const CookReport &report, size_t limit) {
+        std::string text = "The game starts in " + report.startWorld + ".\nThe pack: " + report.pack + ", " +
+                           CookReport::sizeText(report.packBytes) + " in " + std::to_string(report.packFiles) +
+                           " files.\n\nBy kind (assets of the project the game uses, what they take):\n";
+        char line[512];
+        for (const CookReportKind &kind : report.kinds) {
+            std::snprintf(
+                line, sizeof(line), "  %-12s %5u  %10s\n", kind.kind.c_str(), kind.assets,
+                CookReport::sizeText(kind.bytes).c_str()
+            );
+            text += line;
+        }
+        text += "\nThe largest files:\n";
+        for (size_t i = 0; i < report.files.size() && i < limit; i++) {
+            const CookReportFile &file = report.files[i];
+            std::snprintf(
+                line, sizeof(line), "  %10s  %s%s%s\n", CookReport::sizeText(file.bytes).c_str(), file.path.c_str(),
+                file.detail.empty() ? "" : "  — ", file.detail.c_str()
+            );
+            text += line;
+        }
+        if (report.unused.empty()) {
+            text += "\nEvery asset of the project is in the game.\n";
+        } else {
+            text += "\nNot reached from the start world and left out of the game: " + std::to_string(report.unused.size()) +
+                    " asset(s), " + CookReport::sizeText(report.unusedBytes) + " of source files:\n";
+            for (size_t i = 0; i < report.unused.size() && i < limit; i++) {
+                std::snprintf(
+                    line, sizeof(line), "  %10s  %-10s %s\n", CookReport::sizeText(report.unused[i].bytes).c_str(),
+                    report.unused[i].kind.c_str(), report.unused[i].path.c_str()
+                );
+                text += line;
+            }
+            if (report.unused.size() > limit) {
+                text += "  … and " + std::to_string(report.unused.size() - limit) + " more (report.json has them all)\n";
+            }
+        }
+        if (!report.warnings.empty()) {
+            text += "\nWarnings:\n";
+            for (const std::string &warning : report.warnings) { text += "  " + warning + "\n"; }
+        }
+        return text;
+    }
+
+} // namespace
+
+Mcp::PendingResult EditorMcp::exportGame(const rapidjson::Value &arguments) {
+    if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
+    const std::string action = Mcp::stringArgument(arguments, "action");
+    if (action == "run") { return runBuiltGame(arguments); }
+    const size_t limit = static_cast<size_t>(std::clamp(Mcp::numberArgument(arguments, "limit", 15.0), 1.0, 5000.0));
+    ProjectBuilds &builds = m_editor.builds();
+    CookReport report;
+    if (action.empty() || action == "cook") {
+        const uint64_t from = LogHistory::nextSequence();
+        SystemTools::Unattended unattended;
+        if (!builds.cook() || !builds.readCookReport(report)) {
+            return Mcp::ready(Mcp::ToolResult::error("The game was not cooked.\n" + logSince(from)));
+        }
+        return Mcp::ready(textResult(cookReportText(report, limit)));
+    }
+    if (!builds.readCookReport(report)) {
+        return Mcp::ready(Mcp::ToolResult::error("The project has no cook yet: call `export` with action `cook`."));
+    }
+    if (action == "report") { return Mcp::ready(textResult(cookReportText(report, limit))); }
+    if (action == "files") {
+        const std::string filter = Mcp::stringArgument(arguments, "filter");
+        std::string text;
+        size_t count = 0;
+        uint64_t bytes = 0;
+        char line[512];
+        for (const CookReportFile &file : report.files) {
+            if (!filter.empty() && file.path.find(filter) == std::string::npos) { continue; }
+            std::snprintf(
+                line, sizeof(line), "%10s  %-10s %s%s%s\n", CookReport::sizeText(file.bytes).c_str(), file.kind.c_str(),
+                file.path.c_str(), file.detail.empty() ? "" : "  — ", file.detail.c_str()
+            );
+            text += line;
+            count++;
+            bytes += file.bytes;
+        }
+        text += std::to_string(count) + " file(s), " + CookReport::sizeText(bytes) + "\n";
+        return Mcp::ready(textResult(std::move(text)));
+    }
+    return Mcp::ready(Mcp::ToolResult::error("action is cook, report, files or run"));
+}
+
+namespace {
+
+    // A check run in flight: the game runs on a thread of its own, the tool asks every frame.
+    struct GameRun final {
+        std::atomic<bool> done{false};
+        bool succeeded = false; // the game left by itself with exit code 0
+        std::mutex mutex;
+        std::vector<std::string> lines;
+        path_t shotFile;
+    };
+
+    // RGBA8 rows → a PNG of at most maxWidth (area averaging), as `screenshot` packs a viewport.
+    std::vector<uint8_t> packPng(const CheckShot &shot, uint64_t maxWidth) {
+        const uint64_t width = shot.width;
+        const uint64_t height = shot.height;
+        const uint64_t outWidth = std::min<uint64_t>(width, maxWidth);
+        const uint64_t outHeight = std::max<uint64_t>(1, (height * outWidth + width / 2) / width);
+        std::vector<uint8_t> rgb(outWidth * outHeight * 3);
+        for (uint64_t y = 0; y < outHeight; ++y) {
+            const uint64_t y0 = y * height / outHeight;
+            const uint64_t y1 = std::max(y0 + 1, (y + 1) * height / outHeight);
+            for (uint64_t x = 0; x < outWidth; ++x) {
+                const uint64_t x0 = x * width / outWidth;
+                const uint64_t x1 = std::max(x0 + 1, (x + 1) * width / outWidth);
+                uint64_t sum[3] = {0, 0, 0};
+                for (uint64_t sy = y0; sy < y1; ++sy) {
+                    const uint8_t *row = shot.pixels.data() + (shot.bottomUp ? height - 1 - sy : sy) * width * 4;
+                    for (uint64_t sx = x0; sx < x1; ++sx) {
+                        sum[0] += row[sx * 4];
+                        sum[1] += row[sx * 4 + 1];
+                        sum[2] += row[sx * 4 + 2];
+                    }
+                }
+                const uint64_t count = (y1 - y0) * (x1 - x0);
+                uint8_t *out = rgb.data() + (y * outWidth + x) * 3;
+                out[0] = static_cast<uint8_t>((sum[0] + count / 2) / count);
+                out[1] = static_cast<uint8_t>((sum[1] + count / 2) / count);
+                out[2] = static_cast<uint8_t>((sum[2] + count / 2) / count);
+            }
+        }
+        size_t pngSize = 0;
+        void *png = tdefl_write_image_to_png_file_in_memory_ex(
+            rgb.data(), static_cast<int>(outWidth), static_cast<int>(outHeight), 3, &pngSize, 6, MZ_FALSE
+        );
+        std::vector<uint8_t> packed;
+        if (png != nullptr) {
+            packed.assign(static_cast<const uint8_t *>(png), static_cast<const uint8_t *>(png) + pngSize);
+            mz_free(png);
+        }
+        return packed;
+    }
+
+} // namespace
+
+Mcp::PendingResult EditorMcp::runBuiltGame(const rapidjson::Value &arguments) {
+    const path_t game = m_editor.builds().builtGame();
+    if (game.empty()) {
+        return Mcp::ready(Mcp::ToolResult::error(
+            "The game is not built for this machine: `export` (cook), then `build` with target `export`. An export "
+            "target of another platform (iOS) does not run here."
+        ));
+    }
+    const int frames = static_cast<int>(std::clamp(Mcp::numberArgument(arguments, "frames", 120.0), 1.0, 100000.0));
+    const size_t limit = static_cast<size_t>(std::clamp(Mcp::numberArgument(arguments, "limit", 40.0), 1.0, 5000.0));
+    const uint64_t maxWidth = static_cast<uint64_t>(std::clamp(Mcp::numberArgument(arguments, "width", 1280.0), 16.0, 8192.0));
+    auto run = std::make_shared<GameRun>();
+    std::error_code error;
+    run->shotFile = std::filesystem::temp_directory_path(error) / ("panda-check-" + std::to_string(SystemTools::currentProcessId()) + ".shot");
+    std::filesystem::remove(run->shotFile, error);
+
+    // The check run is asked for by the environment of the game (Panda/Runtime/CheckRun.hpp).
+    const std::string framesText = std::to_string(frames);
+    const std::string shotText = run->shotFile.string();
+    std::thread([run, game, framesText, shotText] {
+        const auto collect = [&run](std::string_view line) {
+            std::lock_guard<std::mutex> lock(run->mutex);
+            run->lines.emplace_back(line);
+        };
+#if defined(PLATFORM_WINDOWS)
+        // The child inherits the environment of the editor: set for the time of the run.
+        _putenv_s(CheckRun::FRAMES_VARIABLE, framesText.c_str());
+        _putenv_s(CheckRun::SHOT_VARIABLE, shotText.c_str());
+        run->succeeded = SystemTools::runCommand(game, {}, game.parent_path(), collect);
+        _putenv_s(CheckRun::FRAMES_VARIABLE, "");
+        _putenv_s(CheckRun::SHOT_VARIABLE, "");
+#else
+        run->succeeded = SystemTools::runCommand(
+            "/usr/bin/env",
+            {std::string(CheckRun::FRAMES_VARIABLE) + "=" + framesText, std::string(CheckRun::SHOT_VARIABLE) + "=" + shotText,
+             game.string()},
+            game.parent_path(), collect
+        );
+#endif
+        run->done = true;
+    }).detach();
+
+    return [run, limit, maxWidth, frames]() -> std::optional<Mcp::ToolResult> {
+        if (!run->done) { return std::nullopt; }
+        Mcp::ToolResult result;
+        result.isError = !run->succeeded;
+        result.text = run->succeeded ? "The game played " + std::to_string(frames) + " frames and left by itself."
+                                     : "The game did not end well (a crash, its data did not load, or it did not leave in time).";
+        CheckShot shot;
+        std::error_code error;
+        if (shot.read(run->shotFile)) {
+            result.png = packPng(shot, maxWidth);
+            result.text += " Its last frame is the picture (" + std::to_string(shot.width) + "×" + std::to_string(shot.height) + ").";
+        } else {
+            result.text += " It left no picture of its last frame.";
+        }
+        std::filesystem::remove(run->shotFile, error);
+        std::lock_guard<std::mutex> lock(run->mutex);
+        const size_t first = run->lines.size() > limit ? run->lines.size() - limit : 0;
+        result.text += first > 0 ? "\nThe last " + std::to_string(limit) + " of " + std::to_string(run->lines.size()) + " lines of its log:"
+                                 : "\nIts log:";
+        for (size_t i = first; i < run->lines.size(); ++i) { result.text += "\n" + run->lines[i]; }
+        return result;
+    };
+}
+
+Mcp::PendingResult EditorMcp::openProject(const rapidjson::Value &arguments) {
+    const path_t folder = path_t(Mcp::stringArgument(arguments, "path")).lexically_normal();
+    std::error_code error;
+    if (folder.empty() || !folder.is_absolute() || !std::filesystem::is_directory(folder, error)) {
+        return Mcp::ready(Mcp::ToolResult::error("path is the folder of a project, absolute: " + folder.string()));
+    }
+    if (!std::filesystem::is_regular_file(folder / ".Panda" / "project.json", error)) {
+        return Mcp::ready(Mcp::ToolResult::error("Not a project (no .Panda/project.json): " + folder.string()));
+    }
+    if (hasProject() && folder == m_editor.project().getOpenedProjectPath()) {
+        return Mcp::ready(textResult("This project is open already."));
+    }
+    const std::vector<std::string> dirty = dirtyDocuments();
+    if (!dirty.empty() && !Mcp::boolArgument(arguments, "discard", false)) {
+        std::string text = "Unsaved documents: ";
+        for (size_t i = 0; i < dirty.size(); ++i) { text += (i > 0 ? ", " : "") + dirty[i]; }
+        text += ". Call `save` first, or pass discard=true to lose their changes.";
+        return Mcp::ready(Mcp::ToolResult::error(std::move(text)));
+    }
+    // After the answer has left (performExit): the server may move to the port of the other project.
+    m_projectToOpen = folder;
+    m_exit = Exit::OpenProject;
+    m_exitFrames = 0;
+    return Mcp::ready(textResult("The editor opens " + folder.filename().string() + ": poll `status`."));
 }
 
 Mcp::PendingResult EditorMcp::exit(Exit kind, const rapidjson::Value &arguments) {

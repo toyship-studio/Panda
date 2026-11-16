@@ -132,6 +132,34 @@ void showScriptPicker(
     });
 }
 
+std::vector<PickerItem> projectAssetItems(std::vector<uint32_t> &ids) {
+    struct Found {
+        uint32_t id;
+        std::string name;
+        std::string folder;
+        Panda::AssetType type;
+    };
+    std::vector<Found> found;
+    if (auto *handler = Panda::AssetHandlerEditor::current()) {
+        for (const auto &[id, info] : handler->getRegistry()) {
+            found.push_back({static_cast<uint32_t>(id), handler->getAssetName(id),
+                             handler->assetPath(id).parent_path().generic_string(), info.type});
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
+        return a.name != b.name ? a.name < b.name : a.folder < b.folder;
+    });
+    std::vector<PickerItem> items;
+    items.reserve(found.size());
+    ids.clear();
+    ids.reserve(found.size());
+    for (Found &asset : found) {
+        items.push_back({std::move(asset.name), std::move(asset.folder), assetIconName(asset.type), {}});
+        ids.push_back(asset.id);
+    }
+    return items;
+}
+
 void showAssetPicker(
     Context *context, Point at, const std::string &kind, std::function<void(uint32_t)> onPick
 ) {
@@ -152,8 +180,9 @@ void showAssetPicker(
         }
         for (const auto &[id, info] : handler->getRegistry()) {
             if (info.type != type) { continue; }
+            // The path of an asset is relative to the project: its folder is the detail of the row.
             found.push_back({static_cast<uint32_t>(id), handler->getAssetName(id),
-                             handler->assetPath(id).parent_path().lexically_relative(handler->getProjectPath()).generic_string()});
+                             handler->assetPath(id).parent_path().generic_string()});
         }
         std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
             return a.name != b.name ? a.name < b.name : a.folder < b.folder;
@@ -165,8 +194,6 @@ void showAssetPicker(
     ids.reserve(found.size());
     const char *icon = assetIconName(type);
     for (Found &asset : found) {
-        // A path outside the project (an engine asset) has no folder to show.
-        if (asset.folder == "." || asset.folder.rfind("..", 0) == 0) { asset.folder.clear(); }
         items.push_back({std::move(asset.name), std::move(asset.folder), icon});
         ids.push_back(asset.id);
     }

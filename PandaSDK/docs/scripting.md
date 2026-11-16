@@ -77,7 +77,10 @@ REGISTER_SCRIPT(MoveScript)
 `PANDA_FIELD(name)` publishes a class member: it appears in the editor's inspector and gets its
 value from the world (`scriptFields`). Supported: `int`, `float`, references to an
 entity/texture/material/world/font (the id types `EntityHandle`, `TextureHandle`, `MaterialHandle`,
-`WorldHandle`, `FontHandle`).
+`WorldHandle`, `FontHandle`). A field is also how an exported game learns what the script
+needs: the game carries the assets and the worlds that the fields of its scripts hold, and an
+asset a script names only by an id in the code has to be listed in `"export".include`
+([Exporting a game](export.md)).
 
 The world is the only source of a published field: when Play starts the engine writes every field
 of the script from the world, and a field the world does not list is written as zero. The

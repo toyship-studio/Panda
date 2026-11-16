@@ -182,9 +182,10 @@ key whose type is absent (the module is not loaded) survives load and save as is
 ## The project files
 
 `.Panda/project.json` is the project scope of the same settings model: one JSON object of
-sections by name, in version control. The core sections are `world` (`startWorld` — the main
-world of the project, relative to the project with forward slashes; the editor opens it when the
-project has no session), `rendering` (`features: ["lights", "shadows", …]` — the shader
+sections by name, in version control. The core sections are `world` (`startWorld` — the world
+the game starts in, relative to the project with forward slashes; the editor opens it when the
+project has no session), `export` (`include` — files and folders the game carries although
+nothing in it names them, see [Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
 features the project enables, see `shaders.md`; without the section every feature is on),
 `modules` (`entries: [{id, version, enabled}]` — the module set, an entry with `enabled: false`
 switches a module of the distribution off; an empty list enables all) and `mcp` (`enabled`,

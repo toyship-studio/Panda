@@ -53,6 +53,19 @@ struct ProjectWorldSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+// "export": what the cook of the game takes besides what it finds. The cook puts into the game
+// every world of the project and everything the worlds name; `include` lists the files and the
+// folders of the project (relative paths) the game needs although no world names them — what a
+// script asks for by an id written in code. Everything else of the project stays out of the game
+// and is named in the report of the cook.
+struct ProjectExportSettings final : public Rain::Codable {
+    std::vector<std::string> include;
+
+    RAIN_FIELDS_BEGIN(ProjectExportSettings)
+    RAIN_FIELD(include)
+    RAIN_FIELDS_END
+};
+
 // "modules": the module set of the project (ModuleRef). An empty list — every module of the
 // distribution is enabled.
 struct ProjectModuleSettings final : public Rain::Codable {

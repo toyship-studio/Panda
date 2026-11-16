@@ -9,6 +9,9 @@
 #include "Project/System/PandaSdkLocator.hpp"
 #include "Project/System/SystemTools.hpp"
 
+#include <Rain/Coders/JsonDecoder.hpp>
+#include <fstream>
+#include <cstdio>
 #include <Foundation/PlatformDetection.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
@@ -312,10 +315,15 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhe
         run(std::move(steps));
         return;
     }
-    // The Export project is built from the cooked data of the game: it is made first.
-    if (!scripts && !cook()) {
-        endWithError("the runtime data was not cooked (the Output panel says why)");
-        return;
+    // The Export project is built from the cooked data of the game: it is made first, and what
+    // the cook said — where the game starts, the pack, what was left out — opens the output.
+    if (!scripts) {
+        const bool cooked = cook();
+        for (const std::string &line : m_cookMessages) { m_state->pushLine(line); }
+        if (!cooked) {
+            endWithError("the data of the game was not cooked");
+            return;
+        }
     }
     if (!std::filesystem::exists(projectDirectory / "CMakeLists.txt")) {
         fail(std::string(scripts ? "scripts" : "export") + " project not found at " + projectDirectory.string());
@@ -416,51 +424,134 @@ void ProjectBuilds::openGeneratedProject(const path_t &buildDirectory, ExportPro
 }
 
 bool ProjectBuilds::cook() {
+    m_cookMessages.clear();
+    // What the cook says goes to the log of the editor and is kept for the panel: an Export build
+    // shows it before what cmake says.
+    const auto error = [this](const std::string &text) {
+        LOG_ERROR_EDITOR("Export: %s", text.c_str());
+        m_cookMessages.push_back("error: " + text);
+    };
+    const auto warning = [this](const std::string &text) {
+        LOG_WARN_EDITOR("Export: %s", text.c_str());
+        m_cookMessages.push_back("warning: " + text);
+    };
     if (!m_project.hasOpenedProject()) {
-        LOG_WARN_EDITOR("No project is open. Open a project before exporting.");
+        error("No project is open. Open a project before exporting.");
         return false;
     }
     const path_t projectPath = m_project.getOpenedProjectPath();
     auto *assetHandler = AssetHandlerEditor::current();
 
-    // The game starts in the world that is open, as it is edited (not the copy a running game
-    // plays in); the start world of the project settings takes over with the list of worlds
-    // (context/roadmap.md).
-    WorldFile *world = m_documents.activeWorld();
-    std::string worldPath;
-    if (world != nullptr && !world->path().empty()) {
-        worldPath = std::filesystem::relative(world->path(), projectPath).generic_string();
-    }
-    const std::vector<std::string> errors = GameExporter::validate(projectPath, worldPath, *assetHandler);
+    // The cook is a function of the files of the project: the game starts in the start world of
+    // the project settings, whatever world the editor shows now, and carries what that world
+    // reaches. An edit that is not saved is not in the game — the cook says which.
+    const std::string startWorld = m_documents.projectSettings().get<ProjectWorldSettings>().startWorld;
+    const std::vector<std::string> errors = GameExporter::validate(projectPath, startWorld, *assetHandler);
     if (!errors.empty()) {
-        for (const std::string &error : errors) {
-            LOG_ERROR_EDITOR("Export: %s", error.c_str());
-        }
-        LOG_ERROR_EDITOR("Nothing was exported: fix the errors above and export again.");
+        for (const std::string &text : errors) { error(text); }
+        error("Nothing was exported: fix the errors above and export again.");
         return false;
+    }
+
+    {
+        FileDocumentList documents = m_documents.list();
+        std::string unsaved;
+        int count = 0;
+        for (FileDocument *document : documents.all) {
+            if (!document->isDirty()) { continue; }
+            unsaved += (count++ > 0 ? ", " : "") + document->title();
+        }
+        if (count > 0) {
+            warning(
+                std::to_string(count) + " document(s) have edits that are not saved, and the game is cooked from the files: " +
+                unsaved + ". Save All and cook again to have them in the game."
+            );
+        }
     }
 
     ExportSettings settings;
     settings.runtimeDataDirectory = projectPath / ".Panda" / "Cooked" / "Runtime";
+    settings.reportFile = cookReportFile();
+    settings.startWorld = startWorld;
     settings.appName = projectPath.filename().string();
     settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().get<ProjectModuleSettings>());
+    settings.include = m_documents.projectSettings().get<ProjectExportSettings>().include;
     LOG_INFO_EDITOR("Cooking the runtime data to %s", settings.runtimeDataDirectory.string().c_str());
 
     GameExporter exporter;
-    // A world without a file does not pass the validation: `world` is one of the open worlds here.
-    const ExportResult result = exporter.exportGame(settings, projectPath, *assetHandler, world->world());
+    const ExportResult result = exporter.exportGame(settings, projectPath, *assetHandler);
+    // The exporter logged its warnings as it met them: the panel gets them here.
+    for (const std::string &text : result.report.warnings) { m_cookMessages.push_back("warning: " + text); }
     if (!result.success) {
-        LOG_ERROR_EDITOR("Export failed: %s", result.errorMessage.c_str());
+        error("The game was not cooked: " + result.errorMessage);
         return false;
     }
-    for (const std::string &warning : result.warnings) {
-        LOG_WARN_EDITOR("Export: %s", warning.c_str());
-    }
+    const CookReport &report = result.report;
+    const std::string summary = "The game is cooked: it starts in " + report.startWorld + "; " +
+                                std::filesystem::path(report.pack).filename().string() + ", " +
+                                CookReport::sizeText(report.packBytes) + " in " + std::to_string(report.packFiles) + " files.";
     LOG_INFO_EDITOR(
-        "The runtime data is cooked. The Export project builds the game from it: %s",
+        "%s The Export project builds the game from it: %s", summary.c_str(),
         folder(BuildTargetKind::Export).string().c_str()
     );
+    m_cookMessages.push_back(summary);
+    // What the project has and the game does not: said every time, so that a file the game was
+    // meant to have is noticed here and not in the game.
+    if (!report.unused.empty()) {
+        const std::string head = std::to_string(report.unused.size()) + " asset(s) of the project (" +
+                                 CookReport::sizeText(report.unusedBytes) +
+                                 ") are not reached from the start world and were left out of the game";
+        const std::string advice = "The whole list is in " + settings.reportFile.string() +
+                                   "; what a script asks for by id goes into \"export\".include of project.json.";
+        std::string names;
+        const size_t shown = std::min<size_t>(report.unused.size(), 5);
+        for (size_t i = 0; i < shown; i++) { names += (i > 0 ? ", " : "") + report.unused[i].path; }
+        if (report.unused.size() > shown) { names += ", …"; }
+        LOG_WARN_EDITOR("Export: %s: %s. %s", head.c_str(), names.c_str(), advice.c_str());
+        // The panel shows a line as a line: the names go one under another.
+        m_cookMessages.push_back("warning: " + head + ":");
+        for (size_t i = 0; i < shown; i++) {
+            m_cookMessages.push_back("    " + report.unused[i].path + "  (" + CookReport::sizeText(report.unused[i].bytes) + ")");
+        }
+        if (report.unused.size() > shown) {
+            m_cookMessages.push_back("    … and " + std::to_string(report.unused.size() - shown) + " more");
+        }
+        m_cookMessages.push_back(
+            "    The whole list: " + settings.reportFile.lexically_relative(projectPath).generic_string()
+        );
+        m_cookMessages.push_back(
+            "    What a script asks for by id is added in Settings → Project → Export (\"export\".include of project.json)."
+        );
+    }
     return true;
+}
+
+path_t ProjectBuilds::builtGame() {
+    if (!m_project.hasOpenedProject()) { return {}; }
+    const std::string name = m_project.getOpenedProjectPath().filename().string();
+    const path_t products = buildFolder(BuildTargetKind::Export) / "Debug";
+    path_t executable;
+#if defined(PLATFORM_MACOS)
+    if (m_exportTarget == ExportProjectTarget::XcodeMacOS) {
+        executable = products / (name + ".app") / "Contents" / "MacOS" / name;
+    }
+#elif defined(PLATFORM_WINDOWS)
+    if (m_exportTarget == ExportProjectTarget::VisualStudioWindows) { executable = products / (name + ".exe"); }
+#endif
+    std::error_code error;
+    return !executable.empty() && std::filesystem::is_regular_file(executable, error) ? executable : path_t();
+}
+
+path_t ProjectBuilds::cookReportFile() const {
+    return m_project.getOpenedProjectPath() / ".Panda" / "Cooked" / "report.json";
+}
+
+bool ProjectBuilds::readCookReport(CookReport &report) const {
+    std::ifstream file(cookReportFile());
+    if (!file.is_open()) { return false; }
+    Rain::JsonDecoder jsonDecoder;
+    Rain::Decoder *decoder = &jsonDecoder;
+    return decoder->decode(file, report);
 }
 
 void ProjectBuilds::showFolder(BuildTargetKind kind) {

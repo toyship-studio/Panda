@@ -38,7 +38,8 @@ public:
     using QuitRequestHandler = std::function<void()>;
     static void setQuitRequestHandler(QuitRequestHandler handler);
     static void requestQuit();
-    // Save directory: set by the host (editor — <project>/.Panda/SaveData, runtime — an OS path).
+    // Save directory: named by the host (editor — <project>/.Panda/SaveData, runtime — an OS
+    // path), made when a script asks for it (application_GetPersistentDataPath).
     static void setPersistentDataPath(const path_t &path);
     static const path_t &getPersistentDataPath();
     // Assets mutated by the simulation (the script ABI, dirty is not set): on Stop the editor

@@ -50,6 +50,11 @@ public:
     // Rect-select (and 1×1 single-click) driven from the PandaUI viewport. start/current are
     // viewport-local points; committed=true on mouse-up. Writes to the selection of the editor (Editor::selection()).
     void driveRectSelection(IVec2 startPoint, IVec2 currentPoint, bool additive, bool committed);
+    // The gesture ended without a last rectangle (the surface changed under it): what it selected
+    // stays, and the reads already asked for are still applied — they saw the picture of the press.
+    void dropRectSelection() {
+        endRectSelection();
+    }
     void pollSelection(); // apply async IDS reads queued by driveRectSelection (call each frame)
 
 private:

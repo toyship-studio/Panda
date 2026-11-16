@@ -404,6 +404,7 @@ void PluginsView::addSubviews() {
     auto searchRow = makeRow(12.f);
     m_searchField = std::make_shared<TextField>();
     m_searchField->setPlaceholder("Search plugins…");
+    m_searchField->setClearsOnEscape(true);
     m_searchField->setFont(Font(16.f));
     m_searchField->layout().setFlexGrow(1.f);
     m_searchField->layout().setHeight(Length::points(28.f)); // the height of the segmented control

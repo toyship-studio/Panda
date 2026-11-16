@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Panda/Terrain/FloraSettings.hpp"
+
+#include <Rain/Rain.hpp>
 #include "Panda/Terrain/TerrainData2D.hpp"
 #include "Panda/Terrain/TerrainData3D.hpp"
 #include "Panda/Terrain/TerrainTrees.hpp"
@@ -36,6 +38,9 @@ namespace TerrainSerialization {
         std::ostream &stream, const TerrainData2D &data, const FloraSettings &flora,
         const TerrainTrees &trees
     );
+    // The assets the vegetation of a 2D terrain names (the meshes and the materials of its
+    // layers), written into the encoder as the file writes them: AssetKind::encodeReferences.
+    void encodeFloraReferences(const FloraSettings &flora, Rain::Encoder &references);
     void write3D(std::ostream &stream, const TerrainData3D &data);
 
 } // namespace TerrainSerialization

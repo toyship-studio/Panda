@@ -305,8 +305,8 @@ void ViewportPanelView::applyGizmoMode(int mode) {
     m_output->viewportDidPickGizmo(mode);
 }
 
-void ViewportPanelView::viewportViewDidRectSelect(Point start, Point current, bool additive, bool committed) {
-    m_output->viewportDidRectSelect(start, current, additive, committed); // → GPU picking via the IDS-FBO (engine)
+void ViewportPanelView::viewportViewDidRectSelect(Point start, Point current, bool additive, RectSelectPhase phase) {
+    m_output->viewportDidRectSelect(start, current, additive, phase); // → GPU picking via the IDS-FBO (engine)
 }
 
 bool ViewportPanelView::canAcceptDrop(const DragInfo &drag) {

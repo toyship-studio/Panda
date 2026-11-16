@@ -1,4 +1,5 @@
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/Runtime/GameFiles.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/GameLogic/World.hpp"
 
@@ -31,13 +32,19 @@ namespace {
         uint32_t dataSize = 0;
     };
 
-    bool readCookedTextureHeader(std::ifstream &file, CookedTextureHeader &header) {
+    bool readCookedTextureHeader(std::istream &file, CookedTextureHeader &header) {
         file.read(reinterpret_cast<char *>(&header), sizeof(header));
         return file && header.magic == COOKED_TEXTURE_MAGIC && header.version == COOKED_TEXTURE_VERSION;
     }
 
     FileData loadFileDataInternal(const path_t &path, bool nullTerminate) {
         const path_t fullPath = Fern::getStaticResourcesPath() / path;
+        // A file of the game's pack (a cooked shader): the pack answers.
+        if (GameFiles::isPacked(fullPath)) {
+            size_t size = 0;
+            const Foundation::Memory data = GameFiles::read(fullPath, size, nullTerminate);
+            return {data, static_cast<uint32_t>(size)};
+        }
 #ifndef PLATFORM_ANDROID
         if (!std::filesystem::exists(fullPath)) { LOG_ERROR("The file %s does not exist.", path.string().c_str()); }
 #endif
@@ -160,9 +167,9 @@ Miren::TextureCreate AssetImporterBase::load2DTextureFile(const path_t &fullPath
 }
 
 bool AssetImporterBase::readCookedTextureInfo(const path_t &path, CookedTextureInfo &info) {
-    std::ifstream file(path, std::ios::binary);
+    const std::unique_ptr<std::istream> opened = GameFiles::open(path);
     CookedTextureHeader header;
-    if (!file.is_open() || !readCookedTextureHeader(file, header)) { return false; }
+    if (!opened || !readCookedTextureHeader(*opened, header)) { return false; }
     info.format = static_cast<Miren::TextureFormat>(header.format);
     info.width = header.width;
     info.height = header.height;
@@ -172,11 +179,12 @@ bool AssetImporterBase::readCookedTextureInfo(const path_t &path, CookedTextureI
 }
 
 Miren::TextureCreate AssetImporterBase::loadCookedTexture(const path_t &path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
+    const std::unique_ptr<std::istream> opened = GameFiles::open(path);
+    if (!opened) {
         LOG_ERROR("The cooked texture %s could not be opened.", path.string().c_str());
         return {};
     }
+    std::istream &file = *opened;
 
     CookedTextureHeader header;
     if (!readCookedTextureHeader(file, header)) {

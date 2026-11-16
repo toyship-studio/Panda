@@ -9,7 +9,9 @@
 
 #include <Panda/Renderer/ShaderFeatures.hpp>
 
+#include <cctype>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 
 namespace Panda {
@@ -135,14 +137,11 @@ void ProjectLoader::openProject(const path_t &path) {
         return;
     }
     if (hasOpenedProject()) {
-        // Project switch: save what belongs to the old project and release its worlds BEFORE the
-        // old script build is unloaded in reloadScriptsDll — otherwise script instances would be
-        // destroyed by the code of an already unloaded library. The registry of the old project is
-        // saved and closed by the handler's closeProject; the start screen is not shown in between —
-        // the panels are updated by loaderDidLoadProject of the new project.
-        saveProject();
-        m_documents.closeProject();
-        m_assetHandler->closeProject();
+        // Project switch: the old project goes BEFORE its script build is unloaded in
+        // reloadScriptsDll — otherwise script instances would be destroyed by the code of an
+        // already unloaded library. The start screen is not shown in between — the panels are
+        // updated by loaderDidLoadProject of the new project.
+        releaseOpenedProject();
     }
     // project.json of the project (a document) and its session.
     m_documents.openProject(path);
@@ -266,7 +265,67 @@ bool ProjectLoader::isScriptsChangedOnDisk() {
     return diskTime > m_scriptsDllTime;
 }
 
+namespace {
+
+    // The classes the sources of a script project register: REGISTER_SCRIPT(Name) → the file. The
+    // build folders and what an IDE keeps next to the sources are not sources.
+    std::unordered_map<std::string, path_t> readScriptSources(const path_t &scriptsFolder) {
+        std::unordered_map<std::string, path_t> sources;
+        std::error_code error;
+        if (!std::filesystem::is_directory(scriptsFolder, error)) { return sources; }
+        constexpr uintmax_t MAX_SOURCE_SIZE = 2 * 1024 * 1024;
+        const std::string macro = "REGISTER_SCRIPT";
+        for (auto it = std::filesystem::recursive_directory_iterator(scriptsFolder, error);
+             !error && it != std::filesystem::recursive_directory_iterator(); it.increment(error)) {
+            const std::string name = it->path().filename().string();
+            if (it->is_directory(error)) {
+                if (name == "bin" || name == "build" || name.rfind("cmake-build", 0) == 0 || name.rfind('.', 0) == 0) {
+                    it.disable_recursion_pending();
+                }
+                continue;
+            }
+            const std::string extension = it->path().extension().string();
+            if (extension != ".cpp" && extension != ".hpp" && extension != ".h" && extension != ".cc") { continue; }
+            if (it->file_size(error) > MAX_SOURCE_SIZE) { continue; }
+            std::ifstream file(it->path(), std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            for (size_t at = text.find(macro); at != std::string::npos; at = text.find(macro, at + macro.size())) {
+                size_t cursor = at + macro.size();
+                while (cursor < text.size() && std::isspace(static_cast<unsigned char>(text[cursor]))) { cursor++; }
+                if (cursor >= text.size() || text[cursor] != '(') { continue; }
+                cursor++;
+                while (cursor < text.size() && std::isspace(static_cast<unsigned char>(text[cursor]))) { cursor++; }
+                size_t end = cursor;
+                while (end < text.size() &&
+                       (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '_' || text[end] == ':')) {
+                    end++;
+                }
+                if (end == cursor) { continue; }
+                // The engine knows a class by its bare name; the first file that registers it stands.
+                std::string className = text.substr(cursor, end - cursor);
+                if (const size_t scope = className.rfind("::"); scope != std::string::npos) {
+                    className = className.substr(scope + 2);
+                }
+                sources.emplace(std::move(className), it->path());
+            }
+        }
+        return sources;
+    }
+
+} // namespace
+
+path_t ProjectLoader::scriptSource(const std::string &className) {
+    if (!hasOpenedProject()) { return {}; }
+    if (!m_scriptSourcesRead) {
+        m_scriptSources = readScriptSources(projectPath() / "Scripts");
+        m_scriptSourcesRead = true;
+    }
+    const auto found = m_scriptSources.find(className);
+    return found == m_scriptSources.end() ? path_t() : found->second;
+}
+
 void ProjectLoader::reloadScriptsDll() {
+    m_scriptSourcesRead = false; // a build was made: the sources may have changed with it
     const ScriptEngineConfig config = makeScriptsConfig();
     {
         // A project whose scripts were never built is not broken: there is nothing to load yet.
@@ -300,6 +359,7 @@ void ProjectLoader::reloadScriptsDll() {
     } else {
         LOG_ERROR_EDITOR("The scripts could not be loaded: build them in the CMake panel and reload.");
     }
+    m_output->loaderDidReloadScripts();
 }
 
 bool ProjectLoader::hasOpenedProject() {
@@ -341,10 +401,17 @@ const std::vector<RecentProject> &ProjectLoader::getRecentProjectsList() {
     return m_session.recentProjects;
 }
 
-void ProjectLoader::closeProject() {
+void ProjectLoader::releaseOpenedProject() {
+    m_scriptSourcesRead = false;
+    m_scriptSources.clear();
     saveProject();
+    m_output->loaderWillCloseProject();
     m_documents.closeProject(); // the worlds go before the assets they reference
     m_assetHandler->closeProject();
+}
+
+void ProjectLoader::closeProject() {
+    releaseOpenedProject();
     m_projectSession = ProjectSession();
     saveSession();
     m_output->loaderDidLoadCloseProject();

@@ -138,13 +138,16 @@ public:
     // ---- The Scene viewport.
     void setGizmoOperation(int mode);    // 0/1/2 = translate / rotate / scale
     void setGizmoSpace(bool worldSpace); // world / local
-    void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed);
+    void rectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, Editor::RectSelectPhase phase);
     void resetCamera();    // the camera frames the world again
     void focusSelection(); // the camera frames the selected entities
 
     // ---- The application.
     void closeAppRequest(); // asks about the unsaved edits first
     void restartEditor();   // the same, then a new instance with the same project
+    // Another project in this window (File → Open Recent, an agent): asks about the unsaved edits,
+    // then the open project is saved and closed and this one takes its place.
+    void openProject(const path_t &path);
     void updateIndicatorAction();  // the update indicator was clicked (restart / details / notes)
     void updateIndicatorDismiss(); // the update indicator was dismissed until the state changes
     // A file of the project outside the editor: in the external editor of the editor settings
@@ -175,7 +178,9 @@ private:
     // ---- What the parts of the application tell it.
     // ProjectLoaderOutput.
     void loaderDidLoadProject(const std::string &name, const path_t &path) override;
+    void loaderWillCloseProject() override;
     void loaderDidLoadCloseProject() override;
+    void loaderDidReloadScripts() override;
     // FileDocumentsOutput.
     void documentsDidActivateWorld() override;
     void documentsDidLoadWorld() override;

@@ -106,8 +106,9 @@ lit shaders of a module) are registered in `Extensions::sceneShaders` with their
 bundle holds their bake with every feature and the sources next to it. For a project the editor
 cooks them into `.Panda/Shaders/cooked/<backend>/engine/<resource path>` with the set of the
 project (on open and when the set changes) and `ShaderAsset::reload` swaps the cooked pair under
-the static id; the export cooks them for every backend, the runtime swaps them from the export
-(`SceneShaderRegistry::reloadCooked`). A `ShaderAsset` creates its program on first use, so a pair
+the static id; the export cooks them for every backend into the pack of the game, the runtime
+swaps them from there (`SceneShaderRegistry::reloadCooked`, which reads through `GameFiles`). A
+`ShaderAsset` creates its program on first use, so a pair
 swapped before the first draw costs nothing and a shader nothing draws is never compiled. Shaders
 that read no feature (depth, ids, postprocess, UI) are only baked.
 

@@ -12,7 +12,17 @@ void renderSelectionOverlay(WorldView &view, World &world, Miren::ViewId selecti
     renderer2d.begin(RenderingMode::GEOMETRY_ONLY, selectionView);
     renderer3d.begin(RenderingMode::GEOMETRY_ONLY, selectionView);
     renderer3d.setViewProj(view.camera().viewProj);
-    const std::unordered_set<Entity> selected = world.getById(Editor::selection().entityIds());
+    // What is selected is the entity with everything under it: a model is an entity per node,
+    // and the one the user picks in the Hierarchy is its root, which has no geometry of its own.
+    std::unordered_set<Entity> selected;
+    std::vector<Entity> pending;
+    for (Entity entity : world.getById(Editor::selection().entityIds())) { pending.push_back(entity); }
+    while (!pending.empty()) {
+        Entity entity = pending.back();
+        pending.pop_back();
+        if (!entity.isValid() || !selected.insert(entity).second) { continue; }
+        for (UUID child : entity.getChildEntities()) { pending.push_back(world.getById(child)); }
+    }
     for (Entity entity : selected) {
         glm::mat4 transform = world.getWorldSpaceTransformMatrix(entity);
         if (entity.hasComponent<SpriteRendererComponent>()) {

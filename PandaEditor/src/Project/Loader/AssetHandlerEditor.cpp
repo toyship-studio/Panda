@@ -472,16 +472,15 @@ void AssetHandlerEditor::scanProject() {
     std::vector<path_t> newFiles; // data files without a sidecar — new assets
     std::vector<path_t> orphans;  // sidecars without a data file
     std::error_code ec;
-    auto it = std::filesystem::recursive_directory_iterator(m_projectPath, ec);
+    // The Assets folder only: a build of the game inside the project (Export/build) carries
+    // shaders and fonts of its own, and none of them is an asset of the project.
+    auto it = std::filesystem::recursive_directory_iterator(assetsPath(), ec);
     for (; it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
         if (ec) { break; }
         const path_t &path = it->path();
         const std::string name = path.filename().string();
         if (it->is_directory(ec)) {
-            // Service trees: hidden ones (.Panda, .git) and build ones.
-            if (!name.empty() && (name.front() == '.' || name.rfind("cmake-build", 0) == 0)) {
-                it.disable_recursion_pending();
-            }
+            if (!name.empty() && name.front() == '.') { it.disable_recursion_pending(); } // hidden trees
             continue;
         }
         if (name.ends_with(AssetPmeta::EXTENSION)) {

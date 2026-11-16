@@ -305,10 +305,7 @@ const std::filesystem::path& OSX_System::getStaticResourcesPath() {
 std::filesystem::path OSX_System::getPersistentDataPath(const char* appName) {
     NSArray* paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
     std::filesystem::path root = [[paths firstObject] UTF8String];
-    std::filesystem::path result = root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
-    std::error_code errorCode;
-    std::filesystem::create_directories(result, errorCode);
-    return result;
+    return root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
 }
 
 Foundation::StreamReaderI* OSX_System::createStaticResourceReader(const std::filesystem::path& path) {

@@ -192,11 +192,7 @@ std::filesystem::path Win32_System::getPersistentDataPath(const char *appName) {
     std::filesystem::path root;
     if (const char *appData = std::getenv("APPDATA")) { root = appData; }
     if (root.empty()) { root = std::filesystem::current_path(); }
-    std::filesystem::path result =
-        root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
-    std::error_code errorCode;
-    std::filesystem::create_directories(result, errorCode);
-    return result;
+    return root / (appName != nullptr && appName[0] != '\0' ? appName : "PandaGame");
 }
 
 Foundation::StreamReaderI *Win32_System::createStaticResourceReader(const std::filesystem::path &path) {

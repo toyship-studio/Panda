@@ -143,6 +143,14 @@ public:
     void focusGameView();  // the keyboard focus to the Game surface (a click on the game)
     void openGameView();   // opens (or activates) the Game tab and gives it the focus — Play, Window → Game
     void showSceneView();  // the tab of the active world comes forward and the Scene renders — Stop
+    // The project is about to go: the tabs of its entities and assets close, the history of the
+    // selection is forgotten, the panels show that nothing is selected.
+    void projectWillClose();
+    // What the entity tabs show changed without the world changing (the script build was
+    // loaded): the forms read their targets again.
+    void refreshEntityForms() {
+        if (m_editorTabs) { m_editorTabs->refreshEntityForms(); }
+    }
 
     // ---- What else the application tells the chrome.
     void thumbnailDidBecomeReady(Panda::AssetId assetId); // the cell of the asset in the Content Browser follows
@@ -220,9 +228,13 @@ public:
     void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) override;
     void openSettings(Panda::SettingsScope scope, const std::string &section = {}) override;
     void restartEditor() override;
+    void openInExternalEditor(const Panda::path_t &path) override;
+    Panda::path_t scriptSource(const std::string &className) override;
 
     // ViewportPanelOutput.
-    void viewportDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) override;
+    void viewportDidRectSelect(
+        PandaUI::Point start, PandaUI::Point current, bool additive, RectSelectPhase phase
+    ) override;
     void viewportDidPickGizmo(int mode) override;
     void viewportDidResetCamera() override;
     void viewportDidPickSpace(bool worldSpace) override;
@@ -321,6 +333,9 @@ private:
     std::shared_ptr<ViewportPanelView> m_viewportView;
     std::shared_ptr<GameViewportView> m_gameView; // the surface of the Game tab (one instance, the tab comes and goes)
     bool m_gameInFocus = false;                   // the Game is the viewport the user works in (ViewportSurfaces)
+    // The selection changed under a selection gesture of the viewport: the tabs show it when the
+    // gesture ends (a tab that opens next to the viewport resizes it under the rectangle).
+    bool m_tabsAwaitGesture = false;
     std::shared_ptr<PandaUI::View> m_root;
     std::unique_ptr<DockManager> m_dockManager;
     std::unique_ptr<EditorTabs> m_editorTabs; // editor tabs of the selection (after m_dockManager)

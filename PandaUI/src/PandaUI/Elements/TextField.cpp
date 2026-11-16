@@ -326,6 +326,11 @@ bool TextField::pointerMove(PointerEvent &event) {
 
 bool TextField::keyDown(KeyEvent &event) {
     if (!isEnabled()) { return false; }
+    if (event.key == Key::Escape && m_clearsOnEscape && !m_text.empty()) {
+        setText("");
+        textDidChange();
+        return true;
+    }
 
     const bool commandModifier = event.isSuperDown || event.isControlDown;
     if (commandModifier && event.key == Key::A) {

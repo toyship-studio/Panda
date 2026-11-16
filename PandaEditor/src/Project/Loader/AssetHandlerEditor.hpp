@@ -40,7 +40,14 @@ public:
     void updateInfo(AssetId assetId, const AssetInfo &assetInfo);
     void openProject(const path_t &path);
     void closeProject();
-    // Rescans the project tree (the Refresh button): new files become assets, the ids of existing
+    // The assets of a project are the files of its Assets folder: the registry is built from that
+    // tree and the Content Browser shows it. What lies elsewhere in the project — the scripts, the
+    // Export project and what it builds, the pictures of a README — is no asset and gets no sidecar.
+    static constexpr const char *ASSETS_FOLDER = "Assets";
+    path_t assetsPath() const {
+        return m_projectPath / ASSETS_FOLDER;
+    }
+    // Rescans the Assets folder (the Refresh button): new files become assets, the ids of existing
     // ones are stable (they live in the sidecars) — loaded assets and tabs are not broken.
     void rescanProject();
     // Editor state of an asset outside the registry (context/architecture.md):
@@ -116,7 +123,7 @@ private:
     // Shader pair: frag is derived from vert by the *vert.hlsl -> *frag.hlsl convention.
     bool ensureShaderSourceFilesExist(AssetId id, const path_t &vertexRelPath, bool logErrors = true);
     // --- .pmeta sidecars (context/asset-files.md) ---
-    void scanProject(); // builds the registry by walking the tree: sidecars + newcomers + orphans
+    void scanProject(); // builds the registry by walking the Assets folder: sidecars + newcomers + orphans
     // Adopts an asset by its sidecar: the meta paths are normalized to the actual location of the file
     // (the pair may have moved), an id conflict (a copy of the pair) gets a fresh id.
     void adoptPmeta(const path_t &dataPath);

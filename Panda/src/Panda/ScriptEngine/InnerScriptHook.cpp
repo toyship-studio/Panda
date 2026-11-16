@@ -68,7 +68,14 @@ namespace InternalCalls {
     }
 
     uint32_t application_GetPersistentDataPath(void *destination, uint32_t destinationSize) {
-        const std::string path = GameContext::getPersistentDataPath().string();
+        // The folder appears when a game asks where it is: a game that keeps nothing leaves
+        // nothing on the disk of the player.
+        const path_t &directory = GameContext::getPersistentDataPath();
+        if (!directory.empty()) {
+            std::error_code error;
+            std::filesystem::create_directories(directory, error);
+        }
+        const std::string path = directory.string();
         const uint32_t length = static_cast<uint32_t>(path.size());
         if (destination != nullptr && destinationSize >= length + 1) {
             std::memcpy(destination, path.c_str(), length + 1);

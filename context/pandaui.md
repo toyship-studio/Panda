@@ -75,7 +75,9 @@ contracts:
 
 - **`Popup`** is NON-blocking and anchored (to a button or the cursor point); a click outside or
   Escape closes it. Use it for menus, the combobox list, pickers and quick in-place input. Show it
-  with `context->addOverlay(popup)`.
+  with `context->addOverlay(popup)`. A text field inside may keep the first Escape
+  (`TextField::setClearsOnEscape`: with text it clears the text and consumes the key, empty it
+  lets the key go up) — a search field is cleared before its popup closes.
 - **`Modal`** is BLOCKING: a dimmer over the whole window plus centered content; the UI under it
   receives no input. A click on the dimmer closes it only with
   `setDismissesOnOutsideClick(true)` (pickers); Escape closes it by default.

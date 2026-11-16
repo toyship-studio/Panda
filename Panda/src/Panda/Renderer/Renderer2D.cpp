@@ -124,7 +124,7 @@ void Renderer2D::flush() {
             break;
         }
         case RenderingMode::GEOMETRY_ONLY: {
-            Miren::setState(MIREN_STATE_WIREFRAME);
+            Miren::setState(0); // the silhouette: no depth, both sides
             material = StaticResources::selectedGeometryMaterial;
             break;
         }

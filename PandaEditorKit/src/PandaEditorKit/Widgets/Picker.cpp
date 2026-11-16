@@ -48,6 +48,7 @@ namespace {
 
             m_search = std::make_shared<TextField>();
             m_search->setPlaceholder(std::move(placeholder));
+            m_search->setClearsOnEscape(true); // the first Escape takes the query back, the next closes
             m_search->layout().setWidth(Length::percent(100.f));
             addSubview(m_search);
 

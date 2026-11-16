@@ -12,6 +12,13 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/Input.hpp>
 #include <Panda/GameLogic/Systems/ScriptSystem.hpp>
+#include <Panda/Runtime/GameFiles.hpp>
+
+#include <Foundation/GraphicsAPI.hpp>
+
+#include <cstdio>
+#include <cstdlib>
+#include <thread>
 #include <Panda/ScriptEngine/ABI/ScriptApi.hpp>
 #include <Panda/UI/GameUI.hpp>
 
@@ -23,6 +30,14 @@ extern "C" void pandaRegisterModules();
 }
 
 namespace Panda {
+
+namespace {
+    int s_exitCode = 0;
+}
+
+int RuntimeLayer::exitCode() {
+    return s_exitCode;
+}
 
 RuntimeLayer::RuntimeLayer(const path_t &runtimeDataPath)
     : Layer("RuntimeLayer")
@@ -45,9 +60,8 @@ void RuntimeLayer::setupPersistentDataPath() {
         gameName = manifest.gameName;
     }
     // The platform directory layout is in Fern (Application Support / %APPDATA% / Documents / XDG).
+    // The folder itself is made when the game asks for it (GameContext).
     const path_t saveDataPath = Fern::getPersistentDataPath(gameName.c_str()) / "SaveData";
-    std::error_code errorCode;
-    std::filesystem::create_directories(saveDataPath, errorCode);
     GameContext::setPersistentDataPath(saveDataPath);
     LOG_INFO("RUNTIME: persistent data path %s", saveDataPath.string().c_str());
 }
@@ -68,11 +82,18 @@ void RuntimeLayer::onAttach() {
     m_world = F_NEW(Foundation::getAllocator(), World)();
     GameContext::setWorldLoadRequestHandler([this](AssetId worldAssetId) { requestWorldLoad(worldAssetId); });
 
+    beginCheckRun();
     m_projectLoader = F_NEW(Foundation::getAllocator(), RuntimeProjectLoader)();
     if (!m_projectLoader->load(m_runtimeDataPath, *m_assetHandler, *m_world)) {
-        LOG_ERROR("RUNTIME: Failed to load project from %s", m_runtimeDataPath.string().c_str());
+        // A game without its data has nothing to show: it leaves and says why, instead of
+        // staying as an empty window.
+        LOG_ERROR("RUNTIME: The data of the game did not load from %s: the game leaves", m_runtimeDataPath.string().c_str());
+        s_exitCode = CheckRun::EXIT_NO_DATA;
+        m_check.frames = 0;
+        Application::get()->close();
         return;
     }
+    m_loaded = true;
     setupPersistentDataPath();
     syncViewportWithWindow();
 
@@ -97,14 +118,118 @@ void RuntimeLayer::onUpdate(double deltaTime) {
         ViewCamera camera;
         ViewCamera::main(*m_world, camera);
         m_view->render(*m_world, camera);
-        developFrame();
+        const Miren::Rect screen(0, 0, static_cast<int>(m_view->width()), static_cast<int>(m_view->height()));
+        developFrame({.viewport = screen});
+        // The frame of a check run that is photographed: the same frame once more, into a texture.
+        if (isCheckShotFrame()) {
+            ensureCheckShotTarget();
+            developFrame({.frameBuffer = m_check.shotBuffer, .viewport = screen});
+        }
     }
-    // After the frame of the game: the UI is the pass over it.
-    if (m_gameUI) { m_gameUI->update(static_cast<float>(deltaTime)); }
+    // After the frame of the game: the UI is the pass over it — over the photograph in the frame
+    // that is photographed (the window misses its UI for that one frame).
+    if (m_gameUI) {
+        const bool intoShot = isCheckShotFrame() && m_check.shot.isValid();
+        if (intoShot) {
+            m_gameUI->setMainViewportFrame(Rect(0, 0, m_viewportSize.width, m_viewportSize.height), m_viewportDpi, m_check.shotBuffer);
+        }
+        m_gameUI->update(static_cast<float>(deltaTime));
+        if (intoShot) { m_gameUI->clearMainViewportFrame(); }
+    }
     loadPendingWorldRequest();
+    updateCheckRun();
 }
 
-void RuntimeLayer::developFrame() {
+/* ------------------------------ A check run ------------------------------ */
+
+void RuntimeLayer::beginCheckRun() {
+    const char *frames = std::getenv(CheckRun::FRAMES_VARIABLE);
+    if (frames == nullptr || std::atoi(frames) <= 0) { return; }
+    m_check.frames = static_cast<uint32_t>(std::atoi(frames));
+    if (const char *shot = std::getenv(CheckRun::SHOT_VARIABLE); shot != nullptr && shot[0] != '\0') {
+        m_check.shotFile = shot;
+    }
+    m_check.started = std::chrono::steady_clock::now();
+    // Whatever happens to the game, the check ends: a watchdog of the process.
+    int timeout = 60;
+    if (const char *seconds = std::getenv(CheckRun::TIMEOUT_VARIABLE); seconds != nullptr && std::atoi(seconds) > 0) {
+        timeout = std::atoi(seconds);
+    }
+    std::thread([timeout] {
+        std::this_thread::sleep_for(std::chrono::seconds(timeout));
+        std::fprintf(stderr, "RUNTIME: the check run did not leave in %d seconds\n", timeout);
+        std::fflush(nullptr);
+        std::_Exit(CheckRun::EXIT_TIMED_OUT);
+    }).detach();
+    LOG_INFO("RUNTIME: check run: %u frames%s", m_check.frames, m_check.shotFile.empty() ? "" : ", the last one is photographed");
+}
+
+bool RuntimeLayer::isCheckShotFrame() const {
+    return m_check.frames > 0 && !m_check.shotFile.empty() && !m_check.reading && m_check.frame + 1 >= m_check.frames;
+}
+
+void RuntimeLayer::ensureCheckShotTarget() {
+    const uint32_t width = m_view->width();
+    const uint32_t height = m_view->height();
+    if (m_check.shot.isValid() && m_check.width == width && m_check.height == height) { return; }
+    if (m_check.shot.isValid()) {
+        Miren::deleteFrameBuffer(m_check.shotBuffer);
+        Miren::deleteTexture(m_check.shot);
+    }
+    Miren::TextureCreate create;
+    create.m_format = Miren::TextureFormat::RGBA8;
+    create.m_width = static_cast<uint16_t>(width);
+    create.m_height = static_cast<uint16_t>(height);
+    create.m_wrap = Miren::CLAMP;
+    m_check.shot = Miren::createTexture(create);
+    Miren::FrameBufferAttachment attachments[] = {m_check.shot};
+    m_check.shotBuffer = Miren::createFrameBuffer(Miren::FrameBufferSpecification(attachments, 1));
+    m_check.width = width;
+    m_check.height = height;
+}
+
+void RuntimeLayer::updateCheckRun() {
+    if (m_check.frames == 0) { return; }
+    if (m_check.reading) {
+        if (Miren::getFrameNumber() > m_check.readyFrame) { finishCheckRun(); }
+        return;
+    }
+    m_check.frame++;
+    if (m_check.frame < m_check.frames) { return; }
+    if (m_check.shot.isValid()) {
+        // The pixels arrive two Miren frames later: the game plays on until then.
+        m_check.pixels.assign(static_cast<size_t>(m_check.width) * m_check.height * 4, 0);
+        m_check.readyFrame = Miren::readTexture(m_check.shot, m_check.pixels.data());
+        m_check.reading = true;
+        return;
+    }
+    finishCheckRun();
+}
+
+void RuntimeLayer::finishCheckRun() {
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_check.started).count();
+    if (!m_check.pixels.empty()) {
+        CheckShot shot;
+        shot.width = m_check.width;
+        shot.height = m_check.height;
+        shot.bottomUp = Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft;
+        shot.pixels = std::move(m_check.pixels);
+        if (shot.write(m_check.shotFile)) {
+            LOG_INFO("RUNTIME: check run: the last frame is in %s", m_check.shotFile.string().c_str());
+        } else {
+            LOG_ERROR("RUNTIME: check run: the last frame could not be written to %s", m_check.shotFile.string().c_str());
+        }
+    }
+    LOG_INFO(
+        "RUNTIME: check run: %u frames in %.2f s (%.2f ms a frame with the loading)%s", m_check.frame, seconds,
+        m_check.frame > 0 ? seconds * 1000.0 / m_check.frame : 0.0, m_loaded ? "" : " — the data of the game did not load"
+    );
+    s_exitCode = m_loaded ? CheckRun::EXIT_RAN : CheckRun::EXIT_NO_DATA;
+    m_check.frames = 0;
+    Application::get()->close();
+}
+
+void RuntimeLayer::developFrame(const Miren::ViewDescription &output) {
     // HDR: the scene is linear 16F, the pipeline always runs — at least its implicit Tonemap, which
     // is what puts the frame on the screen; camera.postprocessingEnabled controls only the user chain.
     AssetRef<PostprocessingAsset> chain;
@@ -115,8 +240,7 @@ void RuntimeLayer::developFrame() {
         if (camera.postprocessingEnabled) { chain = camera.postprocessing.as<PostprocessingAsset>(); }
         inputs.setCamera(camera);
     }
-    const Miren::Rect screen(0, 0, static_cast<int>(m_view->width()), static_cast<int>(m_view->height()));
-    m_view->developInto(chain, inputs, Application::get()->getTime(), {.viewport = screen});
+    m_view->developInto(chain, inputs, Application::get()->getTime(), output);
 }
 
 void RuntimeLayer::onEvent(Fern::Event *event) {
@@ -159,6 +283,10 @@ void RuntimeLayer::onDetach() {
         m_world = nullptr;
     }
     m_view.reset();
+    if (m_check.shot.isValid()) {
+        Miren::deleteFrameBuffer(m_check.shotBuffer);
+        Miren::deleteTexture(m_check.shot);
+    }
 
     if (m_projectLoader) {
         F_DELETE(Foundation::getAllocator(), m_projectLoader);
@@ -184,6 +312,7 @@ void RuntimeLayer::onDetach() {
         F_DELETE(Foundation::getAllocator(), m_assetHandler);
         m_assetHandler = nullptr;
     }
+    GameFiles::unmount(); // the pack of the game: nothing reads it any more
 }
 
 bool RuntimeLayer::loadStaticScripts() {

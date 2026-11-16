@@ -262,8 +262,33 @@ void DockManager::openTransientPanel(DockPanel panel, Dock dock) {
     panel.inStrip = false; // temporary tabs do not take part in the visibility strip
     panel.dock = dock;
     m_panelTabId[panel.id] = m_nextTabId++;
-    m_panels.push_back(std::move(panel));
-    const std::string id = m_panels.back().id;
+    // A tab that stays in its dock (a world in the center) is what the dock is for: it stands
+    // after the last of its kind and before the tabs that only visit, whenever it is opened. At
+    // the start of the editor the worlds open first and that is the order anyway; a project
+    // opened later finds the Game and the Plugins tabs already there.
+    std::size_t position = m_panels.size();
+    if (!panel.movable) {
+        bool hasFirst = false, hasOwn = false;
+        std::size_t first = 0, afterOwn = 0;
+        for (std::size_t i = 0; i < m_panels.size(); ++i) {
+            if (!m_panels[i].open || m_panels[i].dock != dock) { continue; }
+            if (!hasFirst) {
+                first = i;
+                hasFirst = true;
+            }
+            if (!m_panels[i].movable) {
+                afterOwn = i + 1;
+                hasOwn = true;
+            }
+        }
+        if (hasOwn) {
+            position = afterOwn;
+        } else if (hasFirst) {
+            position = first;
+        }
+    }
+    const std::string id = panel.id;
+    m_panels.insert(m_panels.begin() + static_cast<std::ptrdiff_t>(position), std::move(panel));
     rebuild();
     setVisible(dock, true);
     // Selection without moving the focus: the user selects objects in a row from the Hierarchy/viewport.

@@ -9,7 +9,7 @@ result through its MCP server.
 
 - `Assets/` — worlds (`.world`, JSON), materials (`.mat`, JSON), textures, meshes (glTF). Next
   to each asset file the editor keeps a `<file>.pmeta` sidecar (asset id and import settings):
-  together they are the asset registry.
+  together they are the asset registry. Only what lies in `Assets/` is an asset.
 - `Scripts/___PROJECTNAME___/src/` — the game's C++ scripts, built into a library the editor
   loads.
 - `Scripts/___PROJECTNAME___/scripts/` — shell scripts for the builds (see "Building scripts").
@@ -34,6 +34,7 @@ files stay the way to change the project; the tools are for what a file cannot d
 | `logs` | the log of the editor: shader, import and script errors |
 | `play`, `stop` | runs the game inside the editor, returns to editing |
 | `build` | builds the C++ scripts (or `target: "export"`) the way the CMake panel does and answers with what cmake said, the compiler errors included; the editor loads scripts that were built |
+| `export` | the game as it will ship: cooks its data and answers with what the pack holds and which assets were left out; `action: "run"` plays the built game by itself and answers with its log and the picture of its last frame |
 | `camera` | places the editor camera of the `scene` view |
 | `save` | writes what the user changed in the editor to the files |
 | `open_world`, `restart`, `quit` | another world, a new start of the editor |
@@ -56,7 +57,7 @@ files stay the way to change the project; the tools are for what a file cannot d
 - Build the C++ scripts yourself (see "Building scripts") — Reload picks up the fresh library.
 - New asset files are registered by the editor; do not edit `.pmeta` sidecars by hand.
 - Detailed formats: `docs/` in the PandaSDK package (`world-format.md`, `assets.md`,
-  `scripting.md`, `zed-and-agents.md`).
+  `scripting.md`, `export.md`, `zed-and-agents.md`).
 
 ## Editing a world (`.world`)
 
@@ -130,6 +131,20 @@ place:
   freely; the SET and the ORDER of the fields are the shader's contract, do not change them.
   Create a new material in the editor (choosing a shader fills in the field template). The
   material's shader is stored in the `.pmeta` sidecar, not in the `.mat`.
+
+## The exported game
+
+The game starts in the start world of the project (`"world".startWorld` of
+`.Panda/project.json`) and carries only what that world reaches: its assets, the worlds its
+scripts hold in `WorldHandle` fields, and what those use. An asset nothing reaches is left out,
+and the cook names it in a warning. So:
+
+- give a script what it needs through a published field (`PANDA_FIELD`), not through an id
+  written in the code;
+- when an id in the code is unavoidable, list the file or its folder in `"export".include` of
+  `.Panda/project.json`;
+- to check an export: `save`, `export` (read the warnings and the list of what was left out),
+  `build` with `target: "export"`, then `export` with `action: "run"` and look at the picture.
 
 ## Building scripts
 

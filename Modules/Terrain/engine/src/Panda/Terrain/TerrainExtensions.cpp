@@ -1,4 +1,6 @@
 #include "Panda/Terrain/TerrainExtensions.hpp"
+
+#include <Panda/Runtime/GameFiles.hpp>
 #include "Panda/Terrain/TerrainLodSettings.hpp"
 #include "Panda/Terrain/TerrainComponents.hpp"
 #include "Panda/Assets/Base/AssetRefImpl.hpp"
@@ -76,16 +78,27 @@ namespace Terrain {
         }
 
         Asset *load2D(Foundation::AllocatorI *allocator, const path_t &path) {
-            std::ifstream file(path, std::ios::binary);
+            const std::unique_ptr<std::istream> file = GameFiles::open(path); // of the project, or of the pack of a game
             TerrainKind kind;
-            if (!file.is_open() || !TerrainSerialization::readHeader(file, kind) || kind != TerrainKind::Heightmap2D) {
+            if (!file || !TerrainSerialization::readHeader(*file, kind) || kind != TerrainKind::Heightmap2D) {
                 return nullptr;
             }
             TerrainData2D data;
             FloraSettings flora;
             TerrainTrees trees;
-            if (!TerrainSerialization::read2DPayload(file, data, flora, trees)) { return nullptr; }
+            if (!TerrainSerialization::read2DPayload(*file, data, flora, trees)) { return nullptr; }
             return F_NEW(allocator, Terrain2DAsset)(std::move(data), std::move(flora), std::move(trees));
+        }
+        // What a 2D terrain names: the meshes and the materials of its vegetation.
+        void encodeReferences2D(const path_t &path, Rain::Encoder &references) {
+            const std::unique_ptr<std::istream> file = GameFiles::open(path);
+            TerrainKind kind;
+            if (!file || !TerrainSerialization::readHeader(*file, kind) || kind != TerrainKind::Heightmap2D) { return; }
+            TerrainData2D data;
+            FloraSettings flora;
+            TerrainTrees trees;
+            if (!TerrainSerialization::read2DPayload(*file, data, flora, trees)) { return; }
+            TerrainSerialization::encodeFloraReferences(flora, references);
         }
         Asset *placeholder2D(Foundation::AllocatorI *allocator) {
             return F_NEW(allocator, Terrain2DAsset)(TerrainData2D{});
@@ -99,13 +112,13 @@ namespace Terrain {
         }
 
         Asset *load3D(Foundation::AllocatorI *allocator, const path_t &path) {
-            std::ifstream file(path, std::ios::binary);
+            const std::unique_ptr<std::istream> file = GameFiles::open(path);
             TerrainKind kind;
-            if (!file.is_open() || !TerrainSerialization::readHeader(file, kind) || kind != TerrainKind::Voxels3D) {
+            if (!file || !TerrainSerialization::readHeader(*file, kind) || kind != TerrainKind::Voxels3D) {
                 return nullptr;
             }
             TerrainData3D data;
-            if (!TerrainSerialization::read3DPayload(file, data)) { return nullptr; }
+            if (!TerrainSerialization::read3DPayload(*file, data)) { return nullptr; }
             return F_NEW(allocator, Terrain3DAsset)(std::move(data));
         }
         Asset *placeholder3D(Foundation::AllocatorI *allocator) {
@@ -146,7 +159,9 @@ namespace Terrain {
         extensions.components.add(
             componentType<Terrain3DComponent>("terrain3dComponent", encodeTerrain3D, decodeTerrain3D)
         );
-        extensions.assetKinds.add(terrainKind("terrain2d", TYPE_2D, "Terrain 2D", detect2D, load2D, placeholder2D, save2D));
+        AssetKind terrain2D = terrainKind("terrain2d", TYPE_2D, "Terrain 2D", detect2D, load2D, placeholder2D, save2D);
+        terrain2D.encodeReferences = encodeReferences2D;
+        extensions.assetKinds.add(std::move(terrain2D));
         extensions.assetKinds.add(terrainKind("terrain3d", TYPE_3D, "Terrain 3D", detect3D, load3D, placeholder3D, save3D));
         extensions.worldSystems.add(worldSystem());
         // World settings: terrain LOD and flora distances — top-level keys of .world.

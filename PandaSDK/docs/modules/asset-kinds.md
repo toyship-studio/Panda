@@ -4,7 +4,7 @@ An asset kind is a kind of file the project registry knows: how it is recognized
 lives, how it is loaded into an `Asset` object and written back. The core kinds (textures,
 shaders, materials, meshes, worlds, postprocessing) have a cook step and handlers of their own;
 a module kind is a file of one format that the editor and the runtime read the same way, and
-the export copies as it is.
+the export puts into the game as it is.
 
 ## The asset class
 
@@ -43,12 +43,21 @@ kind.detect = detect2D;             // two kinds share .terrain: the file header
 kind.load = load2D;                 // Asset *(Foundation::AllocatorI *, const path_t &): nullptr — unreadable
 kind.placeholder = placeholder2D;   // Asset *(Foundation::AllocatorI *): shown instead of an unreadable file
 kind.save = save2D;                 // bool (Asset &, const path_t &): the document to the file
+kind.encodeReferences = references2D; // void (const path_t &, Rain::Encoder &): the assets the file names
 extensions.assetKinds.add(kind);
 ```
 
 - `load` allocates with the handler's allocator: `F_NEW(allocator, Terrain2DAsset)(…)`.
   It is called by the editor when the project is scanned or the asset is first used, and by
-  the runtime from the cooked copy of the file.
+  the runtime from the copy of the file in the game. **It opens the file through `GameFiles`**
+  (`Panda/Runtime/GameFiles.hpp`: `open` for a stream, `read` for the whole file), not through
+  `std::ifstream`: in a game the file is an entry of the pack, and a loader that goes to the
+  file system finds nothing there.
+- `encodeReferences` is for a kind whose file names other assets (the flora of a terrain names
+  models and materials). It reads the file and encodes what holds the ids — a DTO, or the ids
+  one by one — into the encoder it is given. An exported game carries only what it reaches
+  through references: a kind that names assets and has no hook loses them in the game. A kind
+  whose file names nothing leaves it `nullptr`.
 - `placeholder` keeps a broken reference usable (a flat terrain, an empty mesh); the editor
   shows the asset as missing.
 - `save` is called by the document model when the user saves the tab; a kind without `save`
@@ -82,7 +91,9 @@ the file, so a Play session leaves no trace in the project.
 
 ## In the runtime and the export
 
-The export copies a file kind as it is into the cooked data and the runtime loads it with the
-same `load`. A kind that needs a different runtime form (a baked, compressed or stripped
-variant) does the conversion inside `load` by platform, or keeps two formats inside one file:
-there is no cook step for module kinds.
+The export puts the file of a kind as it is into the pack of the game, under the `folder` of
+the kind, and the runtime loads it with the same `load` (through `GameFiles`, above). Only the
+assets the game reaches are there ([Exporting a game](../export.md)). A kind that needs a
+different runtime form (a baked, compressed or stripped variant) does the conversion inside
+`load` by platform, or keeps two formats inside one file: there is no cook step for module
+kinds.

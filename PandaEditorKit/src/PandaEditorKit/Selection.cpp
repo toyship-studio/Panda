@@ -1,5 +1,8 @@
 #include "PandaEditorKit/Selection.hpp"
 
+#include <Panda/Assets/Base/AssetHandler.hpp>
+#include <Panda/GameLogic/GameContext.hpp>
+
 #include <utility>
 
 namespace Editor {
@@ -89,6 +92,13 @@ void Selection::selectAssets(std::vector<Panda::AssetId> ids) {
         m_entities.clear();
         transformChanged();
     }
+}
+
+void Selection::forgetDeadAssets() {
+    Panda::AssetHandler *handler = Panda::GameContext::getAssetHandler();
+    const size_t before = m_assets.size();
+    std::erase_if(m_assets, [handler](Panda::AssetId id) { return handler == nullptr || !handler->hasAsset(id); });
+    if (m_assets.size() != before) { ++m_version; }
 }
 
 void Selection::clear() {

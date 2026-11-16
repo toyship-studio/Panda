@@ -34,10 +34,10 @@ ContentBrowserDataSource::ContentBrowserDataSource() {
 void ContentBrowserDataSource::rebuild() {
     const Panda::path_t previousPath = m_currentFolder ? m_currentFolder->path : Panda::path_t();
     m_root = std::make_shared<Folder>();
-    m_root->name = "Assets";
+    m_root->name = Panda::AssetHandlerEditor::ASSETS_FOLDER;
     auto *handler = Panda::AssetHandlerEditor::current();
     if (handler && !handler->getProjectPath().empty()) {
-        m_root->path = handler->getProjectPath() / "Assets";
+        m_root->path = handler->assetsPath();
         std::function<void(Folder &)> scan = [&](Folder &folder) {
             std::error_code ec;
             for (const auto &entry : std::filesystem::directory_iterator(folder.path, ec)) {

@@ -4,6 +4,7 @@
 #include "Panda/Assets/Base/Path.hpp"
 
 #include <Foundation/Foundation.hpp>
+#include <Rain/Rain.hpp>
 
 #include <string>
 #include <string_view>
@@ -25,10 +26,17 @@ struct AssetKind final {
     // null — the extension is enough.
     bool (*detect)(const path_t &absolutePath) = nullptr;
     // File asset: read (null — the file is unreadable), a placeholder instead of an unreadable
-    // one, write the document to a file. null for built-in kinds with a cook.
+    // one, write the document to a file. null for built-in kinds with a cook. A loader opens its
+    // file through GameFiles (Panda/Runtime/GameFiles.hpp), not the file system: in a game the
+    // path names an entry of the pack.
     Asset *(*load)(Foundation::AllocatorI *allocator, const path_t &absolutePath) = nullptr;
     Asset *(*placeholder)(Foundation::AllocatorI *allocator) = nullptr;
     bool (*save)(Asset &asset, const path_t &absolutePath) = nullptr;
+    // The assets a file of the kind names (the meshes and the materials of a terrain's flora):
+    // the loader writes them into `references` the way the file writes them — every id the
+    // encoder is given is taken (a ReferenceCollector). null — a file of the kind names no asset.
+    // The cook of a game follows the references to find what the game uses.
+    void (*encodeReferences)(const path_t &absolutePath, Rain::Encoder &references) = nullptr;
 
     bool fileBased() const {
         return load != nullptr;

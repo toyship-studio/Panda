@@ -49,6 +49,8 @@ void clearFrameCallback();
 void dispatchFrame(double deltaTime);
 EventQueue *getEventQueue();
 const std::filesystem::path &getStaticResourcesPath();
+// Where an application keeps what it writes (Application Support / %APPDATA% / XDG data /
+// Documents on iOS). It names the place: the folder is made by who has something to keep.
 std::filesystem::path getPersistentDataPath(const char *appName);
 Foundation::StreamReaderI *createStaticResourceReader(const std::filesystem::path &path);
 void disposeResourceReader(Foundation::StreamReaderI *reader);

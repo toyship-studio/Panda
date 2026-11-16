@@ -20,7 +20,8 @@ On Windows and Linux ⌘ is Ctrl.
 
 Every "choose one of these" — an asset for a field, an entity for a reference, a component to
 add, a script — is the same list with a search field: type to filter, the arrows move the
-selection, Enter takes it.
+selection, Enter takes it. Escape in a search field clears what you typed; Escape in an empty
+one closes the list.
 
 ## The world
 
@@ -49,8 +50,14 @@ with children first, then by name: there is no order to arrange by hand, and the
 written in the same order.
 
 With the keyboard in the viewport W A S D fly the camera; a drag with the right button (two
-fingers on a trackpad) looks around, the wheel moves forward and back. A drag with the left
-button on empty space selects by a rectangle.
+fingers on a trackpad) looks around, the wheel moves forward and back. A click selects the
+entity under the pointer; a drag with the left button selects by a rectangle. The inspector of
+what you selected opens when the button is released.
+
+A script of an entity is a section of its inspector with the fields the class publishes
+(`PANDA_FIELD`). A class that publishes none says so, a class the last script build does not
+have is marked, and the link under the section opens the source of the class in your text
+editor (Settings → Editor → External Tools).
 
 A click on a world file in the Content Browser shows that world in the preview tab (its title
 is in italics): the next world clicked takes the same tab. A double click on the file or on the
@@ -77,7 +84,8 @@ Game, Stop gives it back to the Scene. While the Scene has the focus during Play
 on — it is simulated and its UI lives — only its picture waits for the focus to return.
 
 The CMake panel has two tabs — Scripts (the C++ of the project) and Export (the game as an
-Xcode or Visual Studio project) — and the same actions on each: **Configure** runs cmake again
+Xcode or Visual Studio project, built with the data the editor cooks first: [Exporting a
+game](export.md)) — and the same actions on each: **Configure** runs cmake again
 (after a source file was added), **Build** compiles, **Clean** deletes the build folder so that
 the next Build starts from nothing, **Stop** stops the build that runs. What the scripts are
 built with — the cmake, the generator (Ninja, Makefiles), the C and C++ compilers — is the

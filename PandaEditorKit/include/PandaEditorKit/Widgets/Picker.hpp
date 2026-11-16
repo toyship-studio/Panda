@@ -22,8 +22,8 @@ constexpr float PICKER_PALETTE_WIDTH = 520.f; // a palette in the middle of the 
 // A picker — the palette every "choose one of these" of the editor is: a search field over a
 // list, shown as a popover at a point of the window. Typing filters the rows (a
 // case-insensitive substring of the title or of the detail), the arrows move the selection,
-// Enter or a click picks: onPick(the index of the item in items). Escape and a click outside
-// close it without a choice.
+// Enter or a click picks: onPick(the index of the item in items). Escape takes the typed text
+// back; Escape in an empty field and a click outside close it without a choice.
 void showPicker(
     PandaUI::Context *context, PandaUI::Point at, const std::string &placeholder, std::vector<PickerItem> items,
     std::function<void(int)> onPick, float width = PICKER_WIDTH

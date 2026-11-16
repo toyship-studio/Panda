@@ -15,8 +15,10 @@ namespace {
 
     bool isSubpath(const path_t &path, const path_t &base) {
         if (path.empty() || base.empty()) { return false; }
-        const path_t relative = std::filesystem::relative(path, base);
-        return !relative.empty() && relative.native()[0] != '.';
+        std::error_code error;
+        const path_t relative = std::filesystem::relative(path, base, error);
+        // Inside the folder: the way there does not go up and is not the folder itself.
+        return !error && !relative.empty() && relative != "." && *relative.begin() != "..";
     }
 
     // Starter content of a new world: camera, sun, reference sprite, sky.
@@ -212,8 +214,8 @@ bool FileDocuments::saveWorld(WorldFile &world) {
 }
 
 bool FileDocuments::saveWorldAs(WorldFile &world) {
-    std::optional<path_t> chosen =
-        SystemTools::saveFileDialog("World\0*.world\0", (m_projectPath / "Assets").string().c_str(), "world.world");
+    const path_t assets = m_projectPath / AssetHandlerEditor::ASSETS_FOLDER;
+    std::optional<path_t> chosen = SystemTools::saveFileDialog("World\0*.world\0", assets.string().c_str(), "world.world");
     if (!chosen.has_value()) { return false; }
     path_t path = chosen.value();
     if (path.extension() != ".world") { path.replace_extension(".world"); }
@@ -224,6 +226,13 @@ bool FileDocuments::saveWorldAs(WorldFile &world) {
         return false;
     }
     if (!world.write(path)) { return false; }
+    if (!isSubpath(path, assets)) {
+        LOG_WARN_EDITOR(
+            "%s is saved outside the Assets folder of the project: it is a file the editor edits, not an asset — "
+            "a script cannot be given it and the game carries it only as the world it starts in.",
+            path.filename().string().c_str()
+        );
+    }
     syncStartWorld(world);
     registerWorldAsset(path);
     if (&world == m_activeWorld) { m_output->documentsDidLoadWorld(); }
@@ -237,7 +246,9 @@ void FileDocuments::syncStartWorld(const WorldFile &world) {
 
 void FileDocuments::registerWorldAsset(const path_t &path) {
     AssetHandlerEditor *handler = AssetHandlerEditor::current();
-    if (!handler || !std::filesystem::exists(path) || !isSubpath(path, m_projectPath)) { return; }
+    // An asset is a file of the Assets folder (AssetHandlerEditor): a world elsewhere in the
+    // project is edited like any other and nothing can refer to it.
+    if (!handler || !std::filesystem::exists(path) || !isSubpath(path, handler->assetsPath())) { return; }
     if (handler->getAssetId(path) || !handler->canImport(path)) { return; }
     handler->registerAsset(path);
 }

@@ -1,4 +1,5 @@
 #include "Panda/Extensions/ResourceProviders.hpp"
+#include "Panda/Runtime/GameFiles.hpp"
 
 #include <Foundation/Foundation.hpp>
 
@@ -42,7 +43,7 @@ void SceneShaderRegistry::reloadCooked(const path_t &cookedRoot, Foundation::Gra
         path_t fragment = backendRoot / projectSourcePath(entry.fragment);
         vertex.replace_extension();
         fragment.replace_extension();
-        if (!std::filesystem::exists(vertex) || !std::filesystem::exists(fragment)) {
+        if (!GameFiles::exists(vertex) || !GameFiles::exists(fragment)) {
             LOG_ERROR("Scene shader %s: the cooked pair is not at %s", entry.vertex.c_str(), backendRoot.string().c_str());
             continue;
         }

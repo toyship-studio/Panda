@@ -1,5 +1,7 @@
 #include "Assets/AssetHandlerRuntime.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
+#include "Panda/Assets/Base/CookedMesh.hpp"
+#include "Panda/Runtime/GameFiles.hpp"
 #include "Panda/Assets/Base/TextureCodec.hpp"
 #include "Panda/Assets/Fallback/FallbackAssets.hpp"
 #include "Panda/Assets/TextureAsset.hpp"
@@ -43,15 +45,14 @@ void AssetHandlerRuntime::setRuntimeDataPath(const path_t &runtimeDataPath) {
 
 bool AssetHandlerRuntime::loadRegistry() {
     path_t registryPath = m_runtimeDataPath / "assets.bin";
-    std::ifstream file(registryPath, std::ios::binary);
-    if (!file.is_open()) {
+    const std::unique_ptr<std::istream> file = GameFiles::open(registryPath);
+    if (!file) {
         LOG_ERROR("RUNTIME: Asset registry not found at %s", registryPath.string().c_str());
         return false;
     }
     AssetRegistryDto registryDto;
     Rain::Decoder *decoder = &m_binaryDecoder;
-    decoder->decode(file, registryDto);
-    file.close();
+    decoder->decode(*file, registryDto);
     for (auto &entry : registryDto.assets) {
         m_registry[entry.info.id] = entry.info;
         m_assetSources[entry.info.id] = entry.source;
@@ -87,7 +88,7 @@ bool AssetHandlerRuntime::readTexturePixelsRGBA8(
     if (!assetInfo || assetInfo->type != AssetType::TEXTURE) { return false; }
 
     const path_t cookedPath = m_runtimeDataPath / assetPath(id);
-    if (!std::filesystem::exists(cookedPath)) {
+    if (!GameFiles::exists(cookedPath)) {
         LOG_ERROR("RUNTIME: Texture %u not found at %s", (uint32_t)id, cookedPath.string().c_str());
         return false;
     }
@@ -112,7 +113,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
     if (loadedType == AssetType::TEXTURE) {
         auto meta = std::get<AssetInfo::TextureSettings>(assetInfo.settings);
         path_t cookedPath = m_runtimeDataPath / entryPath;
-        if (std::filesystem::exists(cookedPath)) {
+        if (GameFiles::exists(cookedPath)) {
             Miren::TextureCreate create = AssetImporterBase::loadCookedTexture(cookedPath);
             TextureCodec::applySettings(create, meta);
             asset = F_NEW(m_allocator, TextureAsset)(create);
@@ -129,7 +130,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
             AssetImporterBase::getCookedShaderAssetPath(replaceLastChars(entryPath, "frag.hlsl"), backend);
         path_t fullVertPath = m_runtimeDataPath / stripPandaPrefix(vertCookedPath);
         path_t fullFragPath = m_runtimeDataPath / stripPandaPrefix(fragCookedPath);
-        if (std::filesystem::exists(fullVertPath) && std::filesystem::exists(fullFragPath)) {
+        if (GameFiles::exists(fullVertPath) && GameFiles::exists(fullFragPath)) {
             asset = F_NEW(m_allocator, ShaderAsset)(fullVertPath, fullFragPath);
             LOG_INFO("RUNTIME: Loaded shader %u", (uint32_t)id);
         } else {
@@ -140,11 +141,9 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         auto meta = std::get<AssetInfo::MaterialSettings>(assetInfo.settings);
         path_t materialPath = m_runtimeDataPath / entryPath;
         MaterialDataDto dataDto;
-        std::ifstream binFile(materialPath, std::ios::binary);
-        if (binFile.is_open()) {
+        if (const std::unique_ptr<std::istream> binFile = GameFiles::open(materialPath)) {
             Rain::Decoder *decoder = &m_binaryDecoder;
-            decoder->decode(binFile, dataDto);
-            binFile.close();
+            decoder->decode(*binFile, dataDto);
             // Type guard: a legacy meta.shader may point to a non-shader — Lit fallback.
             AssetRef<ShaderAsset> shader;
             if (meta.shader) {
@@ -168,8 +167,10 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
     } else if (loadedType == AssetType::IMPORTED_MESH) {
         auto meta = std::get<AssetInfo::MeshSettings>(assetInfo.settings);
         path_t meshPath = m_runtimeDataPath / entryPath;
-        if (std::filesystem::exists(meshPath)) {
-            std::vector<ImportedMeshData> meshes = AssetImporterBase::loadGltfMesh(meshPath);
+        // The geometry was read from the model at the cook (CookedMesh): the game loads arrays.
+        std::vector<ImportedMeshData> meshes;
+        const std::unique_ptr<std::istream> meshFile = GameFiles::open(meshPath);
+        if (meshFile && CookedMesh::read(*meshFile, meshes)) {
             ImportedMeshAsset *mesh = F_NEW(m_allocator, ImportedMeshAsset)(meshes);
             // The material layout — from the meta (direct ids): the same source as in the editor.
             std::vector<AssetRef<Asset>> slots;
@@ -194,11 +195,9 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
     } else if (loadedType == AssetType::POSTPROCESSING) {
         path_t postfxPath = m_runtimeDataPath / entryPath;
         PostprocessingDataDto dataDto;
-        std::ifstream binFile(postfxPath, std::ios::binary);
-        if (binFile.is_open()) {
+        if (const std::unique_ptr<std::istream> binFile = GameFiles::open(postfxPath)) {
             Rain::Decoder *decoder = &m_binaryDecoder;
-            decoder->decode(binFile, dataDto);
-            binFile.close();
+            decoder->decode(*binFile, dataDto);
             std::vector<PostprocessingPass> passes;
             for (PostprocessingPassDto &passDto : dataDto.passes) {
                 PostprocessingPass pass;

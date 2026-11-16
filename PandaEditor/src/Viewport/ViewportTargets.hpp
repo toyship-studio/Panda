@@ -32,6 +32,9 @@ public:
     // mask; nothing under the pointer, id 0.
     Miren::ViewId addSelectionView() const;
     Miren::ViewId addIdsView() const;
+    // How the composite reads the mask (ViewportComposite::draw): the width of the outline and a
+    // texel of the mask, in its uv.
+    glm::vec4 outlineStep() const;
 
 private:
     void createFrameBuffers();
@@ -53,8 +56,11 @@ public:
     ViewportComposite &operator=(const ViewportComposite &) = delete;
 
     void init();
-    // Into `view` — a view over the output of a surface (ViewportSurface::addView).
-    void draw(Miren::ViewId view, Miren::TextureHandle color, Miren::TextureHandle selectionMask) const;
+    // Into `view` — a view over the output of a surface (ViewportSurface::addView). outlineStep —
+    // EditorPassTargets::outlineStep of the mask; zero with the empty mask.
+    void draw(
+        Miren::ViewId view, Miren::TextureHandle color, Miren::TextureHandle selectionMask, const glm::vec4 &outlineStep
+    ) const;
     // A 1×1 transparent mask: no outline (the Game viewport).
     Miren::TextureHandle emptyMask() const {
         return m_emptyMask;

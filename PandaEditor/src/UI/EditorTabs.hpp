@@ -72,6 +72,7 @@ public:
     void refreshEntityForms();
     void syncLifetimes();                // per frame: targets died → the tab is closed/narrowed
     void closeAllEntityTabs();           // world change: entity tabs point into the old world
+    void closeAllAssetTabs();            // project change: asset tabs name the assets of the old project
     // The document of a tab (nullptr — not a tab of EditorTabs: the viewport and the panels).
     Document *documentForTab(const std::string &tabId) const;
     Document *documentForAsset(Panda::AssetId assetId) const; // the tab of exactly this asset

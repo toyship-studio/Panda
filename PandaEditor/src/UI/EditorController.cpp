@@ -318,6 +318,14 @@ void EditorController::extensionsChanged() {
     if (m_statisticsView) { m_statisticsView->rebuildExtensionSections(); }
 }
 
+void EditorController::openInExternalEditor(const Panda::path_t &path) {
+    m_app.openInExternalEditor(path);
+}
+
+Panda::path_t EditorController::scriptSource(const std::string &className) {
+    return m_app.project().scriptSource(className);
+}
+
 void EditorController::restartEditor() {
     m_app.restartEditor();
 }
@@ -329,17 +337,18 @@ void EditorController::saveActiveDocument() {
 
 void EditorController::addFileItems(Menu &menu, const std::filesystem::path &file) {
     if (file.empty()) { return; }
-    // The path as the project sees it: relative to the project folder when the file is inside.
-    std::string shown = file.generic_string();
+    menu.addItem("Copy Path", [file] { setClipboardText(file.string()); });
+    // The path as the project names the file — in a world, in project.json, to a tool of the MCP
+    // server: relative to the project folder, with forward slashes.
     if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) {
         const std::filesystem::path project = handler->getProjectPath();
         std::error_code errorCode;
         const std::filesystem::path relative = std::filesystem::relative(file, project, errorCode);
         if (!project.empty() && !errorCode && !relative.empty() && *relative.begin() != "..") {
-            shown = relative.generic_string();
+            const std::string inProject = relative.generic_string();
+            menu.addItem("Copy Relative Path", [inProject] { setClipboardText(inProject); });
         }
     }
-    menu.addItem("Copy Path: " + shown, [file] { setClipboardText(file.string()); });
     menu.addItem("Open in External Editor", [this, file] {
         m_app.openInExternalEditor(file);
     });
@@ -360,6 +369,12 @@ void EditorController::worldContextChanged() {
     m_editorTabs->clearHistory();
 }
 
+void EditorController::projectWillClose() {
+    worldContextChanged();
+    if (m_editorTabs) { m_editorTabs->closeAllAssetTabs(); }
+    selectionChanged();
+}
+
 void EditorController::setWorldDisplayName(const std::string &name) {
     if (m_hierarchyView) { m_hierarchyView->setRootTitle(name); }
 }
@@ -375,6 +390,8 @@ void EditorController::refreshAssetPanels() {
 /* ----------------------------- Selection flow ---------------------------- */
 
 void EditorController::selectionChanged() {
+    // The selection names only what exists: an asset whose file is gone leaves it here.
+    selection().forgetDeadAssets();
     // The versions of what is shown: the per-frame sync (syncSelection) reacts to what changed since.
     m_lastSelectionVersion = selection().version();
     m_lastTransformVersion = selection().transformVersion();
@@ -412,7 +429,11 @@ void EditorController::selectionChanged() {
             if (handler == nullptr || handler->getInfo(asset).type != Panda::AssetType::WORLD) { shownAssets.push_back(asset); }
         }
     }
-    if (m_editorTabs) { m_editorTabs->showSelection(entities, shownAssets); }
+    // The tabs follow when the gesture that selects has ended: a tab opening in a dock next to
+    // the viewport changes the size of the Scene, and the rest of the gesture would be read over
+    // another picture than the one the press saw.
+    m_tabsAwaitGesture = m_viewportView && m_viewportView->isSelecting();
+    if (m_editorTabs && !m_tabsAwaitGesture) { m_editorTabs->showSelection(entities, shownAssets); }
 }
 
 void EditorController::selectEntities(const std::vector<Panda::UUID> &ids) {
@@ -449,7 +470,9 @@ void EditorController::deselectAll() {
 
 void EditorController::syncSelection() {
     if (!m_panelsWorld) { return; }
-    if (selection().version() != m_lastSelectionVersion) { // the viewport selected (a click, a rectangle)
+    // The viewport selected (a click, a rectangle) — or its gesture has ended and the tabs are due.
+    const bool gestureEnded = m_tabsAwaitGesture && !(m_viewportView && m_viewportView->isSelecting());
+    if (selection().version() != m_lastSelectionVersion || gestureEnded) {
         selectionChanged();
         return;
     }
@@ -647,8 +670,10 @@ void EditorController::refreshAssetEditors(Panda::AssetId id) {
 
 /* ---------------------------- Viewport output ---------------------------- */
 
-void EditorController::viewportDidRectSelect(PandaUI::Point start, PandaUI::Point current, bool additive, bool committed) {
-    m_app.rectSelect(start, current, additive, committed);
+void EditorController::viewportDidRectSelect(
+    PandaUI::Point start, PandaUI::Point current, bool additive, RectSelectPhase phase
+) {
+    m_app.rectSelect(start, current, additive, phase);
 }
 
 void EditorController::viewportDidPickGizmo(int mode) {
@@ -1118,27 +1143,12 @@ void EditorController::showGoTo() {
             actions->push_back([this, id] { selectEntity(id); });
         }
     }
-    if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) {
-        struct Found {
-            std::string name;
-            std::string folder;
-            Panda::AssetId id;
-            Panda::AssetType type;
-        };
-        std::vector<Found> found;
-        for (const auto &[id, info] : handler->getRegistry()) {
-            std::string folder = handler->assetPath(id).parent_path().lexically_relative(handler->getProjectPath()).generic_string();
-            if (folder.empty() || folder == "." || folder.rfind("..", 0) == 0) { continue; } // not a file of the project
-            found.push_back({handler->getAssetName(id), std::move(folder), id, info.type});
-        }
-        std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
-            return a.name != b.name ? a.name < b.name : a.folder < b.folder;
-        });
-        for (Found &asset : found) {
-            items.push_back({std::move(asset.name), std::move(asset.folder), assetIconName(asset.type), {}});
-            const Panda::AssetId id = asset.id;
-            actions->push_back([this, id] { selectAsset(id); });
-        }
+    std::vector<uint32_t> assetIds;
+    std::vector<PickerItem> assetItems = projectAssetItems(assetIds);
+    for (size_t index = 0; index < assetItems.size(); index++) {
+        items.push_back(std::move(assetItems[index]));
+        const Panda::AssetId id = Panda::AssetId(assetIds[index]);
+        actions->push_back([this, id] { selectAsset(id); });
     }
     showPalette(context, "Go to an asset or an entity…", std::move(items), [actions](int index) {
         if (index >= 0 && index < static_cast<int>(actions->size())) { (*actions)[static_cast<size_t>(index)](); }

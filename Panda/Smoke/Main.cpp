@@ -18,7 +18,10 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
+#include <Panda/Assets/Base/CookedMesh.hpp>
 #include <Panda/Renderer/OcclusionVolume.hpp>
+#include <Panda/Runtime/AssetPack.hpp>
+#include <Panda/Runtime/GameFiles.hpp>
 #include <Panda/Renderer/WorldView.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/Extensions/Settings.hpp>
@@ -40,6 +43,8 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <fstream>
+#include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -266,6 +271,95 @@ int main(int argc, const char **argv) {
         std::printf("  [%s] %s\n", ok ? " OK " : "FAIL", name);
         if (!ok) { failures++; }
     };
+
+    // The pack of a game (AssetPack) and the files a loader opens through GameFiles: what was
+    // written is what is read, an entry is found by its path, a path outside the pack is a file.
+    std::printf("asset pack\n");
+    {
+        const std::filesystem::path folder = std::filesystem::temp_directory_path() / "panda-smoke-pack";
+        std::error_code error;
+        std::filesystem::remove_all(folder, error);
+        std::filesystem::create_directories(folder, error);
+        const std::filesystem::path loose = folder / "loose.txt";
+        {
+            std::ofstream file(loose, std::ios::binary);
+            file << "a file on disk";
+        }
+        std::string binary(4099, '\0'); // not a multiple of the alignment, with zero bytes inside
+        for (size_t i = 0; i < binary.size(); i++) { binary[i] = static_cast<char>(i * 7 + 3); }
+        Panda::AssetPack::Writer writer;
+        writer.add("Worlds/main.pworld", binary);
+        writer.addFile("Texts/loose.txt", loose);
+        writer.add("empty.bin", std::string());
+        std::string writeError;
+        const std::filesystem::path packFile = folder / Panda::AssetPack::FILE_NAME;
+        report("pack is written", writer.write(packFile, writeError));
+
+        auto pack = std::make_unique<Panda::AssetPack>();
+        report("pack opens", pack->open(packFile) && pack->entries().size() == 3);
+        const Panda::AssetPack::Entry *world = pack->find("Worlds/main.pworld");
+        bool sameBytes = false;
+        if (world != nullptr && world->size == binary.size() && world->offset % 16 == 0) {
+            Foundation::Memory block = pack->read(*world);
+            sameBytes = block.data != nullptr && std::memcmp(block.data, binary.data(), binary.size()) == 0;
+            block.release();
+        }
+        report("an entry reads back byte for byte", sameBytes);
+        report("an unknown path is not an entry", pack->find("Worlds/other.pworld") == nullptr);
+
+        Panda::GameFiles::mount(folder, std::move(pack));
+        size_t size = 0;
+        Foundation::Memory text = Panda::GameFiles::read(folder / "Texts" / "loose.txt", size, true);
+        report(
+            "a file copied into the pack is read through GameFiles",
+            text.data != nullptr && size == 14 && std::string(static_cast<const char *>(text.data)) == "a file on disk"
+        );
+        text.release();
+        std::unique_ptr<std::istream> stream = Panda::GameFiles::open(folder / "Worlds" / "main.pworld");
+        bool streamed = false;
+        if (stream) {
+            stream->seekg(0, std::ios::end);
+            const std::streamoff length = stream->tellg();
+            stream->seekg(4000, std::ios::beg);
+            char tail[99];
+            stream->read(tail, sizeof(tail));
+            streamed = length == 4099 && stream->gcount() == 99 && std::memcmp(tail, binary.data() + 4000, 99) == 0;
+        }
+        report("an entry is a stream that seeks", streamed);
+        report(
+            "the pack answers for its folder, the disk for the rest",
+            Panda::GameFiles::exists(folder / "empty.bin") && !Panda::GameFiles::exists(folder / "missing.bin") &&
+                Panda::GameFiles::exists(loose) && !Panda::GameFiles::isPacked(loose)
+        );
+        Panda::GameFiles::unmount();
+        report("unmounted: the entries are not files", !Panda::GameFiles::exists(folder / "empty.bin"));
+
+        // A cooked model: the arrays come back as they went.
+        std::vector<Panda::ImportedMeshData> meshes(2);
+        meshes[0].primitives.resize(2);
+        meshes[0].primitives[0].vertices.resize(5);
+        meshes[0].primitives[0].vertices[3].pos = glm::vec3(1.f, 2.f, 3.f);
+        meshes[0].primitives[0].vertices[3].uv = glm::vec2(0.25f, 0.75f);
+        meshes[0].primitives[0].indices = {0, 1, 2, 2, 3, 4};
+        meshes[1].primitives.resize(1);
+        meshes[1].primitives[0].vertices.resize(3);
+        meshes[1].primitives[0].indices = {2, 1, 0};
+        std::stringstream cooked(std::ios::in | std::ios::out | std::ios::binary);
+        Panda::CookedMesh::write(cooked, meshes);
+        std::vector<Panda::ImportedMeshData> back;
+        const bool read = Panda::CookedMesh::read(cooked, back);
+        report(
+            "a cooked mesh reads back",
+            read && back.size() == 2 && back[0].primitives.size() == 2 && back[0].primitives[0].vertices.size() == 5 &&
+                back[0].primitives[0].vertices[3].pos == glm::vec3(1.f, 2.f, 3.f) &&
+                back[0].primitives[0].vertices[3].uv == glm::vec2(0.25f, 0.75f) &&
+                back[0].primitives[0].indices == meshes[0].primitives[0].indices && back[0].primitives[1].vertices.empty() &&
+                back[1].primitives[0].indices == meshes[1].primitives[0].indices
+        );
+        std::stringstream garbage("not a mesh at all, just some text that is long enough");
+        report("a file that is not a cooked mesh is refused", !Panda::CookedMesh::read(garbage, back) && back.empty());
+        std::filesystem::remove_all(folder, error);
+    }
 
     // Occlusion volume, temporal stability (context/lighting.md, "Temporal stability") — the CPU logic of the
     // window: chunks fade in with a ramp and do not go out while they lie within the falloff

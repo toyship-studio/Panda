@@ -49,6 +49,9 @@ public:
     }
     // Instead of what was selected; an asset selection deselects the entities.
     void selectAssets(std::vector<Panda::AssetId> ids);
+    // The project lost assets (a file removed on disk, another project in the window): they
+    // leave the selection.
+    void forgetDeadAssets();
 
     void clear(); // nothing is selected
 

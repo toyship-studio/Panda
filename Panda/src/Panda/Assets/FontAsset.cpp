@@ -1,19 +1,22 @@
 #include "Panda/Assets/FontAsset.hpp"
 
+#include "Panda/Runtime/GameFiles.hpp"
+
 #include <fstream>
 
 namespace Panda::FontAssetKind {
 
 Asset *load(Foundation::AllocatorI *allocator, const path_t &absolutePath) {
-    std::ifstream file(absolutePath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) { return nullptr; }
-    const std::streamsize size = file.tellg();
-    if (size < 12) { return nullptr; } // not even an sfnt header
-    std::vector<uint8_t> bytes(static_cast<size_t>(size));
-    file.seekg(0, std::ios::beg);
-    file.read(reinterpret_cast<char *>(bytes.data()), size);
-    if (!file) { return nullptr; }
-    return F_NEW(allocator, FontAsset)(std::move(bytes));
+    size_t size = 0;
+    Foundation::Memory file = GameFiles::read(absolutePath, size);
+    if (file.data == nullptr) { return nullptr; }
+    std::vector<uint8_t> bytes;
+    if (size >= 12) { // less is not even an sfnt header
+        const uint8_t *data = static_cast<const uint8_t *>(file.data);
+        bytes.assign(data, data + size);
+    }
+    file.release();
+    return bytes.empty() ? nullptr : F_NEW(allocator, FontAsset)(std::move(bytes));
 }
 
 Asset *placeholder(Foundation::AllocatorI *allocator) {

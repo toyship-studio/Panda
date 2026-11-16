@@ -103,12 +103,28 @@ bool ViewportView::pointerDown(PointerEvent &event) {
         return true; // the gizmo / the viewport tool reads the pointer (takePointer): no rect-select, but captured for the release
     }
     m_pressed = true;
+    m_dragging = false;
     m_pressPosition = event.position;
+    m_pressFrame = getWorldFrame();
     m_dragAdditive = event.isShiftDown || event.isControlDown || event.isSuperDown;
-    // Rect-select start (degenerate rect). A click without movement becomes 1×1 = single selection.
+    // The press picks what is under the pointer (a degenerate rectangle): the selection answers at
+    // once. A press that never leaves the click slop stays that — one entity.
     const Point local = toLocal(m_pressPosition);
-    m_output->viewportViewDidRectSelect(local, local, m_dragAdditive, false);
+    m_output->viewportViewDidRectSelect(local, local, m_dragAdditive, RectSelectPhase::Stretch);
     return true; // capture: move/up are caught for the rectangle
+}
+
+bool ViewportView::dropGestureIfFrameChanged() {
+    const Rect frame = getWorldFrame();
+    if (frame.origin.x == m_pressFrame.origin.x && frame.origin.y == m_pressFrame.origin.y &&
+        frame.size.width == m_pressFrame.size.width && frame.size.height == m_pressFrame.size.height) {
+        return false;
+    }
+    hideMarquee();
+    m_pressed = false;
+    m_dragging = false;
+    m_output->viewportViewDidRectSelect(Point(), Point(), m_dragAdditive, RectSelectPhase::Drop);
+    return true;
 }
 
 bool ViewportView::pointerMove(PointerEvent &event) {
@@ -119,11 +135,16 @@ bool ViewportView::pointerMove(PointerEvent &event) {
         return true;
     }
     if (!m_pressed) { return false; } // a hover: the pointer is recorded for the gizmo and the tools
-    if (std::abs(event.position.x - m_pressPosition.x) > CLICK_SLOP ||
-        std::abs(event.position.y - m_pressPosition.y) > CLICK_SLOP) {
-        positionMarquee(m_pressPosition, event.position); // dragging — show the rubber-band marquee
+    if (dropGestureIfFrameChanged()) { return true; }
+    if (!m_dragging && std::abs(event.position.x - m_pressPosition.x) <= CLICK_SLOP &&
+        std::abs(event.position.y - m_pressPosition.y) <= CLICK_SLOP) {
+        return true; // still a click: the hand trembles, the pick of the press stands
     }
-    m_output->viewportViewDidRectSelect(toLocal(m_pressPosition), toLocal(event.position), m_dragAdditive, false);
+    m_dragging = true; // past the slop the press is a rectangle, also when it comes back
+    positionMarquee(m_pressPosition, event.position);
+    m_output->viewportViewDidRectSelect(
+        toLocal(m_pressPosition), toLocal(event.position), m_dragAdditive, RectSelectPhase::Stretch
+    );
     return true;
 }
 
@@ -135,10 +156,15 @@ bool ViewportView::pointerUp(PointerEvent &event) {
     }
     if (event.button != PointerButton::Left) { return false; }
     m_leftDown = false;
-    if (m_pressed) {
+    if (m_pressed && !dropGestureIfFrameChanged()) {
         hideMarquee();
-        m_output->viewportViewDidRectSelect(toLocal(m_pressPosition), toLocal(event.position), m_dragAdditive, true);
+        // A click ends where it was pressed: the pick of the press is the selection.
+        const Point start = toLocal(m_pressPosition);
+        m_output->viewportViewDidRectSelect(
+            start, m_dragging ? toLocal(event.position) : start, m_dragAdditive, RectSelectPhase::Commit
+        );
         m_pressed = false;
+        m_dragging = false;
     }
     return true;
 }

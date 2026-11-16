@@ -163,6 +163,7 @@ public:
         top->layout().setGap(Spacing::md);
         m_search = std::make_shared<TextField>();
         m_search->setPlaceholder("Search commands and keys…");
+        m_search->setClearsOnEscape(true);
         m_search->layout().setFlexGrow(1.f);
         m_search->setOnTextChanged([this](TextField &) { rebuild(); });
         top->addSubview(m_search);

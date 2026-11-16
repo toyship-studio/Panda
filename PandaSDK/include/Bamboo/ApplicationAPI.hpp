@@ -15,8 +15,8 @@ namespace ApplicationAPI {
     bool isCursorLocked();
     void setCursorLocked(bool locked);
     void quit();
-    /// Writable per-game directory for save files (cross-platform). Empty if the host
-    /// did not provide one.
+    /// Writable per-game directory for save files (cross-platform); it is made by this call,
+    /// so a game that never asks leaves no folder. Empty if the host did not provide one.
     std::string getPersistentDataPath();
 }; // namespace ApplicationAPI
 

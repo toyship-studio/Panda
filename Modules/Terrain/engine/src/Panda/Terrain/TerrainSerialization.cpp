@@ -278,6 +278,12 @@ namespace TerrainSerialization {
         );
     }
 
+    void encodeFloraReferences(const FloraSettings &flora, Rain::Encoder &references) {
+        const TerrainFloraDto dto = floraToDto(flora);
+        std::ostringstream unused;
+        references.encode(unused, dto);
+    }
+
     void write3D(std::ostream &stream, const TerrainData3D &data) {
         writeHeader(stream, TerrainKind::Voxels3D);
         writeValue(stream, data.cellsX);
