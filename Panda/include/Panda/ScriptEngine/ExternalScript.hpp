@@ -34,6 +34,7 @@ inline ScriptFieldValue defaultScriptFieldValue(ScriptFieldType type, bool list)
         case ScriptFieldType::MATERIAL:
         case ScriptFieldType::WORLD:
         case ScriptFieldType::FONT:
+        case ScriptFieldType::MESH:
             return list ? ScriptFieldValue(std::vector<UUID>()) : ScriptFieldValue(UUID(0));
         case ScriptFieldType::INTEGER:
         case ScriptFieldType::UNKNOWN:

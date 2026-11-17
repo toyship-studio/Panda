@@ -9,8 +9,9 @@ using FieldHandle = uint32_t;
 
 // What one value of a script field is. A field holds one value or, when it is a list (a
 // std::vector in the class), any number of them. A value crosses the ABI as 4 bytes: an
-// int32_t, a float, or the id of an entity or of an asset.
-enum class ScriptFieldType { INTEGER, FLOAT, ENTITY, TEXTURE, MATERIAL, WORLD, FONT, UNKNOWN };
+// int32_t, a float, or the id of an entity or of an asset. v36: MESH — a mesh asset (a model of
+// the project).
+enum class ScriptFieldType { INTEGER, FLOAT, ENTITY, TEXTURE, MATERIAL, WORLD, FONT, MESH, UNKNOWN };
 
 // v28: the manifest of a script bundle crosses the ABI as flat arrays, like the rest of the ABI.
 // The arrays and the strings belong to the bundle and stay valid until the next getManifest call

@@ -59,11 +59,20 @@ void PlaySession::end() {
     m_playing = false;
     m_inputActive = false;
     m_driven = false;
+    Input::setCursorVirtual(false);
     m_mouseButtons = 0;
     Input::setFocused(false);
     Input::releaseAll(); // what the game still held: its releases go to the editor now
     m_requestedWorld = AssetId(0);
     GameContext::setWorldLoadRequestHandler(nullptr);
+}
+
+void PlaySession::setDriven(bool driven) {
+    if (m_driven == driven) { return; }
+    m_driven = driven;
+    // The cursor of a driven game is its own: the real one is let go and stays with the user.
+    Input::setCursorVirtual(driven);
+    if (driven) { Fern::setCursorLocked(false); }
 }
 
 bool PlaySession::takeQuitRequest() {
@@ -125,15 +134,19 @@ bool PlaySession::ownsEvent(const Fern::Event &event, bool gameTabFocused, bool 
         const Fern::Vec2 cursor = m_window->getCursorPosition();
         return inGameFrame(cursor.x, cursor.y);
     };
+    // A cursor the game locked is the game's wherever it is said to be: the lock put it into the
+    // middle of the window, which may lie outside the Game surface. (The lock ends with the focus
+    // of the game: updateInput.)
+    const bool locked = Fern::isCursorLocked();
     switch (event.type) {
         case Fern::EventType::MouseMoved: {
             const auto &moved = static_cast<const Fern::MouseMovedEvent &>(event);
-            return m_mouseButtons != 0 || (!modalOpen && inGameFrame(moved.x, moved.y));
+            return locked || m_mouseButtons != 0 || (!modalOpen && inGameFrame(moved.x, moved.y));
         }
         case Fern::EventType::MouseButtonPressed: {
             const auto &pressed = static_cast<const Fern::MouseKeyEvent &>(event);
             const uint32_t bit = 1u << static_cast<uint32_t>(pressed.button);
-            const bool game = !modalOpen && cursorInGameFrame();
+            const bool game = locked || (!modalOpen && cursorInGameFrame());
             m_mouseButtons = game ? (m_mouseButtons | bit) : (m_mouseButtons & ~bit);
             return game;
         }
@@ -145,7 +158,7 @@ bool PlaySession::ownsEvent(const Fern::Event &event, bool gameTabFocused, bool 
             return true;
         }
         case Fern::EventType::MouseScrolled:
-            return !modalOpen && cursorInGameFrame();
+            return locked || (!modalOpen && cursorInGameFrame());
         case Fern::EventType::TouchBegan: {
             const auto &touch = static_cast<const Fern::TouchBeganEvent &>(event);
             return !modalOpen && inGameFrame(touch.x, touch.y);

@@ -663,6 +663,15 @@ bool AssetHandlerEditor::hasAsset(AssetId id) const {
     return m_loadedAssets.contains(id) || m_registry.contains(id);
 }
 
+bool AssetHandlerEditor::readMeshData(AssetId id, std::vector<ImportedMeshData> &meshes) {
+    meshes.clear();
+    if (!m_registry.contains(id) || m_registry.at(id).type != AssetType::IMPORTED_MESH) { return false; }
+    const path_t path = m_projectPath / assetPath(id);
+    if (!std::filesystem::exists(path)) { return false; }
+    meshes = AssetImporterBase::loadGltfMesh(path);
+    return !meshes.empty();
+}
+
 bool AssetHandlerEditor::readTexturePixelsRGBA8(
     AssetId id, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
 ) {

@@ -476,6 +476,10 @@ void EditorLayer::play() {
         return;
     }
     m_play.begin(editingWorld());
+    // Nobody is at the screen (--unattended): the game is driven from its first frame — it has
+    // the input whatever has the focus, and a cursor it locks is one of its own, never the
+    // cursor of the machine somebody else may be working at.
+    if (m_launch.unattended) { m_play.setDriven(true); }
     Editor::selection().setWorld(shownWorld()); // the same ids: the selection moves to the copy
     m_viewports.scene().setWorld(shownWorld());
     // The Game tab opens (or comes to the front) and takes the focus: the frame and the input of

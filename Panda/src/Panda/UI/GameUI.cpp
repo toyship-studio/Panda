@@ -1,5 +1,6 @@
 #include "Panda/UI/GameUI.hpp"
 
+#include "Panda/GameLogic/Input.hpp"
 #include "Panda/ScriptEngine/InnerScriptHook.hpp"
 #include "Panda/UI/PandaUIFernHost.hpp"
 #include "Panda/UI/PandaUIMirenRenderer.hpp"
@@ -19,6 +20,21 @@
 namespace Panda {
 
 namespace {
+
+    bool isMouseEvent(const Fern::Event &event) {
+        switch (event.type) {
+            case Fern::EventType::MouseMoved:
+            case Fern::EventType::MouseButtonPressed:
+            case Fern::EventType::MouseButtonReleased:
+            case Fern::EventType::MouseScrolled: return true;
+            default: return false;
+        }
+    }
+
+    // The lock a script asked for: of the real cursor, or of the cursor of a driven game.
+    bool isCursorLockedForGame() {
+        return Input::isCursorVirtual() ? Input::isVirtualCursorLocked() : Fern::isCursorLocked();
+    }
 
     constexpr Handle MAIN_WINDOW_HANDLE = 1;
     constexpr uint32_t NO_FRAME = ~0u;
@@ -293,6 +309,10 @@ void GameUI::syncWindow(Fern::Window *window) {
 bool GameUI::handleEvent(Fern::Event *event) {
     PANDA_PROFILE_SCOPE_N("GameUI::handleEvent");
     if (!ExternalCalls::ui_HandleEvent || !event) { return false; }
+    // A locked cursor points at nothing: the game looks around with it, and a press of its button
+    // is not a click on the view that lies where the cursor was locked. The mouse is the game's
+    // alone then (Panda::Input); the fingers stay the UI's.
+    if (isMouseEvent(*event) && isCursorLockedForGame()) { return false; }
     const WindowEntry *entry = findWindow(event->getWindow());
     if (!entry || !entry->window) { return false; }
     const PandaUI::Point origin = inFrame(*entry) ? PandaUI::Point(

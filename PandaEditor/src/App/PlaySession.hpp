@@ -57,9 +57,7 @@ public:
     void updateInput(bool gameTabFocused, bool modalOpen);
     // An agent plays the game (the game_input tool of the MCP server): while it does, the game
     // has the input whatever has the focus — the editor of a test runs in the background.
-    void setDriven(bool driven) {
-        m_driven = driven;
-    }
+    void setDriven(bool driven);
     // The copy runs. Not while it waits for the world a script asked for: it keeps its last
     // frame then.
     bool isRunning() {

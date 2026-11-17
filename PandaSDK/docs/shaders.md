@@ -73,14 +73,15 @@ intensity of the lights) is world data.
 
 ```json
 {
-  "rendering": { "features": ["lights", "shadows", "environment", "ssao"] }
+  "rendering": { "features": ["lights", "lamps", "shadows", "environment", "ssao"] }
 }
 ```
 
 | Feature | Gives the shaders | Costs while on | Leave it out when |
 |---|---|---|---|
-| `lights` | ambient, the sun, 8 lamps — point lights and spots (`PANDA_LIGHTS`) | collecting the lights every frame, the lighting code in every lit shader | the game is unlit: 2D, UI, flat colors |
-| `shadows` | cascaded sun shadows and the shadows of the lamps that cast them (`PANDA_SHADOWS`, `shadowMap`, `lampShadowMap`) | the scene drawn once more per cascade (and per spot, six times per point light that casts), the atlases, the filtering in every lit pixel | no sun and no lamp casts, or shadows do not matter for the look |
+| `lights` | ambient and the sun (`PANDA_LIGHTS`) | collecting them every frame, the lighting code in every lit shader | the game is unlit: 2D, UI, flat colors |
+| `lamps` | 8 lamps — point lights and spots (the lamp arrays of `PANDA_LIGHTS`, `localLightCount()`, `localLight()`) | collecting the nearest lamps every frame, a loop over them in every lit pixel | the world is lit by the sun and the sky alone, or the game bakes its lamps itself (a voxel game with light in its vertices) |
+| `shadows` | cascaded sun shadows and, with `lamps`, the shadows of the lamps that cast them (`PANDA_SHADOWS`, `shadowMap`, `lampShadowMap`) | the scene drawn once more per cascade (and per spot, six times per point light that casts), the atlases, the filtering in every lit pixel | no sun and no lamp casts, or shadows do not matter for the look |
 | `occlusion` | the Occlusion Volume: sky visibility and sun transmittance (`PANDA_OCCLUSION`, `occlusionVolume`) | chunk bakes on the CPU, a 3D texture, a sample per lit pixel | the world has no caves, interiors or dense canopy |
 | `environment` | the environment map of the world and its light (`PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting`) | the map in memory, one small atlas baked when the map changes, two or three samples per lit pixel, the HDR sky | the sky is a gradient and a flat ambient color is enough |
 | `ssao` | the screen-space ambient occlusion (`PANDA_SSAO`, `ssaoMap`) | two half-resolution passes over the depth every frame, a sample per lit pixel | the game is 2D, or flat ambient light is the look |
@@ -89,9 +90,9 @@ intensity of the lights) is world data.
 Rules of the set:
 
 - A project without the section has every feature. A new project from the editor template has
-  `lights`, `shadows`, `environment`.
-- `shadows` and `occlusion` need `lights`: listing either one turns `lights` on. To have no
-  `lights`, list neither.
+  `lights`, `lamps`, `shadows`, `environment`.
+- `lamps`, `shadows` and `occlusion` need `lights`: listing any of them turns `lights` on. To
+  have no `lights`, list none of them.
 - A name outside the table is ignored with a warning in the log.
 - The editor applies the set when the project opens, when the project settings are saved and
   on Reload after `project.json` was edited by hand. Every shader of the project is recompiled
@@ -102,14 +103,15 @@ Rules of the set:
 A feature that is off costs nothing: its passes and bakes do not run, its code is not compiled
 into any shader of the project (the engine's lit templates included), and the settings and
 components of that feature in a world stay in the file and are ignored. The scene looks as if
-the feature's subject were absent: no `lights` is an unlit scene (albedo), no `shadows` an open
+the feature's subject were absent: no `lights` is an unlit scene (albedo), no `lamps` a world
+without point lights and spots (the loop over them is not in any shader), no `shadows` an open
 sun, no `occlusion` an open sky, no `environment` the gradient sky and only the flat ambient, no
 `ssao` an ambient light without contact darkening, no `wind` still vegetation.
 
 ### Writing a shader against the set
 
 Every shader of the project — your own and the engine's templates — is compiled with the
-generated `panda/features.hlsli` in front of it: `PANDA_FEATURE_LIGHTS`, `PANDA_FEATURE_SHADOWS`,
+generated `panda/features.hlsli` in front of it: `PANDA_FEATURE_LIGHTS`, `PANDA_FEATURE_LAMPS`, `PANDA_FEATURE_SHADOWS`,
 `PANDA_FEATURE_OCCLUSION`, `PANDA_FEATURE_ENVIRONMENT`, `PANDA_FEATURE_WIND`, `PANDA_FEATURE_SSAO`,
 each defined as `1` or `0` from the first line. Do not define them and do not include `panda/features.hlsli`
 yourself. An `#include` under `#if` works as in C.

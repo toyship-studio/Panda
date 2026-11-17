@@ -55,6 +55,7 @@ namespace {
             case Panda::ScriptFieldType::MATERIAL: return "material";
             case Panda::ScriptFieldType::WORLD: return "world";
             case Panda::ScriptFieldType::FONT: return "font";
+            case Panda::ScriptFieldType::MESH: return "mesh";
             default: return nullptr;
         }
     }
@@ -101,7 +102,8 @@ std::shared_ptr<View> makeScriptValueEditor(
         case Panda::ScriptFieldType::TEXTURE:
         case Panda::ScriptFieldType::MATERIAL:
         case Panda::ScriptFieldType::WORLD:
-        case Panda::ScriptFieldType::FONT: {
+        case Panda::ScriptFieldType::FONT:
+        case Panda::ScriptFieldType::MESH: {
             return makeAssetWell(assetKindOf(type), static_cast<uint32_t>(itemAs<Panda::UUID>(value)), [set](uint32_t id) {
                 set(ScriptItem(Panda::UUID(id)));
             });

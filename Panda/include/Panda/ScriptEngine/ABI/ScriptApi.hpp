@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 35;
+constexpr uint32_t SCRIPT_ABI_VERSION = 36;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -151,6 +151,15 @@ using WorldLightingSetEnvironmentIntensityFn = void (*)(float intensity);
 using WorldLightingSetEnvironmentMapFn = void (*)(Handle textureId);
 using CameraComponentSetFieldOfViewFn = void (*)(Handle entityHandle, float degrees);
 using CameraComponentGetFieldOfViewFn = float (*)(Handle entityHandle);
+
+// v36: the geometry of a mesh asset (a model of the project a script was given by a MeshHandle
+// field) — every primitive in one index space, the vertices as mesh_Update takes them. The
+// "return the counts / fill the buffers" pattern: the counts come back whatever the buffers are,
+// and the buffers are filled when both are large enough. false — no such mesh.
+using MeshReadFn = bool (*)(
+    Handle meshHandle, void *vertices, uint32_t vertexCapacity, uint32_t *vertexCount, uint32_t *indices,
+    uint32_t indexCapacity, uint32_t *indexCount
+);
 
 using ConsoleLogFn = void (*)(int type, const char *);
 
@@ -295,6 +304,8 @@ struct ScriptHostApi final {
     CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView = nullptr;
     CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView = nullptr;
     WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
+    // v36
+    MeshReadFn mesh_Read = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

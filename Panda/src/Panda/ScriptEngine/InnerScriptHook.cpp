@@ -65,11 +65,16 @@ namespace InternalCalls {
     }
 
     bool application_IsCursorLocked() {
-        return Fern::isCursorLocked();
+        return Input::isCursorVirtual() ? Input::isVirtualCursorLocked() : Fern::isCursorLocked();
     }
 
     void application_SetCursorLocked(bool locked) {
         if (locked && !Input::isFocused()) { return; } // the game has no input focus: lock it again in onApplicationFocus(true)
+        // A driven game (Input::setCursorVirtual) leaves the real cursor to the user.
+        if (Input::isCursorVirtual()) {
+            Input::setVirtualCursorLocked(locked);
+            return;
+        }
         Fern::setCursorLocked(locked);
     }
 
@@ -669,6 +674,49 @@ namespace InternalCalls {
         meshRef->update(meshData);
     }
 
+    // The model is read from its file once for the two calls of the pattern (the counts, then the
+    // buffers) and let go after the fill.
+    bool mesh_Read(
+        Handle meshHandle, void *vertices, uint32_t vertexCapacity, uint32_t *vertexCount, uint32_t *indices,
+        uint32_t indexCapacity, uint32_t *indexCount
+    ) {
+        static Handle s_readHandle = 0;
+        static std::vector<Vertex> s_readVertices;
+        static std::vector<uint32_t> s_readIndices;
+        if (vertexCount) { *vertexCount = 0; }
+        if (indexCount) { *indexCount = 0; }
+        AssetHandler *assetHandler = GameContext::getAssetHandler();
+        if (!assetHandler || !meshHandle) { return false; }
+        if (s_readHandle != meshHandle) {
+            s_readHandle = 0;
+            s_readVertices.clear();
+            s_readIndices.clear();
+            std::vector<ImportedMeshData> meshes;
+            if (!assetHandler->readMeshData(AssetId(meshHandle), meshes)) {
+                LOG_ERROR_EDITOR("A script reads mesh %u, which is not a mesh asset of the project.", static_cast<unsigned>(meshHandle));
+                return false;
+            }
+            for (const ImportedMeshData &mesh : meshes) {
+                for (const ImportedPrimitiveData &primitive : mesh.primitives) {
+                    const uint32_t base = static_cast<uint32_t>(s_readVertices.size());
+                    s_readVertices.insert(s_readVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
+                    for (uint32_t index : primitive.indices) { s_readIndices.push_back(base + index); }
+                }
+            }
+            s_readHandle = meshHandle;
+        }
+        if (vertexCount) { *vertexCount = static_cast<uint32_t>(s_readVertices.size()); }
+        if (indexCount) { *indexCount = static_cast<uint32_t>(s_readIndices.size()); }
+        if (vertices && indices && vertexCapacity >= s_readVertices.size() && indexCapacity >= s_readIndices.size()) {
+            std::memcpy(vertices, s_readVertices.data(), s_readVertices.size() * sizeof(Vertex));
+            std::memcpy(indices, s_readIndices.data(), s_readIndices.size() * sizeof(uint32_t));
+            s_readHandle = 0;
+            s_readVertices = {};
+            s_readIndices = {};
+        }
+        return true;
+    }
+
     void mesh_Delete(Handle handle) {
         if (!s_scriptCreatedAssets.contains(handle)) {
             LOG_ERROR_EDITOR("Mesh %u was not created by a script: a script deletes only the meshes it created.", handle);
@@ -861,6 +909,7 @@ namespace {
         s_hostApi.cameraComponent_SetFieldOfView = InternalCalls::cameraComponent_SetFieldOfView;
         s_hostApi.cameraComponent_GetFieldOfView = InternalCalls::cameraComponent_GetFieldOfView;
         s_hostApi.worldLighting_SetEnvironmentMap = InternalCalls::worldLighting_SetEnvironmentMap;
+        s_hostApi.mesh_Read = InternalCalls::mesh_Read;
         s_hostApi.console_Log = InternalCalls::console_Log;
         GameUI::bindHostApi(s_hostApi);
 

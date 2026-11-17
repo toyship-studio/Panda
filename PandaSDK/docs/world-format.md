@@ -172,8 +172,8 @@ key whose type is absent (the module is not loaded) survives load and save as is
 - `name` — the name of the script's C++ class (`REGISTER_SCRIPT`).
 - `fieldId` and `type` — **take them from `.Panda/scripts-manifest.json`** (see scripting.md),
   do not compute them by hand.
-- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font.
-  `value` for entity — the id of an entity of this world; for texture/material/world/font — an
+- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh.
+  `value` for entity — the id of an entity of this world; for texture/material/world/font/mesh — an
   asset id from the registry (see assets.md); for integer/float — a number.
 - A list field (`"list": true` in the manifest, a `std::vector` in the class) has an array in
   `value`, of values of its `type`: `{ "name": "levels", "fieldId": 37856845, "type": 5,

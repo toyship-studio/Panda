@@ -157,6 +157,7 @@ namespace ExternalCalls {
     extern Scripting::CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView;
     extern Scripting::CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView;
     extern Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap;
+    extern Scripting::MeshReadFn mesh_Read;
 
     using Console_Log = Scripting::ConsoleLogFn;
     extern Console_Log console_Log;

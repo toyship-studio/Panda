@@ -2,8 +2,9 @@
 // and the Occlusion Volume when the project has those features (context/shader-features.md). The
 // helpers degrade without a feature — a shader written against this include compiles in any
 // project: without `lights` the scene is unlit (a white ambient of 1, no sun, no point lights —
-// the shader outputs its albedo), without `shadows` the sun is open, without `occlusion` the sky
-// and the sun are open and the sample offset is zero, without `ssao` the ambient is open.
+// the shader outputs its albedo), without `lamps` there are no point lights and spots (the loop
+// over them is empty), without `shadows` the sun is open, without `occlusion` the sky and the sun
+// are open and the sample offset is zero, without `ssao` the ambient is open.
 // Vegetation declares
 // PANDA_SHADOW_SINGLE_TAP before the include (see panda/shadows.hlsli).
 #include "panda/view.hlsli"
@@ -102,10 +103,10 @@ float screenOcclusion(float3 worldPos) {
 // included: localLight (panda/lights.hlsli), hidden by what stands between the lamp and the
 // point when the lamp casts shadows and the project has the `shadows` feature. `direction` — from
 // the point toward the lamp. Black beyond the reach of the lamp, outside its cone and without the
-// `lights` feature.
+// `lamps` feature.
 float3 lampLight(int index, float3 worldPos, float3 normal, out float3 direction) {
     float3 light = localLight(index, worldPos, direction);
-#if PANDA_FEATURE_SHADOWS && PANDA_FEATURE_LIGHTS
+#if PANDA_FEATURE_SHADOWS && PANDA_FEATURE_LIGHTS && PANDA_FEATURE_LAMPS
     [branch]
     if (light.r + light.g + light.b > 0.0) { light *= sampleLampShadow(index, worldPos, normalize(normal)); }
 #endif

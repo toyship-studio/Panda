@@ -24,12 +24,20 @@ The catalog is `Panda/Renderer/ShaderFeatures.hpp` (a closed enum with a static 
 
 | Feature | Block, texture | Contents | Work while on | Needs |
 |---|---|---|---|---|
-| `lights` | `PANDA_LIGHTS` | ambient, the sun, point lights | collecting them every frame | |
+| `lights` | `PANDA_LIGHTS` | ambient, the sun | collecting them every frame | |
+| `lamps` | the lamp arrays at the end of `PANDA_LIGHTS` | point lights and spots | collecting the nearest of them every frame; the loop over them in every lit pixel | `lights` |
 | `shadows` | `PANDA_SHADOWS`, `shadowMap`, `lampShadowMap` | the cascades of the sun, the tiles of the lamps that cast shadows | the cascade depth passes and the atlas; a depth pass per spot and six per point light that casts | `lights` |
 | `occlusion` | `PANDA_OCCLUSION`, `occlusionVolume` | the volume window | the chunk bakes, the 3D texture | `lights` |
 | `environment` | `PANDA_ENVIRONMENT`, `environmentMap`, `environmentLighting` | exposure, top mip, presence, the tiles of the light atlas | the map of the world, the bake of its light when it changes | |
 | `wind` | `PANDA_WIND` | direction, gust travel, flutter phase | the phases, the `windStrength` / `windGustiness` system fields | |
 | `ssao` | `PANDA_SSAO`, `ssaoMap` | the view-projection of the last frame, intensity | two half-resolution passes over the depth of the frame | |
+
+`lamps` is the one feature without a block of its own. The lamps were in `PANDA_LIGHTS` before
+they became a feature, and a block is never reshaped: the feature decides whether the lamp
+arrays are filled and whether `localLightCount()` / `localLight()` read them — without it the
+count is the constant 0, the loop of a lit shader compiles to nothing and `lampShadowMap` is not
+sampled. A game that bakes its lamps itself (voxel light in the vertices) or has none leaves it
+out and keeps the sun with its shadows.
 
 Engine blocks that are not features: `PANDA_FRAME` (the time; bound with the fields of every
 material draw, `MaterialAsset::bindFields`), `PANDA_VIEW` (the camera position; bound with the
@@ -56,8 +64,8 @@ once, in the catalog.
 - Project scope, `.Panda/project.json`, section `rendering`: `{"features": ["lights", …]}`
   (`ProjectRenderingSettings`, registered with the core settings). A project without the section
   has every feature; the project template of the editor writes the lean set (`lights`, `shadows`,
-  `environment`). The dependencies are closed on reading: `shadows` or `occlusion` bring `lights`,
-  switching `lights` off switches them off.
+  `environment`, plus `lamps`). The dependencies are closed on reading: `lamps`, `shadows` or
+  `occlusion` bring `lights`, switching `lights` off switches them off.
 - The editor applies the set on project open (`ProjectLoader::applyShaderFeatures`) and
   whenever `project.json` is written or read again — Save, Reload when the file is newer than the
   editor's last read or write, Don't Save (`ProjectLoader::applyProjectSettings`, called when the

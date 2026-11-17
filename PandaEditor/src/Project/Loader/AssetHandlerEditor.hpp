@@ -116,6 +116,7 @@ public:
     bool readTexturePixelsRGBA8(
         AssetId id, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
     ) override;
+    bool readMeshData(AssetId id, std::vector<ImportedMeshData> &meshes) override;
     int getLoadedAssetsCount();
 
 private:

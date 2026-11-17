@@ -3,6 +3,7 @@
 // Rendering) in the editor and the export, every feature in the engine's own bake. Never
 // include or edit it by hand.
 #define PANDA_FEATURE_LIGHTS 1
+#define PANDA_FEATURE_LAMPS 1
 #define PANDA_FEATURE_SHADOWS 1
 #define PANDA_FEATURE_OCCLUSION 1
 #define PANDA_FEATURE_ENVIRONMENT 1

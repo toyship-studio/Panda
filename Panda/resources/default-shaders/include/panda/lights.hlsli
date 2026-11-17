@@ -9,9 +9,11 @@
 // error — a lit shader takes panda/lighting.hlsli.
 //
 // A shader does not read the lamp arrays itself: localLightCount() and localLight() are the lamps
-// of the frame, with their falloff and their cones.
+// of the frame, with their falloff and their cones. The lamps are the shader feature `lamps`:
+// without it there are none — the count is the constant 0 and a loop over them compiles to nothing.
 #include "panda/blocks/lights.hlsli"
 
+#if PANDA_FEATURE_LAMPS
 int localLightCount() {
     return int(lightCounts.x);
 }
@@ -34,3 +36,13 @@ float3 localLight(int index, float3 worldPos, out float3 direction) {
     const float spot = saturate((dot(-direction, pointLightDirections[index].xyz) - cone.x) * cone.y);
     return pointLightColorsIntensity[index].rgb * (pointLightColorsIntensity[index].w * falloff * spot * spot);
 }
+#else
+int localLightCount() {
+    return 0;
+}
+
+float3 localLight(int index, float3 worldPos, out float3 direction) {
+    direction = float3(0.0, 1.0, 0.0);
+    return float3(0.0, 0.0, 0.0);
+}
+#endif

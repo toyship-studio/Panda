@@ -540,8 +540,13 @@ Unity's Scene and Game views:
   focuses the tab. The game *has* the input (`Input::setFocused`, `PlaySession::updateInput`)
   while the Game tab renders and has the focus, the window is focused and no modal is up: a
   transition is the scripts' `onApplicationFocus`, the loss releases what the game held
-  (`Input::releaseAll`) and the cursor lock (an FPS is left by clicking elsewhere; it locks again
-  on focus — `setCursorLocked` is ignored while the game has no focus).
+  (`Input::releaseAll`) and the cursor lock (it locks again on focus — `setCursorLocked` is ignored
+  while the game has no focus). **A locked cursor is the game's alone**: it points at nothing, so
+  the mouse does not go to the game UI (`GameUI::handleEvent` — a press is not a click on the view
+  that lies where the cursor was locked) and is the game's wherever the cursor is said to be
+  (`PlaySession::ownsEvent`: the lock moves it to the middle of the window, which may lie outside
+  the Game surface). A game with a locked cursor frees it itself — for its menu — and loses it
+  with the focus of the window.
 - **The editor's 3D input lives in the Scene surface** (`ViewportView`, a PandaUI view), not in
   `Panda::Input`: it collects the flight of the editor camera (WASD while it has the focus, a
   right-button drag or a trackpad gesture rotate, the wheel zooms) and the pointer, and the
@@ -939,7 +944,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (35 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (36 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
@@ -1269,7 +1274,7 @@ second way to do what a text file already does. The user-facing page is
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
   `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
-  `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `restart`, `quit`. `build` starts a build
+  `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `game_input`, `restart`, `quit`. `build` starts a build
   of the project (`ProjectBuilds::start`) and answers when it has ended with what cmake said
   (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
   answer, where the CMake panel alone would have them. `export` is the game as it will ship:
@@ -1295,6 +1300,14 @@ second way to do what a text file already does. The user-facing page is
   The Scene follows too: its surface is a view that collects the pointer for the gizmo, the
   tools and the camera (`ViewportView`). This is still not a way to edit a project: the files
   are.
+- `game_input` is the hands for the game that plays: keys, the mouse with its wheel and fingers go
+  the way the events of the window go to a game (`EditorLayer::postGameEvent`: the game UI first,
+  then `Panda::Input`), one gesture a call. From the first gesture until Stop the game is *driven*
+  (`PlaySession::setDriven`; in an editor started with `--unattended`, from the start of Play): it
+  has the input whatever has the focus, and a cursor it locks is a
+  cursor of its own (`Input::setCursorVirtual`) — `ApplicationAPI::setCursorLocked` is remembered
+  and answered back, the real cursor stays with the user of the machine. The moves of the mouse
+  of a gesture are the deltas such a game looks around with.
 - `ui` is the same window as elements instead of pixels (`context/pandaui.md`, "Elements: what a
   UI test sees"): what every control is, the id it was given, the label it shows, the value it
   holds, its frame in the coordinates of a `window` screenshot. A `path` names elements, and

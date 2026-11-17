@@ -22,7 +22,8 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
   joints — the wheel's motor, steering and suspension, the prismatic and distance motors and
   targets, the motor joint's velocities — come with the Physics module).
 - `Assets/` — working with the assets a script was given (the fields of a material, the pixels
-  of a texture, the bytes of a font) and with the meshes and textures it creates at run time.
+  of a texture, the bytes of a font, the geometry of a model — `MeshAPI::read`) and with the
+  meshes and textures it creates at run time.
 - `Physics3DAPI.hpp` — queries against the 3D physics world: ray cast (entity, point, normal,
   distance and friction of the hit surface); `Joint3DAPI.hpp` — the reaction of a joint, for
   connections that break; provided by the Physics module.

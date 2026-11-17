@@ -19,7 +19,7 @@ namespace {
     // The lights of the frame: the ambient of the world settings; from the components — the first
     // enabled sun and the lamps (point lights and spots), up to RENDERER_MAX_POINT_LIGHTS of those
     // nearest to the camera (the position and the direction come from the world transform).
-    void collectLights(World &world, const glm::vec3 &cameraPosition, WorldLightingData &lighting) {
+    void collectLights(World &world, const glm::vec3 &cameraPosition, bool withLamps, WorldLightingData &lighting) {
         const WorldLightingSettings &settings = world.getLightingSettings();
         lighting.ambientColor = settings.ambientColor;
         lighting.ambientIntensity = settings.ambientIntensity;
@@ -38,6 +38,8 @@ namespace {
             break;
         }
 
+        // A project without the `lamps` feature has none: its shaders do not read them.
+        if (!withLamps) { return; }
         // The lamps: those that matter to the frame first — a lamp counts by how far past its
         // reach the camera stands — and no more than the block holds.
         struct Lamp {
@@ -104,7 +106,7 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     const ShaderFeatureSet &features = ShaderFeatures::enabled();
     m_data = WorldLightingData{};
     if (features.has(ShaderFeature::Lights)) {
-        collectLights(world, cameraPosition, m_data);
+        collectLights(world, cameraPosition, features.has(ShaderFeature::Lamps), m_data);
     } else {
         // No lights in the project: the scene is unlit — a full white ambient shows the albedo,
         // as the lit shaders of the project do without the lights block (panda/lighting.hlsli).
@@ -137,7 +139,7 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     }
     // The lamps that cast shadows get their tiles (the depth passes go with the cascades).
     m_lampShadowMap.update(
-        shadowSettings.enabled, shadowSettings.lampTileSize, shadowSettings.normalOffset, shadowSettings.receiverBias,
+        shadowSettings.enabled && features.has(ShaderFeature::Lamps), shadowSettings.lampTileSize, shadowSettings.normalOffset, shadowSettings.receiverBias,
         m_data
     );
     // Occlusion volume: a window around the camera built from the flora scattering (rebaked in the

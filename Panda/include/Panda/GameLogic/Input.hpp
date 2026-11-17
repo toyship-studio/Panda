@@ -50,6 +50,13 @@ public:
     // onApplicationFocus. While it is false the cursor is not locked for the game.
     static void setFocused(bool focused);
     static bool isFocused();
+    // The cursor of a game that is driven, not played (the game_input tool of the editor): the
+    // game locks a cursor of its own and the real one stays with the user. While virtual, the
+    // lock a script asks for is only remembered and answered back.
+    static void setCursorVirtual(bool isVirtual);
+    static bool isCursorVirtual();
+    static void setVirtualCursorLocked(bool locked);
+    static bool isVirtualCursorLocked();
     static void setViewportFrame(Rect frame);
     // The view the game is drawn in, in the points of the window: the window in a game, the Game
     // tab in the editor. Empty until the host names one: then the whole window.
@@ -79,6 +86,8 @@ private:
     static uint64_t frame;
     static uint64_t fixedTick;
     static bool focused;
+    static bool cursorVirtual;
+    static bool virtualCursorLocked;
     static bool inFixedTick;
     // Key states
     static bool keys[1024];

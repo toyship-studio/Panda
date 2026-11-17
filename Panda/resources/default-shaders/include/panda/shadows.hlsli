@@ -143,7 +143,9 @@ float sampleCascade(int cascade, float3 worldPos, float3 normal, float sinTheta,
 // lampShadowMap: a spot one, a point light six — the faces of a cube around it, picked by the axis
 // the point lies along. The receiver steps off its surface by a texel of the lamp at its
 // distance (a lamp is a perspective: its texel grows with the distance), and four compare taps
-// around the point, each 2×2 by the hardware, make a small tent. 1 for a lamp without tiles.
+// around the point, each 2×2 by the hardware, make a small tent. 1 for a lamp without tiles, and
+// always 1 without the shader feature `lamps` — the atlas is then not read at all.
+#if PANDA_FEATURE_LAMPS
 float sampleLampShadow(int index, float3 worldPos, float3 normal) {
     const float4 lamp = lampShadowLamps[index];
     if (lamp.y < 0.5) { return 1.0; }
@@ -185,6 +187,11 @@ float sampleLampShadow(int index, float3 worldPos, float3 normal) {
     lit += lampShadowMap.SampleCmpLevelZero(lampShadowMapSampler, clamp(coord.xy + float2(step.x, step.y), low, high), ref);
     return lit * 0.25;
 }
+#else
+float sampleLampShadow(int index, float3 worldPos, float3 normal) {
+    return 1.0;
+}
+#endif
 
 // Sun illumination 0..1 (1 — in light). worldNormal is the geometric normal (normal offset
 // against acne). The cascade is the first one by distance from the camera whose border is beyond

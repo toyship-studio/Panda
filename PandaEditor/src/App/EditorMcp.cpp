@@ -478,20 +478,24 @@ void EditorMcp::registerTools() {
         "Plays the game while it runs in Play: keys, the mouse and fingers go into the input of the game "
         "(Bamboo::Input), not into the editor — what `pointer` and `key` are for the editor, this is for the game. "
         "One call is one gesture over `seconds` (default 0.15): `keys` are held for the time (W, A, S, D, Space, "
-        "Shift, Escape, Tab, Enter, Up, Down, Left, Right, a letter, a digit); `mouse` [x, y] puts the pointer "
-        "there and `to` [x, y] moves it there over the time (a drag when a `button` is held: left, right, "
-        "middle — pressed at the start, released at the end); `touches` are fingers, each {\"at\": [x, y], "
-        "\"to\": [x, y]} — down at the start, moving, up at the end (two at once: a stick and a look). Points "
-        "are those of the Game view (the space of ApplicationAPI::getWidth / getHeight; a `game` screenshot of "
-        "the default width is in the same points when the view is 1280 wide — pass `of` with the width of the "
-        "screenshot the points were read from). From the first gesture until Stop the game has the input "
-        "whatever has the focus (the editor of a test runs in the background). Answers when it is over.",
+        "Shift, Control, Alt, Escape, Tab, Enter, Up, Down, Left, Right, a letter, a digit); `mouse` [x, y] puts "
+        "the pointer there and `to` [x, y] moves it there over the time (a drag when a `button` is held: left, "
+        "right, middle — pressed at the start, released at the end); `scroll` turns the wheel by that many "
+        "notches at the start; `touches` are fingers, each {\"at\": [x, y], \"to\": [x, y]} — down at the start, "
+        "moving, up at the end (two at once: a stick and a look). Points are those of the Game view (the space "
+        "of ApplicationAPI::getWidth / getHeight; a `game` screenshot of the default width is in the same points "
+        "when the view is 1280 wide — pass `of` with the width of the screenshot the points were read from). "
+        "From the first gesture until Stop the game has the input whatever has the focus (the editor of a test "
+        "runs in the background), and a cursor the game locks is one of its own: the real one stays free, and "
+        "the moves of `mouse` turn the view of a game that looks around with a locked cursor. Answers when it "
+        "is over.",
         R"({"type":"object","properties":{)"
         R"("keys":{"type":"array","items":{"type":"string"}},)"
         R"("seconds":{"type":"number","description":"How long the gesture lasts. Default 0.15, at most 30."},)"
         R"("mouse":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},)"
         R"("to":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2,"description":"Where the mouse ends."},)"
         R"("button":{"type":"string","enum":["left","right","middle"]},)"
+        R"("scroll":{"type":"number","description":"Notches of the wheel, positive — away from the user."},)"
         R"("touches":{"type":"array","items":{"type":"object","properties":{"at":{"type":"array","items":{"type":"number"}},"to":{"type":"array","items":{"type":"number"}}}}},)"
         R"("of":{"type":"number","description":"The width of the screenshot the points were read from; default: points of the view."}}})",
         [this](const rapidjson::Value &arguments) { return gameInput(arguments); },
@@ -2137,7 +2141,7 @@ namespace {
             {"SPACE", Fern::Key::KEY_SPACE},   {"SHIFT", Fern::Key::KEY_LEFT_SHIFT}, {"ESCAPE", Fern::Key::KEY_ESCAPE},
             {"TAB", Fern::Key::KEY_TAB},       {"ENTER", Fern::Key::KEY_ENTER},      {"UP", Fern::Key::KEY_UP},
             {"DOWN", Fern::Key::KEY_DOWN},     {"LEFT", Fern::Key::KEY_LEFT},        {"RIGHT", Fern::Key::KEY_RIGHT},
-            {"BACKSPACE", Fern::Key::KEY_BACKSPACE},
+            {"BACKSPACE", Fern::Key::KEY_BACKSPACE}, {"CONTROL", Fern::Key::KEY_LEFT_CONTROL}, {"ALT", Fern::Key::KEY_LEFT_ALT},
         };
         for (const auto &[text, value] : named) {
             if (n == text) {
@@ -2169,6 +2173,7 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
         bool hasButton = false;
         Fern::MouseButton button = Fern::MouseButton::LEFT;
         std::vector<Finger> fingers;
+        double scroll = 0.0;
         double seconds = 0.15;
         double started = 0.0;
         int frame = 0;
@@ -2196,6 +2201,7 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
             return Mcp::ready(Mcp::ToolResult::error("to is [x, y]"));
         }
     }
+    g->scroll = Mcp::numberArgument(arguments, "scroll", 0.0);
     const std::string button = Mcp::stringArgument(arguments, "button");
     if (!button.empty()) {
         g->hasButton = true;
@@ -2234,6 +2240,7 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
         }
         if (g->frame == 0) {
             for (Fern::Key key : g->keys) { post(Fern::KeyPressedEvent(key, window)); }
+            if (g->scroll != 0.0) { post(Fern::MouseScrolledEvent(0.0, g->scroll, false, false, true, window)); }
             if (g->hasButton) {
                 Fern::MouseKeyEvent press(g->button, true, window);
                 press.hasPosition = g->hasMouse;

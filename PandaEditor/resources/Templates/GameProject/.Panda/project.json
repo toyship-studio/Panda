@@ -3,7 +3,7 @@
         "startWorld": "Assets/world.world"
     },
     "rendering": {
-        "features": ["lights", "shadows", "environment"]
+        "features": ["lights", "lamps", "shadows", "environment"]
     },
     "mcp": {
         "enabled": true,

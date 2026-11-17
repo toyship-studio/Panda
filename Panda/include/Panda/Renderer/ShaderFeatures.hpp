@@ -10,17 +10,18 @@
 namespace Panda {
 
 // Shader features (context/shader-features.md): the optional scene data a project enables for its
-// materials — lights, shadows, occlusion, environment, wind. A feature owns one HLSL block (its
+// materials — lights, lamps, shadows, occlusion, environment, wind. A feature owns one HLSL block (its
 // struct in ShaderBlocks.hpp, generated into `panda/blocks/<feature>.hlsli`), its system textures,
 // the render work that fills the block, and the code of the shared includes guarded by
-// `PANDA_FEATURE_<FEATURE>`. The project settings list the enabled features. A shader is compiled
+// `PANDA_FEATURE_<FEATURE>`. `lamps` is the one feature without a block of its own: the lamps are
+// the tail of the lights block, and the feature decides whether that tail is filled and read. The project settings list the enabled features. A shader is compiled
 // with the macros of its set in front of it (ShaderInterface::featuresInclude): the set of the
 // project in the editor and the export, every feature in the bundle's own bake. A feature that is
 // off is not computed and not compiled into the shaders of the project; its block still reaches
 // every draw with the data of an empty scene, so a program compiled with the feature stays
 // correct. The names are a contract fixed for every version of the engine: a block grows at its
 // end only, a new capability is a new feature.
-enum class ShaderFeature : uint8_t { Lights, Shadows, Occlusion, Environment, Wind, Ssao, Count };
+enum class ShaderFeature : uint8_t { Lights, Lamps, Shadows, Occlusion, Environment, Wind, Ssao, Count };
 
 // A system texture of a feature: declared by the generated include, bound by the renderer to every
 // scene draw (a placeholder when the frame has none), never a material field.

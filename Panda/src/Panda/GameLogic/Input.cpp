@@ -13,6 +13,8 @@ namespace Panda {
 uint64_t Input::frame = 1;
 uint64_t Input::fixedTick = 1;
 bool Input::focused = true;
+bool Input::cursorVirtual = false;
+bool Input::virtualCursorLocked = false;
 bool Input::inFixedTick;
 bool Input::keys[1024];
 uint64_t Input::keyPressFrames[1024];
@@ -215,6 +217,23 @@ void Input::setFocused(bool _focused) {
 
 bool Input::isFocused() {
     return focused;
+}
+
+void Input::setCursorVirtual(bool isVirtual) {
+    cursorVirtual = isVirtual;
+    virtualCursorLocked = false;
+}
+
+bool Input::isCursorVirtual() {
+    return cursorVirtual;
+}
+
+void Input::setVirtualCursorLocked(bool locked) {
+    virtualCursorLocked = locked;
+}
+
+bool Input::isVirtualCursorLocked() {
+    return virtualCursorLocked;
 }
 
 Size Input::getWindowSize() {

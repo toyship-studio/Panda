@@ -45,6 +45,7 @@ private:
         if constexpr (std::is_same_v<T, Bamboo::MaterialHandle>) { return ScriptFieldType::MATERIAL; }
         if constexpr (std::is_same_v<T, Bamboo::WorldHandle>) { return ScriptFieldType::WORLD; }
         if constexpr (std::is_same_v<T, Bamboo::FontHandle>) { return ScriptFieldType::FONT; }
+        if constexpr (std::is_same_v<T, Bamboo::MeshHandle>) { return ScriptFieldType::MESH; }
         return ScriptFieldType::UNKNOWN;
     }
 

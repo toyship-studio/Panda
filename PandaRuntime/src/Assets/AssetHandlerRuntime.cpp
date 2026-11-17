@@ -77,6 +77,14 @@ bool AssetHandlerRuntime::hasAsset(AssetId id) const {
     return m_loadedAssets.contains(id) || m_registry.contains(id);
 }
 
+bool AssetHandlerRuntime::readMeshData(AssetId id, std::vector<ImportedMeshData> &meshes) {
+    meshes.clear();
+    const AssetInfo *assetInfo = getAssetInfo(id);
+    if (!assetInfo || assetInfo->type != AssetType::IMPORTED_MESH) { return false; }
+    const std::unique_ptr<std::istream> meshFile = GameFiles::open(m_runtimeDataPath / assetPath(id));
+    return meshFile && CookedMesh::read(*meshFile, meshes) && !meshes.empty();
+}
+
 bool AssetHandlerRuntime::readTexturePixelsRGBA8(
     AssetId id, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
 ) {

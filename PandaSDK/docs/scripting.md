@@ -39,7 +39,10 @@ REGISTER_SCRIPT(MoveScript)
   tab lost the keyboard focus (a click on another panel), in a game the window did. Until the
   focus comes back `Input` reports nothing pressed, no mouse deltas and no touches, and a locked
   cursor is released; a game that wants the cursor locked locks it again in
-  `onApplicationFocus(true)`. `onApplicationPause(true)` — the game is suspended (the window was
+  `onApplicationFocus(true)`. While the cursor is locked (`ApplicationAPI::setCursorLocked`) the
+  mouse is the game's alone — its moves, buttons and wheel go to `Input` and never to the UI of
+  the game (a locked cursor points at nothing); a game frees the cursor to let its menu be
+  clicked. Fingers reach the UI either way. `onApplicationPause(true)` — the game is suspended (the window was
   minimized; on a mobile platform it went to the background) and `false` when it resumes.
 - Physics runs with a fixed step (60 per second). `fixedUpdate` is called before every step, with
   the step length — zero, one or several times a frame: forces, impulses, motor targets, the
@@ -76,9 +79,9 @@ REGISTER_SCRIPT(MoveScript)
 
 `PANDA_FIELD(name)` publishes a class member: it appears in the editor's inspector and gets its
 value from the world (`scriptFields`). A field is one value — `int`, `float`, a reference to an
-entity, a texture, a material, a world or a font (`EntityHandle`, `TextureHandle`,
-`MaterialHandle`, `WorldHandle`, `FontHandle`) — or a list of them, a `std::vector` of one of
-those types:
+entity, a texture, a material, a world, a font or a mesh (`EntityHandle`, `TextureHandle`,
+`MaterialHandle`, `WorldHandle`, `FontHandle`, `MeshHandle` — a model of the project, a
+`.gltf`) — or a list of them, a `std::vector` of one of those types:
 
 ```cpp
 std::vector<Bamboo::WorldHandle> levels;      // the levels of the game, in order

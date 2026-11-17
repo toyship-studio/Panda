@@ -15,6 +15,8 @@
 
 namespace Panda {
 
+struct ImportedMeshData;
+
 /// AssetHandler is responsible for loading Assets and for the lifetime of the loaded objects.
 /// For the Editor — from project files, for the Runtime — from the cooked export data.
 class AssetHandler {
@@ -93,6 +95,13 @@ public:
     virtual bool readTexturePixelsRGBA8(
         AssetId id, uint32_t *width, uint32_t *height, std::vector<unsigned char> &pixels
     ) {
+        return false;
+    }
+
+    // The geometry of a mesh asset as the importer read it (the meshes of the model with their
+    // primitives): for a script that builds meshes of its own from a model. The mesh asset itself
+    // keeps only what the renderer and the physics need.
+    virtual bool readMeshData(AssetId id, std::vector<ImportedMeshData> &meshes) {
         return false;
     }
 

@@ -26,7 +26,14 @@ struct MeshData {
 };
 
 namespace MeshAPI {
+    // The geometry of a mesh the script created (AssetManagerAPI::createMesh).
     void update(MeshHandle handle, const MeshData &data);
+    // The geometry of a mesh asset of the project — a model the script was given by a MeshHandle
+    // field: every primitive of it in one index space, as the importer read it (the color of a
+    // vertex is COLOR_0 of the model, alpha included). For a script that builds meshes of its own
+    // out of models: a voxel world that puts its furniture into the mesh of a chunk. The model
+    // is read from its file at every call: read once and keep the data. false — no such mesh.
+    bool read(MeshHandle handle, MeshData &data);
 }; // namespace MeshAPI
 
 } // namespace Bamboo
