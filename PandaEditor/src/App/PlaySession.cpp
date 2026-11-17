@@ -58,6 +58,7 @@ void PlaySession::end() {
     m_gameUI.clearMainViewportFrame();
     m_playing = false;
     m_inputActive = false;
+    m_driven = false;
     m_mouseButtons = 0;
     Input::setFocused(false);
     Input::releaseAll(); // what the game still held: its releases go to the editor now
@@ -72,7 +73,7 @@ bool PlaySession::takeQuitRequest() {
 }
 
 void PlaySession::updateInput(bool gameTabFocused, bool modalOpen) {
-    const bool active = m_playing && m_windowFocused && m_viewports.isGameLive() && gameTabFocused && !modalOpen;
+    const bool active = m_playing && m_viewports.isGameLive() && !modalOpen && (m_driven || (m_windowFocused && gameTabFocused));
     if (active == m_inputActive) { return; }
     m_inputActive = active;
     Input::setFocused(active);

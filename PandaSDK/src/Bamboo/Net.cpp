@@ -208,6 +208,37 @@ namespace Detail {
         }
     };
 
+    struct LocalAdvertisementState {
+        uint64_t id = 0;
+        Fern::Net::LocalServiceAdvertiser advertiser;
+        bool closed = false;
+
+        void close() {
+            closed = true;
+            advertiser.stop();
+        }
+        void pump() {
+            if (!closed) { advertiser.poll(); }
+        }
+    };
+
+    struct LocalBrowserState {
+        uint64_t id = 0;
+        Fern::Net::LocalServiceBrowser browser;
+        LocalBrowser::Changed changed;
+        bool closed = false;
+
+        void close() {
+            closed = true;
+            browser.stop();
+            changed = nullptr;
+        }
+        void pump() {
+            if (closed) { return; }
+            if (browser.poll() && changed) { changed(browser.services()); }
+        }
+    };
+
 } // namespace Detail
 
 namespace {
@@ -218,6 +249,8 @@ namespace {
         std::vector<std::weak_ptr<Detail::TcpConnectionState>> connections;
         std::vector<std::weak_ptr<Detail::TcpServerState>> servers;
         std::vector<std::weak_ptr<Detail::UdpSocketState>> sockets;
+        std::vector<std::weak_ptr<Detail::LocalAdvertisementState>> advertisements;
+        std::vector<std::weak_ptr<Detail::LocalBrowserState>> browsers;
     };
 
     Runtime &runtime() {
@@ -478,6 +511,61 @@ uint16_t UdpSocket::port() const {
     return local().port;
 }
 
+/* ------------------------------ The local network ------------------------------ */
+
+LocalAdvertisement LocalAdvertisement::start(const std::string &type, const std::string &name, uint16_t port, const std::string &id,
+                                             Error *error) {
+    if (error) { *error = Error::None; }
+    if (!mainThread("Net::LocalAdvertisement::start")) {
+        if (error) { *error = Error::Unavailable; }
+        return {};
+    }
+    auto state = std::make_shared<Detail::LocalAdvertisementState>();
+    state->id = Detail::nextId();
+    if (!state->advertiser.start(type, name, id, port, error)) { return {}; }
+    runtime().advertisements.push_back(state);
+    LocalAdvertisement result;
+    result.m_state = std::move(state);
+    return result;
+}
+
+void LocalAdvertisement::stop() {
+    if (m_state) { m_state->close(); }
+}
+
+bool LocalAdvertisement::isRunning() const {
+    return m_state && !m_state->closed && m_state->advertiser.isRunning();
+}
+
+LocalBrowser LocalBrowser::start(const std::string &type, Changed changed, Error *error) {
+    if (error) { *error = Error::None; }
+    if (!mainThread("Net::LocalBrowser::start")) {
+        if (error) { *error = Error::Unavailable; }
+        return {};
+    }
+    auto state = std::make_shared<Detail::LocalBrowserState>();
+    state->id = Detail::nextId();
+    if (!state->browser.start(type, error)) { return {}; }
+    state->changed = std::move(changed);
+    runtime().browsers.push_back(state);
+    LocalBrowser result;
+    result.m_state = std::move(state);
+    return result;
+}
+
+const std::vector<LocalService> &LocalBrowser::services() const {
+    static const std::vector<LocalService> none;
+    return m_state ? m_state->browser.services() : none;
+}
+
+void LocalBrowser::stop() {
+    if (m_state) { m_state->close(); }
+}
+
+bool LocalBrowser::isRunning() const {
+    return m_state && !m_state->closed;
+}
+
 /* ------------------------------ Internal ------------------------------ */
 
 namespace Internal {
@@ -488,6 +576,8 @@ namespace Internal {
         pumpAll(state.connections, [now](Detail::TcpConnectionState &connection) { connection.pump(now); });
         pumpAll(state.servers, [](Detail::TcpServerState &server) { server.pump(); });
         pumpAll(state.sockets, [](Detail::UdpSocketState &socket) { socket.pump(); });
+        pumpAll(state.advertisements, [](Detail::LocalAdvertisementState &advertisement) { advertisement.pump(); });
+        pumpAll(state.browsers, [](Detail::LocalBrowserState &browser) { browser.pump(); });
     }
 
     void cancelAll() {
@@ -496,6 +586,8 @@ namespace Internal {
         closeAll(state.connections);
         closeAll(state.servers);
         closeAll(state.sockets);
+        closeAll(state.advertisements);
+        closeAll(state.browsers);
     }
 
     void shutdown() {

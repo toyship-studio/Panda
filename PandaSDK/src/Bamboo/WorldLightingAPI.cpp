@@ -14,6 +14,16 @@ namespace WorldLightingAPI {
         if (!Internal::requireMainThreadApi("WorldLightingAPI::setAmbientIntensity")) { return; }
         Panda::ExternalCalls::worldLighting_SetAmbientIntensity(intensity);
     }
+
+    void setEnvironmentIntensity(float intensity) {
+        if (!Internal::requireMainThreadApi("WorldLightingAPI::setEnvironmentIntensity")) { return; }
+        Panda::ExternalCalls::worldLighting_SetEnvironmentIntensity(intensity);
+    }
+
+    void setEnvironmentMap(TextureHandle map) {
+        if (!Internal::requireMainThreadApi("WorldLightingAPI::setEnvironmentMap")) { return; }
+        Panda::ExternalCalls::worldLighting_SetEnvironmentMap(map.id());
+    }
 } // namespace WorldLightingAPI
 
 } // namespace Bamboo

@@ -6,6 +6,8 @@
 namespace Bamboo {
 
 namespace ApplicationAPI {
+    // The size of the view the game is drawn in, in points: the window in a game, the Game tab in
+    // the editor. The pointer and the touches are given in the same space.
     uint32_t getWidth();
     uint32_t getHeight();
     // Seconds since the application started, in real time: it does not restart with a world

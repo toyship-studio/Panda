@@ -150,6 +150,14 @@ namespace ExternalCalls {
     using HostApiTable_Find = Scripting::HostApiTableFindFn;
     extern HostApiTable_Find hostApiTable_Find;
 
+    extern Scripting::InputGetMousePositionFn input_GetMousePosition;
+    extern Scripting::InputGetMouseScrollFn input_GetMouseScroll;
+    extern Scripting::PointLightComponentSetFn pointLightComponent_Set;
+    extern Scripting::WorldLightingSetEnvironmentIntensityFn worldLighting_SetEnvironmentIntensity;
+    extern Scripting::CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView;
+    extern Scripting::CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView;
+    extern Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap;
+
     using Console_Log = Scripting::ConsoleLogFn;
     extern Console_Log console_Log;
 

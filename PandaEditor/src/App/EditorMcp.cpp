@@ -13,6 +13,10 @@
 #include <Foundation/Logger.hpp>
 #include <Miren/Miren.hpp>
 #include <Panda/Application/Application.hpp>
+#include <Fern/Events/KeyEvents.hpp>
+#include <Fern/Events/MouseEvents.hpp>
+#include <Fern/Events/TouchEvents.hpp>
+#include <Panda/GameLogic/Input.hpp>
 #include <Panda/Base/Version.hpp>
 #include <Panda/Renderer/ShaderFeatures.hpp>
 #include <PandaUI/Elements/ScrollView.hpp>
@@ -468,6 +472,29 @@ void EditorMcp::registerTools() {
         R"("wait":{"type":"number","description":"Seconds to wait for the target. Default 2, at most 30."},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
         [this](const rapidjson::Value &arguments) { return key(arguments); },
+    });
+    m_server.addTool({
+        "game_input",
+        "Plays the game while it runs in Play: keys, the mouse and fingers go into the input of the game "
+        "(Bamboo::Input), not into the editor — what `pointer` and `key` are for the editor, this is for the game. "
+        "One call is one gesture over `seconds` (default 0.15): `keys` are held for the time (W, A, S, D, Space, "
+        "Shift, Escape, Tab, Enter, Up, Down, Left, Right, a letter, a digit); `mouse` [x, y] puts the pointer "
+        "there and `to` [x, y] moves it there over the time (a drag when a `button` is held: left, right, "
+        "middle — pressed at the start, released at the end); `touches` are fingers, each {\"at\": [x, y], "
+        "\"to\": [x, y]} — down at the start, moving, up at the end (two at once: a stick and a look). Points "
+        "are those of the Game view (the space of ApplicationAPI::getWidth / getHeight; a `game` screenshot of "
+        "the default width is in the same points when the view is 1280 wide — pass `of` with the width of the "
+        "screenshot the points were read from). From the first gesture until Stop the game has the input "
+        "whatever has the focus (the editor of a test runs in the background). Answers when it is over.",
+        R"({"type":"object","properties":{)"
+        R"("keys":{"type":"array","items":{"type":"string"}},)"
+        R"("seconds":{"type":"number","description":"How long the gesture lasts. Default 0.15, at most 30."},)"
+        R"("mouse":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},)"
+        R"("to":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2,"description":"Where the mouse ends."},)"
+        R"("button":{"type":"string","enum":["left","right","middle"]},)"
+        R"("touches":{"type":"array","items":{"type":"object","properties":{"at":{"type":"array","items":{"type":"number"}},"to":{"type":"array","items":{"type":"number"}}}}},)"
+        R"("of":{"type":"number","description":"The width of the screenshot the points were read from; default: points of the view."}}})",
+        [this](const rapidjson::Value &arguments) { return gameInput(arguments); },
     });
     m_server.addTool({
         "command",
@@ -2092,6 +2119,154 @@ namespace {
     }
 
 } // namespace
+
+namespace {
+
+    bool fernKeyByName(const std::string &name, Fern::Key &key) {
+        std::string n;
+        for (char c : name) { n += static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
+        if (n.size() == 1 && n[0] >= 'A' && n[0] <= 'Z') {
+            key = static_cast<Fern::Key>(static_cast<int>(Fern::Key::KEY_A) + (n[0] - 'A'));
+            return true;
+        }
+        if (n.size() == 1 && n[0] >= '0' && n[0] <= '9') {
+            key = static_cast<Fern::Key>(static_cast<int>(Fern::Key::KEY_0) + (n[0] - '0'));
+            return true;
+        }
+        static const std::pair<const char *, Fern::Key> named[] = {
+            {"SPACE", Fern::Key::KEY_SPACE},   {"SHIFT", Fern::Key::KEY_LEFT_SHIFT}, {"ESCAPE", Fern::Key::KEY_ESCAPE},
+            {"TAB", Fern::Key::KEY_TAB},       {"ENTER", Fern::Key::KEY_ENTER},      {"UP", Fern::Key::KEY_UP},
+            {"DOWN", Fern::Key::KEY_DOWN},     {"LEFT", Fern::Key::KEY_LEFT},        {"RIGHT", Fern::Key::KEY_RIGHT},
+            {"BACKSPACE", Fern::Key::KEY_BACKSPACE},
+        };
+        for (const auto &[text, value] : named) {
+            if (n == text) {
+                key = value;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool pointArgument(const rapidjson::Value &value, glm::vec2 &out) {
+        if (!value.IsArray() || value.Size() != 2 || !value[0].IsNumber() || !value[1].IsNumber()) { return false; }
+        out = glm::vec2(value[0].GetFloat(), value[1].GetFloat());
+        return true;
+    }
+
+} // namespace
+
+Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
+    if (!m_editor.isPlaying()) { return Mcp::ready(Mcp::ToolResult::error("The game is not playing: `play` first")); }
+    struct Finger {
+        glm::vec2 at{0.f}, to{0.f};
+        int id = 0;
+    };
+    struct Gesture {
+        std::vector<Fern::Key> keys;
+        bool hasMouse = false;
+        glm::vec2 mouse{0.f}, mouseTo{0.f}, last{0.f};
+        bool hasButton = false;
+        Fern::MouseButton button = Fern::MouseButton::LEFT;
+        std::vector<Finger> fingers;
+        double seconds = 0.15;
+        double started = 0.0;
+        int frame = 0;
+        float scale = 1.f;
+    };
+    auto g = std::make_shared<Gesture>();
+    g->seconds = std::clamp(Mcp::numberArgument(arguments, "seconds", 0.15), 0.02, 30.0);
+    if (arguments.IsObject() && arguments.HasMember("keys") && arguments["keys"].IsArray()) {
+        for (const auto &k : arguments["keys"].GetArray()) {
+            Fern::Key key;
+            if (!k.IsString() || !fernKeyByName(k.GetString(), key)) {
+                return Mcp::ready(Mcp::ToolResult::error(std::string("Unknown key: ") + (k.IsString() ? k.GetString() : "?")));
+            }
+            g->keys.push_back(key);
+        }
+    }
+    const Rect frame = Input::getViewportFrame();
+    const double of = Mcp::numberArgument(arguments, "of", 0.0);
+    g->scale = of > 0.0 && frame.size.width > 0.f ? frame.size.width / static_cast<float>(of) : 1.f;
+    if (arguments.IsObject() && arguments.HasMember("mouse")) {
+        if (!pointArgument(arguments["mouse"], g->mouse)) { return Mcp::ready(Mcp::ToolResult::error("mouse is [x, y]")); }
+        g->hasMouse = true;
+        g->mouseTo = g->mouse;
+        if (arguments.HasMember("to") && !pointArgument(arguments["to"], g->mouseTo)) {
+            return Mcp::ready(Mcp::ToolResult::error("to is [x, y]"));
+        }
+    }
+    const std::string button = Mcp::stringArgument(arguments, "button");
+    if (!button.empty()) {
+        g->hasButton = true;
+        g->button = button == "right" ? Fern::MouseButton::RIGHT : button == "middle" ? Fern::MouseButton::MIDDLE : Fern::MouseButton::LEFT;
+    }
+    if (arguments.IsObject() && arguments.HasMember("touches") && arguments["touches"].IsArray()) {
+        int id = 7000;
+        for (const auto &t : arguments["touches"].GetArray()) {
+            Finger f;
+            if (!t.IsObject() || !t.HasMember("at") || !pointArgument(t["at"], f.at)) {
+                return Mcp::ready(Mcp::ToolResult::error("a touch is {\"at\": [x, y], \"to\": [x, y]}"));
+            }
+            f.to = f.at;
+            if (t.HasMember("to") && !pointArgument(t["to"], f.to)) { return Mcp::ready(Mcp::ToolResult::error("to of a touch is [x, y]")); }
+            f.id = id++;
+            g->fingers.push_back(f);
+        }
+    }
+    m_editor.setGameDriven(true);
+    return [this, g]() -> std::optional<Mcp::ToolResult> {
+        // The input goes the way the events of the window go (Input::onEvent), before the frame of
+        // the game: its update sees it this frame.
+        Fern::Window *window = m_editor.window();
+        const auto post = [this](Fern::Event &&event) { m_editor.postGameEvent(event); };
+        const Rect frame = Input::getViewportFrame();
+        const glm::vec2 origin(frame.origin.x, frame.origin.y);
+        const double now = nowSeconds();
+        if (g->frame == 0) { g->started = now; }
+        const float t = static_cast<float>(std::clamp((now - g->started) / g->seconds, 0.0, 1.0));
+        const bool last = g->frame > 1 && t >= 1.f;
+        if (g->hasMouse) {
+            const glm::vec2 p = (g->mouse + (g->mouseTo - g->mouse) * t) * g->scale;
+            const glm::vec2 delta = g->frame == 0 ? glm::vec2(0.f) : p - g->last;
+            post(Fern::MouseMovedEvent(origin.x + p.x, origin.y + p.y, delta.x, delta.y, window));
+            g->last = p;
+        }
+        if (g->frame == 0) {
+            for (Fern::Key key : g->keys) { post(Fern::KeyPressedEvent(key, window)); }
+            if (g->hasButton) {
+                Fern::MouseKeyEvent press(g->button, true, window);
+                press.hasPosition = g->hasMouse;
+                press.x = origin.x + g->last.x;
+                press.y = origin.y + g->last.y;
+                post(std::move(press));
+            }
+            for (const Finger &f : g->fingers) {
+                post(Fern::TouchBeganEvent(f.id, origin.x + f.at.x * g->scale, origin.y + f.at.y * g->scale, window));
+            }
+        } else {
+            for (const Finger &f : g->fingers) {
+                const glm::vec2 p = (f.at + (f.to - f.at) * t) * g->scale;
+                post(Fern::TouchMovedEvent(f.id, origin.x + p.x, origin.y + p.y, window));
+            }
+        }
+        if (last) {
+            for (Fern::Key key : g->keys) { post(Fern::KeyReleasedEvent(key, window)); }
+            if (g->hasButton) {
+                Fern::MouseKeyEvent release(g->button, false, window);
+                release.hasPosition = g->hasMouse;
+                release.x = origin.x + g->last.x;
+                release.y = origin.y + g->last.y;
+                post(std::move(release));
+            }
+            for (const Finger &f : g->fingers) { post(Fern::TouchEndedEvent(f.id, window)); }
+        }
+        g->frame++;
+        if (!last) { return std::nullopt; }
+        // The releases are seen by the next frame; the game keeps the input for it.
+        return textResult("Done in " + std::to_string(g->frame) + " frames.");
+    };
+}
 
 Mcp::PendingResult EditorMcp::runBuiltGame(const rapidjson::Value &arguments) {
     const path_t game = m_editor.builds().builtGame().executable;

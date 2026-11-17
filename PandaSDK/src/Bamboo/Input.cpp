@@ -46,4 +46,28 @@ double Input::getMouseDeltaY() {
     return Panda::ExternalCalls::input_GetMouseDeltaY();
 }
 
+double Input::getMousePositionX() {
+    float x = 0.f;
+    Panda::ExternalCalls::input_GetMousePosition(&x, nullptr);
+    return x;
+}
+
+double Input::getMousePositionY() {
+    float y = 0.f;
+    Panda::ExternalCalls::input_GetMousePosition(nullptr, &y);
+    return y;
+}
+
+double Input::getMouseScrollX() {
+    float x = 0.f;
+    Panda::ExternalCalls::input_GetMouseScroll(&x, nullptr);
+    return x;
+}
+
+double Input::getMouseScrollY() {
+    float y = 0.f;
+    Panda::ExternalCalls::input_GetMouseScroll(nullptr, &y);
+    return y;
+}
+
 } // namespace Bamboo

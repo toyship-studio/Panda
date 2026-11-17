@@ -61,6 +61,13 @@ namespace CameraComponentAPI {
         getBloom(entity, enabled, intensity, radius);
         return radius;
     }
+    void setFieldOfView(EntityHandle entity, float degrees) {
+        Panda::ExternalCalls::cameraComponent_SetFieldOfView(entity.id, degrees);
+    }
+
+    float getFieldOfView(EntityHandle entity) {
+        return Panda::ExternalCalls::cameraComponent_GetFieldOfView(entity.id);
+    }
 } // namespace CameraComponentAPI
 
 } // namespace Bamboo

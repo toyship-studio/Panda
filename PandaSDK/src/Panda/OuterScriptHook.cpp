@@ -82,6 +82,13 @@ namespace ExternalCalls {
     Texture_Delete texture_Delete = nullptr;
     Font_ReadData font_ReadData = nullptr;
     HostApiTable_Find hostApiTable_Find = nullptr;
+    Scripting::InputGetMousePositionFn input_GetMousePosition = nullptr;
+    Scripting::InputGetMouseScrollFn input_GetMouseScroll = nullptr;
+    Scripting::PointLightComponentSetFn pointLightComponent_Set = nullptr;
+    Scripting::WorldLightingSetEnvironmentIntensityFn worldLighting_SetEnvironmentIntensity = nullptr;
+    Scripting::CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView = nullptr;
+    Scripting::CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView = nullptr;
+    Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
     Console_Log console_Log = nullptr;
     UI_GetMainWindow ui_GetMainWindow = nullptr;
     UI_CreateWindow ui_CreateWindow = nullptr;
@@ -301,6 +308,13 @@ namespace {
         texture_Delete = hostApi.texture_Delete;
         font_ReadData = hostApi.font_ReadData;
         hostApiTable_Find = hostApi.hostApiTable_Find;
+        input_GetMousePosition = hostApi.input_GetMousePosition;
+        input_GetMouseScroll = hostApi.input_GetMouseScroll;
+        pointLightComponent_Set = hostApi.pointLightComponent_Set;
+        worldLighting_SetEnvironmentIntensity = hostApi.worldLighting_SetEnvironmentIntensity;
+        cameraComponent_SetFieldOfView = hostApi.cameraComponent_SetFieldOfView;
+        cameraComponent_GetFieldOfView = hostApi.cameraComponent_GetFieldOfView;
+        worldLighting_SetEnvironmentMap = hostApi.worldLighting_SetEnvironmentMap;
         console_Log = hostApi.console_Log;
         ui_GetMainWindow = hostApi.ui_GetMainWindow;
         ui_CreateWindow = hostApi.ui_CreateWindow;

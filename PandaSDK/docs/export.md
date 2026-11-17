@@ -26,7 +26,10 @@ Only** makes the data alone, to see what the game would carry without building i
 
 The name of the game, its icon, its bundle identifier and its signing are files of the Export
 project (`Export/CMakeLists.txt`, `Export/native/`): the Export Project row of the window shows
-the folder. Release means the code of your game — the scripts and the modules — is built optimized;
+the folder. A build for an iPhone or an iPad is signed by the team named at the top of
+`Export/CMakeLists.txt` — `GAME_DEVELOPMENT_TEAM`, the Team ID of your Apple account (Xcode →
+Settings → Accounts) — under `GAME_BUNDLE_IDENTIFIER`, which must be yours; then **Build** makes
+the signed game and Xcode installs it on the device. Release means the code of your game — the scripts and the modules — is built optimized;
 the engine libraries are the ones the SDK ships.
 
 From a terminal the same build is `Scripts/<Project>/scripts/configure_export.sh <target>` and

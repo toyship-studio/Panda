@@ -198,6 +198,29 @@ Winsock 2 (the differences are a few lines, unlike the HTTP stacks).
   listener, connect and accept, a megabyte sent in one call and received whole in pieces, the
   peer's close as `Closed` without an error, a connect to a closed port.
 
+## 5a. Services of the local network (implemented)
+
+`Fern/include/Fern/Net/LocalService.hpp`: `LocalServiceAdvertiser` (`start(type, name, id, port)`)
+announces a service of this device, `LocalServiceBrowser` (`start(type)`) keeps the list of the
+services of a type with where to connect (`LocalService{name, id, host, port}`). Like the sockets
+they never block and own no thread: `poll()` in the tick of the owner.
+
+- macOS and iOS: Bonjour through the `dns_sd` API of the system (`Fern/src/Net/Apple/
+  LocalServiceBonjour.mm`, libSystem, no framework): `DNSServiceRegister` with a TXT record `id`,
+  `DNSServiceBrowse`, then `DNSServiceResolve` per service found; every reference has a socket,
+  and `poll()` lets `DNSServiceProcessResult` call back when it is readable. The host is the name
+  the resolve gives (`Mishas-iPhone.local.`): a TCP connect resolves it like any name. iOS asks the
+  player for the local network once, and only for the types the game lists under
+  `NSBonjourServices`; a broadcast or a multicast of the game itself needs an entitlement of Apple
+  (`com.apple.developer.networking.multicast`), which is why discovery is not done over UDP there.
+- Elsewhere (`LocalServiceBroadcast.cpp`): a browser broadcasts `PANDA?\n<type>` on
+  `DISCOVERY_PORT` (47888) every 1.5 s, an advertiser bound to that port answers the asker with
+  `PANDA!\n<type>\n<name>\n<id>\n<port>`, a service silent for 5 s is gone. One advertiser per
+  machine (the port is bound once).
+- `Bamboo::Net::LocalAdvertisement` and `LocalBrowser` hand them to scripts with the rules of the
+  sockets: a handle owns the object, the runtime pumps it once a frame, the browser calls `changed`
+  on the main thread, Stop closes everything.
+
 ## 6. The state of the network
 
 ```cpp

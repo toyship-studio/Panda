@@ -273,6 +273,10 @@ void Input::postTouchEndedEvent(int id) {
     if (touch != activeTouches.end()) { activeTouches.erase(touch); }
 }
 
+Rect Input::getViewportFrame() {
+    return viewportFrame;
+}
+
 void Input::setViewportFrame(Rect _frame) {
     viewportFrame = _frame;
 }

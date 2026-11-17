@@ -46,11 +46,17 @@ namespace InternalCalls {
         GameContext::requestQuit(); // the editor intercepts it (Stop), the runtime closes the application
     }
 
+    // The size of the view of the game, in the points the pointer is given in: the Game tab in
+    // the editor, the window in a game.
     uint32_t application_GetWidth() {
+        const Rect frame = Input::getViewportFrame();
+        if (frame.size.width > 0.f) { return static_cast<uint32_t>(frame.size.width); }
         return Panda::Application::get()->getMainWindow()->getSize().width;
     }
 
     uint32_t application_GetHeight() {
+        const Rect frame = Input::getViewportFrame();
+        if (frame.size.height > 0.f) { return static_cast<uint32_t>(frame.size.height); }
         return Panda::Application::get()->getMainWindow()->getSize().height;
     }
 
@@ -113,13 +119,25 @@ namespace InternalCalls {
         return Input::touchCount();
     }
 
+    void input_GetMousePosition(float *x, float *y) {
+        if (x) { *x = static_cast<float>(Input::getMouseViewportPositionX()); }
+        if (y) { *y = static_cast<float>(Input::getMouseViewportPositionY()); }
+    }
+
+    void input_GetMouseScroll(float *x, float *y) {
+        if (x) { *x = static_cast<float>(Input::getMouseScrollX()); }
+        if (y) { *y = static_cast<float>(Input::getMouseScrollY()); }
+    }
+
     bool input_GetTouch(int index, int *id, float *x, float *y) {
         if (index < 0 || index >= Input::touchCount()) { return false; }
 
+        // In the view of the game, as the mouse: the Game tab in the editor, the window in a game.
         Input::Touch touch = Input::getTouch(index);
+        const Rect frame = Input::getViewportFrame();
         if (id) { *id = touch.id; }
-        if (x) { *x = touch.x; }
-        if (y) { *y = touch.y; }
+        if (x) { *x = touch.x - frame.origin.x; }
+        if (y) { *y = touch.y - frame.origin.y; }
         return true;
     }
 
@@ -176,6 +194,22 @@ namespace InternalCalls {
         World *world = GameContext::getRunningWorld();
         if (!world) { return; }
         world->getLightingSettings().ambientIntensity = intensity;
+    }
+
+    void worldLighting_SetEnvironmentIntensity(float intensity) {
+        World *world = GameContext::getRunningWorld();
+        if (!world) { return; }
+        world->getLightingSettings().environmentIntensity = intensity;
+    }
+
+    void worldLighting_SetEnvironmentMap(Handle textureId) {
+        if (textureId && !AssetRef<TextureAsset>(textureId).get()) {
+            LOG_ERROR_EDITOR("A script sets texture %u as the environment map, and it does not exist.", static_cast<unsigned>(textureId));
+            return;
+        }
+        World *world = GameContext::getRunningWorld();
+        if (!world) { return; }
+        world->getLightingSettings().environmentMap = AssetRef<Asset>(textureId);
     }
 
     /// ENTITY
@@ -475,7 +509,33 @@ namespace InternalCalls {
         light.isEnabled = enabled;
     }
 
+    /// POINT LIGHT COMPONENT
+
+    // A lamp of a script: the component is made by the first call.
+    void pointLightComponent_Set(Handle entityHandle, float r, float g, float b, float intensity, float radius, bool enabled) {
+        Entity entity = resolveScriptEntity(entityHandle);
+        if (!entity.isValid()) { return; }
+        PointLightComponent &light =
+            entity.hasComponent<PointLightComponent>() ? entity.getComponent<PointLightComponent>() : entity.addComponent<PointLightComponent>();
+        light.color = Color(r, g, b, 1.f);
+        light.intensity = intensity;
+        light.radius = radius;
+        light.isEnabled = enabled;
+    }
+
     /// CAMERA COMPONENT
+
+    void cameraComponent_SetFieldOfView(Handle entityHandle, float degrees) {
+        Entity entity = resolveScriptEntity(entityHandle);
+        if (!entity.isValid() || !entity.hasComponent<CameraComponent>()) { return; }
+        entity.getComponent<CameraComponent>().camera.setFieldOfView(degrees);
+    }
+
+    float cameraComponent_GetFieldOfView(Handle entityHandle) {
+        Entity entity = resolveScriptEntity(entityHandle);
+        if (!entity.isValid() || !entity.hasComponent<CameraComponent>()) { return 0.f; }
+        return entity.getComponent<CameraComponent>().camera.getFieldOfView();
+    }
 
     void cameraComponent_SetPostprocessingEnabled(Handle entityHandle, uint32_t enabled) {
         Entity entity = resolveScriptEntity(entityHandle);
@@ -794,6 +854,13 @@ namespace {
         s_hostApi.texture_Delete = InternalCalls::texture_Delete;
         s_hostApi.hostApiTable_Find = InternalCalls::hostApiTable_Find;
         s_hostApi.font_ReadData = InternalCalls::font_ReadData;
+        s_hostApi.input_GetMousePosition = InternalCalls::input_GetMousePosition;
+        s_hostApi.input_GetMouseScroll = InternalCalls::input_GetMouseScroll;
+        s_hostApi.pointLightComponent_Set = InternalCalls::pointLightComponent_Set;
+        s_hostApi.worldLighting_SetEnvironmentIntensity = InternalCalls::worldLighting_SetEnvironmentIntensity;
+        s_hostApi.cameraComponent_SetFieldOfView = InternalCalls::cameraComponent_SetFieldOfView;
+        s_hostApi.cameraComponent_GetFieldOfView = InternalCalls::cameraComponent_GetFieldOfView;
+        s_hostApi.worldLighting_SetEnvironmentMap = InternalCalls::worldLighting_SetEnvironmentMap;
         s_hostApi.console_Log = InternalCalls::console_Log;
         GameUI::bindHostApi(s_hostApi);
 

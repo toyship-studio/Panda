@@ -43,6 +43,7 @@
 
 #include <Fern/Net/Error.hpp>
 #include <Fern/Net/Http.hpp>
+#include <Fern/Net/LocalService.hpp>
 #include <Fern/Net/Socket.hpp>
 
 #include <cstdint>
@@ -109,6 +110,8 @@ namespace Detail {
     struct TcpConnectionState;
     struct TcpServerState;
     struct UdpSocketState;
+    struct LocalAdvertisementState;
+    struct LocalBrowserState;
 } // namespace Detail
 
 struct TcpCallbacks {
@@ -207,6 +210,52 @@ public:
 
 private:
     std::shared_ptr<Detail::UdpSocketState> m_state;
+};
+
+/* ------------------------------ The local network ------------------------------ */
+
+// Games of the local network: a device that hosts announces its service, the others find it and
+// connect to it — no address typed by hand. A type is "_<game>._tcp" (letters, digits, hyphens;
+// at most 15). On macOS and iOS it is Bonjour: an iOS game lists the type under NSBonjourServices
+// in its Info.plist and says why it looks at the local network in NSLocalNetworkUsageDescription
+// (the system asks the player once). Elsewhere a question is broadcast over UDP.
+using LocalService = Fern::Net::LocalService; // name, id, host (to connect to), port
+
+class LocalAdvertisement {
+public:
+    LocalAdvertisement() = default;
+    // Announces `name` (what a person reads) for `type` on `port` of this device; `id` is what the
+    // game says of itself, so that it can tell its own service in a list. Announced while the
+    // handle lives.
+    static LocalAdvertisement start(const std::string &type, const std::string &name, uint16_t port, const std::string &id = {},
+                                    Error *error = nullptr);
+    void stop();
+    bool isRunning() const;
+    explicit operator bool() const {
+        return m_state != nullptr;
+    }
+
+private:
+    std::shared_ptr<Detail::LocalAdvertisementState> m_state;
+};
+
+class LocalBrowser {
+public:
+    using Changed = std::function<void(const std::vector<LocalService> &services)>;
+
+    LocalBrowser() = default;
+    // Looks for the services of `type`; `changed` comes when one appears or goes (on the main
+    // thread, once a frame at most). Looks while the handle lives.
+    static LocalBrowser start(const std::string &type, Changed changed = {}, Error *error = nullptr);
+    const std::vector<LocalService> &services() const;
+    void stop();
+    bool isRunning() const;
+    explicit operator bool() const {
+        return m_state != nullptr;
+    }
+
+private:
+    std::shared_ptr<Detail::LocalBrowserState> m_state;
 };
 
 namespace Internal {

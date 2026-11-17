@@ -14,10 +14,11 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
   (`getScript<T>`).
 - `WorldAPI.hpp` — the world: loading worlds (level transitions), finding entities by tag,
   creating/destroying entities.
-- `WorldLightingAPI.hpp` — world lighting (ambient color and intensity).
+- `WorldLightingAPI.hpp` — world lighting: the ambient color and intensity, the environment
+  map (the sky and its light; another map for another time of day) and its exposure.
 - `Input.hpp`, `Key.hpp` — keyboard/mouse/touch.
 - `Components/` — access to engine components from scripts (transform, camera, directional
-  light, mesh, sprite renderer; rigid bodies, the mesh collider — its mesh at runtime — and the
+  light, point light, mesh, sprite renderer; rigid bodies, the mesh collider — its mesh at runtime — and the
   joints — the wheel's motor, steering and suspension, the prismatic and distance motors and
   targets, the motor joint's velocities — come with the Physics module).
 - `Assets/` — working with the assets a script was given (the fields of a material, the pixels

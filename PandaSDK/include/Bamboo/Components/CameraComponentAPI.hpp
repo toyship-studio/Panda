@@ -15,6 +15,9 @@ namespace CameraComponentAPI {
     float getBloomIntensity(EntityHandle entity);
     void setBloomRadius(EntityHandle entity, float radius);
     float getBloomRadius(EntityHandle entity);
+    // The vertical field of view of a perspective camera, in degrees.
+    void setFieldOfView(EntityHandle entity, float degrees);
+    float getFieldOfView(EntityHandle entity);
 }; // namespace CameraComponentAPI
 
 } // namespace Bamboo

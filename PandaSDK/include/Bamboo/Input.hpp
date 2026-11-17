@@ -33,10 +33,13 @@ public:
     static int touchCount();
     static bool tryGetTouch(int index, Touch &touch);
     static Touch getTouch(int index);
+    // The pointer in the view of the game, in points from its top left corner: the same space as
+    // ApplicationAPI::getWidth / getHeight and the touches.
     static double getMousePositionX();
+    static double getMousePositionY();
     static double getMouseDeltaX();
     static double getMouseDeltaY();
-    static double getMousePositionY();
+    // The wheel (or the trackpad) of this frame.
     static double getMouseScrollX();
     static double getMouseScrollY();
 };

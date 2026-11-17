@@ -115,6 +115,12 @@ public:
     bool isPlaying() const {
         return m_play.isPlaying();
     }
+    void setGameDriven(bool driven) {
+        m_play.setDriven(driven);
+    }
+    // An event of the input of the game made by an agent (game_input): the UI of the game takes it
+    // first, what it leaves goes to Panda::Input — the way a real event goes.
+    void postGameEvent(Fern::Event &event);
     bool hasWorld() {
         return m_documents.activeWorld() != nullptr;
     }

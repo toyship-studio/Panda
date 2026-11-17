@@ -82,6 +82,7 @@ private:
     Mcp::PendingResult ui(const rapidjson::Value &arguments);
     Mcp::PendingResult pointer(const rapidjson::Value &arguments);
     Mcp::PendingResult key(const rapidjson::Value &arguments);
+    Mcp::PendingResult gameInput(const rapidjson::Value &arguments);
     Mcp::PendingResult command(const rapidjson::Value &arguments);
     Mcp::PendingResult build(const rapidjson::Value &arguments);
     Mcp::PendingResult exportGame(const rapidjson::Value &arguments);

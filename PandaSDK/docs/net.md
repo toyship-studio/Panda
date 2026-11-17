@@ -127,6 +127,37 @@ m_discovery.broadcast(7777, Bamboo::Net::bytesOf("anyone?"));
 - A host name has to be resolved first: `Bamboo::Net::resolve("game.example.com", 7777,
   [](std::vector<Bamboo::Net::Address> &&addresses, Bamboo::Net::Error) { … })`.
 
+## Games in the local network
+
+A device that hosts a game announces it; the others find it and connect, no address typed by hand.
+
+```cpp
+// The host: listens on a port and announces it.
+m_server = Bamboo::Net::TcpServer::listen(47011, callbacks);
+m_announcement = Bamboo::Net::LocalAdvertisement::start("_mygame._tcp", "Bunny's island", m_server.port(), myId);
+
+// A player looking for games: a list that follows the network.
+m_browser = Bamboo::Net::LocalBrowser::start("_mygame._tcp", [this](const std::vector<Bamboo::Net::LocalService> &found) {
+    showIslands(found); // each has name, id, host and port
+});
+// … and to join one: TcpConnection::connect(service.host, service.port, callbacks)
+```
+
+- The type is `_<game>._tcp`: letters, digits and hyphens, at most 15 of them.
+- A device sees its own announcement in the list too: `id` is what the game said of itself, so it
+  can leave it out.
+- On macOS and iOS this is Bonjour, and the system asks the player for the local network once.
+  The game adds two keys to `Export/native/IOS/Info.plist` and `Export/native/OSX/Info.plist`:
+  `NSBonjourServices` with the type (`<array><string>_mygame._tcp</string></array>`) and
+  `NSLocalNetworkUsageDescription` — the sentence of that question. Until the player allows it
+  (on a Mac: System Settings → Privacy & Security → Local Network, for the game and for the
+  editor that plays it) the announcement and the list are silent — no error, nobody hears; a
+  connection to `127.0.0.1` still works. A UDP broadcast of your own does not help on an iPhone
+  either: iOS gives broadcast and multicast only to apps Apple allowed.
+- Elsewhere (Windows, Linux) a question is broadcast over UDP on port 47888 and the hosts answer;
+  one host per machine.
+- Both live while the handle lives and are pumped once a frame like the sockets.
+
 ## Addresses and errors
 
 - `Address::parse("192.168.1.20:7777")`, `"[::1]:7777"`, `"10.0.0.1"` (port 0); `toString()`,
@@ -141,6 +172,7 @@ m_discovery.broadcast(7777, Bamboo::Net::bytesOf("anyone?"));
 - WebSocket and the state of the network (online, metered) come later (`context/networking.md`).
 - No TLS on TCP and UDP: HTTPS covers encryption; a game protocol over sockets is in the clear.
 - No netcode: reliable UDP, replication, prediction and lobbies are a module on top of these
-  sockets when a game needs them.
+  sockets when a game needs them. Finding a game in the local network is here (above); a lobby on
+  the internet is not.
 - On Linux a game needs the system `libcurl4` for HTTP (on practically every desktop and in the
   Steam runtime); TCP and UDP need nothing.

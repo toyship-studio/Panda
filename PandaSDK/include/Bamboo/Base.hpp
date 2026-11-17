@@ -17,7 +17,7 @@ namespace Bamboo {
         name()                                                                                                         \
             : id(BAMBOO_INVALID_HANDLE) {}                                                                             \
         uint32_t id;                                                                                                   \
-        bool isValid() {                                                                                               \
+        bool isValid() const {                                                                                         \
             return id != BAMBOO_INVALID_HANDLE;                                                                        \
         }                                                                                                              \
     };

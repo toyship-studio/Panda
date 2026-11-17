@@ -104,7 +104,7 @@ namespace PandaUIFern {
                                                                               : PandaUI::EventType::PointerUp;
                 out.pointer.type = PandaUI::PointerType::Mouse;
                 out.pointer.button = toPointerButton(mouse->button);
-                out.pointer.position = cursor();
+                out.pointer.position = mouse->hasPosition ? local(static_cast<float>(mouse->x), static_cast<float>(mouse->y)) : cursor();
                 applyModifiers(out.pointer, mouse->modifiers);
                 return true;
             }

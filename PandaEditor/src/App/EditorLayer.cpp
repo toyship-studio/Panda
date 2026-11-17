@@ -14,6 +14,7 @@
 #include <Panda/Renderer/SceneWind.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
+#include <Panda/GameLogic/Input.hpp>
 #include <Panda/Serialization/SettingsMapper.hpp>
 #include <Foundation/GraphicsAPI.hpp>
 #include <Panda/Base/Version.hpp>
@@ -311,6 +312,11 @@ void EditorLayer::syncViewports() {
         : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
                                                                    : ""
     );
+}
+
+void EditorLayer::postGameEvent(Fern::Event &event) {
+    if (!isPlaying()) { return; }
+    if (!m_play.handleEvent(&event)) { Input::onEvent(&event); }
 }
 
 void EditorLayer::updateViewportTools(double deltaTime) {

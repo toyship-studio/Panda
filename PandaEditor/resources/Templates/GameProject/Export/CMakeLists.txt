@@ -35,6 +35,12 @@ set(APP_SOURCES
     App/StartApp.cpp
 )
 
+# The game on Apple platforms: its bundle identifier, and the team that signs a build for a
+# device — the Team ID of the Apple account (Xcode → Settings → Accounts). A Mac build and a
+# simulator build need no team.
+set(GAME_BUNDLE_IDENTIFIER "___BUNDLE_IDENTIFIER___")
+set(GAME_DEVELOPMENT_TEAM "")
+
 get_filename_component(GAME_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(GAME_SCRIPT_DIR "${GAME_PROJECT_ROOT}/Scripts/___PROJECTNAME___/src")
 set(PANDA_GAME_RUNTIME_DATA_DIR "${GAME_PROJECT_ROOT}/.Panda/Cooked/Runtime")
@@ -158,7 +164,7 @@ if(PLATFORM_MACOS)
     add_executable(___PROJECTNAME___ MACOSX_BUNDLE ${APP_SOURCES} ${APPLE_RESOURCES})
     set_target_properties(___PROJECTNAME___ PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/native/OSX/Info.plist"
-        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "___BUNDLE_IDENTIFIER___"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${GAME_BUNDLE_IDENTIFIER}"
         XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
         RESOURCE "${APPLE_RESOURCES}"
     )
@@ -174,11 +180,17 @@ elseif(PLATFORM_IOS)
     add_executable(___PROJECTNAME___ MACOSX_BUNDLE ${APP_SOURCES} ${APPLE_RESOURCES})
     set_target_properties(___PROJECTNAME___ PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/native/IOS/Info.plist"
-        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "___BUNDLE_IDENTIFIER___"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${GAME_BUNDLE_IDENTIFIER}"
         RESOURCE "${APPLE_RESOURCES}"
         XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer"
         BUILD_RPATH "@executable_path"
     )
+    if(GAME_DEVELOPMENT_TEAM)
+        set_target_properties(___PROJECTNAME___ PROPERTIES
+            XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${GAME_DEVELOPMENT_TEAM}"
+            XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
+        )
+    endif()
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/native/IOS/Assets.xcassets")
         set_target_properties(___PROJECTNAME___ PROPERTIES XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
     endif()

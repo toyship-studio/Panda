@@ -44,6 +44,10 @@ public:
     uint32_t getUIntFieldValue(const char *name, uint32_t defaultValue = 0) const;
     float getFloatFieldValue(const char *name, float defaultValue = 0.f) const;
     Vec4 getVec4FieldValue(const char *name, Vec4 defaultValue = Vec4()) const; // VEC4 or COLOR
+    // The fields as they are: a material made from another one starts from them.
+    const MaterialData &getData() const {
+        return m_data;
+    }
 
 #ifdef PND_EDITOR
     MaterialData &getInputs();

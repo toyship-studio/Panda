@@ -14,4 +14,9 @@ case "$TARGET" in
     *) CONFIG=Debug ;;
 esac
 
-cmake --build "$BUILD_DIR" --config "$CONFIG" -j "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
+# A device build signed by the team of Export/CMakeLists.txt gets its profile from Apple.
+case "$TARGET" in
+    ios-device-*) set -- -- -allowProvisioningUpdates ;;
+    *) set -- ;;
+esac
+cmake --build "$BUILD_DIR" --config "$CONFIG" -j "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)" "$@"

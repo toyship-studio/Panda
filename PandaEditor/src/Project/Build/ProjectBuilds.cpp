@@ -129,6 +129,9 @@ namespace {
     // The toolchain a build tree of the scripts was made with (Toolchain::scriptsSignature), kept
     // in the tree; no file — the defaults.
     constexpr const char *TOOLCHAIN_STAMP = "panda-toolchain.txt";
+    // Written when cmake has configured and generated the tree: a configure that failed leaves
+    // CMakeCache.txt without a build system, and such a tree is configured again.
+    constexpr const char *CONFIGURED_STAMP = "panda-configured.txt";
 
 } // namespace
 
@@ -429,7 +432,8 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
 
     // A tree made with another generator or compiler is not one cmake goes on with: it is made
     // again. The Export project is an IDE project and takes neither from the toolchain.
-    const bool configured = std::filesystem::exists(buildDirectory / "CMakeCache.txt");
+    const bool configured =
+        std::filesystem::exists(buildDirectory / "CMakeCache.txt") && std::filesystem::exists(buildDirectory / CONFIGURED_STAMP);
     const std::string signature = scripts ? toolchain->scriptsSignature : std::string();
     bool stale = false;
     if (scripts && configured) {
@@ -455,6 +459,10 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
         }
         steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
         if (scripts) { steps.push_back(stampStep(buildDirectory, signature)); }
+        steps.push_back([file = buildDirectory / CONFIGURED_STAMP](State &) {
+            std::ofstream(file) << "configured\n";
+            return true;
+        });
     }
     if (action == BuildAction::Build) {
         std::vector<std::string> arguments = {"--build", buildDirectory.string()};
@@ -465,6 +473,11 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
             arguments.insert(arguments.end(), {"--config", exportConfigName(exportConfig())});
         }
         arguments.insert(arguments.end(), {"-j", jobsArgument()});
+        // A device build signed by the team of the Export project gets its profile from Apple as
+        // Xcode would.
+        if (!scripts && exportTarget() == ExportProjectTarget::XcodeIOSDevice) {
+            arguments.insert(arguments.end(), {"--", "-allowProvisioningUpdates"});
+        }
         steps.push_back(commandStep(toolchain->cmake, std::move(arguments)));
     }
     if (openWhenConfigured) {

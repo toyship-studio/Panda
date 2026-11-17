@@ -95,7 +95,9 @@ PSOutput main(PSInput input) {
     // object's own bark/body does not dim its own upper surfaces.
     const float2 volume =
         sceneOcclusion(input.worldPos + normalize(input.worldNormal) * (0.5 * occlusionSurfaceOffset()));
-    float3 lighting = ambientLight(surfaceNormal) * ambientOcclusion(volume) * screenOcclusion(input.worldPos);
+    // The light of a vertex is the share of the sky it sees: it dims the light of the sky, not the
+    // sun and the lamps (they have their own shadows).
+    float3 lighting = ambientLight(surfaceNormal) * ambientOcclusion(volume) * screenOcclusion(input.worldPos) * input.fragLight;
 
     if (sunDirectionIntensity.w > 0.0) {
         float3 lightDirection = normalize(sunDirectionIntensity.xyz);
@@ -122,7 +124,7 @@ PSOutput main(PSInput input) {
         lighting += radiance * specular;
     }
 
-    float3 litColor = baseColor.xyz * lighting * input.fragLight;
+    float3 litColor = baseColor.xyz * lighting;
     const float outAlpha = (alphaMode != 2u) ? 1.0 : alpha;
     PSOutput output;
     // Linear pipeline: sRGB textures are decoded on sampling, constant colors and lights are

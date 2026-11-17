@@ -24,6 +24,16 @@ same sun lights a PBR mesh and the terrain under it alike. Nothing is clamped be
 tonemap: a sun a few times stronger than the sky is the usual daylight, and the camera's
 `exposure` brings the frame to the display.
 
+## The sky share of a vertex
+
+The `light` attribute of a vertex (`Vertex::light`; scripts build meshes with it through
+`Bamboo::MeshAPI`) is the share of the sky the vertex sees: a corner between walls, the floor of a
+room under a roof. `default_pbr` and `default_lit` multiply only the light of the sky by it — the
+flat ambient and the environment (`ambient × light + sun + lamps`); the sun and the lamps reach the
+surface as they are, since they have their own shadows, so a sunbeam through a window is not
+dimmed with the room. An imported mesh has 1 everywhere. A voxel game bakes its sky light and the
+occlusion of corners into it.
+
 ## Lamps
 
 A lamp is a light at a point (`PointLightComponent`); with a cone it is a spot. There is one

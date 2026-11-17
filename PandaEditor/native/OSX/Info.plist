@@ -44,6 +44,8 @@
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>A game in Play finds and joins the games of other devices in the local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>UILaunchStoryboardName</key>

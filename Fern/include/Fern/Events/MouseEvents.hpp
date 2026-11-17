@@ -51,6 +51,12 @@ struct MouseKeyEvent : public Event {
 
     MouseButton button;
     Modifiers modifiers;
+    // Where the button was pressed, in the points of the window. The system does not say it — the
+    // press is where the cursor is — but an event made by a program (an agent playing a game)
+    // has no cursor of its own and names the place.
+    bool hasPosition = false;
+    double x = 0.0;
+    double y = 0.0;
 };
 
 } // namespace Fern

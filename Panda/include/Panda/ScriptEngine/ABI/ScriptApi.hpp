@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 34;
+constexpr uint32_t SCRIPT_ABI_VERSION = 35;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -141,6 +141,16 @@ using MeshDeleteFn = void (*)(Handle meshHandle);
 // ScriptHostApi. A table is a flat C struct of the contribution with a layout version; it lives
 // as long as the contribution is loaded. nullptr — no such contribution or a wrong version.
 using HostApiTableFindFn = const void *(*)(const char *name, uint32_t version);
+
+// v35: the pointer in the view of the game, the lamps, the light of the environment (its map and
+// exposure), the field of view of a camera.
+using InputGetMousePositionFn = void (*)(float *x, float *y);
+using InputGetMouseScrollFn = void (*)(float *x, float *y);
+using PointLightComponentSetFn = void (*)(Handle entityHandle, float r, float g, float b, float intensity, float radius, bool enabled);
+using WorldLightingSetEnvironmentIntensityFn = void (*)(float intensity);
+using WorldLightingSetEnvironmentMapFn = void (*)(Handle textureId);
+using CameraComponentSetFieldOfViewFn = void (*)(Handle entityHandle, float degrees);
+using CameraComponentGetFieldOfViewFn = float (*)(Handle entityHandle);
 
 using ConsoleLogFn = void (*)(int type, const char *);
 
@@ -277,6 +287,14 @@ struct ScriptHostApi final {
     HostApiTableFindFn hostApiTable_Find = nullptr;
     // v30: font assets (FontHandle fields, Bamboo::UI::registerFont).
     FontReadDataFn font_ReadData = nullptr;
+    // v35
+    InputGetMousePositionFn input_GetMousePosition = nullptr;
+    InputGetMouseScrollFn input_GetMouseScroll = nullptr;
+    PointLightComponentSetFn pointLightComponent_Set = nullptr;
+    WorldLightingSetEnvironmentIntensityFn worldLighting_SetEnvironmentIntensity = nullptr;
+    CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView = nullptr;
+    CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView = nullptr;
+    WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

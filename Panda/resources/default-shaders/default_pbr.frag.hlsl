@@ -152,7 +152,10 @@ PSOutput main(PSInput input) {
         surfaceNormal, viewDirection, irradiance, radiance, scattered, metallic, roughness, f0,
         occlusion * ambientOcclusion(volume) * screenOcclusion(input.worldPos)
     );
-    float3 color = (ambient + lighting) * input.fragLight + emissive;
+    // The light of a vertex is the share of the sky it sees (a corner between walls, a room under a
+    // roof): it dims the light that comes from the sky. The sun and the lamps have their own
+    // shadows and reach the surface as they are — a sunbeam through a window stays bright.
+    float3 color = ambient * input.fragLight + lighting + emissive;
 
     // HDR: the output is linear light; the tonemap pass at the end of the frame brings it to the display.
     float outAlpha = 1.0;

@@ -51,6 +51,9 @@ public:
     static void setFocused(bool focused);
     static bool isFocused();
     static void setViewportFrame(Rect frame);
+    // The view the game is drawn in, in the points of the window: the window in a game, the Game
+    // tab in the editor. Empty until the host names one: then the whole window.
+    static Rect getViewportFrame();
     static void nextFrame();
     // Steps of the simulation (World::update). Inside a step the just-pressed queries answer per
     // step: a press is seen by exactly one step, the first after it, whether a frame has

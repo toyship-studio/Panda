@@ -55,6 +55,11 @@ public:
     // held (the releases will go to the editor) and the cursor lock: an FPS is left by clicking
     // elsewhere, and locks again in onApplicationFocus(true).
     void updateInput(bool gameTabFocused, bool modalOpen);
+    // An agent plays the game (the game_input tool of the MCP server): while it does, the game
+    // has the input whatever has the focus — the editor of a test runs in the background.
+    void setDriven(bool driven) {
+        m_driven = driven;
+    }
     // The copy runs. Not while it waits for the world a script asked for: it keeps its last
     // frame then.
     bool isRunning() {
@@ -95,6 +100,7 @@ private:
     bool m_quitRequested = false;
     bool m_windowFocused = true; // the editor window has the keyboard focus
     bool m_inputActive = false;  // the game owns the input
+    bool m_driven = false;       // setDriven
     uint32_t m_mouseButtons = 0; // the buttons the game pressed (bit = Fern::MouseButton): their releases are its
     AssetId m_requestedWorld = AssetId(0); // the world a script asked for; 0 — none
 };

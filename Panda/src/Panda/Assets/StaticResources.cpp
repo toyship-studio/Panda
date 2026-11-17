@@ -296,7 +296,7 @@ namespace StaticResources {
         checkerTexture = handler->createAsset<TextureAsset>(BuiltinAsset::CHECKER_TEXTURE, checkerCreate);
 
         MaterialData primitiveMaterialData;
-        primitiveMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        primitiveMaterialData.inputs = defaultLitMaterial->getData().inputs;
         for (MaterialField &field : primitiveMaterialData.inputs) {
             if (field.name == "baseColorTexture") { field.value = checkerTexture.asBaseAsset(); }
         }
@@ -321,7 +321,7 @@ namespace StaticResources {
             BuiltinAsset::INSTANCED_LIT_SHADER, "default-shaders/default_lit_instanced.vert", "default-shaders/default_lit.frag"
         );
         MaterialData instancedLitMaterialData;
-        instancedLitMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        instancedLitMaterialData.inputs = defaultLitMaterial->getData().inputs;
         instancedLitMaterial =
             handler->createAsset<MaterialAsset>(BuiltinAsset::INSTANCED_LIT_MATERIAL, instancedLitMaterialData, instancedLitShader);
         // Instance stream: columns of the instance transform matrix (glm::mat4, column-major).
@@ -438,7 +438,7 @@ namespace StaticResources {
         // the switch: double-sided, a MASK cutout by the tile mask, a working gloss roughness
         // (the lit default of 1.0 kills the foliage specular).
         MaterialData vegCrownMaterialData;
-        vegCrownMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        vegCrownMaterialData.inputs = defaultLitMaterial->getData().inputs;
         vegCrownMaterialData.getField("doubleSided").value = 1u;
         vegCrownMaterialData.getField("alphaMode").value = 1u;
         vegCrownMaterialData.getField("roughnessFactor").value = 0.25f;
@@ -484,7 +484,7 @@ namespace StaticResources {
             BuiltinAsset::VEG_GRASS_SHADER, "default-shaders/veg_grass.vert", "default-shaders/veg_grass.frag"
         );
         MaterialData vegGrassMaterialData;
-        vegGrassMaterialData.inputs = defaultLitMaterial->getInputs().inputs;
+        vegGrassMaterialData.inputs = defaultLitMaterial->getData().inputs;
         vegGrassMaterialData.getField("alphaMode").value = 1u;
         vegGrassMaterialData.getField("doubleSided").value = 1u;
         vegGrassMaterialData.inputs.push_back(
