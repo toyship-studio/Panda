@@ -17,14 +17,23 @@ namespace PandaUI {
 namespace {
     constexpr const char *TAB_DRAG_TYPE = "tabview.tab"; // payload.type for dragging tabs
 
-    // The first focusable view in the subtree (focus goes to the main view of the tab on click).
-    View *firstFocusable(View *view) {
+    // The first view of the subtree that takes the focus; a text field only when it is asked for.
+    View *firstFocusable(View *view, bool textInputs) {
         if (!view || view->isHidden()) { return nullptr; }
-        if (view->canBecomeFocused()) { return view; }
+        if (view->canBecomeFocused() && (textInputs || !view->isTextInput())) { return view; }
         for (const std::shared_ptr<View> &sub : view->getSubviews()) {
-            if (View *found = firstFocusable(sub.get())) { return found; }
+            if (View *found = firstFocusable(sub.get(), textInputs)) { return found; }
         }
         return nullptr;
+    }
+
+    // The view is in the subtree of root, and nothing from it up to root is hidden.
+    bool isShownInside(const View *view, const View *root) {
+        for (; view != nullptr; view = view->getSuperview()) {
+            if (view->isHidden()) { return false; }
+            if (view == root) { return true; }
+        }
+        return false;
     }
 } // namespace
 
@@ -483,16 +492,22 @@ std::uint64_t TabView::tabId(int index) const {
 
 void TabView::selectTab(Tab *tab) {
     setSelectedIndex(indexOfTab(tab));
-    focusSelectedContent(); // click on a tab → focus goes to the main view of its content
+    focusSelectedContent(); // a click on a tab → the focus goes to its content
 }
 
 void TabView::focusSelectedContent() {
     if (m_selectedIndex < 0) { return; }
-    if (Context *context = getContext()) {
-        if (View *target = firstFocusable(m_tabs[m_selectedIndex].content.get())) {
-            context->setFocusedView(target);
-        }
-    }
+    Context *context = getContext();
+    if (!context) { return; }
+    View *content = m_tabs[m_selectedIndex].content.get();
+    // Back to where the focus was in this tab, if that view is still there to take it.
+    const std::shared_ptr<View> last = content->lastFocusedInside();
+    View *target = last && last->canBecomeFocused() && isShownInside(last.get(), content) ? last.get() : nullptr;
+    // A tab that did not have the focus yet gives it to the first view that takes it — to a text
+    // field only when there is nothing else: choosing a tab is not the wish to type.
+    if (!target) { target = firstFocusable(content, false); }
+    if (!target) { target = firstFocusable(content, true); }
+    if (target) { context->setFocusedView(target); }
 }
 
 void TabView::closeTab(Tab *tab) {

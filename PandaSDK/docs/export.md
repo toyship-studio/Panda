@@ -32,6 +32,17 @@ Settings → Accounts) — under `GAME_BUNDLE_IDENTIFIER`, which must be yours; 
 the signed game and Xcode installs it on the device. Release means the code of your game — the scripts and the modules — is built optimized;
 the engine libraries are the ones the SDK ships.
 
+The two may be chosen in Xcode instead: **Open in Xcode**, then Signing & Capabilities of the
+game. cmake writes the Xcode project anew at every export, and the bundle identifier and the
+team chosen in Xcode are taken over from the project it replaces
+(`panda_keep_xcode_choice` in `Export/CMakeLists.txt`; cmake says so in the log of the export) —
+they stay for as long as the build folder is there, each build folder (`ios-device-debug`,
+`ios-device-release`) with its own. Chosen so they are in no file of the project: the way to
+keep an identifier of your own out of a repository others read. A bundle identifier nobody
+changed in Xcode follows `Export/CMakeLists.txt`, and choosing the identifier of the file in
+Xcode again hands it back to the file. Anything else changed in the Xcode project is gone with
+the next export: what is to last belongs in the files of `Export/`.
+
 From a terminal the same build is `Scripts/<Project>/scripts/configure_export.sh <target>` and
 `build_export.sh <target>` with `PANDA_SDK_DIR` set; they build with the data the editor cooked
 last.

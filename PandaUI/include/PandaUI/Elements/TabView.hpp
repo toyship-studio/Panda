@@ -91,7 +91,10 @@ public:
     int selectedIndex() const {
         return m_selectedIndex;
     }
-    void focusSelectedContent(); // focuses the first focusable view of the selected tab's content
+    // Gives the keyboard focus to the content of the selected tab: to the view in it that had the
+    // focus last, and in a tab that did not have it yet — to the first view that takes it (a text
+    // field only when there is nothing else). A click on a tab does the same. Nothing is scrolled.
+    void focusSelectedContent();
     void setTabTitle(int index, std::string title);
     void setTabDirty(int index, bool dirty); // "unsaved" indicator (a dot next to the title)
     // Preview tab (unpinned, the VS Code/Zed model): the title is in italics (a synthetic slant done

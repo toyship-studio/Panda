@@ -20,9 +20,26 @@ namespace {
         return Rect(Point(left, top), Size(right - left, bottom - top));
     }
 
+    // The view of the element the keyboard focus is in: the innermost element around the view
+    // that has it — a number field for the text field inside it.
+    const View *elementAround(View *focused) {
+        std::vector<View *> chain;
+        for (View *view = focused; view != nullptr; view = view->getSuperview()) { chain.push_back(view); }
+        const View *element = nullptr;
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) { // the outermost first
+            Accessibility described;
+            (*it)->describeAccessibility(described);
+            if (described.role == nullptr && (*it)->getAccessibilityId().empty()) { continue; }
+            element = *it;
+            if (described.atomic) { break; } // what is inside it is no element
+        }
+        return element;
+    }
+
     // `reach` is what the views above leave for a press: a view outside the frame of its parent is
-    // not hit (View::hitTest), whatever the parent draws.
-    void collect(View &view, const Rect &reach, bool enabled, std::vector<AccessibilityElement> &out) {
+    // not hit (View::hitTest), whatever the parent draws. `focus` — the view of the element the
+    // keyboard focus is in.
+    void collect(View &view, const Rect &reach, bool enabled, const View *focus, std::vector<AccessibilityElement> &out) {
         if (view.isHidden() || view.getOpacity() <= 0.f) { return; }
         Accessibility described;
         view.describeAccessibility(described);
@@ -43,13 +60,13 @@ namespace {
             element.visible = visible;
             element.enabled = viewEnabled;
             element.selected = described.selected;
-            element.focused = view.isFocused();
+            element.focused = &view == focus;
             if (described.atomic) { return; }
             children = &element.children;
         }
         // `element` stays where it is: while its children are collected nothing is appended to `out`.
         for (const std::shared_ptr<View> &subview : view.getSubviews()) {
-            collect(*subview, visible, viewEnabled, *children);
+            collect(*subview, visible, viewEnabled, focus, *children);
         }
     }
 
@@ -148,7 +165,8 @@ std::vector<AccessibilityElement> accessibilityTree(Context &context) {
     context.layoutIfNeeded();
     std::vector<AccessibilityElement> tree;
     const Rect window(Point(0.f, 0.f), context.getViewportSize());
-    for (View *layer : context.layers()) { collect(*layer, window, true, tree); }
+    const View *focus = elementAround(context.getFocusedView());
+    for (View *layer : context.layers()) { collect(*layer, window, true, focus, tree); }
     return tree;
 }
 

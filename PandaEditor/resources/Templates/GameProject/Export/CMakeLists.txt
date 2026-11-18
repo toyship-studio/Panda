@@ -37,9 +37,14 @@ set(APP_SOURCES
 
 # The game on Apple platforms: its bundle identifier, and the team that signs a build for a
 # device — the Team ID of the Apple account (Xcode → Settings → Accounts). A Mac build and a
-# simulator build need no team.
+# simulator build need no team. Both may be chosen in Xcode instead (Signing & Capabilities of
+# the project an export makes): what is chosen there stays through the exports that follow, for
+# as long as the build folder is there, and is written into no file of the game.
+# (The team is of a build for a device or a simulator: a Mac build is given none.)
 set(GAME_BUNDLE_IDENTIFIER "___BUNDLE_IDENTIFIER___")
 set(GAME_DEVELOPMENT_TEAM "")
+panda_keep_xcode_choice(GAME_BUNDLE_IDENTIFIER PRODUCT_BUNDLE_IDENTIFIER)
+panda_keep_xcode_choice(GAME_DEVELOPMENT_TEAM DEVELOPMENT_TEAM)
 
 get_filename_component(GAME_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(GAME_SCRIPT_DIR "${GAME_PROJECT_ROOT}/Scripts/___PROJECTNAME___/src")

@@ -34,17 +34,19 @@ namespace {
         }
 
     protected:
-        // tellg and seekg: a loader measures a file by seeking to its end.
-        pos_type seekoff(off_type offset, std::ios_base::seekdir direction, std::ios_base::openmode) override {
+        // tellg and seekg: a loader measures a file by seeking to its end. The types are named
+        // in full: both bases have a pos_type and an off_type, and to GCC and MSVC a bare one
+        // is ambiguous.
+        std::streampos seekoff(std::streamoff offset, std::ios_base::seekdir direction, std::ios_base::openmode) override {
             char *target = direction == std::ios_base::beg   ? eback() + offset
                            : direction == std::ios_base::cur ? gptr() + offset
                                                              : egptr() + offset;
-            if (target < eback() || target > egptr()) { return pos_type(off_type(-1)); }
+            if (target < eback() || target > egptr()) { return std::streampos(std::streamoff(-1)); }
             setg(eback(), target, egptr());
-            return pos_type(target - eback());
+            return std::streampos(target - eback());
         }
-        pos_type seekpos(pos_type position, std::ios_base::openmode mode) override {
-            return seekoff(off_type(position), std::ios_base::beg, mode);
+        std::streampos seekpos(std::streampos position, std::ios_base::openmode mode) override {
+            return seekoff(std::streamoff(position), std::ios_base::beg, mode);
         }
 
     private:

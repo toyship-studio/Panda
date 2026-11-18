@@ -24,7 +24,7 @@ struct AccessibilityElement {
     Rect visible; // the part of the frame a press can reach: what the frames of the views above leave of it
     bool enabled = true; // false — the view or one above it is disabled
     bool selected = false;
-    bool focused = false;
+    bool focused = false; // the keyboard focus is in this element and in no element inside it
     std::vector<AccessibilityElement> children;
 
     bool inSight() const {

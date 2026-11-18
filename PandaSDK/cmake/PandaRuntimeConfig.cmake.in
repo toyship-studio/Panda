@@ -208,3 +208,32 @@ set_property(TARGET PandaSDK::PandaRuntime APPEND PROPERTY
 set_property(TARGET PandaSDK::PandaRuntime PROPERTY
     INTERFACE_COMPILE_FEATURES cxx_std_20
 )
+
+# panda_keep_xcode_choice(<variable> <build setting>) — for the Export project of a game. cmake
+# writes the Xcode project anew at every export, and a build setting that was changed in Xcode
+# itself — the bundle identifier, the team of Signing & Capabilities — would be put back to what
+# CMakeLists.txt says each time. With this call it stays: where the project in the build folder
+# holds another value than CMakeLists.txt gave it the last time, somebody chose that value in
+# Xcode, and the variable takes it. A value nobody touched there follows CMakeLists.txt as before,
+# and choosing in Xcode the value of CMakeLists.txt again hands the setting back to the file.
+# The choice lives with the Xcode project: it is in no file of the game, and a build folder that
+# is removed takes it along.
+function(panda_keep_xcode_choice VARIABLE SETTING)
+    set(_from_file "${${VARIABLE}}")
+    set(_project "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.xcodeproj/project.pbxproj")
+    if(CMAKE_GENERATOR STREQUAL "Xcode" AND EXISTS "${_project}")
+        file(READ "${_project}" _text)
+        # The first one: the configurations of the game repeat it. Xcode puts a value into quotes
+        # when it has characters a bare one may not have.
+        if(_text MATCHES "[ \t]${SETTING} = \"?([^\";\n]*)\"?;")
+            set(_in_xcode "${CMAKE_MATCH_1}")
+            if(NOT _in_xcode STREQUAL "${PANDA_XCODE_GIVEN_${SETTING}}")
+                set(${VARIABLE} "${_in_xcode}" PARENT_SCOPE)
+                if(NOT _in_xcode STREQUAL _from_file)
+                    message(STATUS "${SETTING} is \"${_in_xcode}\", as chosen in Xcode (CMakeLists.txt says \"${_from_file}\")")
+                endif()
+            endif()
+        endif()
+    endif()
+    set(PANDA_XCODE_GIVEN_${SETTING} "${_from_file}" CACHE INTERNAL "What CMakeLists.txt gave ${SETTING} at the last configure")
+endfunction()

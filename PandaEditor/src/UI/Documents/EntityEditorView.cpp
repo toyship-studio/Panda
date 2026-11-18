@@ -70,6 +70,8 @@ namespace {
 
 EntityEditorView::EntityEditorView(EntityEditorOutput *output)
     : m_output(output) {
+    // A form takes the focus as a whole: its tab, when chosen, puts no caret into a field.
+    setFocusable(true);
     addSubviews();
     setupLayout();
     setupStyle();

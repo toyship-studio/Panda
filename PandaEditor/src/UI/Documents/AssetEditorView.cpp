@@ -50,6 +50,8 @@ namespace {
 
 AssetEditorView::AssetEditorView(std::function<void()> onEdited)
     : m_onEdited(std::move(onEdited)) {
+    // A form takes the focus as a whole: its tab, when chosen, puts no caret into a field.
+    setFocusable(true);
     addSubviews();
     setupLayout();
     setupStyle();

@@ -119,6 +119,12 @@ public:
         return m_isFocused;
     }
     virtual bool canBecomeFocused() const;
+    // The view of this subtree — this one, or one inside it — that had the keyboard focus last;
+    // null when none had it, or when that view is gone. What a container gives the focus back to
+    // when its content is shown again (TabView), so that coming back is coming back to the place.
+    std::shared_ptr<View> lastFocusedInside() const {
+        return m_lastFocusedInside.lock();
+    }
     // Text input field (TextField etc.). Key/accelerator routing uses this to avoid intercepting
     // printable key combinations (e.g. Space) while the focus is in a text input.
     virtual bool isTextInput() const {
@@ -279,6 +285,7 @@ private:
     bool m_isFocused;
     bool m_isUserInteractionEnabled;
     bool m_isHovered;
+    std::weak_ptr<View> m_lastFocusedInside; // kept by the context: Context::setFocusedView
     Cursor m_cursor;
     std::string m_tooltip;
     std::string m_accessibilityId;

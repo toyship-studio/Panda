@@ -63,6 +63,9 @@ namespace {
 } // namespace
 
 StatisticsPanelView::StatisticsPanelView() {
+    // A panel that only shows takes the focus as a whole: its tab, when chosen, is the tab the
+    // keyboard is in.
+    setFocusable(true);
     addSubviews();
     setupLayout();
     setupStyle();

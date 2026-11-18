@@ -463,7 +463,14 @@ void Context::setFocusedView(View *view) {
 
     if (m_focusedView) { m_focusedView->setFocused(false); }
     m_focusedView = view;
-    if (m_focusedView) { m_focusedView->setFocused(true); }
+    if (m_focusedView) {
+        // The view and every view above it remember where the focus was (View::lastFocusedInside).
+        const std::weak_ptr<View> focused = m_focusedView->weak_from_this();
+        for (View *above = m_focusedView; above != nullptr; above = above->getSuperview()) {
+            above->m_lastFocusedInside = focused;
+        }
+        m_focusedView->setFocused(true);
+    }
     notifyFocusScopes(view); // popups close if the focus has moved outside them
 }
 

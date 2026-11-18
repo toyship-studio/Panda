@@ -219,6 +219,10 @@ void ScrollView::update(double deltaTime) {
 }
 
 void ScrollView::viewDidCalculateLayout() {
+    // Not laid out — the tab it is in is not the selected one, its panel is folded away: the view
+    // has no size and neither has its content. Nothing is to be measured then, and the place it
+    // was scrolled to stays its own: it is there again when the view is shown.
+    if (getFrame().size.width <= 0.f && getFrame().size.height <= 0.f) { return; }
     syncAutomaticContentSize();
     if (m_hasPendingContentOffset &&
         (m_contentSize.width > 0.f || m_contentSize.height > 0.f)) {

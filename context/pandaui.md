@@ -47,10 +47,19 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   viewport under the fingers — does not take the rest of it.
 - TabView: `setEmptyView` is what the content area shows while there is no tab (a hint, a way
   to open something). A tab is dragged within its bar, to any bar of its drag group, or not at
-  all (`TabDrag`).
+  all (`TabDrag`). Choosing a tab gives the keyboard focus to its content
+  (`focusSelectedContent`; a click on a tab does it), and coming back to a tab is coming back to
+  the place: the focus goes to the view of that content that had it last
+  (`View::lastFocusedInside` — the context keeps it for every view above the one that takes the
+  focus, so it stays with the content wherever that is moved), and nothing is scrolled. A tab
+  that did not have the focus yet gives it to the first view that takes it, to a text field only
+  when there is nothing else: choosing a tab is not the wish to type. A content that is to take
+  the focus as a whole — a form, a panel that only shows — is focusable itself.
 - ScrollView: a real `contentOffset` within bounds plus a separate `overscrollOffset` layer
   (drawOffset is the sum), nonlinear overscroll, a spring return, inertia → bounce. macOS momentum
-  events must be told apart and muted where they break the bounce.
+  events must be told apart and muted where they break the bounce. A scroll view that is not laid
+  out — the content of a tab that is not the selected one has no size — measures nothing and
+  keeps its offset: it is where it was when it is shown again.
 - Rendering: primitives rect, rounded rect, border, shadow, text, image, plus `PrimBuffer`
   (drawTriangle, drawGradientRect, drawLine with round caps). Rebuilding all draw commands every
   frame is acceptable; do not complicate things with dirty regions ahead of need.
