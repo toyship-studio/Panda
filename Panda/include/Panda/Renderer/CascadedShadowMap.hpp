@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <Rain/Rain.hpp>
+#include <vector>
 
 namespace Panda {
 
@@ -70,6 +71,15 @@ public:
     const glm::mat4 &cascadeViewProj(uint32_t cascade) const {
         return m_cascadeViewProj[cascade];
     }
+    // The planes around everything that can cast a shadow into a cascade (inside:
+    // dot(plane.xyz, point) + plane.w >= 0): what the camera sees up to the far edge of the
+    // cascade, swept toward the sun. The tile of a cascade is the square around the sphere of its
+    // slice — steady while the camera turns — and most of that square lies beside what the camera
+    // sees: a caster there would be drawn for nobody. The culling of a cascade pass takes these
+    // planes next to the ones of cascadeViewProj.
+    const std::vector<glm::vec4> &cascadeCasterPlanes(uint32_t cascade) const {
+        return m_casterPlanes[cascade];
+    }
     // The depth pass of a cascade as a view of the frame being built: its tile of the atlas. The
     // cascades are added in their order — the first one clears the depth they share.
     Miren::ViewId addCascadeView(uint32_t cascade) const;
@@ -80,6 +90,7 @@ private:
 
     ShadowData m_data;
     std::array<glm::mat4, RENDERER_MAX_SHADOW_CASCADES> m_cascadeViewProj{};
+    std::array<std::vector<glm::vec4>, RENDERER_MAX_SHADOW_CASCADES> m_casterPlanes;
     Miren::FrameBufferHandle m_frameBuffer{MIREN_INVALID_HANDLE};
     uint32_t m_atlasCascades = 0;
     uint32_t m_atlasTileSize = 0;

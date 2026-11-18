@@ -77,18 +77,22 @@ void syncWithManifest(World &world) {
                 if (!container.hasField(fieldManifest.name.c_str())) {
                     container.addField(ScriptField(
                         0, fieldManifest.handle, fieldManifest.name, fieldManifest.type,
-                        defaultScriptFieldValue(fieldManifest.type, fieldManifest.list)
+                        defaultScriptFieldValue(fieldManifest.type, fieldManifest.list), fieldManifest.kind
                     ));
                     continue;
                 }
                 ScriptField &field = container.getField(fieldManifest.name.c_str());
                 field.fieldId = fieldManifest.handle;
                 // The class decides what the field is: a value of another type, or one value
-                // where the class now has a list, cannot be kept.
-                if (field.type != fieldManifest.type || field.isList() != fieldManifest.list) {
+                // where the class now has a list, cannot be kept. So is a reference to an asset
+                // of another kind — the world file does not hold the kind, so a field that comes
+                // from a file takes it here.
+                const bool otherKind = !field.kind.empty() && field.kind != fieldManifest.kind;
+                if (field.type != fieldManifest.type || field.isList() != fieldManifest.list || otherKind) {
                     field.type = fieldManifest.type;
                     field.value = defaultScriptFieldValue(fieldManifest.type, fieldManifest.list);
                 }
+                field.kind = fieldManifest.kind;
             }
         }
     }

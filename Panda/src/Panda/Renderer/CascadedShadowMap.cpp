@@ -113,6 +113,73 @@ namespace {
         return rays.farDepth > 0.01f;
     }
 
+    // The planes around a convex body swept toward the light, inside positive, pushed out by
+    // `margin`. The body is a slice of the camera pyramid by its eight corners: the ring at the
+    // near depth, then the ring at the far one (the near ring of a perspective from the camera is
+    // one point). The sweep is bounded by the faces of the body turned away from the light and by
+    // its outline as the light sees it — the convex hull of the corners on the plane across the
+    // light, `right` and `above` being the axes of that plane.
+    void sweptSlicePlanes(
+        const glm::vec3 corners[8], const glm::vec3 &toLight, const glm::vec3 &right, const glm::vec3 &above,
+        float margin, std::vector<glm::vec4> &planes
+    ) {
+        static const int FACES[6][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {0, 1, 5, 4},
+                                        {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+        glm::vec3 middle(0.f);
+        for (int c = 0; c < 8; c++) { middle += corners[c] * 0.125f; }
+        for (const int *face : FACES) {
+            const glm::vec3 &a = corners[face[0]];
+            const glm::vec3 &b = corners[face[1]];
+            const glm::vec3 &c = corners[face[2]];
+            const glm::vec3 &d = corners[face[3]];
+            glm::vec3 normal = glm::cross(c - a, d - b);
+            const float length = glm::length(normal);
+            if (length < 1e-6f) { continue; } // a ring that is one point has no face
+            normal /= length;
+            const glm::vec3 point = (a + b + c + d) * 0.25f;
+            if (glm::dot(normal, middle - point) > 0.f) { normal = -normal; }
+            // The sweep leaves the body through a face turned to the light; one that runs along
+            // the light is left to the outline.
+            if (glm::dot(normal, toLight) > -0.01f) { continue; }
+            planes.push_back(glm::vec4(-normal, glm::dot(normal, point) + margin));
+        }
+
+        // The outline: the hull of the corners as the light sees them (Andrew's monotone chain,
+        // counterclockwise).
+        std::array<glm::vec2, 8> points;
+        for (int c = 0; c < 8; c++) { points[c] = glm::vec2(glm::dot(corners[c], right), glm::dot(corners[c], above)); }
+        std::sort(points.begin(), points.end(), [](const glm::vec2 &l, const glm::vec2 &r) {
+            return l.x < r.x || (l.x == r.x && l.y < r.y);
+        });
+        const auto turn = [](const glm::vec2 &o, const glm::vec2 &p, const glm::vec2 &q) {
+            return (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+        };
+        std::array<glm::vec2, 16> hull;
+        int count = 0;
+        for (int i = 0; i < 8; i++) {
+            while (count >= 2 && turn(hull[count - 2], hull[count - 1], points[i]) <= 0.f) { count--; }
+            hull[count++] = points[i];
+        }
+        for (int i = 6, lower = count + 1; i >= 0; i--) {
+            while (count >= lower && turn(hull[count - 2], hull[count - 1], points[i]) <= 0.f) { count--; }
+            hull[count++] = points[i];
+        }
+        count--; // the chain ends where it began
+        if (count < 3) { return; }
+        // Two corners the light sees as one point (it shines along an edge of the body) differ by
+        // the rounding only: the edge between them has no direction to trust. Without its plane
+        // the outline is wider by nothing to speak of.
+        const float shortest = 1e-3f * glm::distance(points[0], points[7]);
+        for (int i = 0; i < count; i++) {
+            const glm::vec2 from = hull[i];
+            const glm::vec2 edge = hull[(i + 1) % count] - from;
+            const float length = glm::length(edge);
+            if (length <= shortest) { continue; }
+            const glm::vec2 outward = glm::vec2(edge.y, -edge.x) / length;
+            planes.push_back(glm::vec4(-(right * outward.x + above * outward.y), glm::dot(outward, from) + margin));
+        }
+    }
+
 } // namespace
 
 CascadedShadowMap::~CascadedShadowMap() {
@@ -246,6 +313,22 @@ bool CascadedShadowMap::update(
         m_data.splits[i] = d1;
         m_data.texelWorld[i] = 2.f * radius / static_cast<float>(tileSize);
         m_data.depthScale[i] = depthPerMeterScale / (2.f * radius);
+
+        // Who casts into the cascade. The shader takes a cascade by the distance to the camera,
+        // crossfades into it before its slice begins and falls through to it from a tile a point
+        // missed: a point of any depth up to the far edge may ask this cascade, so the body is
+        // the pyramid from the camera to that edge. The margin is the reach of a lookup around
+        // its point: the widest filter and the offset along the normal.
+        glm::vec3 corners[8];
+        for (int c = 0; c < 4; c++) {
+            corners[c] = rays.cornerAt(c, 0.f);
+            corners[4 + c] = rays.cornerAt(c, d1);
+        }
+        const glm::vec3 right = glm::normalize(glm::cross(up, light));
+        m_casterPlanes[i].clear();
+        sweptSlicePlanes(
+            corners, light, right, glm::cross(light, right), 0.5f + 3.f * m_data.texelWorld[i], m_casterPlanes[i]
+        );
     }
     for (uint32_t i = cascadeCount; i < RENDERER_MAX_SHADOW_CASCADES; i++) {
         m_data.textureMatrices[i] = glm::mat4(1.f);

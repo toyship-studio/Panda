@@ -142,9 +142,12 @@ float3 shade(float3 worldPos, float3 normal, float3 albedo) {
     const float2 occlusion = sceneOcclusion(worldPos + normal * (0.5 * occlusionSurfaceOffset()));
     float3 color = ambientLight(normal) * albedo * ambientOcclusion(occlusion) * screenOcclusion(worldPos);
     if (sunDirectionIntensity.w > 0.0) {
-        const float3 light = normalize(sunDirectionIntensity.xyz);
-        color += sunColor.rgb * sunDirectionIntensity.w * saturate(dot(normal, light)) * albedo *
-                 sunVisibility(worldPos, normal, occlusion.y);
+        const float facing = saturate(dot(normal, normalize(sunDirectionIntensity.xyz)));
+        // The shadow lookup is the costly part of a lit pixel: only where the sun shows.
+        [branch]
+        if (facing > 0.0) {
+            color += sunColor.rgb * sunDirectionIntensity.w * facing * albedo * sunVisibility(worldPos, normal, occlusion.y);
+        }
     }
     for (int i = 0; i < localLightCount(); ++i) {
         float3 toLamp;
@@ -170,6 +173,28 @@ Turn the feature off, save the project settings and compare the same view of the
 - the Profiler panel shows the CPU work by scope: `WorldView::renderShadows` (the shadow
   passes), `World: lighting` (collecting the lights, the cascades, the volume window),
   `OcclusionVolume: chunk` (the bakes), `Ssao::apply`.
+
+### From a phone to a desktop: what a frame pays for
+
+The same engine draws a flat game for an old phone and a lit world for a desktop: what is off
+is not computed and not compiled in. The switches, from the heaviest:
+
+| What | Where it is set | The cheap end | The costly end |
+|---|---|---|---|
+| The features | `.Panda/project.json`, `rendering.features` | none: the scene is unlit, a pixel is a texture and a color | all of them |
+| Lamps | the feature `lamps` | off: no loop over lamps in a lit pixel (a game that has none, or bakes them into its vertices) | the nearest 8 in every lit pixel, each may cast shadows |
+| Screen-space occlusion | the feature `ssao`, the world's `graphics.ssao` | off: no passes | two passes over the depth of the frame; `slices`, `steps`, `fullResolution` |
+| The shadows of the sun | the feature `shadows`, the world's `graphics.shadows` | `softness` 0 — four taps where the sun shows; one or two cascades (`cascadeCount`) of 1024 (`tileSize`), a short `distance` | `softness` above 0 — the sun as a disc: 28 taps where the sun shows; three or four cascades of 2048 and more |
+| The occlusion volume | the feature `occlusion` | off | chunk bakes and a 3D texture |
+| Bloom, auto exposure, antialiasing | the camera | each off: its passes are not run | a pyramid of passes, a measure of the frame, a pass over the picture |
+| Fog | the world's `graphics.fog.enabled` | off | a pass over the frame |
+
+What a cascade costs is mostly its casters: each is drawn once more per cascade. The engine
+draws only those that can cast into what the camera sees, and a lit shader asks for the shadow
+only where the surface shows the sun.
+
+What every frame pays whatever is off: the scene is drawn into two half-float targets (the
+color and what glows) at the size of the screen, and the Tonemap pass brings it to the display.
 
 ## Material fields
 

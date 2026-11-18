@@ -109,10 +109,10 @@ place:
   load with the class names, the fields, their `fieldId` and types. **Always take `fieldId` from
   there**, do not compute it. If the file is missing, build the scripts and reload.
 - `name` — the name of the C++ class (`REGISTER_SCRIPT`).
-- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh (the
+- `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh, 8 asset (the
   manifest has the same types as words).
 - `value`: integer/float — a number; entity — the id of an entity of THIS world; texture/
-  material/world/font/mesh — the asset id from the asset's `.pmeta` sidecar. A list field
+  material/world/font/mesh/asset — the asset id from the asset's `.pmeta` sidecar. A list field
   (`"list": true` in the manifest, a `std::vector` in the class) has an array of such values:
   `"value": [3100002001, 3100002002]`, `[]` when empty.
 - List EVERY field of the script: a field that is not listed is written as zero when Play

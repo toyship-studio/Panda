@@ -48,14 +48,16 @@ namespace {
     }
 
     // The kind of the assets a field of the type refers to (AssetKind::name); nullptr — the type
-    // is not a reference to an asset.
-    const char *assetKindOf(Panda::ScriptFieldType type) {
+    // is not a reference to an asset, or it is one of a kind nobody named (`kind` is of an ASSET
+    // field: a kind a module brings).
+    const char *assetKindOf(Panda::ScriptFieldType type, const std::string &kind) {
         switch (type) {
             case Panda::ScriptFieldType::TEXTURE: return "texture";
             case Panda::ScriptFieldType::MATERIAL: return "material";
             case Panda::ScriptFieldType::WORLD: return "world";
             case Panda::ScriptFieldType::FONT: return "font";
             case Panda::ScriptFieldType::MESH: return "mesh";
+            case Panda::ScriptFieldType::ASSET: return kind.empty() ? nullptr : kind.c_str();
             default: return nullptr;
         }
     }
@@ -78,7 +80,8 @@ Panda::ScriptFieldValue scriptValueOf(const ScriptItem &item) {
 }
 
 std::shared_ptr<View> makeScriptValueEditor(
-    Panda::ScriptFieldType type, Panda::World *world, const ScriptItem &value, std::function<void(ScriptItem)> set
+    Panda::ScriptFieldType type, const std::string &kind, Panda::World *world, const ScriptItem &value,
+    std::function<void(ScriptItem)> set
 ) {
     switch (type) {
         case Panda::ScriptFieldType::INTEGER: {
@@ -103,8 +106,11 @@ std::shared_ptr<View> makeScriptValueEditor(
         case Panda::ScriptFieldType::MATERIAL:
         case Panda::ScriptFieldType::WORLD:
         case Panda::ScriptFieldType::FONT:
-        case Panda::ScriptFieldType::MESH: {
-            return makeAssetWell(assetKindOf(type), static_cast<uint32_t>(itemAs<Panda::UUID>(value)), [set](uint32_t id) {
+        case Panda::ScriptFieldType::MESH:
+        case Panda::ScriptFieldType::ASSET: {
+            const char *assetKind = assetKindOf(type, kind);
+            if (assetKind == nullptr) { return nullptr; }
+            return makeAssetWell(assetKind, static_cast<uint32_t>(itemAs<Panda::UUID>(value)), [set](uint32_t id) {
                 set(ScriptItem(Panda::UUID(id)));
             });
         }
@@ -191,7 +197,7 @@ namespace {
             if (m_field.type == Panda::ScriptFieldType::ENTITY) {
                 return payload.type == "entity" ? payload.items : std::vector<std::uint64_t>();
             }
-            const char *kind = assetKindOf(m_field.type);
+            const char *kind = assetKindOf(m_field.type, m_field.kind);
             if (kind == nullptr) { return {}; }
             if (payload.type == std::string("asset.") + kind) { return payload.items; }
             if (payload.type != "asset" && payload.type != "folder") { return {}; }
@@ -344,7 +350,7 @@ void addScriptListRows(CollapsibleSection &section, ScriptListField field) {
     const Panda::ScriptFieldType type = field.type;
     Panda::World *world = field.world;
     const size_t count = Panda::scriptFieldItems(value).count;
-    const bool references = type == Panda::ScriptFieldType::ENTITY || assetKindOf(type) != nullptr;
+    const bool references = type == Panda::ScriptFieldType::ENTITY || assetKindOf(type, field.kind) != nullptr;
     auto model = std::make_shared<ListModel>(std::move(field));
 
     auto summary = std::make_shared<Label>(count == 0 ? "Empty" : std::to_string(count) + (count == 1 ? " item" : " items"));
@@ -371,7 +377,7 @@ void addScriptListRows(CollapsibleSection &section, ScriptListField field) {
     section.addContent(header);
 
     for (size_t index = 0; index < count; ++index) {
-        auto editor = makeScriptValueEditor(type, world, listItem(value, index), [model, index](ScriptItem item) {
+        auto editor = makeScriptValueEditor(type, model->field().kind, world, listItem(value, index), [model, index](ScriptItem item) {
             model->setItem(index, item);
         });
         if (!editor) { continue; }

@@ -145,7 +145,9 @@ float sunTransmittance(float volumeTransmittance, float csmWeight) {
 
 // Sun visibility at a point — both techniques at once: cascade shadows up close, beyond Shadow
 // Distance their role is taken over by the Occlusion Volume transmittance (y of sceneOcclusion at
-// the receiver point).
+// the receiver point). It is the costly part of a lit pixel (the taps of the shadow filter): a
+// shader asks for it under a [branch], only where the surface shows the sun — not where it is
+// turned away from it.
 float sunVisibility(float3 worldPos, float3 worldNormal, float volumeTransmittance) {
     float csmWeight;
     float shadow = sunShadow(worldPos, worldNormal, csmWeight);

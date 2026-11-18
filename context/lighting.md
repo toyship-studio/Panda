@@ -135,6 +135,19 @@ forest comes from the Occlusion Volume.
   camera, terrain uses `collect()` without mutations, sprites, blended geometry and the sky are
   skipped. The view of cascade 0 clears the depth of the atlas, and Miren enters a view that
   clears also when nothing was drawn into it — no ghost shadows after the casters are gone.
+- Who casts into a cascade. The tile of a cascade is the square around the sphere of its slice
+  (steady while the camera turns), and most of that square lies beside what the camera sees: a
+  caster there is drawn for nobody. `CascadedShadowMap::cascadeCasterPlanes` are the planes
+  around what can cast: the pyramid of the camera up to the far edge of the cascade (from the
+  camera itself, not from the near edge of the slice — the shader takes a cascade by distance,
+  crossfades into it early and falls through to it from a tile a point missed), swept toward
+  the sun. The sweep of a convex body is bounded by its faces turned away from the light and by
+  its outline as the light sees it — the convex hull of its corners on the plane across the
+  light —, pushed out by the reach of a lookup (the widest filter, the normal offset).
+  `WorldView::renderShadowPass` narrows the `RenderSystem::Frustum` of the pass by them, so the
+  mesh list of a world is culled by both; a world system that culls by the matrix alone
+  (terrain, flora) stays with the square. In a world whose casters are spread around the
+  camera this halves the draws of the depth passes.
 - Depth shaders (`StaticResources`, `createShadowDepth`): `shadow_depth[_instanced|_terrain].vert`
   plus `shadow_depth[_masked].frag`. Masked (alphaMode == 1): the renderer takes the alpha
   threshold and multiplier from the material fields by the naming convention of the lit template
@@ -146,7 +159,9 @@ forest comes from the Occlusion Volume.
 - Receivers use the includes in `default-shaders/include/panda/` (see `context/rendering.md`):
   `shadows.hlsli` gives `sampleShadow(pos, normal, out csmWeight)` and `lighting.hlsli` gives
   `sunVisibility(pos, normal, T)` (shadows plus the volume transmittance; open without the
-  features). There is ONE implementation for all the lit shaders. The cascade is chosen by distance from the camera
+  features). There is ONE implementation for all the lit shaders. A shader asks for it under a
+  `[branch]`, only where the surface shows the sun (N·L > 0): the lookup is the cost of the
+  shadows in a pixel, and a surface turned away from the sun multiplies it by zero. The cascade is chosen by distance from the camera
   (concentric, so it does not swim when the camera turns), the next cascade is blended in over the
   last 20% of the range, the normal offset × sinθ and the depth bias are measured IN TEXELS of the
   cascade, and the footprint is clamped to the tile. Filter (the atlas is LINEAR with compare, so

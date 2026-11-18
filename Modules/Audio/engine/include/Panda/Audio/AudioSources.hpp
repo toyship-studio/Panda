@@ -2,6 +2,7 @@
 
 #include "Panda/Audio/AudioEngine.hpp"
 
+#include <Panda/Assets/Base/Asset.hpp>
 #include <Panda/GameLogic/Entity.hpp>
 
 #include <glm/glm.hpp>
@@ -36,6 +37,18 @@ namespace Audio {
             World &world, Entity entity, const glm::vec3 *position, float volumeScale = 1.f, float pitchScale = 1.f
         );
     } // namespace Sources
+
+    // A clip played without a source: what a script asks for with a clip it holds (a field of
+    // the script, a list of them — a playlist, the variants of a footstep). The voice belongs to
+    // the running world and stops with it; it is driven by its handle through the mixer
+    // (AudioEngine: stop, setVolume, setPaused, cursorSeconds, …).
+    namespace Clips {
+        // An invalid handle — no running world, no such clip, no free voice. startSeconds — where
+        // in the clip the voice begins.
+        VoiceHandle play(World &world, AssetId clip, const VoiceParams &params, float startSeconds = 0.f);
+        // The length of a clip in seconds (the clip is loaded for it); 0 — no such clip.
+        float length(AssetId clip);
+    } // namespace Clips
 
 } // namespace Audio
 

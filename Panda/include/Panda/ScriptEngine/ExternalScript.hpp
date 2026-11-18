@@ -35,6 +35,7 @@ inline ScriptFieldValue defaultScriptFieldValue(ScriptFieldType type, bool list)
         case ScriptFieldType::WORLD:
         case ScriptFieldType::FONT:
         case ScriptFieldType::MESH:
+        case ScriptFieldType::ASSET:
             return list ? ScriptFieldValue(std::vector<UUID>()) : ScriptFieldValue(UUID(0));
         case ScriptFieldType::INTEGER:
         case ScriptFieldType::UNKNOWN:
@@ -69,19 +70,24 @@ struct ScriptField {
     std::string name;
     ScriptFieldType type;
     ScriptFieldValue value;
+    // Of an ASSET field: the kind of its assets, as the class of the built scripts says it (the
+    // world file does not hold it). Empty for every other type and until the scripts are built.
+    std::string kind;
 
     bool isList() const {
         return isScriptFieldList(value);
     }
 
     ScriptField(
-        Handle instanceId, Handle fieldId, const std::string &name, ScriptFieldType type, ScriptFieldValue value
+        Handle instanceId, Handle fieldId, const std::string &name, ScriptFieldType type, ScriptFieldValue value,
+        std::string kind = {}
     )
         : instanceId(instanceId)
         , fieldId(fieldId)
         , name(name)
         , type(type)
-        , value(value) {}
+        , value(value)
+        , kind(std::move(kind)) {}
 
     bool operator==(const ScriptField &other) const {
         return instanceId == other.instanceId && fieldId == other.fieldId;

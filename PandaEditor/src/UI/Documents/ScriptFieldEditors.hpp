@@ -26,15 +26,19 @@ ScriptItem scriptItemOf(const Panda::ScriptFieldValue &value);
 Panda::ScriptFieldValue scriptValueOf(const ScriptItem &item);
 
 // The editor of one value: a number field, an asset well, an entity well. nullptr — nothing
-// edits the value (a type that is not a field type, no world for a reference to an entity).
+// edits the value (a type that is not a field type, no world for a reference to an entity, an
+// asset field whose kind is not known: the scripts are not built). `kind` — of an ASSET field,
+// the kind of its assets (ScriptField::kind).
 std::shared_ptr<PandaUI::View> makeScriptValueEditor(
-    Panda::ScriptFieldType type, Panda::World *world, const ScriptItem &value, std::function<void(ScriptItem)> set
+    Panda::ScriptFieldType type, const std::string &kind, Panda::World *world, const ScriptItem &value,
+    std::function<void(ScriptItem)> set
 );
 
 // A list field (a std::vector in the class) and how the form reaches its value.
 struct ScriptListField {
     std::string name;             // the field in the class
     Panda::ScriptFieldType type;  // what one item is
+    std::string kind;             // of an ASSET list: the kind of its assets
     Panda::World *world = nullptr; // where an entity reference is looked up
     // The value the world holds now. false — the field is gone (the form outlived its target).
     std::function<bool(Panda::ScriptFieldValue &)> read;

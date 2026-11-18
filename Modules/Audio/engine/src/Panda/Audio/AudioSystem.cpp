@@ -26,7 +26,7 @@ namespace {
             bool hasLastPosition = false;
         };
         std::unordered_map<UUID, Source> sources;
-        std::vector<VoiceHandle> oneShots;
+        std::vector<VoiceHandle> oneShots; // detached voices: the one-shots of sources, the clips scripts play
     };
 
     bool sameTunables(const AudioSourceComponent &a, const AudioSourceComponent &b) {
@@ -269,5 +269,35 @@ namespace Sources {
     }
 
 } // namespace Sources
+
+namespace Clips {
+
+    VoiceHandle play(World &world, AssetId clipId, const VoiceParams &params, float startSeconds) {
+        AudioWorldState *state = world.findContext<AudioWorldState>();
+        AudioEngine *engine = AudioEngine::instance();
+        if (state == nullptr || engine == nullptr || !clipId) { return {}; }
+        AudioClipAsset *clip = AssetRef<AudioClipAsset>(clipId).get();
+        if (clip == nullptr) { return {}; }
+        // A voice that begins elsewhere than at the start is moved there before it sounds.
+        VoiceParams started = params;
+        const bool seek = startSeconds > 0.f;
+        started.startPaused = params.startPaused || seek;
+        const VoiceHandle voice = engine->play(*clip, started);
+        if (!voice.isValid()) { return {}; }
+        if (seek) {
+            engine->seek(voice, startSeconds);
+            if (!params.startPaused) { engine->setPaused(voice, false); }
+        }
+        state->oneShots.push_back(voice);
+        return voice;
+    }
+
+    float length(AssetId clipId) {
+        if (!clipId) { return 0.f; }
+        const AudioClipAsset *clip = AssetRef<AudioClipAsset>(clipId).get();
+        return clip == nullptr ? 0.f : clip->info().durationSeconds();
+    }
+
+} // namespace Clips
 
 } // namespace Panda::Audio

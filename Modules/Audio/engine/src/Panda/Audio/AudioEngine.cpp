@@ -356,6 +356,16 @@ void AudioEngine::apply(VoiceHandle handle, const VoiceParams &params) {
     if (Impl::Voice *voice = m_impl->resolve(handle)) { m_impl->applyParams(*voice, params); }
 }
 
+void AudioEngine::setVolume(VoiceHandle handle, float volume) {
+    PND_ASSERT(onMainThread(), "AUDIO: main thread only");
+    if (Impl::Voice *voice = m_impl->resolve(handle)) { ma_sound_set_volume(&voice->sound, std::max(volume, 0.f)); }
+}
+
+void AudioEngine::setPitch(VoiceHandle handle, float pitch) {
+    PND_ASSERT(onMainThread(), "AUDIO: main thread only");
+    if (Impl::Voice *voice = m_impl->resolve(handle)) { ma_sound_set_pitch(&voice->sound, std::max(pitch, 0.01f)); }
+}
+
 void AudioEngine::setPosition(VoiceHandle handle, const glm::vec3 &position, const glm::vec3 &velocity) {
     PND_ASSERT(onMainThread(), "AUDIO: main thread only");
     Impl::Voice *voice = m_impl->resolve(handle);

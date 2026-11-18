@@ -91,6 +91,8 @@ public:
     void setPaused(VoiceHandle voice, bool paused);
     // The tunable part of the params (bus, fade-in and startPaused are ignored).
     void apply(VoiceHandle voice, const VoiceParams &params);
+    void setVolume(VoiceHandle voice, float volume); // 0..1, at once
+    void setPitch(VoiceHandle voice, float pitch);   // > 0
     void setPosition(VoiceHandle voice, const glm::vec3 &position, const glm::vec3 &velocity = glm::vec3(0.f));
     void seek(VoiceHandle voice, float seconds);
     bool isValid(VoiceHandle voice) const;

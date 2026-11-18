@@ -22,16 +22,19 @@ using AssignScriptFieldFunction = void (*)(void *field, const void *values, uint
 
 struct ScriptFieldInfo final {
     constexpr ScriptFieldInfo(
-        ScriptFieldType type, bool list, const char *name, uint32_t offset, AssignScriptFieldFunction assign
+        ScriptFieldType type, bool list, const char *name, uint32_t offset, AssignScriptFieldFunction assign,
+        const char *kind = nullptr
     )
         : type(type)
         , list(list)
+        , kind(kind)
         , name(name)
         , offset(offset)
         , assign(assign) {}
 
     ScriptFieldType type; // what one value is
     bool list;            // the field is a std::vector of them
+    const char *kind;     // of an ASSET field: the kind of its assets (the handle's ASSET_KIND); null otherwise
     const char *name;
     uint32_t offset;
     AssignScriptFieldFunction assign; // null for a type that is not a field type (UNKNOWN)

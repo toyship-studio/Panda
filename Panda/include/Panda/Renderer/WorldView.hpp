@@ -132,9 +132,15 @@ public:
 
 private:
     // The world into the pass the renderers have begun: the sky, the sprites, the world systems,
-    // the meshes — culled by the frustum of the pass.
-    void submitWorld(World &world, const glm::mat4 &viewProj, const glm::mat4 &skyViewProj);
-    void renderShadowPass(World &world, Miren::ViewId view, const glm::mat4 &viewProj);
+    // the meshes — culled by the frustum of the pass. `casters` — the planes a depth pass knows
+    // besides its matrix (the casters of a cascade), or null.
+    void submitWorld(
+        World &world, const glm::mat4 &viewProj, const glm::mat4 &skyViewProj,
+        const std::vector<glm::vec4> *casters = nullptr
+    );
+    void renderShadowPass(
+        World &world, Miren::ViewId view, const glm::mat4 &viewProj, const std::vector<glm::vec4> *casters = nullptr
+    );
     void ensureTargets(); // made at the first frame, resized when the size changed
     PostprocessingPipeline &pipeline();
 

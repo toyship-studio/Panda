@@ -105,7 +105,9 @@ void WorldView::render(World &world, const ViewCamera &camera) {
     // World traversal per cascade: culling by the light frustum, the LOD of the world systems —
     // by the camera.
     for (uint32_t cascade = 0; cascade < shadowMap.cascadeCount(); cascade++) {
-        renderShadowPass(world, cascadeViews[cascade], shadowMap.cascadeViewProj(cascade));
+        renderShadowPass(
+            world, cascadeViews[cascade], shadowMap.cascadeViewProj(cascade), &shadowMap.cascadeCasterPlanes(cascade)
+        );
     }
     // The tiles of the lamps that cast shadows: the same traversal through the eye of the lamp.
     for (uint32_t tile = 0; tile < lampShadows.tileCount(); tile++) {
@@ -123,10 +125,13 @@ void WorldView::renderPass(World &world, RenderingMode mode, Miren::ViewId view)
     m_renderer3d.end();
 }
 
-void WorldView::submitWorld(World &world, const glm::mat4 &viewProj, const glm::mat4 &skyViewProj) {
+void WorldView::submitWorld(
+    World &world, const glm::mat4 &viewProj, const glm::mat4 &skyViewProj, const std::vector<glm::vec4> *casters
+) {
     PANDA_PROFILE_SCOPE_N("WorldView::submitWorld");
     const bool shadowPass = m_renderer3d.getMode() == RenderingMode::SHADOW_DEPTH;
-    const RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProj);
+    RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProj);
+    if (casters != nullptr) { frustum.narrow(*casters); }
     RenderSystem::submitSky(world, m_renderer3d, skyViewProj);
     if (!shadowPass) { RenderSystem::submitSprites(world, m_renderer2d, frustum); }
     // World systems (contributions of the worldSystems registry) — between sprites and meshes, in
@@ -142,10 +147,12 @@ void WorldView::submitWorld(World &world, const glm::mat4 &viewProj, const glm::
     }
 }
 
-void WorldView::renderShadowPass(World &world, Miren::ViewId view, const glm::mat4 &viewProj) {
+void WorldView::renderShadowPass(
+    World &world, Miren::ViewId view, const glm::mat4 &viewProj, const std::vector<glm::vec4> *casters
+) {
     m_renderer3d.begin(RenderingMode::SHADOW_DEPTH, view);
     m_renderer3d.setViewProj(viewProj);
-    submitWorld(world, viewProj, viewProj);
+    submitWorld(world, viewProj, viewProj, casters);
     m_renderer3d.end();
 }
 

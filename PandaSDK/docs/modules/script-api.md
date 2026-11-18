@@ -161,9 +161,13 @@ in the editor and lack the asset after an export. So:
 
 - a sound, a terrain, a mesh the script API acts on is the one a **component** holds (the
   script names the entity: `AudioSourceComponentAPI::play(entity)`), or a handle the script was
-  given;
+  given in a field (`AudioAPI::play(clip)`);
 - the SDK part reads the id of a handle with `handle.id()` and makes a handle from the id the
   engine returned with `Bamboo::Internal::HandleAccess::make<MeshHandle>(id)` — the handles of
   the engine's resources have no public constructor from a number;
-- a kind of asset a script should hold in a field of its own is a field type of the core
-  (`ScriptFieldType`), added there.
+- a kind of asset of the module that a script should hold in a field gets a handle in the SDK
+  part of the module, one line: `BAMBOO_ASSET_HANDLE(AudioClipHandle, "audio");` — the name of
+  the handle and the name of the asset kind the module registered (`assetKinds`). A field of
+  that handle, or a `std::vector` of them, is then a script field like a texture: the inspector
+  shows the asset well of the kind (a folder dropped on a list adds its files), the world file
+  holds the id, the cook packs what the fields name. Nothing is added to the core.

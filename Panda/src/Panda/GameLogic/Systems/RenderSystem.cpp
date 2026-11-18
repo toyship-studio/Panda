@@ -21,7 +21,15 @@ Frustum Frustum::of(const glm::mat4 &m) {
     frustum.planes[2] = row(3) + row(1); // bottom
     frustum.planes[3] = row(3) - row(1); // top
     frustum.planes[4] = row(3) - row(2); // far
+    frustum.count = 5;
     return frustum;
+}
+
+void Frustum::narrow(const std::vector<glm::vec4> &more) {
+    for (const glm::vec4 &plane : more) {
+        if (count == MAX_PLANES) { return; }
+        planes[count++] = plane;
+    }
 }
 
 bool Frustum::visible(const glm::mat4 &transform, const glm::vec3 &localMin, const glm::vec3 &localMax) const {
@@ -31,7 +39,8 @@ bool Frustum::visible(const glm::mat4 &transform, const glm::vec3 &localMin, con
     const glm::vec3 extents = glm::abs(glm::vec3(transform[0])) * localExtents.x +
                               glm::abs(glm::vec3(transform[1])) * localExtents.y +
                               glm::abs(glm::vec3(transform[2])) * localExtents.z;
-    for (const glm::vec4 &plane : planes) {
+    for (uint32_t i = 0; i < count; i++) {
+        const glm::vec4 &plane = planes[i];
         const glm::vec3 normal(plane);
         const float distance = glm::dot(normal, center) + plane.w;
         const float radius = glm::dot(glm::abs(normal), extents);

@@ -1021,7 +1021,13 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   execute, undo and redo write the value into the world and through `ExternalScript::applyField`
   into the instance. Nothing is read back: a value the script changes itself is not shown.
 - A field is one value or a list of values of one type (`ScriptFieldType`: an int, a float, the
-  id of an entity or of an asset — 4 bytes each). In the class a list is a `std::vector` of the
+  id of an entity or of an asset — 4 bytes each). An asset of a kind the core does not know by
+  name — a kind a module brings, an audio clip — is the one type `ASSET` plus the name of the
+  kind: the module declares the handle in its SDK part (`BAMBOO_ASSET_HANDLE(AudioClipHandle,
+  "audio")`, `Bamboo/Base.hpp`), `ScriptFieldInfo::kind` carries the name over the ABI, the
+  manifest keeps it (`kind`), and the inspector shows the asset well of that kind
+  (`makeScriptValueEditor`). A world file holds the type and the id, not the kind: a value whose
+  field now names another kind is reset (`ScriptSystem::syncWithManifest`). In the class a list is a `std::vector` of the
   type (`ScriptRegistry::FieldShape`); the manifest says `list`; the engine holds the value as
   `ScriptFieldValue` — a variant of the three scalars and the three vectors, whose shape *is*
   the list flag; a world file writes a list as an array in `value` (`ScriptFieldDto`); the ABI
@@ -1030,7 +1036,8 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   own (`EditScriptFieldCommand`, `discrete`), an edit of one item merges like any value.
 - **A script gets an asset from a field, never from a number.** The handles of what the engine
   holds (`TextureHandle`, `MaterialHandle`, `WorldHandle`, `FontHandle`, `MeshHandle` —
-  `BAMBOO_RESOURCE_HANDLE`) have no public constructor from an id: the SDK makes them
+  `BAMBOO_RESOURCE_HANDLE` — and the handles of module kinds, `BAMBOO_ASSET_HANDLE`) have no
+  public constructor from an id: the SDK makes them
   (`Bamboo::Internal::HandleAccess`) from a field the engine set or from the answer of a call,
   and `id()` only reads. This is what makes the cook of a game complete without a list kept by
   hand: every asset a game can touch is named by a file the cook reads

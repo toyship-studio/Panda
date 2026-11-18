@@ -25,10 +25,17 @@ namespace RenderSystem {
 
     // View frustum planes in the space of the matrix (Gribb–Hartmann), without near: behind the
     // camera the side planes converge to a point — the near plane is not needed for culling.
+    // A pass that knows more than its matrix says narrows the frustum by planes of its own (a
+    // shadow cascade: CascadedShadowMap::cascadeCasterPlanes).
     struct Frustum {
-        glm::vec4 planes[5];
+        static constexpr uint32_t MAX_PLANES = 24;
+        glm::vec4 planes[MAX_PLANES];
+        uint32_t count = 0;
 
         static Frustum of(const glm::mat4 &viewProj);
+        // More planes to be inside of (dot(plane.xyz, point) + plane.w >= 0); those that do not
+        // fit are left out — the frustum stays a little wider.
+        void narrow(const std::vector<glm::vec4> &more);
         // AABB (mesh-local) against the planes after the transform: center/extents via abs(M).
         bool visible(const glm::mat4 &transform, const glm::vec3 &localMin, const glm::vec3 &localMax) const;
     };

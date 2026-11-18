@@ -394,6 +394,7 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
             ScriptListField list;
             list.name = name;
             list.type = field.type;
+            list.kind = field.kind;
             list.world = world;
             list.read = [this, weak = weak_from_this(), scriptIndex, name](Panda::ScriptFieldValue &value) {
                 Panda::ScriptField *live = weak.expired() ? nullptr : scriptField(scriptIndex, name);
@@ -407,7 +408,7 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
             addScriptListRows(*section, std::move(list));
             continue;
         }
-        auto editor = makeScriptValueEditor(field.type, world, scriptItemOf(field.value), [this, scriptIndex, name](ScriptItem item) {
+        auto editor = makeScriptValueEditor(field.type, field.kind, world, scriptItemOf(field.value), [this, scriptIndex, name](ScriptItem item) {
             m_output->entityDidEditScriptField(scriptIndex, name, scriptValueOf(item), false);
         });
         if (!editor) { continue; }

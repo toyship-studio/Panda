@@ -580,6 +580,8 @@ int main(int argc, const char **argv) {
             field("counts", Panda::ScriptFieldType::INTEGER, std::vector<int32_t>{}),
             field("speed", Panda::ScriptFieldType::FLOAT, 2.f),
             field("texture", Panda::ScriptFieldType::TEXTURE, Panda::UUID(103)),
+            field("clip", Panda::ScriptFieldType::ASSET, Panda::UUID(104)),
+            field("music", Panda::ScriptFieldType::ASSET, std::vector<Panda::UUID>{Panda::UUID(105), Panda::UUID(106)}),
         };
         const Panda::ScriptListComponentDto written = {{}, {Panda::ExternalScriptDto("Menu", fields)}};
         const auto same = [&fields](const Panda::ScriptListComponentDto &read) {

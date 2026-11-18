@@ -139,3 +139,11 @@ backend, each step by mtime; a changed set changes the expanded text and recompi
   runs reaches them when the project opens.
 - A feature added to the engine later is off for a project whose settings list the features
   explicitly, and on for a project without the section.
+- The floor of a frame is the same for every project (`PandaSDK/docs/shaders.md`, "From a phone
+  to a desktop"): two RGBA16F targets at the size of the screen — the emissive one is written
+  also when no bloom reads it — and the Tonemap pass; the fog, the bloom and the Tonemap are
+  separate passes over the frame. Two levers a weak phone would want are not built: a scene
+  drawn smaller than the screen (a render scale of the camera: the targets of `WorldView`
+  smaller than its view, the last pass of the chain stretching the picture — the composite of
+  the editor's Scene over the frame counts on equal sizes and has to follow), and a frame
+  without the emissive target when nothing glows.

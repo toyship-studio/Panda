@@ -142,6 +142,103 @@ namespace {
         if (AudioEngine *engine = AudioEngine::instance()) { engine->stopAll(std::max(fadeSeconds, 0.f)); }
     }
 
+    // --- Clips and voices: a script plays a clip it holds and drives the voice by its handle.
+
+    uint32_t clipPlay(Handle clip, const Scripting::AudioPlaybackData *playback, uint32_t *outIndex, uint32_t *outGeneration) {
+        World *world = GameContext::getRunningWorld();
+        if (world == nullptr || playback == nullptr || outIndex == nullptr || outGeneration == nullptr) { return 0; }
+        VoiceParams params;
+        params.bus = playback->bus != nullptr ? playback->bus : "sfx";
+        params.volume = std::max(playback->volume, 0.f);
+        params.pitch = std::max(playback->pitch, 0.01f);
+        params.loop = playback->loop != 0;
+        params.fadeInSeconds = std::max(playback->fadeInSeconds, 0.f);
+        params.spatial = playback->spatial != 0;
+        params.position = glm::vec3(playback->position[0], playback->position[1], playback->position[2]);
+        params.minDistance = playback->minDistance;
+        params.maxDistance = playback->maxDistance;
+        const VoiceHandle voice = Clips::play(*world, AssetId(clip), params, std::max(playback->startSeconds, 0.f));
+        if (!voice.isValid()) { return 0; }
+        *outIndex = voice.index;
+        *outGeneration = voice.generation;
+        return 1;
+    }
+
+    uint32_t clipGetLength(Handle clip, float *outSeconds) {
+        if (outSeconds == nullptr) { return 0; }
+        *outSeconds = Clips::length(AssetId(clip));
+        return 1;
+    }
+
+    // The mixer when the handle names a voice that still plays; nullptr otherwise.
+    AudioEngine *engineOf(uint32_t index, uint32_t generation, VoiceHandle &voice) {
+        AudioEngine *engine = AudioEngine::instance();
+        voice = VoiceHandle{index, generation};
+        return engine != nullptr && engine->isValid(voice) ? engine : nullptr;
+    }
+
+    uint32_t voiceStop(uint32_t index, uint32_t generation, float fadeSeconds) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr) { return 0; }
+        engine->stop(voice, std::max(fadeSeconds, 0.f));
+        return 1;
+    }
+
+    uint32_t voiceIsPlaying(uint32_t index, uint32_t generation) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        return engine != nullptr && !engine->isPaused(voice) ? 1 : 0;
+    }
+
+    uint32_t voiceSetPaused(uint32_t index, uint32_t generation, uint32_t paused) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr) { return 0; }
+        engine->setPaused(voice, paused != 0);
+        return 1;
+    }
+
+    uint32_t voiceSetVolume(uint32_t index, uint32_t generation, float volume) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr) { return 0; }
+        engine->setVolume(voice, volume);
+        return 1;
+    }
+
+    uint32_t voiceSetPitch(uint32_t index, uint32_t generation, float pitch) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr) { return 0; }
+        engine->setPitch(voice, pitch);
+        return 1;
+    }
+
+    uint32_t voiceSetPosition(uint32_t index, uint32_t generation, const float *position3) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr || position3 == nullptr) { return 0; }
+        engine->setPosition(voice, glm::vec3(position3[0], position3[1], position3[2]));
+        return 1;
+    }
+
+    uint32_t voiceGetTime(uint32_t index, uint32_t generation, float *outSeconds) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr || outSeconds == nullptr) { return 0; }
+        *outSeconds = engine->cursorSeconds(voice);
+        return 1;
+    }
+
+    uint32_t voiceSetTime(uint32_t index, uint32_t generation, float seconds) {
+        VoiceHandle voice;
+        AudioEngine *engine = engineOf(index, generation, voice);
+        if (engine == nullptr) { return 0; }
+        engine->seek(voice, std::max(seconds, 0.f));
+        return 1;
+    }
+
     const Scripting::AudioHostApi s_table{
         .version = Scripting::AUDIO_HOST_API_VERSION,
         .source_Play = sourcePlay,
@@ -159,6 +256,16 @@ namespace {
         .bus_SetVolume = busSetVolume,
         .bus_GetVolume = busGetVolume,
         .stopAll = stopAll,
+        .clip_Play = clipPlay,
+        .clip_GetLength = clipGetLength,
+        .voice_Stop = voiceStop,
+        .voice_IsPlaying = voiceIsPlaying,
+        .voice_SetPaused = voiceSetPaused,
+        .voice_SetVolume = voiceSetVolume,
+        .voice_SetPitch = voiceSetPitch,
+        .voice_SetPosition = voiceSetPosition,
+        .voice_GetTime = voiceGetTime,
+        .voice_SetTime = voiceSetTime,
     };
 
 } // namespace

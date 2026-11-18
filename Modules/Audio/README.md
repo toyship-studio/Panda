@@ -16,8 +16,12 @@ knows nothing about sound.
   panned by their distance and direction from the **Audio Listener** (an entity with that
   component, or the main camera). Scripts drive sources through
   `Bamboo::AudioSourceComponentAPI` (play, stop, pause, one-shots for overlapping sounds, volume,
-  pitch, the playhead and the length of the clip — what a playlist with crossfades needs) and
-  the buses through `Bamboo::AudioAPI`.
+  pitch, the playhead and the length of the clip).
+- **From a script**, without an entity: a clip is a field of the script —
+  `Bamboo::AudioClipHandle`, or a `std::vector` of them for a playlist or the variants of a
+  footstep, chosen in the inspector — and `Bamboo::AudioAPI::play(clip, …)` plays it and gives
+  the voice to drive: its volume, pitch, place, playhead (what a playlist with crossfades
+  needs), its stop. The buses are `Bamboo::AudioAPI` too.
 - **In the editor**: the clip tab (Play / Pause / Stop, the position, loop), the inspector sections
   of the source and the listener (with Play / Stop: the live voice in Play, a preview otherwise),
   the AUDIO section of the editor settings (Mute: everything the editor plays, previews and Play

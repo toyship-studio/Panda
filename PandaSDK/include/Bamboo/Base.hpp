@@ -55,6 +55,35 @@ namespace Internal {
         uint32_t m_id = BAMBOO_INVALID_HANDLE;                                                                         \
     };
 
+// A reference to an asset of a kind a module brings — an audio clip of the Audio module: a
+// resource handle that names the kind of its assets (the name the kind is registered by), so a
+// field of it in a script is a field of that kind in the inspector, a list of them takes a
+// folder of such files, and the cook of the game packs what the field names. The module declares
+// the handle next to its API: BAMBOO_ASSET_HANDLE(AudioClipHandle, "audio").
+#define BAMBOO_ASSET_HANDLE(name, kind)                                                                                \
+    struct name {                                                                                                      \
+        static constexpr const char *ASSET_KIND = kind;                                                                \
+        name() = default;                                                                                              \
+        uint32_t id() const {                                                                                          \
+            return m_id;                                                                                               \
+        }                                                                                                              \
+        bool isValid() const {                                                                                         \
+            return m_id != BAMBOO_INVALID_HANDLE;                                                                      \
+        }                                                                                                              \
+        bool operator==(const name &other) const {                                                                     \
+            return m_id == other.m_id;                                                                                 \
+        }                                                                                                              \
+        bool operator!=(const name &other) const {                                                                     \
+            return m_id != other.m_id;                                                                                 \
+        }                                                                                                              \
+                                                                                                                       \
+    private:                                                                                                           \
+        friend struct Internal::HandleAccess;                                                                          \
+        explicit name(uint32_t id)                                                                                     \
+            : m_id(id) {}                                                                                              \
+        uint32_t m_id = BAMBOO_INVALID_HANDLE;                                                                         \
+    };
+
 BAMBOO_HANDLE(EntityHandle);
 BAMBOO_RESOURCE_HANDLE(TextureHandle);
 BAMBOO_RESOURCE_HANDLE(MaterialHandle);

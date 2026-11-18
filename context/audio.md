@@ -160,24 +160,41 @@ of the editor part (the Mute of the editor settings applied every frame).
   it), `playOneShot(position, volumeScale, pitchScale)` (a detached voice with the source's
   settings that does not follow the entity and ends by itself). Outside a running world every
   call is a no-op.
+- `Audio::Clips` — a clip played without an entity: `play(world, clip, VoiceParams, startSeconds)`
+  gives the `VoiceHandle` (a start elsewhere than at the beginning is a voice created paused,
+  moved and resumed), `length(clip)`. The voice belongs to the world like a one-shot: it ends by
+  itself, with a stop through the mixer, and with the world. Nothing re-applies or follows it —
+  who started it drives it (`AudioEngine::setVolume / setPitch / setPosition / seek / stop`).
 
 ### The script table (`Panda/Audio/AudioScriptApi.hpp`, SDK part `Modules/Audio/sdk`)
 
-- The contribution table `"audio"` v2, `AudioHostApi`: `source_Play / Stop / SetPaused /
+- The contribution table `"audio"` v3, `AudioHostApi`: `source_Play / Stop / SetPaused /
   IsPlaying / PlayOneShot(position3 | null, volumeScale, pitchScale) / SetVolume / GetVolume /
   SetPitch / GetPitch / GetTime / SetTime / GetLength` on an entity handle (the volume and the
   pitch are written into the component, the system applies them at the end of the frame; the
   time is the playhead of the voice, the length is the clip's), `bus_SetVolume / GetVolume`,
-  `stopAll(fade)`. An entity without a source, or no running world, returns 0 and zeros.
-- The Bamboo API: `Bamboo::AudioAPI` (`setBusVolume`, `getBusVolume`, `stopAll`) and
-  `Bamboo::AudioSourceComponentAPI` (`play`, `stop`, `setPaused`, `isPlaying`, `playOneShot`,
-  `playOneShotAt`, `setVolume` / `getVolume`, `setPitch` / `getPitch`, `getTime` / `setTime`,
-  `getLength`). Music that goes from one piece into the next is two sources and the script: it
-  starts the next one when `getLength − getTime` of the playing one is the length of the
-  crossfade, and moves the two volumes every frame. A script reaches a sound
-  through the entity that carries the Audio Source (an `EntityHandle` field): there is no clip
-  field type for scripts until the core has a generic asset field by kind name
-  (`ScriptFieldType::ASSET`, an ABI bump).
+  `stopAll(fade)`, and the clips: `clip_Play(clip, AudioPlaybackData*, outIndex, outGeneration)`,
+  `clip_GetLength`, `voice_Stop / IsPlaying / SetPaused / SetVolume / SetPitch / SetPosition /
+  GetTime / SetTime` on a voice (its index and generation: a voice that is over answers zeros).
+  An entity without a source, or no running world, returns 0 and zeros.
+- The Bamboo API. A script has two ways to a sound, and takes the one that fits:
+  - **a clip in a field** — `Bamboo::AudioClipHandle` (`BAMBOO_ASSET_HANDLE(AudioClipHandle,
+    "audio")`: a script field of the generic type `ScriptFieldType::ASSET` with the kind name,
+    `context/architecture.md`, "SDK API"), one or a `std::vector` of them — a playlist, the
+    variants of a footstep. `Bamboo::AudioAPI::play(clip, AudioPlayback)` gives an `AudioVoice`;
+    `stop`, `isPlaying`, `setPaused`, `setVolume`, `setPitch`, `setPosition`, `getTime`,
+    `setTime` drive it, `getLength(clip)` reads the clip. `AudioPlayback` is the bus, the
+    volume, the pitch, the loop, a fade in, the second to start at, and for a sound of a place
+    the position and the two distances. This is the way of a game whose sounds are data of its
+    logic: steps, hits, the music;
+  - **a source on an entity** — `Bamboo::AudioSourceComponentAPI` (`play`, `stop`, `setPaused`,
+    `isPlaying`, `playOneShot`, `playOneShotAt`, `setVolume` / `getVolume`, `setPitch` /
+    `getPitch`, `getTime` / `setTime`, `getLength`) for a sound that is a thing of the world: it
+    stands somewhere, moves with its entity, plays on start, is tuned in the inspector.
+  `Bamboo::AudioAPI` also holds the buses (`setBusVolume`, `getBusVolume`) and `stopAll`. Music
+  that goes from one piece into the next is two voices and the script: it starts the next one
+  when `getLength − getTime` of the playing one is the length of the crossfade, and moves the two
+  volumes every frame.
 - The inspector: the Audio Source section (the clip well of kind `audio`, the bus, volume, pitch,
   loop, play on start, spatial and its distances, attenuation, Doppler; Play / Stop — in a running
   world the live voice of the entity through `Sources`, otherwise a preview through the mixer,
@@ -188,7 +205,7 @@ of the editor part (the Mute of the editor settings applied every frame).
 Music that survives a world switch (voices of the application level plus a heartbeat of the
 running world in the tick: "no world ticked this frame" tells a Stop from a switch and pauses the
 voices when Play pauses); import settings per clip (typed settings on module asset kinds in the
-core); a clip field type for scripts (the generic `ScriptFieldType::ASSET` by kind name); a
+core); a
 waveform in the clip tab; suspend / resume and the audio session category on iOS (Fern lifecycle
 events → `AppSystem::suspend/resume`); a configurable bus set and voice limit (project-scope
 sections cooked into `project.bin`); effects (a low-pass for occlusion, reverb zones as an own

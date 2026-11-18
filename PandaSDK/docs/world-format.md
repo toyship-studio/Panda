@@ -175,9 +175,10 @@ without the component, and the log says so (`Component "…": its value is not r
 - `name` — the name of the script's C++ class (`REGISTER_SCRIPT`).
 - `fieldId` and `type` — **take them from `.Panda/scripts-manifest.json`** (see scripting.md),
   do not compute them by hand.
-- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh.
-  `value` for entity — the id of an entity of this world; for texture/material/world/font/mesh — an
-  asset id from the registry (see assets.md); for integer/float — a number.
+- `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh, 8 asset
+  (an asset of a kind a module brings: an audio clip — the manifest names the kind in `kind`).
+  `value` for entity — the id of an entity of this world; for texture/material/world/font/mesh/asset
+  — an asset id from the registry (see assets.md); for integer/float — a number.
 - A list field (`"list": true` in the manifest, a `std::vector` in the class) has an array in
   `value`, of values of its `type`: `{ "name": "levels", "fieldId": 37856845, "type": 5,
   "value": [3100002001, 3100002002] }`. An empty list is `[]`.

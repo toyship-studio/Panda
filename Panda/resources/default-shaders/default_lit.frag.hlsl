@@ -101,12 +101,17 @@ PSOutput main(PSInput input) {
 
     if (sunDirectionIntensity.w > 0.0) {
         float3 lightDirection = normalize(sunDirectionIntensity.xyz);
-        float3 radiance = sunColor.rgb * sunDirectionIntensity.w *
-                          sunVisibility(input.worldPos, input.worldNormal, volume.y);
         float diffuse = saturate(dot(surfaceNormal, lightDirection));
         float specular = computeSpecular(surfaceNormal, lightDirection, roughness, metallic);
-        lighting += radiance * diffuse;
-        lighting += radiance * specular;
+        // A surface that shows nothing of the sun does not ask for its shadow: the lookup is the
+        // cost of the shadows.
+        [branch]
+        if (diffuse + specular > 0.0) {
+            float3 radiance = sunColor.rgb * sunDirectionIntensity.w *
+                              sunVisibility(input.worldPos, input.worldNormal, volume.y);
+            lighting += radiance * diffuse;
+            lighting += radiance * specular;
+        }
     }
 
     // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.

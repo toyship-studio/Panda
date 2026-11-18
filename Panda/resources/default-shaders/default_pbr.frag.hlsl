@@ -118,11 +118,16 @@ PSOutput main(PSInput input) {
     // arrives is PI times the intensity.
     if (sunDirectionIntensity.w > 0.0) {
         float3 lightDirection = normalize(sunDirectionIntensity.xyz);
-        float3 radiance = sunColor.rgb * (sunDirectionIntensity.w * PI) *
-                          sunVisibility(input.worldPos, input.worldNormal, volume.y);
-        lighting += shadeLight(
-            surfaceNormal, viewDirection, lightDirection, radiance, scattered / PI, metallic, roughness, f0
-        );
+        // A surface turned away from the sun reflects none of it and does not ask for its shadow:
+        // the lookup is the cost of the shadows.
+        [branch]
+        if (dot(surfaceNormal, lightDirection) > 0.0) {
+            float3 radiance = sunColor.rgb * (sunDirectionIntensity.w * PI) *
+                              sunVisibility(input.worldPos, input.worldNormal, volume.y);
+            lighting += shadeLight(
+                surfaceNormal, viewDirection, lightDirection, radiance, scattered / PI, metallic, roughness, f0
+            );
+        }
     }
 
     // The lamps of the world (panda/lighting.hlsli): what of each reaches the point, and from where.

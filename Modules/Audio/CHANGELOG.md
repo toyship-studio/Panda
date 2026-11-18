@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- A script holds clips and plays them without an entity per sound: `Bamboo::AudioClipHandle` as a
+  script field (one, or a `std::vector` of them), `AudioAPI::play(clip, AudioPlayback)` and the
+  `AudioVoice` it gives — `stop`, `isPlaying`, `setPaused`, `setVolume`, `setPitch`,
+  `setPosition`, `getTime` / `setTime` —, `AudioAPI::getLength(clip)` (the `audio` table is v3;
+  scripts are built again). The Audio Source stays for a sound that is a thing of the world.
+
 ## 0.2.0
 
 - Scripts read where a source plays and how long its clip is:

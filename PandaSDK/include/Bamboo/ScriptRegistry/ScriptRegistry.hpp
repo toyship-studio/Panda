@@ -46,7 +46,15 @@ private:
         if constexpr (std::is_same_v<T, Bamboo::WorldHandle>) { return ScriptFieldType::WORLD; }
         if constexpr (std::is_same_v<T, Bamboo::FontHandle>) { return ScriptFieldType::FONT; }
         if constexpr (std::is_same_v<T, Bamboo::MeshHandle>) { return ScriptFieldType::MESH; }
+        // A handle of a kind a module brings (BAMBOO_ASSET_HANDLE): it names its kind itself.
+        if constexpr (requires { T::ASSET_KIND; }) { return ScriptFieldType::ASSET; }
         return ScriptFieldType::UNKNOWN;
+    }
+
+    template<typename T>
+    static constexpr const char *getKind() {
+        if constexpr (requires { T::ASSET_KIND; }) { return T::ASSET_KIND; }
+        return nullptr;
     }
 
     // One value out of the array the engine sent: a number as it is, a handle from its id.
@@ -114,7 +122,10 @@ public:
         if constexpr (type == ScriptFieldType::UNKNOWN) {
             return ScriptFieldInfo(type, false, fieldName, offset, nullptr);
         } else {
-            return ScriptFieldInfo(type, FieldShape<FieldType>::list, fieldName, offset, &assignField<FieldType>);
+            return ScriptFieldInfo(
+                type, FieldShape<FieldType>::list, fieldName, offset, &assignField<FieldType>,
+                getKind<typename FieldShape<FieldType>::Item>()
+            );
         }
     }
 

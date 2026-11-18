@@ -81,7 +81,8 @@ REGISTER_SCRIPT(MoveScript)
 value from the world (`scriptFields`). A field is one value — `int`, `float`, a reference to an
 entity, a texture, a material, a world, a font or a mesh (`EntityHandle`, `TextureHandle`,
 `MaterialHandle`, `WorldHandle`, `FontHandle`, `MeshHandle` — a model of the project, a
-`.gltf`) — or a list of them, a `std::vector` of one of those types:
+`.gltf`), an asset of a kind a module brings (`AudioClipHandle` of the Audio module: a sound
+file) — or a list of them, a `std::vector` of one of those types:
 
 ```cpp
 std::vector<Bamboo::WorldHandle> levels;      // the levels of the game, in order

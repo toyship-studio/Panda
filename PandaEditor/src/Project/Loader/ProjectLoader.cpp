@@ -182,12 +182,17 @@ namespace {
         std::string name;
         std::string type; // what one value of the field is
         bool list = false; // the field is a list: its "value" in a world is an array of them
+        // The kind of the assets a reference names ("texture", "mesh", "audio" — the name an
+        // asset kind is registered by); empty for a number and for an entity. An "asset" field
+        // is of a kind a module brings: the kind is all that tells such fields apart.
+        std::string kind;
 
         RAIN_FIELDS_BEGIN(ScriptFieldManifestDto)
         RAIN_FIELD(fieldId)
         RAIN_FIELD(name)
         RAIN_FIELD(type)
         RAIN_FIELD(list)
+        RAIN_FIELD(kind)
         RAIN_FIELDS_END
     };
 
@@ -210,6 +215,19 @@ namespace {
         RAIN_FIELDS_END
     };
 
+    // The kind of the assets a field refers to; empty — it refers to none.
+    std::string scriptFieldAssetKind(const Panda::ScriptFieldManifest &field) {
+        switch (field.type) {
+            case Scripting::ScriptFieldType::TEXTURE: return "texture";
+            case Scripting::ScriptFieldType::MATERIAL: return "material";
+            case Scripting::ScriptFieldType::WORLD: return "world";
+            case Scripting::ScriptFieldType::FONT: return "font";
+            case Scripting::ScriptFieldType::MESH: return "mesh";
+            case Scripting::ScriptFieldType::ASSET: return field.kind;
+            default: return {};
+        }
+    }
+
     const char *scriptFieldTypeName(Scripting::ScriptFieldType type) {
         switch (type) {
             case Scripting::ScriptFieldType::INTEGER: return "integer";
@@ -220,6 +238,7 @@ namespace {
             case Scripting::ScriptFieldType::WORLD: return "world";
             case Scripting::ScriptFieldType::FONT: return "font";
             case Scripting::ScriptFieldType::MESH: return "mesh";
+            case Scripting::ScriptFieldType::ASSET: return "asset";
             case Scripting::ScriptFieldType::UNKNOWN: break;
         }
         return "unknown";
@@ -235,7 +254,7 @@ namespace {
             classDto.name = scriptClass.name;
             for (const auto &field : scriptClass.fields) {
                 classDto.scriptFields.push_back(
-                    {{}, field.handle, field.name, scriptFieldTypeName(field.type), field.list}
+                    {{}, field.handle, field.name, scriptFieldTypeName(field.type), field.list, scriptFieldAssetKind(field)}
                 );
             }
         }
