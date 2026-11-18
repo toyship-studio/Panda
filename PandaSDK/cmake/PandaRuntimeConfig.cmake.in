@@ -181,6 +181,7 @@ elseif(APPLE)
                 "-framework Cocoa"
                 "-framework IOKit"
                 "-framework CoreFoundation"
+                "-framework CoreServices"
                 "-framework OpenGL"
                 "-framework Metal"
                 "-framework QuartzCore"

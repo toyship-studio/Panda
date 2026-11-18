@@ -91,8 +91,10 @@ public:
     std::string hint(const std::string &title, const std::string &id) const;
 
     // The user's keymap. load reads the file (a missing one — only the defaults); bind and reset
-    // change one command and write the file.
+    // change one command and write the file. reloadKeymap reads the file again when it is not
+    // the one the editor last read or wrote (an edit in another program): true — it was.
     void loadKeymap(const std::filesystem::path &path);
+    bool reloadKeymap();
     void bind(const std::string &id, std::vector<KeyChord> chords);
     void resetBinding(const std::string &id);
     const std::filesystem::path &keymapPath() const {
@@ -128,6 +130,7 @@ private:
     std::vector<Command> m_commands;
     std::map<std::string, std::vector<std::string>> m_user; // keymap.json as read: id → chord names
     std::filesystem::path m_keymapPath;
+    std::filesystem::file_time_type m_keymapTime{}; // of the file as the editor last read or wrote it
     std::function<bool()> m_worldScopeTest;
     std::function<void(KeyChord)> m_capture;
     std::vector<std::function<void()>> m_listeners;

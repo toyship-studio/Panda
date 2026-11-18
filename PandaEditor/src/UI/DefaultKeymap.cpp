@@ -14,7 +14,6 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         {"file.openProject", "primary-o"},
         {"file.save", "primary-s"},
         {"file.saveAll", "primary-alt-s"},
-        {"file.reload", "primary-r"},
         {"settings.open", "primary-,"},
         {"keymap.open", "primary-k"},
         {"app.exit", "primary-q"},

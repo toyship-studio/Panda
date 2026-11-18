@@ -25,6 +25,9 @@ public:
     }
     Fern::EdgeInsets getSafeAreaInsets() override;
     Fern::Vec2 getCursorPosition() override {}
+    bool isFocused() override {
+        return true;
+    }
     bool setProgressBar(float progress) override {
         return false;
     }

@@ -28,6 +28,7 @@ public:
     Fern::Size getDpi() override;
     Fern::EdgeInsets getSafeAreaInsets() override;
     Fern::Vec2 getCursorPosition() override;
+    bool isFocused() override;
     bool setProgressBar(float progress) override;
     bool endProgressBar() override;
     void setMenuBar(const Fern::MenuBar &menuBar) override;

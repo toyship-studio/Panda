@@ -29,17 +29,24 @@ sidecars.
    `Scripts/<Project>/scripts/build_scripts.sh debug`, or the CMake panel inside PandaEditor.
    The shell scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`; the CMake panel
    finds the SDK itself.
-3. Press **Reload** in PandaEditor (File → Reload, Cmd/Ctrl+R, the same button is on the
-   toolbar). The asset registry follows the project tree first — a file put into the project
+3. Go back to PandaEditor: it takes what changed on disk by itself — while it is the
+   application in front it does so within a moment of the change, and what changed while it was
+   behind it takes when it comes back. It does not ask anything doing so: a document with
+   unsaved edits in the editor is left as it is (saving it asks which version stays), and
+   while the game plays the changes wait for Stop. There is no command for it.
+   The asset registry follows the project tree first — a file put into the project
    becomes an asset with an id in its sidecar, a file that is gone leaves — then the editor
    synchronizes with the disk by modification time, in the order editor settings → project
    settings → assets → scripts → world: whatever has not changed is left alone. A file changed on disk that also has unsaved edits in the editor asks which version
    stays: Save, Discard or Cancel. A broken world or settings file is reported and the editor
    keeps what it has. An edited `.Panda/project.json` is reread as a whole; a module switched on
-   in it opens the project again, a module switched off needs a restart of the editor. A shader
+   in it opens the project again (when nothing is unsaved — otherwise as soon as it is saved), a
+   module switched off needs a restart of the editor. The settings file and the keymap of the
+   editor itself are followed the same way. A shader
    is reloaded when either of its files or any `.hlsli` it includes has changed.
 4. Press Play. An agent does steps 3 and 4 itself, with the `reload` and `play` tools of the
-   editor, and looks at the result with `screenshot`.
+   editor, and looks at the result with `screenshot` (`reload` answers with what the editor
+   took, and works whether the editor is in front or not).
 
 ## One file, one tab
 
@@ -57,7 +64,7 @@ Every tab of the editor edits one file, and the file is always in reach:
   (Cmd/Ctrl+Alt+S, the toolbar button) writes every unsaved file. A file that changed on disk
   since the editor read it is not overwritten in silence: the editor asks which version stays.
 - The editor never writes over a hand-edited settings file on its own: a `project.json` or
-  `settings.json` changed on disk is left alone on exit until Reload takes it.
+  `settings.json` changed on disk is left alone on exit until the editor has taken it.
 
 ## Entities as text
 
@@ -150,8 +157,8 @@ The rules an agent follows, in short:
 - The agent checks its own work in the running editor: `reload`, then `logs` and a
   `screenshot`. What a still picture cannot show — motion, input, sound — it leaves to the user
   and says what to try.
-- Without the editor's tools the agent asks the user to press Reload and to report back. It does
-  not launch the editor itself.
+- Without the editor's tools the agent asks the user to look at the editor (it takes the
+  changes by itself when it is in front) and to report back. It does not launch the editor itself.
 - The agent builds the scripts itself and fixes compilation errors from the output.
 - The editor owns the registry: new asset files are registered on open or rescan, and `.pmeta`
   sidecars are never edited by hand.
@@ -168,7 +175,8 @@ asset — a text file does that already; it has only what a file cannot do:
 | Tool | What it does |
 | --- | --- |
 | `status` | the project, Edit or Play, the open worlds, the unsaved documents, the viewports, the editor camera, the frame statistics, the shader features, the number of errors in the log |
-| `reload` | Reload: the editor takes what changed on disk. Answers with what the editor logged |
+| `reload` | the editor takes what changed on disk now, in front or not, and stops the game if it plays. Answers with what the editor logged |
+| `focus` | tells the editor that it is the application in front (`front: true`, it then takes what changes on disk by itself) or behind. An editor nobody is at (`--unattended`) is behind until told: for a test of what happens when the user comes back to the editor |
 | `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI; or `window` — the whole editor window with its panels. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
 | `logs` | the log of the editor and the engine: what the Output panel shows and the engine console. `since` returns only the new lines, `level` filters |
 | `play`, `stop` | Play and Stop |

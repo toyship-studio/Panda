@@ -293,8 +293,9 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "status",
         "The state of the editor: the project, Edit or Play, the open worlds, the unsaved documents, the viewports, "
-        "the editor camera, the frame statistics, the shader features of the project, the number of errors in the "
-        "log. Call it first.",
+        "the editor camera, the frame statistics, the disk (whether the editor is in front and takes what changes "
+        "on disk by itself, whether a change waits to be taken), the shader features of the project, the number of "
+        "errors in the log. Call it first.",
         {},
         [this](const rapidjson::Value &) { return status(); },
     });
@@ -328,12 +329,26 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "reload",
         "Makes the editor take what changed on disk — worlds, assets, shaders, the settings, the script build — "
-        "as the Reload button does. Call it after editing files of the project. Stops the game if it plays. A "
+        "now, whether it is the application in front or not. Call it after editing files of the project. Stops the game if it plays. A "
         "document with unsaved edits in the editor that was also changed on disk is a conflict: the tool fails "
         "and names it. Answers with what the editor logged.",
         R"({"type":"object","properties":{)"
         R"("discard":{"type":"boolean","description":"The disk wins: every unsaved edit made in the editor is dropped and its document is read again from its file, changed on disk or not. Default false."}}})",
         [this](const rapidjson::Value &arguments) { return reload(arguments); },
+    });
+    m_server.addTool({
+        "focus",
+        "Tells the editor that it is the application in front, or behind. In front, the editor takes by itself "
+        "what changed on disk — the way `reload` does, but without stopping at a conflict: a document with unsaved "
+        "edits is left as it is — within a moment of the change; behind, the changes wait until it comes back. An "
+        "editor nobody is at (--unattended) is behind until this tool says otherwise, so a test decides when the "
+        "user \"comes back\"; in an editor a person works with, the real window decides and this tool holds only "
+        "until the window says otherwise. While the game plays the changes wait for Stop. Answers after `wait` "
+        "seconds with what the editor logged meanwhile.",
+        R"({"type":"object","properties":{)"
+        R"("front":{"type":"boolean","description":"true (the default) — the editor is in front; false — it is behind."},)"
+        R"("wait":{"type":"number","description":"Seconds before the answer: the time the editor has to take what waits. Default 1, at most 30."}}})",
+        [this](const rapidjson::Value &arguments) { return focus(arguments); },
     });
     m_server.addTool({
         "save",
@@ -673,6 +688,16 @@ Mcp::PendingResult EditorMcp::status() {
     writer.Double(std::round(static_cast<double>(gpu.allocatedBytes) / megabyte));
     writer.EndObject();
 
+    // The disk of the project, followed: whether the editor is in front (it takes what changes on
+    // disk by itself then) and whether a change waits to be taken.
+    writer.Key("disk");
+    writer.StartObject();
+    writer.Key("inFront");
+    writer.Bool(m_editor.diskWatch().isInFront());
+    writer.Key("waiting");
+    writer.Bool(m_editor.diskWatch().isWaiting());
+    writer.EndObject();
+
     writer.Key("shaderFeatures");
     writer.StartArray();
     for (const std::string &feature : m_editor.documents().projectSettings().get<ProjectRenderingSettings>().features) {
@@ -1002,6 +1027,17 @@ Mcp::PendingResult EditorMcp::save(const rapidjson::Value &arguments) {
     }
     result.text += logSince(from);
     return Mcp::ready(std::move(result));
+}
+
+Mcp::PendingResult EditorMcp::focus(const rapidjson::Value &arguments) {
+    const bool front = Mcp::boolArgument(arguments, "front", true);
+    const double until = nowSeconds() + std::clamp(Mcp::numberArgument(arguments, "wait", 1.0), 0.0, 30.0);
+    const uint64_t from = LogHistory::nextSequence();
+    m_editor.diskWatch().setInFront(front);
+    return [this, front, until, from]() -> std::optional<Mcp::ToolResult> {
+        if (nowSeconds() < until) { return std::nullopt; }
+        return textResult(std::string(front ? "The editor is in front.\n" : "The editor is behind.\n") + logSince(from));
+    };
 }
 
 Mcp::PendingResult EditorMcp::play() {

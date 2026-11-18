@@ -49,7 +49,7 @@ public:
 
     HWND getHandle();
     WGL_Context *getGLContext();
-    bool isFocused();
+    bool isFocused() override;
     float getContentScale();
     void ignoreNextMouseEvents();
     void setCursorHidden(bool hidden);

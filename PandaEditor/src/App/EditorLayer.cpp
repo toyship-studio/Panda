@@ -79,6 +79,7 @@ EditorLayer::EditorLayer(Fern::Window *window, EditorLaunch launch)
     , m_documents(this)
     , m_loader(m_documents, this)
     , m_documentActions(*this)
+    , m_diskWatch(*this)
     , m_builds(m_loader, m_documents, [this] { scriptsWereBuilt(); })
     , m_window(window)
     , m_menuBar(window, this, m_commands)
@@ -122,6 +123,8 @@ void EditorLayer::onAttach() {
     // The user's keys, next to the editor's settings.json; the menu is rebuilt by the listener.
     const path_t settingsPath = m_documents.editorSettingsFile().path();
     m_commands.loadKeymap(settingsPath.empty() ? path_t() : settingsPath.parent_path() / "keymap.json");
+    // The files of the editor and of the project that is open, followed from here on.
+    m_diskWatch.watch(m_loader.hasOpenedProject() ? m_loader.getOpenedProjectPath() : path_t());
 
     // PandaUI host of the editor chrome (the last pass of a frame, into the window). Fonts and
     // icons go BEFORE the controller is created (panels take icons from the global registry while
@@ -216,6 +219,14 @@ void EditorLayer::onUpdate(double deltaTime) {
     // The requests of the agent, before the frame is built: a tool changes the state of the
     // editor (Play, Reload, another world) where a click of the user would.
     if (m_mcp) { m_mcp->update(); }
+    // What changed on disk by itself, taken at the same place — while the editor is the
+    // application in front: one of its windows has the keyboard. An unattended editor is in
+    // front when a test says so (EditorMcp), whatever its window does.
+    if (!m_launch.unattended) {
+        Fern::Window *second = m_editorUI.auxiliaryWindow();
+        m_diskWatch.setInFront(m_window->isFocused() || (second != nullptr && second->isFocused()));
+    }
+    m_diskWatch.update(deltaTime);
     // Size the engine viewports from the PandaUI panels BEFORE the world renders this frame.
     if (m_loader.hasOpenedProject()) {
         syncViewports();
@@ -402,6 +413,7 @@ void EditorLayer::onEvent(Fern::Event *event) {
         event->isHandled = true;
         return;
     }
+    followDiskWatchEvent(*event);
     const bool modal = m_editorUI.context().modals().isPresenting();
     if (m_menuBar.handleEvent(event, modal)) { return; }
 
@@ -741,6 +753,7 @@ void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &pa
     if (m_editorController) { m_editorController->refreshAssetPanels(); }
     loadEditorParts(); // at startup the controller does not exist yet — then after its creation (onAttach)
     showEditorChrome();
+    m_diskWatch.watch(path); // from here on its files are followed
 }
 
 // The open project goes — Close Project, another project in this window, the same one read
@@ -748,6 +761,7 @@ void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &pa
 // they are still there. The ids of assets repeat between projects (two projects made from one
 // template), so nothing that names an asset by id may outlive its project.
 void EditorLayer::loaderWillCloseProject() {
+    m_diskWatch.watch({});
     m_play.world().clear();
     Editor::selection().clear();
     if (m_editorController) {
@@ -796,12 +810,32 @@ void EditorLayer::loadEditorParts() {
     m_editorController->extensionsChanged();
 }
 
+// What the disk watch waits for besides the editor in front: no button of the mouse held in a
+// window of the editor.
+void EditorLayer::followDiskWatchEvent(const Fern::Event &event) {
+    switch (event.type) {
+        case Fern::EventType::MouseButtonPressed: m_buttonsHeld++; break;
+        case Fern::EventType::MouseButtonReleased: m_buttonsHeld = std::max(0, m_buttonsHeld - 1); break;
+        case Fern::EventType::WindowLostFocus: m_buttonsHeld = 0; break; // the release goes to another application
+        default: break;
+    }
+    m_diskWatch.pointerHeld(m_buttonsHeld > 0);
+}
+
+bool EditorLayer::isModalOpen() {
+    return m_editorUI.context().modals().isPresenting();
+}
+
+bool EditorLayer::isReopenNeededForModules() {
+    return m_loader.hasOpenedProject() && ProjectModules::loadNeeded(m_documents.projectSettings().get<ProjectModuleSettings>());
+}
+
 bool EditorLayer::reopenProjectForModules() {
     const ProjectModuleSettings &modules = m_documents.projectSettings().get<ProjectModuleSettings>();
     if (ProjectModules::loadNeeded(modules)) {
         // A module switched on in the file: its contributions are needed before the asset registry
         // and the world, so the project opens again — that reads everything fresh.
-        LOG_INFO_EDITOR("Reload: the module set has grown, the project is opened again");
+        LOG_INFO_EDITOR("project.json switches a module on: the project is opened again");
         const path_t projectPath = m_loader.getOpenedProjectPath();
         m_documentActions.runAfterUnsavedQuestion([this, projectPath]() {
             saveOpenedProjectWindowState();
@@ -809,10 +843,15 @@ bool EditorLayer::reopenProjectForModules() {
         });
         return true;
     }
-    if (ProjectModules::restartNeeded(modules)) {
-        LOG_WARN_EDITOR("Reload: a module was switched off in project.json. Restart the editor to drop it.");
-    }
+    warnOfModulesSwitchedOff();
     return false;
+}
+
+void EditorLayer::warnOfModulesSwitchedOff() {
+    if (!m_loader.hasOpenedProject()) { return; }
+    if (ProjectModules::restartNeeded(m_documents.projectSettings().get<ProjectModuleSettings>())) {
+        LOG_WARN_EDITOR("A module was switched off in project.json: restart the editor to drop it.");
+    }
 }
 
 void EditorLayer::openProjectRequest() {
@@ -992,7 +1031,6 @@ void EditorLayer::registerCommands() {
     command("file.newWindow", "File", "New Window", [this] { newWindow(); }, anywhere);
     command("file.openProject", "File", "Open Project", [this] { openProjectRequest(); }, anywhere);
     command("file.saveAll", "File", "Save All", [this] { m_documentActions.saveAll(); });
-    command("file.reload", "File", "Reload", [this] { m_documentActions.reloadFromDisk(); });
     command("file.showCppProject", "File", "Show C++ Project", [this] { m_builds.showFolder(BuildTargetKind::Scripts); });
     command("file.closeProject", "File", "Close Project", [this] { closeProjectRequest(); });
     command("app.exit", "File", "Exit", [this] { closeAppRequest(); }, anywhere);

@@ -550,9 +550,8 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     if (canRedo != m_tbCanRedo) { m_tbCanRedo = canRedo; m_toolbarView->setCanRedo(canRedo); }
     if (canPlay != m_tbCanPlay) { m_tbCanPlay = canPlay; m_toolbarView->setCanPlay(canPlay); }
     if (canStop != m_tbCanStop) { m_tbCanStop = canStop; m_toolbarView->setCanStop(canStop); }
-    if (isEditMode != m_tbCanReload) {
-        m_tbCanReload = isEditMode;
-        m_toolbarView->setCanReloadScripts(isEditMode);
+    if (isEditMode != m_shownEditMode) {
+        m_shownEditMode = isEditMode;
         if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
     }
 
@@ -788,11 +787,6 @@ void EditorController::toolbarDidTapPlay() {
 
 void EditorController::toolbarDidTapStop() {
     m_app.stop();
-}
-
-void EditorController::toolbarDidTapReload() {
-    m_app.documentActions().reloadFromDisk(); // assets/scripts/world by mtime
-    LOG_INFO_EDITOR("Reloading from disk…");
 }
 
 void EditorController::toolbarDidSave() {

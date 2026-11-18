@@ -152,12 +152,6 @@ void AssetActions::contentDidRequestImport(const std::vector<Panda::AssetId> &as
     LOG_INFO_EDITOR("Reimported %zu %s", assets.size(), assets.size() == 1 ? "asset" : "assets");
 }
 
-void AssetActions::contentDidRequestRefresh() {
-    // Tree rescan: new files become assets, the ids of existing ones are stable (sidecars).
-    if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current()) { handler->rescanProject(); }
-    m_workspace.refreshAssetPanels();
-}
-
 /* ------------------------------ Deleting ------------------------------ */
 
 // File = asset: the files go from disk (a rescan would bring the asset back with a new id), and

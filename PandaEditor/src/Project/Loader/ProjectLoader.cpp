@@ -278,6 +278,10 @@ ScriptEngineConfig ProjectLoader::makeScriptsConfig() {
     };
 }
 
+path_t ProjectLoader::scriptsLibraryPath() {
+    return hasOpenedProject() ? ScriptEngine::libraryFilePath(makeScriptsConfig()) : path_t();
+}
+
 bool ProjectLoader::isScriptsChangedOnDisk() {
     if (!hasOpenedProject()) { return false; }
     std::error_code errorCode;

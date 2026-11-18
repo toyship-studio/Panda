@@ -40,7 +40,7 @@ public:
 
     void ignoreNextMouseEvents();
     GLFWwindow *getHandle();
-    bool isFocused();
+    bool isFocused() override;
     Size getUnitScale();
 
 private:

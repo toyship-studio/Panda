@@ -77,7 +77,7 @@ void ContentBrowserDataSource::rebuild() {
                     FileEntry file;
                     file.name = name;
                     file.path = entry.path();
-                    // The scan on open/Refresh imports everything supported by itself:
+                    // The scan of the project imports everything supported by itself:
                     // assetId == 0 remains only for files of formats foreign to the engine.
                     file.assetId = handler->getAssetId(entry.path());
                     folder.files.push_back(std::move(file));

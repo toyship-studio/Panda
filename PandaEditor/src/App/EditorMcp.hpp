@@ -72,6 +72,7 @@ private:
     Mcp::PendingResult logs(const rapidjson::Value &arguments);
     Mcp::PendingResult screenshot(const rapidjson::Value &arguments);
     Mcp::PendingResult reload(const rapidjson::Value &arguments);
+    Mcp::PendingResult focus(const rapidjson::Value &arguments);
     Mcp::PendingResult save(const rapidjson::Value &arguments);
     Mcp::PendingResult play();
     Mcp::PendingResult stop();

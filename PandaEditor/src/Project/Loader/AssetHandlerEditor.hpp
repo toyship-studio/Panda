@@ -47,8 +47,9 @@ public:
     path_t assetsPath() const {
         return m_projectPath / ASSETS_FOLDER;
     }
-    // Rescans the Assets folder (the Refresh button): new files become assets, the ids of existing
-    // ones are stable (they live in the sidecars) — loaded assets and tabs are not broken.
+    // Rescans the Assets folder (Reload, and the disk watch when the tree changed): new files
+    // become assets, the ids of existing ones are stable (they live in the sidecars) — loaded
+    // assets and tabs are not broken.
     void rescanProject();
     // Editor state of an asset outside the registry (context/architecture.md):
     // the file as the editor last read or wrote it (load/save) and whether it is open in a tab. The in-memory dirty state lives in the document model
@@ -65,6 +66,14 @@ public:
     // more than its asset file (the fragment stage and the includes are files of their own), so
     // it is also compared by the text its sources expand to.
     bool isAssetChangedOnDisk(AssetId id);
+    // What a change on disk of a path under the Assets folder (a real path) is to the registry —
+    // the disk watch asks (App/DiskWatch.hpp): nothing — the editor wrote the sidecar itself, or
+    // the file came and went; the content of a file — of a known asset, or of one the registry
+    // does not keep (an include of a shader): the documents see it by its time; news of the tree
+    // — an asset is gone, or a folder, a sidecar or a file the project imports has come:
+    // rescanProject reads it.
+    enum class DiskChange { None, Content, Tree };
+    DiskChange classifyDiskChange(const path_t &path);
     // The loaded assets of the project (the static resources of the engine have no file of the
     // project). Their file documents are made by FileDocuments; an asset nobody loaded is read
     // fresh on its next use and has nothing in memory to save or reload.
@@ -89,7 +98,7 @@ public:
     // in the future the size in the runtime Asset Package (cooked form) will stand next to it.
     uint64_t assetSizeOnDisk(AssetId id);
     // false — the asset's files are incomplete/broken (a shader without its frag pair, an uncookable
-    // texture, a file deleted externally in the middle of a session — until Refresh). Export gate +
+    // texture, a file deleted externally in the middle of a session — until the next scan). Export gate +
     // the Missing column.
     bool assetFilesExist(AssetId id);
     void removeAsset(AssetId id);
@@ -145,6 +154,8 @@ private:
     Rain::JsonDecoder m_jsonDecoder;
     std::map<AssetId, AssetInfo> m_registry;
     std::unordered_map<AssetId, AssetEditorMeta> m_editorMeta;
+    // The sidecars the editor wrote, by their real paths, with the time each got.
+    std::unordered_map<path_t, std::filesystem::file_time_type> m_ownSidecars;
     // The assets open in tabs, held: see setAssetOpenedInTab.
     std::unordered_map<AssetId, AssetRef<Asset>> m_tabReferences;
     std::unordered_map<AssetId, AssetFileReference> m_assetSources; // id → source (the path is relative)

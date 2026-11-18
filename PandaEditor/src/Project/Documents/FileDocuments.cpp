@@ -80,6 +80,21 @@ FileDocumentList FileDocuments::list() {
     return list;
 }
 
+bool FileDocuments::hasUnsaved() {
+    if (m_editorSettings.isDirty()) { return true; }
+    if (m_projectPath.empty()) { return false; }
+    if (m_projectSettings.isDirty()) { return true; }
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        if (world->isDirty()) { return true; }
+    }
+    if (AssetHandlerEditor *handler = AssetHandlerEditor::current()) {
+        for (AssetId id : handler->loadedProjectAssets()) {
+            if (handler->documents().isAssetChanged(id)) { return true; }
+        }
+    }
+    return false;
+}
+
 /* ------------------------------ The settings ------------------------------ */
 
 void FileDocuments::settingsRead(SettingsFile &file) {

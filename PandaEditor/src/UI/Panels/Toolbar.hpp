@@ -17,9 +17,8 @@ public:
     virtual ~ToolbarOutput() = default;
     virtual void toolbarDidTapPlay() = 0; // the world starts playing (a copy of it runs)
     virtual void toolbarDidTapStop() = 0; // back to editing
-    virtual void toolbarDidTapReload() = 0;                      // sync with the disk (Reload)
-    virtual void toolbarDidSave() = 0;                           // save the world
-    virtual void toolbarDidExport() = 0;                         // the Export window
+    virtual void toolbarDidSave() = 0;   // every unsaved document
+    virtual void toolbarDidExport() = 0; // the Export window
     virtual void toolbarDidUndo() = 0;
     virtual void toolbarDidRedo() = 0;
     virtual void toolbarDidNavigateBack() = 0;    // selection history: back
@@ -28,9 +27,10 @@ public:
     virtual void toolbarDidDismissUpdate() = 0;   // the update indicator was dismissed
 };
 
-// VIEW: the top toolbar of the editor. On the left — Play / Stop and script
-// reload; on the right — the update indicator (UpdateIndicatorView). Intents go out through
-// ToolbarOutput.
+// VIEW: the top toolbar of the editor. On the left — the selection history, Undo and Redo, Save
+// All and the export; in the middle — Play / Stop; on the right — the update indicator
+// (UpdateIndicatorView). Intents go out through ToolbarOutput. There is no Reload button: the
+// editor takes what changes on disk by itself (App/DiskWatch.hpp).
 // (The Move/Rotate/Scale gizmo and the camera reset have moved to the viewport overlay toolbar.)
 class ToolbarPanelView final : public EditorView, public UpdateIndicatorOutput {
 public:
@@ -44,7 +44,6 @@ public:
     void setCanNavigate(bool back, bool forward); // selection history buttons
     void setCanPlay(bool canPlay);            // Play (Edit mode)
     void setCanStop(bool canStop);            // Stop (the world is running)
-    void setCanReloadScripts(bool canReload); // Reload is available only in Edit
 
     void updateIndicatorDidActivate() override;
     void updateIndicatorDidDismiss() override;
@@ -59,7 +58,6 @@ private:
     std::shared_ptr<IconButton> m_back;
     std::shared_ptr<IconButton> m_forward;
     std::shared_ptr<IconButton> m_redo;
-    std::shared_ptr<IconButton> m_reload;
     std::shared_ptr<IconButton> m_save;
     std::shared_ptr<IconButton> m_play;
     std::shared_ptr<IconButton> m_stop;

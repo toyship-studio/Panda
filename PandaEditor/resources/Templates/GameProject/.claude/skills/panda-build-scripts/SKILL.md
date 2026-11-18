@@ -17,8 +17,8 @@ the editor loads.
    are there — and the editor loads the library when the build succeeded. After a source file
    was added: `build` with `action: "configure"` first. Without the editor, from a terminal:
    `Scripts/___PROJECTNAME___/scripts/configure_scripts.sh debug` (once), then
-   `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`, and the `reload` tool (or Reload,
-   Cmd/Ctrl+R) when the editor is started — it picks up the fresh library (by mtime).
+   `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`, and the `reload` tool when the
+   editor is started — it picks up the fresh library (by mtime).
    Fix compilation errors yourself, using the output.
 3. Read `logs` for errors; `play` and a `screenshot` of the `game` view show the game. Motion,
    input and sound are checked by the user.

@@ -25,6 +25,21 @@ elseif (PLATFORM_MACOS OR PLATFORM_IOS)
 endif ()
 list(APPEND SOURCES ${NET_PLATFORM_SOURCES})
 
+# The file watch (Fern/Files/FileWatcher.hpp): the shared part with the portable scan, and the
+# backend of the platform — ReadDirectoryChangesW, inotify, FSEvents. A phone has none.
+file(GLOB FILES_SOURCES src/Files/*.cpp)
+file(GLOB FILES_INCLUDE src/Files/*.hpp)
+list(APPEND SOURCES ${FILES_SOURCES})
+list(APPEND INCLUDE ${FILES_INCLUDE})
+if (PLATFORM_WIN32)
+    file(GLOB FILES_PLATFORM_SOURCES src/Files/Windows/*.cpp)
+elseif (PLATFORM_LINUX)
+    file(GLOB FILES_PLATFORM_SOURCES src/Files/Linux/*.cpp)
+elseif (PLATFORM_MACOS)
+    file(GLOB FILES_PLATFORM_SOURCES src/Files/Apple/*.cpp)
+endif ()
+list(APPEND SOURCES ${FILES_PLATFORM_SOURCES})
+
 # Other platform specific realizations
 if (PLATFORM_WIN32)
     file(GLOB_RECURSE GLOB_RESULT_INCLUDE src/Platform/System/Win32_System/*.hpp src/Platform/System/Win32_System/*.h)
@@ -73,7 +88,8 @@ elseif (PLATFORM_MACOS)
     find_library(COREFOUNDATION CoreFoundation)
     find_library(METAL_LIBRARY Metal)
     find_library(QUARTZ_CORE QuartzCore)
-    target_link_libraries(Fern ${COCOA} ${IOKIT} ${OPENGL} ${COREFOUNDATION} ${METAL_LIBRARY} ${QUARTZ_CORE})
+    find_library(CORESERVICES CoreServices) # FSEvents: the file watch
+    target_link_libraries(Fern ${COCOA} ${IOKIT} ${OPENGL} ${COREFOUNDATION} ${METAL_LIBRARY} ${QUARTZ_CORE} ${CORESERVICES})
 elseif (PLATFORM_IOS)
     # add_definitions("-x objective-c++")
     # Locate system libraries on iOS
@@ -112,6 +128,12 @@ endif ()
 
 # Fern does not depend on Miren: Miren builds on Fern (the graphics context), not the other way
 # round, and a mirror of Fern must not fetch Miren. Anything that renders links Miren itself.
+
+# The smoke test of the file watch: a folder of its own in the temporary one, both backends.
+if (DESKTOP)
+    add_executable(FernFilesSmoke Smoke/FilesSmoke.cpp)
+    target_link_libraries(FernFilesSmoke PRIVATE Fern Foundation)
+endif ()
 
 # The smoke test of the network layer: a loopback server inside the test (context/networking.md).
 if (DESKTOP)

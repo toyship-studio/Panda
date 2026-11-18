@@ -6,6 +6,10 @@ hands need to know — the keys and the gestures. Every command of the editor is
 command palette, by name, with its keys; the keys on this page are the defaults, and every one
 of them can be changed ([Keymap](#keymap)).
 
+The editor follows the files it works on: an edit made in another program — a text editor, an
+agent, git — is taken as soon as the editor is the application in front, without a command. A
+document with unsaved edits is left as it is; saving it asks which version stays.
+
 ## Finding things
 
 | Keys | What |
@@ -41,7 +45,6 @@ Hierarchy (a click there gives it):
 | ⌘B | Build the scripts of the project: the CMake panel shows the build, the editor loads the result |
 | ⌘Z, ⇧⌘Z | Undo, Redo — of the document whose tab has the keyboard |
 | ⌘S, ⌥⌘S | Save the document of the tab, Save All |
-| ⌘R | Reload: the editor takes what changed on disk |
 | ⇧Space | The panel under the keyboard takes the whole window, and back |
 | ⌘W | Close the tab the keyboard is in |
 

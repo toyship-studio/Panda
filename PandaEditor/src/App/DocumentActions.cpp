@@ -106,44 +106,68 @@ int DocumentActions::revertUnsaved() {
 }
 
 void DocumentActions::reloadFromDisk() {
+    // Reload stops the game: what it reads may be what the game runs on.
+    m_app.stop();
+    syncWithDisk(true, true);
+}
+
+void DocumentActions::takeDiskChanges(bool newFiles) {
+    if (m_app.isPlaying()) { return; }
+    syncWithDisk(false, newFiles);
+}
+
+void DocumentActions::syncWithDisk(bool asked, bool followTree) {
     // A single synchronization of the editor with the disk: the asset registry follows the
     // project tree, then, by modification time, a file document changed on disk is reread; when
-    // the memory has edits too, the user picks the version that stays; Cancel aborts the rest.
-    // The script build is a step of its own before the worlds (nothing edits it in memory).
-    m_app.stop();
+    // the memory has edits too, the user picks the version that stays (Cancel aborts the rest) —
+    // or, when nobody asked, the document is left as it is. The script build is a step of its
+    // own before the worlds (nothing edits it in memory).
     FileDocuments &documents = m_app.documents();
     ProjectLoader &loader = m_app.project();
     // The registry follows the tree first: a file put into the project since the last scan
     // becomes an asset (its sidecar gets an id), a file that is gone leaves the registry. The ids
     // of the known assets live in their sidecars and do not change, so nothing loaded is touched.
-    if (auto *assetHandler = AssetHandlerEditor::current()) {
+    if (auto *assetHandler = AssetHandlerEditor::current(); assetHandler != nullptr && followTree) {
         assetHandler->rescanProject();
         if (m_app.controller()) { m_app.controller()->refreshAssetPanels(); }
     }
+    // What was taken, for the log: the first few by name, the rest by their number (a checkout
+    // of a branch changes hundreds of files).
+    constexpr int MOST_NAMED = 6;
     std::string reloaded;
+    int reloadedCount = 0;
+    const auto took = [&](const std::string &title) {
+        if (++reloadedCount <= MOST_NAMED) { reloaded += (reloaded.empty() ? "" : ", ") + title; }
+    };
     bool scriptsChecked = false;
     const auto reloadScripts = [&] {
         scriptsChecked = true;
         if (!loader.isScriptsChangedOnDisk()) { return; }
         loader.reloadScriptsDll();
-        reloaded += reloaded.empty() ? "scripts" : ", scripts";
+        took("scripts");
     };
     const FileDocumentList files = documents.list();
     for (FileDocument *file : files.all) {
         if (!scriptsChecked && documents.isWorldFile(file)) { reloadScripts(); }
         if (!file->isChangedOnDisk()) { continue; }
+        // Unsaved edits are the user's: without a question they stay, and so does the conflict.
+        if (!asked && file->isDirty()) { continue; }
         const std::string title = file->title(); // the document may not outlive its reload
         const Resolution resolution = takeDiskVersion(*file);
         if (resolution == Resolution::Cancelled) { return; }
         if (resolution != Resolution::Reloaded) { continue; }
-        reloaded += (reloaded.empty() ? "" : ", ") + title;
-        if (file == &documents.projectSettingsFile() && m_app.reopenProjectForModules()) { return; }
+        took(title);
+        // A module switched on in project.json opens the project again. Asked for, that happens
+        // here, with the question about what is unsaved; when the editor takes the file by
+        // itself, the disk watch does it once nothing is unsaved.
+        if (asked && file == &documents.projectSettingsFile() && m_app.reopenProjectForModules()) { return; }
     }
     if (!scriptsChecked && loader.hasOpenedProject()) { reloadScripts(); }
-    if (reloaded.empty()) {
-        LOG_INFO_EDITOR("Reload: everything is up to date");
-    } else {
+    if (reloadedCount > MOST_NAMED) { reloaded += " and " + std::to_string(reloadedCount - MOST_NAMED) + " more"; }
+    if (!reloaded.empty()) {
         LOG_INFO_EDITOR("Reload: %s", reloaded.c_str());
+    } else if (asked) {
+        LOG_INFO_EDITOR("Reload: everything is up to date");
     }
 }
 

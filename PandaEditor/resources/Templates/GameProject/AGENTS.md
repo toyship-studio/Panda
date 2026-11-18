@@ -2,8 +2,8 @@
 
 A PandaEditor project. The entire project state is text files: worlds, materials and settings
 are JSON, gameplay is C++. Any editor and any coding agent can read and edit them directly; the
-running editor picks up the changes on one explicit command, Reload, and shows an agent the
-result through its MCP server.
+running editor picks up the changes by itself while the user has it in front, takes them at
+once when an agent asks (`reload`), and shows an agent the result through its MCP server.
 
 ## Structure
 
@@ -48,13 +48,18 @@ files stay the way to change the project; the tools are for what a file cannot d
   the game. Say what to try.
 - **Without the tools, ask.** If the editor's tools are not there (the editor is not running, or
   `"mcp"` is off in `.Panda/project.json`), do not launch the editor yourself: ask the user to
-  press Reload (Cmd/Ctrl+R) and to report what they see.
-- Reload synchronizes the editor with the disk in a single command: it rereads changed assets,
+  look at the editor — it takes the changes by itself when it is in front — and to report what
+  they see.
+- `reload` synchronizes the editor with the disk in a single call: it rereads changed assets,
   the fresh script bundle and the world (by mtime). Broken world JSON is safe — the editor
   reports the error and keeps the current world. A file that changed on disk and also has
   unsaved edits in the editor is a conflict: `reload` fails and names it, and the user decides
   which version stays (do not pass `discard` without asking).
-- Build the C++ scripts yourself (see "Building scripts") — Reload picks up the fresh library.
+- An editor the user has in front does the same by itself a moment after a file changes (the
+  user has no command for it), and leaves a document with unsaved edits alone. Still call
+  `reload` after your edits: it works whether the editor is in front or not, and its answer
+  tells what was taken.
+- Build the C++ scripts yourself (see "Building scripts") — the editor picks up the fresh library.
 - New asset files are registered by the editor; do not edit `.pmeta` sidecars by hand.
 - Detailed formats: `docs/` in the PandaSDK package (`world-format.md`, `assets.md`,
   `scripting.md`, `export.md`, `zed-and-agents.md`).
@@ -121,9 +126,9 @@ place:
 
 ## Assets and materials
 
-- Put the file into `Assets/` and call `reload`: the editor registers new files (Reload, the
-  Refresh button of the Content Browser, opening the project) and assigns their ids in the
-  `.pmeta` sidecars — read the id of a new asset from its sidecar afterwards.
+- Put the file into `Assets/` and call `reload`: the editor registers new files (by itself
+  while the user has it in front, on `reload`, on opening the project) and assigns their ids in
+  the `.pmeta` sidecars — read the id of a new asset from its sidecar afterwards.
 - Textures: `.png/.jpg`. sRGB (color) by default; DATA maps (normal, roughness, noise) need
   sRGB switched off — ask the user to toggle it in the texture inspector.
 - Meshes: `.gltf` (+ `.bin` and textures next to it). For every glTF material the editor creates
@@ -161,5 +166,5 @@ and the cook names it in a warning. So:
    then `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`.
    The scripts need `PANDA_SDK_DIR` set to `<PandaSDK>/lib/cmake/PandaSDK`. The same commands
    are the Zed tasks "Configure ___PROJECTNAME___ Debug" and "Build ___PROJECTNAME___ Debug".
-   When the editor is started, `reload` (or Reload, Cmd/Ctrl+R) picks up the fresh library (by
-   mtime).
+   A running editor picks up the fresh library (by mtime): on `reload`, or by itself when the
+   user has it in front.

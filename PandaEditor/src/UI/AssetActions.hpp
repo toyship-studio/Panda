@@ -32,7 +32,6 @@ public:
     void contentDidRequestDelete(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestImport(const std::vector<Panda::AssetId> &assets) override;
     void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) override;
-    void contentDidRequestRefresh() override;
     void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestOpenWorld(Panda::AssetId world) override;
     CreateActions contentCreateActions(const Panda::path_t &directory) override;

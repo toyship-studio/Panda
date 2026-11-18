@@ -250,7 +250,6 @@ public:
     // ToolbarOutput.
     void toolbarDidTapPlay() override;
     void toolbarDidTapStop() override;
-    void toolbarDidTapReload() override;
     void toolbarDidSave() override;
     void toolbarDidExport() override;
     void toolbarDidUndo() override;
@@ -326,7 +325,8 @@ private:
     std::uint64_t m_lastTransformVersion = 0; // transform version at the last push/edit (gizmo↔Inspector sync)
     // Cache of the toolbar enable states (init = the buttons' default enabled) — pushed to the View only
     // on change.
-    bool m_tbCanUndo = true, m_tbCanRedo = true, m_tbCanPlay = true, m_tbCanStop = true, m_tbCanReload = true;
+    bool m_tbCanUndo = true, m_tbCanRedo = true, m_tbCanPlay = true, m_tbCanStop = true;
+    bool m_shownEditMode = true; // what the tabs were last told: editing, or the game plays
     std::shared_ptr<HierarchyPanelView> m_hierarchyView;
     std::shared_ptr<ContentBrowserView> m_contentView;
     std::shared_ptr<ToolbarPanelView> m_toolbarView;

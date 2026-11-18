@@ -1,5 +1,6 @@
 #pragma once
 
+#include "App/DiskWatch.hpp"
 #include "App/DocumentActions.hpp"
 #include "App/EditorAppearance.hpp"
 #include "App/EditorStatistics.hpp"
@@ -44,7 +45,7 @@ struct EditorLaunch final {
 // The editor as an application: it owns the parts of the editor, starts and stops them, gives
 // each frame and each event of the window to the one it belongs to, and holds what joins them —
 // the project in the window, the world on screen, Play and Stop. What a part does by itself is
-// in the part: the game that plays (PlaySession), Save and Reload (DocumentActions), the look
+// in the part: the game that plays (PlaySession), Save and the reload from disk (DocumentActions), the look
 // (EditorAppearance), the viewports (EditorViewports), the builds (ProjectBuilds), the UI of the
 // workspace (Editor::EditorController).
 class EditorLayer : public Layer,
@@ -67,12 +68,16 @@ public:
     FileDocuments &documents() {
         return m_documents;
     }
-    // Save, Reload and the unsaved-changes question over the documents.
+    // Save, the reload from disk and the unsaved-changes question over the documents.
     DocumentActions &documentActions() {
         return m_documentActions;
     }
     ProjectLoader &project() {
         return m_loader;
+    }
+    // The files of the project as the disk holds them, followed: what changes there is taken by itself.
+    DiskWatch &diskWatch() {
+        return m_diskWatch;
     }
     // The builds of the project: the scripts, the Export project, the data of the game.
     ProjectBuilds &builds() {
@@ -106,6 +111,8 @@ public:
     const EditorLaunch &launch() const {
         return m_launch;
     }
+    // A dialog of the editor is open over its window.
+    bool isModalOpen();
 
     // ---- The worlds and the game. The open worlds are documents().worlds(); one is active and
     // ---- edited. Play runs a copy of the active world (PlaySession); Stop drops the copy and
@@ -160,6 +167,10 @@ public:
     void openProject(const path_t &path);
     // After project.json was reread: a module switched on in it opens the project again (true).
     bool reopenProjectForModules();
+    // project.json names a module that is not loaded: the project has to be opened again for it.
+    bool isReopenNeededForModules();
+    // A module that is loaded is switched off in project.json: the log says a restart drops it.
+    void warnOfModulesSwitchedOff();
     // A file of the project outside the editor: in the external editor of the editor settings
     // (the text form of the file: a binary asset opens its sidecar), and in the file manager.
     void openInExternalEditor(const std::filesystem::path &path);
@@ -258,6 +269,8 @@ private:
     // ---- and of the start screen and to the Help menu whenever it changes.
     void checkForUpdates(bool manual);
     void pushUpdateStatus();
+    // The buttons of the mouse, for the disk watch.
+    void followDiskWatchEvent(const Fern::Event &event);
 
     World m_noWorld; // what the editor points at while no world is open: empty, never edited
     // The game inside the editor: the playing copy of the active world, its UI and its input.
@@ -271,6 +284,8 @@ private:
     FileDocuments m_documents;
     ProjectLoader m_loader;
     DocumentActions m_documentActions;
+    DiskWatch m_diskWatch;
+    int m_buttonsHeld = 0; // the buttons of the mouse held in the windows of the editor: the disk watch waits
     EditorUpdater m_updater;
     uint64_t m_shownUpdateRevision = ~uint64_t(0);
     bool m_shownUpdateDismissed = false;

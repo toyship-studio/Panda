@@ -532,6 +532,10 @@ void CocoaWindow::didExitFullScreen() {
     }
 }
 
+bool CocoaWindow::isFocused() {
+    return [m_handle isKeyWindow];
+}
+
 void CocoaWindow::didBecomeKey() {
     m_isReady = true;
     setState(m_nextState);

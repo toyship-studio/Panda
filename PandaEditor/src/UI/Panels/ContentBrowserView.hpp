@@ -22,7 +22,6 @@ public:
     virtual void contentDidRequestImport(const std::vector<Panda::AssetId> &assets) = 0; // reimport
     // The file items of an asset's context menu (the path, the external editor, the file manager).
     virtual void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) = 0;
-    virtual void contentDidRequestRefresh() = 0; // Refresh: registry rescan + panel rebuild
     virtual void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) = 0; // a model becomes entities
     virtual void contentDidRequestOpenWorld(Panda::AssetId assetId) = 0; // open the .world as the current world
     // The assets that can be created in the directory (RMB on the grid background): the same list

@@ -22,7 +22,7 @@ the `Assets` folder.
 
 **The editor maintains the registry** (it scans the `Assets` folder: new files are registered and
 ids are assigned). The right workflow for an agent: put the file into `Assets/` → the editor
-picks it up on Reload (the `reload` tool), on the Refresh button of the Content Browser and when
+picks it up by itself while the user has it in front, on the `reload` tool and when
 the project is opened; the id is then in the sidecar. Do not edit sidecars by hand; if you
 really have to, keep ids unique and keep each sidecar next to its file.
 
@@ -65,11 +65,13 @@ The fields of a material on the built-in PBR shader: `baseColorTexture` / `baseC
 reflections are seen; the roughness frosts it). A blended surface casts no shadow and is drawn
 after the opaque ones, far to near.
 
-## Reload
+## Changes on disk
 
-One command: **File → Reload** (Cmd/Ctrl+R or the toolbar button) rereads from disk everything
-that has changed (assets, the script bundle, the world). A file has changed when its time is not
-the one the editor last read or wrote: an edit, a checkout — or an older copy put back with the
-date it had. On a conflict (the file has changed AND there are unsaved edits in the editor) the
-editor asks about each asset.
+The editor takes what changes on disk by itself while it is the application in front — at once
+then, and when it comes back otherwise; there is no command for it. It rereads from disk
+everything that has changed (assets, the script bundle, the world). A file has changed when its
+time is not the one the editor last read or wrote: an edit, a checkout — or an older copy put
+back with the date it had. A file that has changed AND has unsaved edits in the editor is left
+as the editor holds it: saving it asks which version stays. An agent makes the editor take the
+files with the `reload` tool, whether the editor is in front or not.
 A targeted Reimport from the context menu of the Content Browser works too.

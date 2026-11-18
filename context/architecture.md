@@ -15,7 +15,8 @@ and background jobs (`PandaAsync`).
 - `Rain`: serialization (a text coder for JSON and a binary coder).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
-  context, native menu, and the network layer `Fern::Net` on the stacks of the systems
+  context, native menu, the file watch (`Fern::FileWatcher`, below), and the network layer
+  `Fern::Net` on the stacks of the systems
   (`context/networking.md`); it links PandaAsync for the completions of requests. Every input
   event carries the modifiers of its moment (`Fern::Modifiers`, read from the OS by the
   platform), so no consumer tracks the modifier state: the PandaUI hosts copy it into their
@@ -23,6 +24,27 @@ and background jobs (`PandaAsync`).
   (the OS swallows them), on macOS a modifier release the window never saw (Cmd+Shift+4, Cmd+Tab)
   is posted by the next event; `Panda::Input` also drops its buttons and touches on the loss
   (`Input::releaseAll`).
+  `Fern::FileWatcher` (`Fern/Files/FileWatcher.hpp`) watches folders with everything under
+  them, and single files, and tells which paths changed. The system reports on a thread of its
+  own and the changes wait in the watcher until its owner takes them (`take`) on its own
+  thread: nothing is called back, a path is told once however often it changed, and what
+  happened to it is not said — the owner looks at the path as it is now. The paths are real
+  ones (links resolved). When the system loses track, `Changes::everything` says that anything
+  watched may have changed. A watched folder is the system's to report (`Fern/src/Files`):
+  FSEvents on macOS (`Apple/FileWatcherFSEvents.cpp`: one stream, file-level events gathered
+  for 0.1 s), `ReadDirectoryChangesW` on Windows (`Windows/FileWatcherDirectoryChanges.cpp`: a
+  handle per watched folder, the folders under it followed by the system, the reads ending on
+  one completion port) and inotify on Linux (`Linux/FileWatcherInotify.cpp`: a watch on every
+  folder of the tree, kept with the tree as folders are made, moved and removed). A folder
+  under a watched one is told like a file — when it is made, removed, moved or renamed, not
+  when something changes inside it — and one moved in whole may be told alone: the owner reads
+  a folder it is told of. A watched single file is not the system's: a portable scan (a thread
+  that compares times and sizes) looks at the few of them four times a second on every
+  platform. The same scan reads whole folders once a second where the system's watch would
+  not start (Linux: a tree of more folders than the user has inotify watches) and where
+  `Backend::Scan` asks for it (a network drive). The smoke test `FernFilesSmoke`
+  (`scripts/fern_files_run_smoke.*`) runs the system's backend and the scan over a folder of
+  its own; CI runs it on the three systems.
 - `Miren`: the renderer abstraction with Metal, Direct3D 11 and OpenGL/GLES backends. The backend
   is fixed at build time by the CMake option `PANDA_SHADER_BACKEND` (`cmake/shader_bake.cmake`):
   Metal is the default on macOS, D3D11 on Windows, OpenGL elsewhere (GLES on mobile targets). The
@@ -233,7 +255,7 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   (`RectSelectPhase::Drop`), not committed.
 - **Application** (`EditorLayer`): the frame and the events, and the owner of the parts the
   editor is made of — the file documents (`documents()`: the open worlds, the settings, the
-  assets) and what Save and Reload do to them (`documentActions()`), the project (`project()`),
+  assets) and what Save and a reload from disk do to them (`documentActions()`), the project (`project()`),
   its builds (`builds()`), the viewports (`viewports()`), the UI host (`ui()`) and its look
   (`appearance()`), the commands (`commands()`), the plugin store. They are public: the
   coordinator and the MCP server work with the parts themselves — a world tab holds the
@@ -250,8 +272,10 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
     world a script asks for, a script that quits. It knows the game and the viewports, not the
     editor around them: `EditorLayer::play` and `stop` put the editor's own steps (the
     selection, the Scene, the panels, the Game tab) around `begin` / `run` / `end`.
-  - `DocumentActions` — Save, Save All, Reload, the revert and the unsaved-changes gate, written
-    once over `FileDocument` (below).
+  - `DocumentActions` — Save, Save All, the reload from disk, the revert and the
+    unsaved-changes gate, written once over `FileDocument` (below).
+  - `DiskWatch` — the files the editor works on, followed: what changes on disk is taken by
+    itself ("Editor: reload from disk", below).
   - `EditorAppearance` — the theme and the icons of the installed plugins, the fonts of the
     APPEARANCE settings, applied to the UI host.
   - `EditorStatistics` — what the Statistics and Profiler panels and the status of the
@@ -284,7 +308,7 @@ itself. Everything of the model is in one place, `PandaEditor/src/Project/Docume
   renderer uses exists without a document), so this document is a view made when needed;
 - `FileDocuments` — the one owner: the two settings files and the open worlds, the asset
   documents on demand, and `list()` — every document that needs attention in the order of
-  Reload (the settings, the assets, the worlds). It follows up the reads and writes of its
+  a reload (the settings, the assets, the worlds). It follows up the reads and writes of its
   documents for the project (the start world, the asset registry) and tells the editor through
   `FileDocumentsOutput` (`EditorLayer`): another world is active, the active world got another
   content, a settings file was read or written (the editor applies its scope, the loader the
@@ -320,8 +344,10 @@ Three operations are written once over them, in `DocumentActions`, whatever the 
   toolbar button) writes every dirty one (`saveAll`). A file changed on disk since the editor
   read it is never overwritten in silence: the save asks which version stays
   (`resolveConflict`: Save / Discard / Cancel).
-- **Reload** rereads what changed on disk and asks the same question when the memory has edits
-  too (`reloadFromDisk`, below).
+- **The reload from disk** rereads what changed there. The user has no command for it: the
+  editor does it by itself when the files change under it, and leaves a document whose memory
+  has edits too as it is (`takeDiskChanges`, the disk watch below). An agent asks for it with
+  the `reload` tool, which stops at such a document and names the conflict (`reloadFromDisk`).
 - **The unsaved-changes gate** (`runAfterUnsavedQuestion`) stands before everything that drops
   the memory — another project, closing, quitting: it names the dirty documents; Save
   writes them, Don't Save lets the action drop them (the project settings, which outlive the
@@ -406,7 +432,7 @@ to another place of its bar only). World tabs
   (`context/shader-features.md`);
 - the **editor settings** (`EditorSettingsDocument`): the sections of the editor scope, applied
   and saved by every edit — no dirty state, no undo; `settings.json` edited by hand is reread
-  by Reload. The VIEWPORT section is also the Display
+  by the disk watch. The VIEWPORT section is also the Display
   popover of the viewport overlay;
 - the **Plugins tab** (`PluginsDocument`, `PluginsView`): the Extensions page of Zed over the
   plugin store (`Project/Plugins/PluginStore`, `context/infrastructure.md` section 3) — search,
@@ -665,7 +691,7 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   layer: a stable id (`entity.duplicate`), the group and the name the palette shows, a scope
   and a handler that answers whether it did something. A command is registered where its
   action lives: the layer registers the commands of the application and the project
-  (`EditorLayer::registerCommands`: the project and its windows, Save All and Reload, the
+  (`EditorLayer::registerCommands`: the project and its windows, Save All, the
   builds and the export, the settings files, the updates), the coordinator those of the
   workspace (`EditorController::registerCommands`: Save, Undo and Redo of the tab in focus, the
   settings pages, the tabs and the panels, the entity commands, the tools of the gizmo, Play
@@ -1257,7 +1283,7 @@ All project state is readable Rain JSON (`.world`, `.mat`, `.pmeta` sidecars, `.
 plus C++ scripts, so an AI coding agent works with the project files directly, and looks at the
 result through the MCP server of the editor (the next section).
 
-- Reload (File → Reload, Cmd/Ctrl+R) synchronizes the editor with the disk: first the asset
+- A reload synchronizes the editor with the disk (`DocumentActions::syncWithDisk`): first the asset
   registry follows the `Assets` folder (`AssetHandlerEditor::rescanProject`: a new file becomes an
   asset with an id in its sidecar, ids of known assets do not change), then, by modification
   time, one walk over the file documents (see "The document model"): editor settings →
@@ -1267,8 +1293,41 @@ result through the MCP server of the editor (the next section).
   contributions come before the asset registry and the world), a module switched off needs a
   restart. A loaded shader is also compared by the text its sources expand to
   (`ShaderCook::isStale`), so a changed fragment stage or include reloads it. A broken world or
-  settings file is logged and the memory is left untouched. Orchestration:
-  `DocumentActions::reloadFromDisk`.
+  settings file is logged and the memory is left untouched. There are two ways into it, and
+  neither is a command of the user: the disk watch (`takeDiskChanges`), and the `reload` tool
+  of the MCP server (`reloadFromDisk`: it also stops the game, always follows the tree, and
+  treats a file changed on disk AND in memory as a question — which the tool answers with a
+  failure that names the conflict).
+- **The disk watch** (`App/DiskWatch`): the editor follows the files it works on and takes
+  what changes there by itself — the user never asks the editor to read the disk (there is no
+  Reload command and no Refresh button). A `Fern::FileWatcher` watches, of the editor, its
+  `settings.json` and its `keymap.json`, and of the open project what a reload reads: the
+  `Assets` folder, `project.json` and the script library (not the caches and the build
+  folders). `DiskWatch::update` runs once a frame: it takes the told paths, and when something
+  waits it calls `DocumentActions::takeDiskChanges` — the walk above, in which nothing is asked
+  and nothing is interrupted (the keymap is no document: `Commands::reloadKeymap`):
+  - it takes **only while the editor is the application in front** (one of its windows has the
+    keyboard: `Fern::Window::isFocused` of the main and the second window, asked every frame). What changed
+    while it was behind is taken when it comes back. An editor nobody is at (`--unattended`) is
+    behind until the MCP tool `focus` says otherwise: an agent calls `reload`, a test decides
+    when "the user comes back";
+  - a change waits a quarter of a second of silence (a file is written in pieces, a program
+    writes several files), two seconds at most; it waits while the game plays (Stop takes it),
+    while a button of the mouse is held and while a dialog is open;
+  - **a document with unsaved edits is never replaced**: it stays changed on disk, and saving
+    it asks which version stays (`resolveConflict`);
+  - **a module switched on in `project.json`** opens the project again — that would drop what
+    is unsaved, so it happens when nothing is (`FileDocuments::hasUnsaved`): at once, or as
+    soon as the user has saved, and the log says what it waits for. A module switched off
+    stays until a restart, and the log says so;
+  - the registry reads the tree again (`rescanProject`) only for news of the tree —
+    `AssetHandlerEditor::classifyDiskChange`, by the rules of the scan: an asset gone, a folder,
+    a sidecar or an importable file come. The content of a known file costs its own reread; a
+    sidecar the editor wrote itself and a file that came and went (what a program writes next
+    to the file it saves) are nothing. Measured on a generated project of 5000 assets (debug
+    editor): a changed file is taken in about a millisecond, news of the tree in about 0.4 s
+    (the scan reads every sidecar — an update of the registry by the told paths alone is the
+    next step if projects grow that large).
 - What an agent gets: `PandaSDK/docs/*.md` are copied into the SDK; `.Panda/scripts-manifest.json`
   is written on every script bundle load (classes, script fields, field ids, types, `list`); the project
   template `Templates/GameProject` carries `AGENTS.md` (the rules and the file formats for any
@@ -1294,7 +1353,7 @@ second way to do what a text file already does. The user-facing page is
   a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
-  `screenshot`, `reload`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
+  `screenshot`, `reload`, `focus`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
   `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `game_input`, `restart`, `quit`. `build` starts a build
   of the project (`ProjectBuilds::start`) and answers when it has ended with what cmake said
   (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
@@ -1349,6 +1408,10 @@ second way to do what a text file already does. The user-facing page is
   and `--mcp` below), uses it by paths, and checks what the editor shows (the elements) and what
   it writes (the files of the copy: the contract of a project is its files). The tests and what
   runs them live with the project they run on, outside this repository.
+- `focus` tells the editor that it is the application in front, or behind — what the disk
+  watch follows ("Editor: reload from disk", above). The window of an unattended editor does
+  not decide it (nobody is at the screen), so a test says when the user comes back; `status`
+  answers with `disk.inFront` and `disk.waiting` (a change on disk is seen and not taken yet).
 - `reload` with `discard` is "the disk wins": `DocumentActions::revertUnsaved` rereads every
   document that has unsaved edits, then the reload proper takes what changed on disk. Without it
   a reload only reads the files that changed, and a file that changed under unsaved edits is a

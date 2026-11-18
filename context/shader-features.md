@@ -67,7 +67,7 @@ once, in the catalog.
   `environment`, plus `lamps`). The dependencies are closed on reading: `lamps`, `shadows` or
   `occlusion` bring `lights`, switching `lights` off switches them off.
 - The editor applies the set on project open (`ProjectLoader::applyShaderFeatures`) and
-  whenever `project.json` is written or read again — Save, Reload when the file is not the one of the
+  whenever `project.json` is written or read again — Save, a reload from disk when the file is not the one of the
   editor's last read or write, Don't Save (`ProjectLoader::applyProjectSettings`, called when the
   project settings document reports the write or the read): it becomes
   `ShaderFeatures::enabled()`, the set of the process; a changed set recooks the scene shaders and
@@ -135,7 +135,7 @@ backend, each step by mtime; a changed set changes the expanded text and recompi
 - A block declared by hand under a name outside the `PANDA_` prefix that the engine does not
   bind (a retired name, a typo in a module's block) still compiles and stays unbound: only the
   reserved prefix is checked.
-- Reload does not recook the engine's scene shaders: an engine include edited while the editor
+- A reload from disk does not recook the engine's scene shaders: an engine include edited while the editor
   runs reaches them when the project opens.
 - A feature added to the engine later is off for a project whose settings list the features
   explicitly, and on for a project without the section.

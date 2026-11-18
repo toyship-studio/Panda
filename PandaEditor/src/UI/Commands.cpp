@@ -273,8 +273,23 @@ std::vector<const Commands::Command *> Commands::boundTo(KeyChord chord, const s
     return result;
 }
 
+namespace {
+    std::filesystem::file_time_type timeOf(const std::filesystem::path &path) {
+        std::error_code error;
+        const auto time = std::filesystem::last_write_time(path, error);
+        return error ? std::filesystem::file_time_type{} : time;
+    }
+} // namespace
+
+bool Commands::reloadKeymap() {
+    if (m_keymapPath.empty() || timeOf(m_keymapPath) == m_keymapTime) { return false; }
+    loadKeymap(m_keymapPath);
+    return true;
+}
+
 void Commands::loadKeymap(const std::filesystem::path &path) {
     m_keymapPath = path;
+    m_keymapTime = timeOf(path);
     m_user.clear();
     std::ifstream file(path);
     if (file.is_open()) {
@@ -345,6 +360,8 @@ void Commands::writeKeymap() {
     }
     writer.EndObject();
     file << "\n";
+    file.close();
+    m_keymapTime = timeOf(m_keymapPath); // the editor's own write is not a change on disk
 }
 
 void Commands::notify() {

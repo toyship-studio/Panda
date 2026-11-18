@@ -1,9 +1,9 @@
 # The `.world` format
 
 A world is a single JSON file (the Rain codec) that can be read and edited entirely as text.
-After external edits: PandaEditor → File → **Reload** (Cmd/Ctrl+R, the same button is on the
-toolbar) — the editor synchronizes with the disk: it rereads changed assets, the script bundle
-and the world (by mtime; whatever has not changed is left alone). Broken JSON is safe: the editor
+After an edit outside the editor there is nothing to press: when PandaEditor is the application
+in front it takes what changed on disk by itself — changed assets, the script bundle and the
+world (by mtime; whatever has not changed is left alone). Broken JSON is safe: the editor
 shows an error and does not touch the current world.
 
 ## Top-level structure

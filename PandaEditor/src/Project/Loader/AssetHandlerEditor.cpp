@@ -544,7 +544,10 @@ void AssetHandlerEditor::scanProject() {
 }
 
 void AssetHandlerEditor::adoptPmeta(const path_t &dataPath) {
-    const path_t relative = std::filesystem::relative(dataPath, m_projectPath);
+    // The path comes from walking the project folder: it is under it as it is written. (Asking
+    // the system for the relation resolves both paths, link by link, for every asset of a scan.)
+    path_t relative = dataPath.lexically_relative(m_projectPath);
+    if (relative.empty() || *relative.begin() == "..") { relative = std::filesystem::relative(dataPath, m_projectPath); }
     AssetInfo info;
     if (!AssetPmeta::read(AssetPmeta::sidecarPathFor(dataPath), info)) {
         // The sidecar is missing or broken — a full import rewrites it.
@@ -587,9 +590,36 @@ void AssetHandlerEditor::savePmeta(AssetId id) {
     if (!m_registry.contains(id)) { return; }
     const path_t mainPath = assetPath(id);
     if (mainPath.empty()) { return; }
-    if (!AssetPmeta::write(AssetPmeta::sidecarPathFor(m_projectPath / mainPath), m_registry.at(id))) {
+    const path_t sidecar = AssetPmeta::sidecarPathFor(m_projectPath / mainPath);
+    if (!AssetPmeta::write(sidecar, m_registry.at(id))) {
         LOG_ERROR_EDITOR("The sidecar of %s could not be written.", mainPath.string().c_str());
+        return;
     }
+    std::error_code error;
+    const path_t real = std::filesystem::weakly_canonical(sidecar, error);
+    const auto time = std::filesystem::last_write_time(sidecar, error);
+    if (!error) { m_ownSidecars[real] = time; }
+}
+
+AssetHandlerEditor::DiskChange AssetHandlerEditor::classifyDiskChange(const path_t &path) {
+    std::error_code error;
+    // A sidecar as the editor itself wrote it last.
+    if (const auto own = m_ownSidecars.find(path); own != m_ownSidecars.end()) {
+        const auto time = std::filesystem::last_write_time(path, error);
+        if (!error && time == own->second) { return DiskChange::None; }
+    }
+    const bool exists = std::filesystem::exists(path, error);
+    if (getAssetId(path) != 0) { return exists ? DiskChange::Content : DiskChange::Tree; }
+    // What a program wrote next to the file it saves, gone again.
+    if (!exists) { return DiskChange::None; }
+    // The same rules as scanProject: what it would make an asset of is news of the tree.
+    if (std::filesystem::is_directory(path, error)) { return DiskChange::Tree; }
+    const std::string name = path.filename().string();
+    if (name.ends_with(AssetPmeta::EXTENSION)) { return DiskChange::Tree; }
+    const std::string extension = path.extension().string();
+    if (!m_import.supportsExtension(extension)) { return DiskChange::Content; }
+    if (extension == ".hlsl" && !name.ends_with("vert.hlsl")) { return DiskChange::Content; } // the other file of a shader
+    return DiskChange::Tree;
 }
 
 AssetId AssetHandlerEditor::freshAssetId() const {
@@ -607,6 +637,7 @@ void AssetHandlerEditor::closeProject() {
     m_tabReferences.clear(); // the tabs of the project are gone with it
     cleanup();
     m_editorMeta.clear();
+    m_ownSidecars.clear();
     m_registry.clear();
     m_registeredAssets.clear();
     m_missingFiles.clear();

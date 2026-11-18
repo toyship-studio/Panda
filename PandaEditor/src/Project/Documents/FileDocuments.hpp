@@ -60,6 +60,8 @@ public:
     // the rest is read: the shader features, the modules), the assets (the worlds reference them),
     // the worlds. An asset is listed when it has unsaved edits or its file has changed.
     FileDocumentList list();
+    // Some document has edits its file does not: asked often, so nothing on disk is looked at.
+    bool hasUnsaved();
 
     // ---- The settings ----
     SettingsFile &editorSettingsFile() {

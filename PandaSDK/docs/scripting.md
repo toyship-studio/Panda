@@ -179,6 +179,6 @@ have been loaded in the editor at least once.
   editor settings (`"toolchain"` in the editor's `settings.json`: `cmake`, `generator`,
   `cCompiler`, `cxxCompiler` — a command or a path each, empty for the default).
 - From a terminal: `Scripts/<ProjectName>/scripts/configure_scripts.sh debug` and
-  `build_scripts.sh debug` (the SDK paths come from the environment, see the scripts). Then, in
-  the editor — **Reload** (Cmd/Ctrl+R): it picks up the fresh library (by mtime) and, along with
-  it, changed assets and the world. Running the game and debugging are always left to a human.
+  `build_scripts.sh debug` (the SDK paths come from the environment, see the scripts). The
+  editor picks up the fresh library by itself (when it is in front and the game does not play),
+  along with changed assets and the world. Running the game and debugging are always left to a human.

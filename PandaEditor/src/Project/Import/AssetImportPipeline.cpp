@@ -88,7 +88,7 @@ namespace {
             }
             if (fieldIt->type != existingField.type) { continue; }
             // An empty texture slot means "not set", not a user's choice: let the import
-            // fill it (otherwise Refresh never repairs materials without textures).
+            // fill it (otherwise a reimport never repairs materials without textures).
             if (existingField.type == MaterialFieldType::TEXTURE) {
                 const auto *existingRef = std::get_if<AssetRef<Asset>>(&existingField.value);
                 if (!existingRef || existingRef->getId() == 0) { continue; }

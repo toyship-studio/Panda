@@ -111,8 +111,7 @@ Large directions that are still ahead. Finished work is one line with a pointer 
 17. **Dev tools** (independent of each other): debug drawing (the engine has none: command
     buffers rendered under a dev flag, wanted in the script ABI), compound undo
     (`BeginCompound` / `EndCompound` in `CommandHistory`: multi-selection and "add component plus
-    defaults" in one Cmd+Z), a file watcher over `AssetHandlerEditor::reload`, a dev build of the
-    game separate from `PND_EDITOR`.
+    defaults" in one Cmd+Z), a dev build of the game separate from `PND_EDITOR`.
 18. **Editor localization**: `tr()` across the editor plus string plugins, once the UI settles.
 19. **Vegetation as a module**: the flora impostors and the vegetation material templates out of
     the core into `dev.pandaengine.vegetation`, which Terrain and the authoring tools depend on

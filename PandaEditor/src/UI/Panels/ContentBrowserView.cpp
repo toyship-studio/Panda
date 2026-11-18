@@ -519,17 +519,6 @@ void ContentBrowserView::rebuildBreadcrumb() {
         const bool current = (i + 1 == chain.size());
         m_breadcrumb->addSubview(std::make_shared<Crumb>(node->name, current, [this, node] { setCurrentFolder(node); }));
     }
-    auto spacer = std::make_shared<Panel>();
-    spacer->setBackgroundColor(Color(0x00000000));
-    spacer->layout().setFlexGrow(1.f);
-    m_breadcrumb->addSubview(spacer);
-    auto refresh = std::make_shared<IconButton>(Ic::Reload, Ic::RowSize, 24.f);
-    refresh->setCornerRadius(Radius::sm);
-    refresh->setTooltip("Refresh");
-    refresh->setOnClick([this] {
-        if (m_output) { m_output->contentDidRequestRefresh(); } // registry rescan + panel rebuild
-    });
-    m_breadcrumb->addSubview(refresh);
 }
 
 void ContentBrowserView::updateStatus() {

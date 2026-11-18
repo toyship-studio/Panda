@@ -118,5 +118,5 @@ script tables are absent and the Bamboo wrappers of its API do nothing.
   on your platform;
 - the build without modules and its smoke test;
 - the smoke test of the full build;
-- a project in the editor: Play, Stop, Save, Reload with the module's content; an export of a
+- a project in the editor: Play, Stop, Save, an edit of a file outside the editor with the module's content; an export of a
   small project when the module has a runtime side.

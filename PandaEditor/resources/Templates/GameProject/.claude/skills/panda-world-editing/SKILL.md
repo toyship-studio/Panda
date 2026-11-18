@@ -6,7 +6,8 @@ description: Editing Panda worlds (.world) as text — adding/changing entities 
 # Editing .world
 
 A world is JSON (`Assets/**.world`). Edit it directly, then call the `reload` tool of the
-editor (its MCP server; without it ask the user to press **Reload**, Cmd/Ctrl+R) — the editor
+editor (its MCP server; without it ask the user to look at the editor — in front, it takes the
+changes by itself) — the editor
 synchronizes with the disk (rereads changed assets/scripts/world); broken JSON is safe (an error
 in the log, the current world is not touched). Look at the result with `screenshot`: the `scene`
 view through the editor camera (`camera` places it), the `game` view through the main camera of

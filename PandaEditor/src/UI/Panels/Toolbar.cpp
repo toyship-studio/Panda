@@ -35,7 +35,7 @@ ToolbarPanelView::ToolbarPanelView(ToolbarOutput *output)
 }
 
 void ToolbarPanelView::addSubviews() {
-    // LEFT: actions (undo/redo | reload/save/export). flexBasis 0 + flexGrow 1 on the left and right
+    // LEFT: actions (back/forward | undo/redo | save/export). flexBasis 0 + flexGrow 1 on the left and right
     // zones: both split the WHOLE width equally (not just the free space) — the capsule is strictly
     // centered regardless of the content on the left.
     auto left = std::make_shared<Panel>();
@@ -75,11 +75,6 @@ void ToolbarPanelView::addSubviews() {
     left->addSubview(m_redo);
 
     left->addSubview(makeDivider());
-
-    m_reload = std::make_shared<IconButton>(Ic::Reload, Ic::ToolbarSize, ACTION_SIZE);
-    m_reload->setAccessibilityId("reload");
-    m_reload->setOnClick([this] { m_output->toolbarDidTapReload(); });
-    left->addSubview(m_reload);
 
     m_save = std::make_shared<IconButton>(Ic::Save, Ic::ToolbarSize, ACTION_SIZE);
     m_save->setAccessibilityId("save");
@@ -146,7 +141,6 @@ void ToolbarPanelView::addSubviews() {
 void ToolbarPanelView::setKeyHints(const Commands &commands) {
     m_undo->setTooltip(commands.hint("Undo", "edit.undo"));
     m_redo->setTooltip(commands.hint("Redo", "edit.redo"));
-    m_reload->setTooltip(commands.hint("Reload: take what changed on disk", "file.reload"));
     m_save->setTooltip(commands.hint("Save All", "file.saveAll"));
     m_play->setTooltip(commands.hint("Play", "world.play"));
     m_stop->setTooltip(commands.hint("Stop", "world.stop"));
@@ -183,10 +177,6 @@ void ToolbarPanelView::setCanPlay(bool canPlay) {
 
 void ToolbarPanelView::setCanStop(bool canStop) {
     if (m_stop) { m_stop->setEnabled(canStop); }
-}
-
-void ToolbarPanelView::setCanReloadScripts(bool canReload) {
-    if (m_reload) { m_reload->setEnabled(canReload); }
 }
 
 void ToolbarPanelView::setupLayout() {

@@ -21,6 +21,9 @@ public:
     virtual Size getDpi() = 0;
     virtual EdgeInsets getSafeAreaInsets() = 0;
     virtual Vec2 getCursorPosition() = 0;
+    // The window has the keyboard now (macOS: the key window): what WindowFocus and
+    // WindowLostFocus tell as it changes, asked as a state. A window of a phone always has it.
+    virtual bool isFocused() = 0;
     virtual bool setProgressBar(float progress) = 0;
     virtual bool endProgressBar() = 0;
     virtual void setMenuBar(const MenuBar &menuBar) = 0;

@@ -44,4 +44,4 @@ the file is missing, build the scripts and reload.
 - A script without parameters: `{ "name": "MyScript", "scriptFields": [] }`.
 
 After the edit, call the `reload` tool of the editor (its MCP server; without it ask the user
-to press Reload, Cmd/Ctrl+R).
+to look at the editor — in front, it takes the changes by itself).

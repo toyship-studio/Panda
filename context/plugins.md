@@ -311,7 +311,7 @@ palette.
   shape is a `dev.pandaengine.vegetation` module (the templates, the impostors, the billboards;
   the ids reserved like the terrain's) that Terrain depends on and that an application building
   the engine as a subproject links as well; the core keeps no vegetation.
-- A local protocol for external tools and agents over the project files and Reload (the
+- A local protocol for external tools and agents over the project files and the reload from disk (the
   `.world` JSON of entities is the data model; no reflection of the structs is needed for it).
   After publication.
 - Registry server, plugin publishing, the Plugins tab in the editor (install, update and remove
@@ -319,7 +319,7 @@ palette.
 - Editor localization (`tr()` across the editor plus string plugins), once the editor UI settles.
 - A warning when an asset is registered with an id that is already taken.
 - Check module builds and game export on Windows.
-- A modification-time check of `project.json` on Reload.
+- A modification-time check of `project.json` on a reload from disk.
 - API stability: once packages are published, the registries, contribution interfaces and
   `EditorHost` become a contract. Keep that surface narrow, prefer data over code, and break it
   only in major releases. The rule "no backward compatibility" stays for everything else.

@@ -56,6 +56,8 @@ public:
     // The script build on disk is another one than the loaded one (a step of Reload; the build
     // is not a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
+    // The file of the script library of the open project (it is there once the scripts were built).
+    path_t scriptsLibraryPath();
     // The source file a script class is registered in (REGISTER_SCRIPT(Name)), found in the
     // Scripts folder of the project; empty — no file registers it. The sources are read once and
     // again after the script build is loaded: the files may have moved by then.

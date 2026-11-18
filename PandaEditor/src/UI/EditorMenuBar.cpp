@@ -96,9 +96,6 @@ void EditorMenuBar::rebuild() {
         // unsaved file.
         item(fileMenu, "Save", "file.save");
         item(fileMenu, "Save All", "file.saveAll");
-        // Synchronization of the engine with the disk (changed assets/scripts/world) — closes
-        // the loop of external edits (agent, code editor, git) without a restart.
-        item(fileMenu, "Reload", "file.reload");
         fileMenu.addSeparator();
         item(fileMenu, "Show C++ Project", "file.showCppProject");
         item(fileMenu, "Close Tab", "tab.close");
