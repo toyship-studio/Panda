@@ -12,6 +12,7 @@
 #include <Fern/Fern.hpp>
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -773,7 +774,26 @@ namespace InternalCalls {
     /// HOST API TABLES — named tables of contributions, see ScriptHostApis.hpp.
 
     const void *hostApiTable_Find(const char *name, uint32_t version) {
-        return GameContext::getExtensions().scriptHostApis.find(name != nullptr ? name : "", version);
+        const ScriptHostApiRegistry &registry = GameContext::getExtensions().scriptHostApis;
+        const std::string_view wanted = name != nullptr ? name : "";
+        const void *table = registry.find(wanted, version);
+        if (table != nullptr) { return table; }
+        // The table is there in another version: the scripts were built with another SDK than the
+        // engine has, and every call of that API would do nothing in silence. Said once per bundle
+        // (the SDK side asks again and again while it has no table).
+        static std::unordered_set<std::string> s_reported;
+        for (const ScriptHostApiTable &other : registry.tables()) {
+            if (other.name != wanted) { continue; }
+            const std::string key = other.name + ':' + std::to_string(version);
+            if (s_reported.insert(key).second) {
+                LOG_ERROR_EDITOR(
+                    "The scripts were built for the \"%s\" API of version %u, the engine has version %u: its calls do "
+                    "nothing until the scripts are built again.",
+                    other.name.c_str(), version, other.version
+                );
+            }
+        }
+        return nullptr;
     }
 
     /// CONSOLE

@@ -53,8 +53,8 @@ public:
     void saveWindowState(LastOpenedProjectWindowState state);
     void openProject(const path_t &path);
     void reloadScriptsDll();
-    // The script build on disk is newer than the loaded one (a step of Reload; the build is not
-    // a document — nothing edits it in memory).
+    // The script build on disk is another one than the loaded one (a step of Reload; the build
+    // is not a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
     // The source file a script class is registered in (REGISTER_SCRIPT(Name)), found in the
     // Scripts folder of the project; empty — no file registers it. The sources are read once and

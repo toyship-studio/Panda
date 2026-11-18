@@ -22,7 +22,8 @@ public:
     virtual path_t path() const = 0;       // empty — no file yet (a new world)
     // The memory has edits the file does not.
     virtual bool isDirty() const = 0;
-    // The file is newer than what the editor last read or wrote (an edit by hand, an agent, git).
+    // The file is not the one the editor last read or wrote: an edit by hand, an agent, git — or
+    // an older copy put back in its place.
     virtual bool isChangedOnDisk() const = 0;
     virtual bool save() = 0;   // memory → file; false — nothing was written (an error, a cancelled dialog)
     virtual bool reload() = 0; // file → memory, the edits in memory are dropped; false — the file is broken
@@ -37,12 +38,14 @@ public:
         const auto time = std::filesystem::last_write_time(path, errorCode);
         m_time = errorCode ? std::filesystem::file_time_type{} : time;
     }
-    // The file is newer than the last sync; a file that does not exist is not.
+    // The file has another time than at the last sync — a newer one, or an older one: a copy
+    // put back with the date it had (cp -p, rsync, Finder, an archive). A file that does not
+    // exist is not stale.
     bool isStale(const path_t &path) const {
         if (path.empty()) { return false; }
         std::error_code errorCode;
         const auto time = std::filesystem::last_write_time(path, errorCode);
-        return !errorCode && time > m_time;
+        return !errorCode && time != m_time;
     }
 
 private:

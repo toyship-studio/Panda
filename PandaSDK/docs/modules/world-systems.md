@@ -7,9 +7,16 @@ The state of a system for one world lives in that world's context, `World::conte
 ```cpp
 WorldSystem system;
 system.name = "particles";
-system.submit = submit;            // the scene pass
+system.submitBlended = submit;     // the scene pass, after the opaque world
 extensions.worldSystems.add(std::move(system));
 ```
+
+The render hooks run per render pass of a view that draws the world, whether the world runs or
+not. `submit` is for geometry: after the sky and the sprites, before the meshes, in every render
+mode (the scene, the shadow depth passes, the ids of picking). `submitBlended` is for what a
+system blends over the scene — particles, a haze: after the meshes, when the opaque world is
+drawn, and not in the shadow passes. A blended surface writes no depth, so one drawn in `submit`
+is painted over by everything behind it.
 
 ## The frame phases
 
@@ -32,8 +39,8 @@ of the frame and, after the steps, `world.fixedStepAlpha()` is where the frame f
 two steps (0..1) — what the Physics module uses to write interpolated poses in `postPhysics`.
 
 A system that must also live while the world does not run (the editor's EDIT mode) gets no
-phase hooks there: the particles keep their own clock and advance in `submit`, which runs in
-every frame that draws. A service that is not about a world at all — a device, a mixer, a network
+phase hooks there: the particles keep their own clock and advance in their render hook, which
+runs in every frame that draws. A service that is not about a world at all — a device, a mixer, a network
 state — is an application system (below).
 
 ## The order among systems

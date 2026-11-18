@@ -24,6 +24,13 @@ namespace AudioSourceComponentAPI {
     float getVolume(EntityHandle entity);
     void setPitch(EntityHandle entity, float pitch);
     float getPitch(EntityHandle entity);
+    // Where the source plays, in seconds of its clip: 0 when it does not play. Setting it moves a
+    // playing (or paused) source there.
+    float getTime(EntityHandle entity);
+    void setTime(EntityHandle entity, float seconds);
+    // The length of the source's clip in seconds, playing or not; 0 — no clip. With getTime it
+    // tells how much is left: when to bring the next piece of music in.
+    float getLength(EntityHandle entity);
 } // namespace AudioSourceComponentAPI
 
 } // namespace Bamboo

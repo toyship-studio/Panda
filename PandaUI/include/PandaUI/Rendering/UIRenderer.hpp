@@ -103,6 +103,12 @@ public:
     void pushClipRoundedRect(Rect rect, float cornerRadius);
     void pushClipRoundedRect(Rect rect, CornerRadii radii);
     void popClipRect();
+    // What is drawn until the matching pop is this much more see-through: the opacity of a view
+    // covers its surface, what it draws and its subviews (View::render). Nested opacities
+    // multiply. The alpha of every primitive is scaled — shapes that overlap inside the view show
+    // through each other, the view is not composited as one picture.
+    void pushOpacity(float opacity);
+    void popOpacity();
     Statistics getStats();
     void setViewportSize(Size viewportSize, Size dpiScale = Size(1.f, 1.f));
     void setViewProj(glm::mat4 viewProj);
@@ -130,6 +136,8 @@ private:
         CornerRadii maskRadii;
     };
     std::vector<ClipState> m_clipStack;
+    std::vector<float> m_opacityStack; // the opacity before each push
+    float m_currentOpacity;
     Rect m_currentClipRect;
     bool m_hasCurrentClip;
     bool m_currentClipIsEmpty;

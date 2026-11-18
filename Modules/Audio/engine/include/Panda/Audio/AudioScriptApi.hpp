@@ -13,7 +13,7 @@
 namespace Panda::Scripting {
 
 constexpr const char *AUDIO_HOST_API_NAME = "audio";
-constexpr uint32_t AUDIO_HOST_API_VERSION = 1;
+constexpr uint32_t AUDIO_HOST_API_VERSION = 2; // 2: the playhead and the length of a source
 
 using AudioSourcePlayFn = uint32_t (*)(Handle entityHandle);
 using AudioSourceStopFn = uint32_t (*)(Handle entityHandle, float fadeSeconds);
@@ -39,6 +39,12 @@ struct AudioHostApi final {
     AudioSourceGetFloatFn source_GetVolume = nullptr;
     AudioSourceSetFloatFn source_SetPitch = nullptr;
     AudioSourceGetFloatFn source_GetPitch = nullptr;
+    // The playhead of the source's voice, in seconds of its clip: 0 when nothing plays. Setting it
+    // moves a playing (or paused) voice there.
+    AudioSourceGetFloatFn source_GetTime = nullptr;
+    AudioSourceSetFloatFn source_SetTime = nullptr;
+    // The length of the source's clip in seconds, playing or not; 0 — no clip.
+    AudioSourceGetFloatFn source_GetLength = nullptr;
     AudioBusSetVolumeFn bus_SetVolume = nullptr;
     AudioBusGetVolumeFn bus_GetVolume = nullptr;
     AudioStopAllFn stopAll = nullptr;

@@ -31,9 +31,17 @@ Scripts talk to the engine through a stable ABI — the editor and SDK versions 
   module. Without the module the physics calls do nothing and return zeros.
 - `TerrainAPI.hpp` — terrain queries (height etc.); provided by the Terrain module.
 - `AudioAPI.hpp`, `Components/AudioSourceComponentAPI.hpp` — the buses of the mixer and the
-  audio source of an entity (play, stop, pause, one-shots, volume, pitch); provided by the Audio
-  module. A script reaches a sound through the entity that carries the Audio Source (an
-  `EntityHandle` field); the clip and the spatial settings are set in the inspector.
+  audio source of an entity (play, stop, pause, one-shots, volume, pitch, where it plays and how
+  long its clip is); provided by the Audio module. A script reaches a sound through the entity
+  that carries the Audio Source (an `EntityHandle` field); the clip and the spatial settings are
+  set in the inspector. Music that goes from one piece into the next is two sources: the script
+  starts the next one when `getLength − getTime` of the playing one is the length of the
+  change, and moves the two volumes every frame.
+- `Components/ParticleEmitterComponentAPI.hpp` — the particle emitter of an entity: switching
+  its emission, and particles at once (`emit`, `emitAt`: a puff, a splash, the chips of what
+  broke — at a place of the world, tinted, each showing a part of the emitter's texture);
+  provided by the Particles module. The rate, the sizes, the colors and the texture are set in
+  the inspector.
 - `UI/` — PandaUI from scripts; `UI/FontAPI.hpp` — a font of the project (a `FontHandle`
   field) in that UI; the look of a game — `docs/ui.md`.
 - `Async.hpp` — background jobs (the work/complete model).

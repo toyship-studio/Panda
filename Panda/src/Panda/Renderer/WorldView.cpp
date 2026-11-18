@@ -135,6 +135,11 @@ void WorldView::submitWorld(World &world, const glm::mat4 &viewProj, const glm::
         if (system.submit != nullptr) { system.submit(world, m_renderer3d, m_camera.position, viewProj); }
     }
     m_meshes.submit(m_renderer3d, frustum, shadowPass, m_camera.position);
+    // What the systems blend over the scene: after the opaque world, or it would paint them over.
+    if (shadowPass) { return; }
+    for (const WorldSystem &system : GameContext::getExtensions().worldSystems.systems()) {
+        if (system.submitBlended != nullptr) { system.submitBlended(world, m_renderer3d, m_camera.position, viewProj); }
+    }
 }
 
 void WorldView::renderShadowPass(World &world, Miren::ViewId view, const glm::mat4 &viewProj) {

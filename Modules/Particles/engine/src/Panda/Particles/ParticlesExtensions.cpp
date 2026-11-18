@@ -61,6 +61,7 @@ void registerExtensions(Extensions &extensions) {
     );
     extensions.worldSystems.add(worldSystem());
     extensions.resourceProviders.add(Resources::provider());
+    extensions.scriptHostApis.add(scriptHostApiTable());
 }
 
 } // namespace Panda::Particles

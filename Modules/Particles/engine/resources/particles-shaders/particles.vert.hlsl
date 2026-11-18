@@ -1,6 +1,7 @@
 // Particle: a [-0.5..0.5]² quad from a mat4 instance (the columns are the camera-facing basis ×
-// size and the world position; built by the system on the CPU) and the instance color. The
-// instance stream contract is the same as in lit_instanced: the locations continue the vertex ones.
+// size and the world position; built by the system on the CPU), the instance color and the part
+// of the texture the particle shows (x, y, width, height). The instance stream contract is the
+// same as in lit_instanced: the locations continue the vertex ones.
 #include "panda/draw.hlsli"
 
 struct VSInput {
@@ -15,6 +16,7 @@ struct VSInput {
     float4 iModel2 : TEXCOORD5;
     float4 iModel3 : TEXCOORD6;
     float4 iColor : TEXCOORD7;
+    float4 iRect : TEXCOORD8;
 };
 
 struct VSOutput {
@@ -30,6 +32,6 @@ VSOutput main(VSInput input) {
     float4 worldPos = mul(modelMtx, localPos);
     output.position = mul(projViewMtx, worldPos);
     output.fragColor = input.color * input.iColor;
-    output.fragTexCoord = input.texCoord;
+    output.fragTexCoord = input.iRect.xy + input.texCoord * input.iRect.zw;
     return output;
 }

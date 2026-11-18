@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "dev.pandaengine.audio",
     "name": "Audio",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "authors": ["Andreichev Michail"],
     "description": "Sound: audio clips as assets (WAV, OGG, MP3, FLAC), a mixer with buses on miniaudio, audio sources and listeners in the world, playback for scripts.",
     "category": "audio",

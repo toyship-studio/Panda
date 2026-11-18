@@ -71,4 +71,24 @@ float getPitch(EntityHandle entity) {
     return value;
 }
 
+float getTime(EntityHandle entity) {
+    const Panda::Scripting::AudioHostApi *api = table("AudioSourceComponentAPI::getTime");
+    float value = 0.f;
+    if (api == nullptr || api->source_GetTime(entity.id, &value) == 0) { return 0.f; }
+    return value;
+}
+
+void setTime(EntityHandle entity, float seconds) {
+    if (const Panda::Scripting::AudioHostApi *api = table("AudioSourceComponentAPI::setTime")) {
+        api->source_SetTime(entity.id, seconds);
+    }
+}
+
+float getLength(EntityHandle entity) {
+    const Panda::Scripting::AudioHostApi *api = table("AudioSourceComponentAPI::getLength");
+    float value = 0.f;
+    if (api == nullptr || api->source_GetLength(entity.id, &value) == 0) { return 0.f; }
+    return value;
+}
+
 } // namespace Bamboo::AudioSourceComponentAPI

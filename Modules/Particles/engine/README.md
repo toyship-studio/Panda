@@ -2,5 +2,7 @@
 
 The particle emitter component, the `particles` world system (CPU simulation with its own clock
 and an instanced submit in the scene pass) and the static resources (the shader from
-`resources/particles-shaders/`, the material, the quad, the instance layout). The entry point is
-`src/Panda/Particles/ParticlesModuleEntry.cpp`.
+`resources/particles-shaders/`, the material, the quad, the instance layout), and the script table
+`particles` (`include/Panda/Particles/ParticlesScriptApi.hpp`,
+`src/Panda/Particles/ParticlesScriptHost.cpp`: bursts and the switch of the emission). The entry
+point is `src/Panda/Particles/ParticlesModuleEntry.cpp`.

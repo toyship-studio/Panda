@@ -300,8 +300,12 @@ bool AssetImportPipeline::refreshMeshSettings(AssetId assetId) {
 // The cooked file of a texture (.Panda/Textures/<path>.ptex) is derived from the source image
 // and from the settings that change its bytes: `compressed` (BC7 with its mips, or RGBA8) and,
 // for a compressed one, `srgb` (the mips of a color texture are filtered in linear light). It is
-// cooked again when the source is newer, when the file is of another version of the format and
-// when it is not what the settings ask for.
+// cooked again when the source is another file than the one it was made from, when the file is of
+// another version of the format and when it is not what the settings ask for. "Another file" is
+// told by the time: a cooked file carries the modification time of its source
+// (AssetImporterBase::stampCookedTexture), and a source of any other time — newer, or an older
+// copy put back with the date it had — is cooked again. A file cooked before that rule has no
+// such time: it is fresh while it is newer than its source, and gets the time then.
 bool AssetImportPipeline::ensureTextureIsCooked(
     const path_t &sourceRelPath, const AssetInfo::TextureSettings &settings, bool forceRecook
 ) {
@@ -314,15 +318,19 @@ bool AssetImportPipeline::ensureTextureIsCooked(
 
     bool shouldRecook = forceRecook && sourceExists;
     if (!shouldRecook && sourceExists) {
+        std::error_code error;
+        const auto sourceTime = std::filesystem::last_write_time(sourcePath, error);
+        const auto cookedTime = cookedExists ? std::filesystem::last_write_time(cookedPath, error) : sourceTime;
         if (!cookedExists) {
             shouldRecook = true;
-        } else if (std::filesystem::last_write_time(sourcePath) > std::filesystem::last_write_time(cookedPath)) {
+        } else if (cooked.timeOfSource ? sourceTime != cookedTime : sourceTime > cookedTime) {
             shouldRecook = true;
         } else {
             // What can be compressed (an 8-bit image) is, when the settings say so.
             const bool isCompressed = Miren::TextureCreate::isCompressedFormat(cooked.format);
             const bool compressible = isCompressed || cooked.format == Miren::RGBA8;
             shouldRecook = compressible && (isCompressed != settings.compressed || (isCompressed && cooked.srgbMips != settings.srgb));
+            if (!shouldRecook && !cooked.timeOfSource) { AssetImporterBase::stampCookedTexture(cookedPath, sourcePath); }
         }
     }
 
@@ -338,6 +346,7 @@ bool AssetImportPipeline::ensureTextureIsCooked(
         }
         cookedExists = AssetImporterBase::saveCookedTexture(cookedPath, create, create.isCompressed() && settings.srgb);
         create.m_data.release();
+        if (cookedExists) { AssetImporterBase::stampCookedTexture(cookedPath, sourcePath); }
     }
 
     return cookedExists;

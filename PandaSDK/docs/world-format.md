@@ -152,7 +152,10 @@ id of an audio asset, `bus` — "master" / "music" / "sfx" / "ui", `volume`, `pi
 the component you need in the editor once, save the world and use the resulting JSON as a sample.
 A key is the name of a component type in the engine registry (`terrain2dComponent`,
 `terrain3dComponent` — the Terrain module, `particleEmitterComponent` — the Particles module); a
-key whose type is absent (the module is not loaded) survives load and save as is.
+key whose type is absent (the module is not loaded) survives load and save as is. A value the
+engine cannot read — a field of another type or shape than the format has: an object where the
+format has an array, as the `gravity` `[x, y, z]` of a particle emitter — leaves the entity
+without the component, and the log says so (`Component "…": its value is not read`).
 
 ## Scripts on an entity
 

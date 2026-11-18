@@ -13,10 +13,13 @@ namespace PandaUI {
 class PrimBuffer {
 public:
     PrimBuffer() = default; // invalid buffer (for example, everything is clipped away)
-    PrimBuffer(DrawList &drawList, uint32_t &commandIndexCount, uint32_t base)
+    // opacity — of the views the primitive is drawn in (UIRenderer::pushOpacity): the alpha of
+    // every vertex is multiplied by it.
+    PrimBuffer(DrawList &drawList, uint32_t &commandIndexCount, uint32_t base, float opacity = 1.f)
         : m_drawList(&drawList)
         , m_commandIndexCount(&commandIndexCount)
-        , m_base(base) {}
+        , m_base(base)
+        , m_opacity(opacity) {}
 
     explicit operator bool() const {
         return m_drawList != nullptr;
@@ -40,6 +43,7 @@ private:
     uint32_t *m_commandIndexCount = nullptr;
     uint32_t m_base = 0;  // global index of the first vertex of the primitive
     uint32_t m_count = 0; // number of vertices written so far
+    float m_opacity = 1.f;
 };
 
 } // namespace PandaUI

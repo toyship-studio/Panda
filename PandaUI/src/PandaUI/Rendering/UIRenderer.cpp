@@ -195,6 +195,8 @@ UIRenderer::UIRenderer()
     , m_viewportSize()
     , m_dpiScale(1.f, 1.f)
     , m_clipStack()
+    , m_opacityStack()
+    , m_currentOpacity(1.f)
     , m_currentClipRect()
     , m_hasCurrentClip(false)
     , m_currentClipIsEmpty(false)
@@ -216,6 +218,8 @@ UIRenderer::~UIRenderer() = default;
 void UIRenderer::begin() {
     PANDA_UI_PROFILE_SCOPE_N("PandaUI::UIRenderer::begin");
     m_clipStack.clear();
+    m_opacityStack.clear();
+    m_currentOpacity = 1.f;
     m_hasCurrentClip = false;
     m_currentClipIsEmpty = false;
     m_currentHasMask = false;
@@ -687,6 +691,17 @@ void UIRenderer::popClipRect() {
     applyClipState();
 }
 
+void UIRenderer::pushOpacity(float opacity) {
+    m_opacityStack.push_back(m_currentOpacity);
+    m_currentOpacity *= std::clamp(opacity, 0.f, 1.f);
+}
+
+void UIRenderer::popOpacity() {
+    if (m_opacityStack.empty()) { return; }
+    m_currentOpacity = m_opacityStack.back();
+    m_opacityStack.pop_back();
+}
+
 void UIRenderer::applyClipState() {
     m_hasCurrentClip = !m_clipStack.empty();
     if (m_hasCurrentClip) {
@@ -767,12 +782,12 @@ PrimBuffer UIRenderer::beginPrimitive(TextureHandle texture, DrawPrimitive primi
     if (m_currentClipIsEmpty) { return PrimBuffer(); }
     syncCurrentBatchState(texture, primitive);
     m_stats.primitiveCount += 1;
-    return PrimBuffer(m_drawList, m_currentCommandIndexCount, static_cast<uint32_t>(m_drawList.vertices.size()));
+    return PrimBuffer(m_drawList, m_currentCommandIndexCount, static_cast<uint32_t>(m_drawList.vertices.size()), m_currentOpacity);
 }
 
 PrimBuffer UIRenderer::continuePrimitive() {
     m_stats.primitiveCount += 1;
-    return PrimBuffer(m_drawList, m_currentCommandIndexCount, static_cast<uint32_t>(m_drawList.vertices.size()));
+    return PrimBuffer(m_drawList, m_currentCommandIndexCount, static_cast<uint32_t>(m_drawList.vertices.size()), m_currentOpacity);
 }
 
 void UIRenderer::resolveSolidTexture(RectData &rect) const {

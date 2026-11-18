@@ -158,6 +158,12 @@ public:
     // Mono. A family is a role or a name (fontFamily("Cinzel")); the host decides which face plays it.
     void setFontAtlas(std::shared_ptr<FontAtlas> atlas, FontWeight weight = FontWeight::Regular, FontFamily family = FontFamily::Sans);
     std::shared_ptr<FontAtlas> getFontAtlas(FontWeight weight = FontWeight::Regular, FontFamily family = FontFamily::Sans);
+    // A weight of a family that is asked for and is not there yet: the host may bring it then — a
+    // game rasterizes the weights of its font as its texts first use them, and pays for none it
+    // does not use (a tool registers all of its faces at the start and needs no loader). Asked once
+    // per family and weight; nullptr — there is none, and the pair falls back as above.
+    using FontLoader = std::function<std::shared_ptr<FontAtlas>(FontWeight weight, FontFamily family)>;
+    void setFontLoader(FontLoader loader);
     // The scale of every text size: the UI font size setting over the 16 the UI is designed at.
     // Geometry is not scaled; controls with a minimum height grow with their text.
     void setTextScale(float scale);
@@ -232,6 +238,8 @@ private:
     // Fonts by family id, each with its three weights (the FontWeight values index the array).
     static constexpr int kFontWeightCount = 3; // Regular, Medium, Bold
     std::unordered_map<uint32_t, std::array<std::shared_ptr<FontAtlas>, kFontWeightCount>> m_fonts;
+    FontLoader m_fontLoader;
+    std::unordered_map<uint32_t, std::array<bool, kFontWeightCount>> m_fontsAsked; // of the loader
     float m_textScale = 1.f;
     Size m_viewportSize;
     Size m_dpiScale;

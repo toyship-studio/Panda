@@ -30,7 +30,9 @@ endif()
 
 # The actual backend recorded when the SDK was packaged. Overrides the platform
 # default: the game is linked with the same defines and shaders the libraries
-# are built for (for example, a Windows SDK built for OpenGL).
+# are built for (for example, a Windows SDK built for OpenGL). The same file says
+# whether the libraries carry the editor-side API (_PANDA_SDK_EDITOR_API, below).
+set(_PANDA_SDK_EDITOR_API OFF)
 include("${_PANDA_SDK_PLATFORM_LIB_DIR}/PandaSDKBackend.cmake" OPTIONAL)
 
 set(PandaSDK_ENGINE_COMMON_RESOURCES_DIR "${_PANDA_SDK_PREFIX}/resources/common")
@@ -55,6 +57,12 @@ endfunction()
 
 _panda_sdk_add_static_library(PandaSDK::PandaRuntime PandaRuntime)
 _panda_sdk_add_static_library(PandaSDK::Panda Panda)
+# The engine as its libraries were compiled: with the editor-side API the layout of engine classes
+# is another one, and everything that links the engine — the scripts of the game, the engine
+# parts of its modules — has to be compiled for the same one.
+if(_PANDA_SDK_EDITOR_API)
+    set_property(TARGET PandaSDK::Panda APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS PND_EDITOR)
+endif()
 _panda_sdk_add_static_library(PandaSDK::Fern Fern)
 _panda_sdk_add_static_library(PandaSDK::Miren Miren)
 _panda_sdk_add_static_library(PandaSDK::Rain Rain)

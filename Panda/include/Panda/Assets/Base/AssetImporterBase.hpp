@@ -40,11 +40,17 @@ public:
         uint32_t height = 0;
         uint32_t dataMips = 0;
         bool srgbMips = false; // the mip levels were filtered as sRGB color (they depend on the color space)
+        // The file has the modification time of the source it was cooked from (stampCookedTexture):
+        // a source of any other time — a newer one, or an older copy put back — is another picture.
+        bool timeOfSource = false;
     };
     // The header alone: what a cook has made (false — no file, or a file of another version).
     static bool readCookedTextureInfo(const path_t &path, CookedTextureInfo &info);
     static Miren::TextureCreate loadCookedTexture(const path_t &path);
     static bool saveCookedTexture(const path_t &path, const Miren::TextureCreate &create, bool srgbMips = false);
+    // Marks a cooked texture as made from this source: the file takes the modification time of the
+    // source and says so in its header (CookedTextureInfo::timeOfSource). false — a file is missing.
+    static bool stampCookedTexture(const path_t &cookedPath, const path_t &sourcePath);
     static path_t getCookedTextureAssetPath(const path_t &sourcePath);
     // Shader include root (`#include "panda/…"`): default-shaders/include in Resources —
     // the editor and export expand project shaders with it (MirenTools::expandHlslIncludes).

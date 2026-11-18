@@ -205,8 +205,13 @@ of RGBA8 — for color and for data alike (RGB and RGBA, the alpha kept).
   format cannot have them generated on the device — in linear light for a color texture, and
   each level is encoded by `bc7enc` (`Vendor/bc7enc`, modes 6 and 1 with 16 partitions) with its
   rows of blocks shared out among the cores. The cook is derived data: it is redone when the
-  source is newer, when the file is of another version of the format, when `compressed`
-  changed, and for a compressed texture when `srgb` changed (the mips depend on it). The first
+  source is another file than the one it was made from, when the file is of another version of
+  the format, when `compressed` changed, and for a compressed texture when `srgb` changed (the
+  mips depend on it). "Another file" is told by the time: a cooked file carries the modification
+  time of its source and says so in its header (`AssetImporterBase::stampCookedTexture`), so a
+  source of any other time — a newer one, or an older copy put back with its date — is cooked
+  again; a file cooked before that rule is fresh while it is newer than its source, and gets the
+  time then, without being compressed again. The first
   opening of a project compresses its textures once; the export puts the cooked files into the
   pack of the game as they are (`context/export.md`).
 - **The device.** `Miren::TextureFormat::BC7` / `BC7_SRGB`: Metal on macOS and D3D11 create

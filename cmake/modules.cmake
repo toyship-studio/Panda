@@ -29,6 +29,9 @@ function(panda_scan_modules OUT_VAR MODULES_DIRECTORY)
             message(WARNING "Modules/${_name} has a module.json but no CMakeLists.txt; skipped")
             continue()
         endif ()
+        # The manifest is an input of the configure: its version, its parts and its dependencies
+        # go into the build, so an edit of it configures again by itself.
+        set_property(DIRECTORY "${CMAKE_SOURCE_DIR}" APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_entry}/module.json")
         file(READ "${_entry}/module.json" _manifest)
         string(JSON _id ERROR_VARIABLE _error GET "${_manifest}" id)
         if (_error)

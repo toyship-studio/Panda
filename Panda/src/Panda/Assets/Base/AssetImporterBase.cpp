@@ -28,9 +28,12 @@ namespace {
         uint32_t height = 0;
         uint32_t isCubeMap = 0;
         uint32_t dataMips = 0; // the mip levels in the data after mip 0
-        uint32_t flags = 0;    // CookedTextureInfo::srgbMips — bit 0
+        uint32_t flags = 0;    // CookedTextureInfo: srgbMips — bit 0, timeOfSource — bit 1
         uint32_t dataSize = 0;
     };
+
+    constexpr uint32_t COOKED_SRGB_MIPS = 1u << 0;
+    constexpr uint32_t COOKED_TIME_OF_SOURCE = 1u << 1;
 
     bool readCookedTextureHeader(std::istream &file, CookedTextureHeader &header) {
         file.read(reinterpret_cast<char *>(&header), sizeof(header));
@@ -174,7 +177,8 @@ bool AssetImporterBase::readCookedTextureInfo(const path_t &path, CookedTextureI
     info.width = header.width;
     info.height = header.height;
     info.dataMips = header.dataMips;
-    info.srgbMips = (header.flags & 1u) != 0;
+    info.srgbMips = (header.flags & COOKED_SRGB_MIPS) != 0;
+    info.timeOfSource = (header.flags & COOKED_TIME_OF_SOURCE) != 0;
     return true;
 }
 
@@ -229,7 +233,7 @@ bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::Textu
     header.height = create.m_height;
     header.isCubeMap = create.m_isCubeMap ? 1u : 0u;
     header.dataMips = create.m_dataMips;
-    header.flags = srgbMips ? 1u : 0u;
+    header.flags = srgbMips ? COOKED_SRGB_MIPS : 0u;
     header.dataSize = static_cast<uint32_t>(dataSize);
 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
@@ -241,6 +245,25 @@ bool AssetImporterBase::saveCookedTexture(const path_t &path, const Miren::Textu
     file.write(reinterpret_cast<const char *>(&header), sizeof(header));
     file.write(reinterpret_cast<const char *>(create.m_data.data), static_cast<std::streamsize>(dataSize));
     return file.good();
+}
+
+bool AssetImporterBase::stampCookedTexture(const path_t &cookedPath, const path_t &sourcePath) {
+    std::error_code error;
+    const std::filesystem::file_time_type sourceTime = std::filesystem::last_write_time(sourcePath, error);
+    if (error) { return false; }
+    {
+        std::fstream file(cookedPath, std::ios::binary | std::ios::in | std::ios::out);
+        CookedTextureHeader header;
+        if (!file.is_open() || !readCookedTextureHeader(file, header)) { return false; }
+        if ((header.flags & COOKED_TIME_OF_SOURCE) == 0) {
+            header.flags |= COOKED_TIME_OF_SOURCE;
+            file.seekp(0);
+            file.write(reinterpret_cast<const char *>(&header), sizeof(header));
+            if (!file.good()) { return false; }
+        }
+    }
+    std::filesystem::last_write_time(cookedPath, sourceTime, error);
+    return !error;
 }
 
 path_t AssetImporterBase::getCookedTextureAssetPath(const path_t &sourcePath) {

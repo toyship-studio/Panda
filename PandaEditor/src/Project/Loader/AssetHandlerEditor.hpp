@@ -61,9 +61,9 @@ public:
     };
     AssetEditorMeta editorMeta(AssetId id);
     void noteAssetDiskSync(AssetId id); // the asset file has just been read/written by the editor
-    // The file of a loaded asset is newer than the asset in memory. A shader is more than its
-    // asset file (the fragment stage and the includes are files of their own), so it is also
-    // compared by the text its sources expand to.
+    // The file of a loaded asset is not the one the asset in memory was read from. A shader is
+    // more than its asset file (the fragment stage and the includes are files of their own), so
+    // it is also compared by the text its sources expand to.
     bool isAssetChangedOnDisk(AssetId id);
     // The loaded assets of the project (the static resources of the engine have no file of the
     // project). Their file documents are made by FileDocuments; an asset nobody loaded is read

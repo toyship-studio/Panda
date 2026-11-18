@@ -394,6 +394,9 @@ void View::render(float offsetX, float offsetY) {
 
     const Point origin(m_frame.origin.x + m_frameOffset.x, m_frame.origin.y + m_frameOffset.y);
     const Point worldOrigin(offsetX + origin.x, offsetY + origin.y);
+    // The opacity is of the whole view: its surface, what it draws and its subviews.
+    const bool pushedOpacity = m_surface.opacity() < 1.f;
+    if (pushedOpacity) { context->getRenderer().pushOpacity(m_surface.opacity()); }
     bool pushedClip = false;
     if (m_surface.clipsToBounds()) {
         Rect clipRect;
@@ -417,6 +420,7 @@ void View::render(float offsetX, float offsetY) {
         subview->render(worldOrigin.x, worldOrigin.y);
     }
     if (pushedClip) { context->getRenderer().popClipRect(); }
+    if (pushedOpacity) { context->getRenderer().popOpacity(); }
 }
 
 void View::setFrameOffset(Point offset) {

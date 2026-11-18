@@ -21,7 +21,15 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
 ## Structure
 
 - `View` is the base retained object. `Surface` is the visual layer (a light CALayer: background,
-  opacity, clip, corner radius, border, shadow). `Control` is the interactive layer (state flags,
+  opacity, clip, corner radius, border, shadow). The opacity is of the view with everything in
+  it — its text or picture and its subviews: `View::render` pushes it onto the renderer
+  (`UIRenderer::pushOpacity`), which scales the alpha of every primitive drawn until the pop
+  (shapes that overlap inside the view show through each other: the view is not composited as
+  one picture). Fonts: a context resolves family × weight (`Context::getFontAtlas`); a pair that
+  is not there is asked of the host once (`setFontLoader`) before it falls back — the UI of a
+  game rasterizes the weights of its default font as its texts first use them, at 40 px on a
+  dense screen and 20 px on a plain one (`Bamboo::UI::WindowRegistry`); the editor registers all
+  of its faces at its start. `Control` is the interactive layer (state flags,
   pointer tracking, actions). `Context` is the state of one UI context: it owns the root, the
   overlays, the tooltip and the drag ghost, the layout and the draw list. `Window` is the window
   abstraction over a context. A parent owns its children; lifetime is expressed by the tree.

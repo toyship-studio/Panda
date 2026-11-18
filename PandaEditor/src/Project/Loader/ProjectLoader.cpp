@@ -267,7 +267,7 @@ bool ProjectLoader::isScriptsChangedOnDisk() {
     if (errorCode) { return false; } // no library — nothing to load
     // The library exists but is not loaded (it was absent at startup) — there is something to pick up.
     if (!m_scriptEngine.isLoaded()) { return true; }
-    return diskTime > m_scriptsDllTime;
+    return diskTime != m_scriptsDllTime; // another build, a newer one or one put back
 }
 
 namespace {

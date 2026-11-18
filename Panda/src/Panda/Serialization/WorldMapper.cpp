@@ -86,7 +86,7 @@ namespace {
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             world.clear();
             SettingsMapper::decode(SettingsScope::World, world.context(), *decoder, {"entities"});
-            std::set<std::string> foreignKept, foreignDropped; // one warning per component key
+            std::set<std::string> foreignKept, foreignDropped, unread; // one warning per component key
             if (decoder->beginArray("entities")) {
                 while (decoder->arrayHasElement()) {
                     if (!decoder->beginObject(nullptr)) { break; }
@@ -96,7 +96,12 @@ namespace {
                     for (const std::string &name : decoder->getMemberKeys()) {
                         if (name == "id") { continue; }
                         if (const ComponentType *type = types.find(name)) {
-                            if (type->decode != nullptr) { type->decode(*decoder, entity); }
+                            if (type->decode != nullptr) {
+                                type->decode(*decoder, entity);
+                                // A component its decode adds, and the entity is without it: the
+                                // value under the key is not what the format has there.
+                                if (!type->builtin && !entity.hasComponent(type->typeId)) { unread.insert(name); }
+                            }
                             continue;
                         }
                         // A key without a contribution — the module is not loaded: keep it as is.
@@ -122,6 +127,13 @@ namespace {
             }
             for (const std::string &name : foreignDropped) {
                 LOG_WARN("Component \"%s\": no module provides it, dropped", name.c_str());
+            }
+            for (const std::string &name : unread) {
+                LOG_WARN(
+                    "Component \"%s\": its value is not read — a field of another type or shape than the format has; "
+                    "the entity is left without the component",
+                    name.c_str()
+                );
             }
             // A file written before the encoder dropped the tombstones of undoable deletions lists
             // children that do not exist; the sort and the hierarchy need every link to resolve.

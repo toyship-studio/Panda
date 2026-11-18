@@ -228,6 +228,28 @@ namespace Sources {
         return it != state->sources.end() && engine->isValid(it->second.voice) && !engine->isPaused(it->second.voice);
     }
 
+    float time(World &world, Entity entity) {
+        AudioWorldState *state = world.findContext<AudioWorldState>();
+        AudioEngine *engine = AudioEngine::instance();
+        if (state == nullptr || engine == nullptr || !entity.isValid()) { return 0.f; }
+        auto it = state->sources.find(entity.getId());
+        return it == state->sources.end() ? 0.f : engine->cursorSeconds(it->second.voice);
+    }
+
+    void setTime(World &world, Entity entity, float seconds) {
+        AudioWorldState *state = world.findContext<AudioWorldState>();
+        AudioEngine *engine = AudioEngine::instance();
+        if (state == nullptr || engine == nullptr || !entity.isValid()) { return; }
+        auto it = state->sources.find(entity.getId());
+        if (it != state->sources.end()) { engine->seek(it->second.voice, seconds); }
+    }
+
+    float length(Entity entity) {
+        if (!entity.isValid() || !entity.hasComponent<AudioSourceComponent>()) { return 0.f; }
+        const AudioClipAsset *clip = clipOf(entity.getComponent<AudioSourceComponent>());
+        return clip == nullptr ? 0.f : clip->info().durationSeconds();
+    }
+
     VoiceHandle playOneShot(World &world, Entity entity, const glm::vec3 *position, float volumeScale, float pitchScale) {
         AudioWorldState *state = world.findContext<AudioWorldState>();
         AudioEngine *engine = AudioEngine::instance();

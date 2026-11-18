@@ -13,6 +13,7 @@ uint32_t PrimBuffer::vertex(glm::vec3 position, glm::vec2 uv, glm::vec4 color) {
 }
 
 uint32_t PrimBuffer::vertex(glm::vec3 position, glm::vec2 uv, glm::vec4 color, glm::vec4 sdfParams) {
+    color.a *= m_opacity;
     m_drawList->vertices.push_back({position, uv, color, sdfParams});
     assert(m_drawList->vertices.size() < MAX_VERTICES_COUNT && "VERTICES LIMIT REACHED");
     return m_count++;

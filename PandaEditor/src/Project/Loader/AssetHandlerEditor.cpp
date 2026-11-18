@@ -110,7 +110,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
     const AssetType loadedType = assetInfo.type;
     if (loadedType == AssetType::TEXTURE) {
         auto meta = std::get<AssetInfo::TextureSettings>(assetInfo.settings);
-        // The cook itself knows when its file is stale (a newer source, other settings): a
+        // The cook itself knows when its file is stale (another source, other settings): a
         // reload of the asset — a changed filter — does not compress the texture again.
         if (m_import.ensureTextureIsCooked(relativePath, meta)) {
             const path_t cookedPath = AssetImporterBase::getCookedTextureAssetPath(relativePath);

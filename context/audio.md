@@ -155,20 +155,26 @@ of the editor part (the Mute of the editor settings applied every frame).
   touches nothing.
 - `Audio::Sources` — the sources of a running world as the script host and the editor drive them:
   `play` (from the component; a playing one starts over), `stop(fade)`, `setPaused`, `isPlaying`,
-  `playOneShot(position, volumeScale, pitchScale)` (a detached voice with the source's settings
-  that does not follow the entity and ends by itself). Outside a running world every call is a
-  no-op.
+  `time` / `setTime` (the playhead of the source's voice, in seconds of its clip), `length` (of
+  the source's clip, playing or not: read from the header of the file, the clip is loaded for
+  it), `playOneShot(position, volumeScale, pitchScale)` (a detached voice with the source's
+  settings that does not follow the entity and ends by itself). Outside a running world every
+  call is a no-op.
 
 ### The script table (`Panda/Audio/AudioScriptApi.hpp`, SDK part `Modules/Audio/sdk`)
 
-- The contribution table `"audio"` v1, `AudioHostApi`: `source_Play / Stop / SetPaused /
+- The contribution table `"audio"` v2, `AudioHostApi`: `source_Play / Stop / SetPaused /
   IsPlaying / PlayOneShot(position3 | null, volumeScale, pitchScale) / SetVolume / GetVolume /
-  SetPitch / GetPitch` on an entity handle (the volume and the pitch are written into the
-  component, the system applies them at the end of the frame), `bus_SetVolume / GetVolume`,
+  SetPitch / GetPitch / GetTime / SetTime / GetLength` on an entity handle (the volume and the
+  pitch are written into the component, the system applies them at the end of the frame; the
+  time is the playhead of the voice, the length is the clip's), `bus_SetVolume / GetVolume`,
   `stopAll(fade)`. An entity without a source, or no running world, returns 0 and zeros.
 - The Bamboo API: `Bamboo::AudioAPI` (`setBusVolume`, `getBusVolume`, `stopAll`) and
   `Bamboo::AudioSourceComponentAPI` (`play`, `stop`, `setPaused`, `isPlaying`, `playOneShot`,
-  `playOneShotAt`, `setVolume` / `getVolume`, `setPitch` / `getPitch`). A script reaches a sound
+  `playOneShotAt`, `setVolume` / `getVolume`, `setPitch` / `getPitch`, `getTime` / `setTime`,
+  `getLength`). Music that goes from one piece into the next is two sources and the script: it
+  starts the next one when `getLength − getTime` of the playing one is the length of the
+  crossfade, and moves the two volumes every frame. A script reaches a sound
   through the entity that carries the Audio Source (an `EntityHandle` field): there is no clip
   field type for scripts until the core has a generic asset field by kind name
   (`ScriptFieldType::ASSET`, an ABI bump).

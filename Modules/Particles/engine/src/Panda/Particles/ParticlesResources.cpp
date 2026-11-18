@@ -55,6 +55,7 @@ namespace {
         instanceData.pushVec4();
         instanceData.pushVec4();
         instanceData.pushVec4(); // color
+        instanceData.pushVec4(); // the part of the texture: x, y, width, height
         instanceLayout = Miren::createVertexLayout(instanceData);
     }
 

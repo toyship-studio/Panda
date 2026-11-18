@@ -104,6 +104,27 @@ namespace {
         return 1;
     }
 
+    uint32_t sourceGetTime(Handle entityHandle, float *outValue) {
+        const Target target = resolve(entityHandle);
+        if (!target.valid() || outValue == nullptr) { return 0; }
+        *outValue = Sources::time(*target.world, target.entity);
+        return 1;
+    }
+
+    uint32_t sourceSetTime(Handle entityHandle, float value) {
+        const Target target = resolve(entityHandle);
+        if (!target.valid()) { return 0; }
+        Sources::setTime(*target.world, target.entity, std::max(value, 0.f));
+        return 1;
+    }
+
+    uint32_t sourceGetLength(Handle entityHandle, float *outValue) {
+        const Target target = resolve(entityHandle);
+        if (!target.valid() || outValue == nullptr) { return 0; }
+        *outValue = Sources::length(target.entity);
+        return 1;
+    }
+
     uint32_t busSetVolume(const char *bus, float volume) {
         AudioEngine *engine = AudioEngine::instance();
         if (engine == nullptr || bus == nullptr) { return 0; }
@@ -132,6 +153,9 @@ namespace {
         .source_GetVolume = sourceGetVolume,
         .source_SetPitch = sourceSetPitch,
         .source_GetPitch = sourceGetPitch,
+        .source_GetTime = sourceGetTime,
+        .source_SetTime = sourceSetTime,
+        .source_GetLength = sourceGetLength,
         .bus_SetVolume = busSetVolume,
         .bus_GetVolume = busGetVolume,
         .stopAll = stopAll,

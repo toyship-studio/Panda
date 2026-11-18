@@ -35,6 +35,13 @@ for (PandaUI::ButtonStyle style : {PandaUI::ButtonStyle::Neutral, PandaUI::Butto
 
 One font file is one weight; a character the face lacks is drawn with the built-in font.
 
+Without a font of its own a game writes with the built-in one (Inter Display) in three weights —
+`FontWeight::Regular`, `Medium` and `Bold`; a weight is rasterized when a text first uses it, so
+a UI written in one weight pays for one. The glyphs are rasterized for the density of the screen
+(a phone, a Retina display: twice as large as on a plain monitor), so text is as sharp as the
+screen is; a title several times larger than body text is drawn from the same glyphs enlarged
+and is softer for it.
+
 ## Appearances
 
 Every widget carries a struct of its look next to its class: `ButtonAppearance`,
@@ -91,7 +98,10 @@ one.
 - **Corners**: `setCornerRadius(r)` or `setCornerRadii(CornerRadii::top(r))` and the like per
   corner.
 - **Border** inside the bounds: `setBorderWidth`, `setBorderColor`. **Shadow**:
-  `setShadow(Shadow::popover)` or your own `ShadowStyle`. **Opacity**: `setOpacity`.
+  `setShadow(Shadow::popover)` or your own `ShadowStyle`.
+- **Opacity**: `setOpacity` (0..1) is of the view with everything in it — its text or picture and
+  its subviews fade with it: a title that fades out, a button there is nothing to do with. At 0
+  the view is not drawn and takes no touch.
 - **Clip**: `setClipsToBounds(true)` keeps the subviews inside; with a corner radius the clip is
   rounded too (a list inside a rounded card ends at the corners).
 

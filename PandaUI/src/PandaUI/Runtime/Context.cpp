@@ -88,11 +88,28 @@ void Context::setFontAtlas(std::shared_ptr<FontAtlas> atlas, FontWeight weight, 
     m_fonts[static_cast<uint32_t>(family)][static_cast<int>(weight)] = std::move(atlas);
 }
 
+void Context::setFontLoader(FontLoader loader) {
+    m_fontLoader = std::move(loader);
+    m_fontsAsked.clear();
+}
+
 std::shared_ptr<FontAtlas> Context::getFontAtlas(FontWeight weight, FontFamily family) {
     const int w = static_cast<int>(weight);
     const int regular = static_cast<int>(FontWeight::Regular);
-    if (const auto it = m_fonts.find(static_cast<uint32_t>(family)); it != m_fonts.end()) {
-        if (it->second[w]) { return it->second[w]; }
+    const uint32_t familyId = static_cast<uint32_t>(family);
+    if (const auto it = m_fonts.find(familyId); it != m_fonts.end() && it->second[w]) { return it->second[w]; }
+    // The pair is not there: the host is asked for it, once.
+    if (m_fontLoader) {
+        bool &asked = m_fontsAsked[familyId][static_cast<size_t>(w)];
+        if (!asked) {
+            asked = true;
+            if (std::shared_ptr<FontAtlas> atlas = m_fontLoader(weight, family)) {
+                m_fonts[familyId][static_cast<size_t>(w)] = atlas;
+                return atlas;
+            }
+        }
+    }
+    if (const auto it = m_fonts.find(familyId); it != m_fonts.end()) {
         if (it->second[regular]) { return it->second[regular]; } // the family without this weight
     }
     // The base family: the weight, then Regular.

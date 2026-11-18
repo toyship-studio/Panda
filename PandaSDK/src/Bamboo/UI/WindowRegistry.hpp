@@ -65,12 +65,12 @@ private:
     void closeWindowNow(PandaUI::WindowHandle handle);
     void flushPendingCloseWindows();
     void syncViewport(WindowState &state);
-    std::shared_ptr<PandaUI::FontAtlas> getDefaultFont(float pixelSize);
+    std::shared_ptr<PandaUI::FontAtlas> getDefaultFont(float pixelSize, PandaUI::FontWeight weight = PandaUI::FontWeight::Regular);
     static PandaUI::TextureHandle fontAtlasTextureThunk(void *userData, const PandaUI::FontAtlas::AtlasData &atlas);
 
     Platform &m_platform;
     std::unordered_map<PandaUI::WindowHandle, std::unique_ptr<WindowState>> m_windows;
-    std::map<float, std::shared_ptr<PandaUI::FontAtlas>> m_defaultFonts;
+    std::map<std::pair<float, int>, std::shared_ptr<PandaUI::FontAtlas>> m_defaultFonts; // by pixel size and weight
     std::unordered_map<uint32_t, std::shared_ptr<PandaUI::FontAtlas>> m_scriptFonts; // by family id
     std::vector<PandaUI::WindowHandle> m_pendingCloseWindows;
     int m_dispatchDepth = 0;

@@ -6,6 +6,7 @@
 #include <Panda/Assets/StaticResources.hpp>
 #include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Components/TransformComponent.hpp>
+#include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/World.hpp>
 #include <Panda/Renderer/Renderer3D.hpp>
 #include <Panda/Renderer/RenderingMode.hpp>
@@ -27,6 +28,8 @@ namespace {
         glm::vec3 velocity;
         float age = 0.f;
         float lifetime = 1.f;
+        glm::vec4 tint{1.f};                 // multiplies the colors of the emitter
+        glm::vec4 rect{0.f, 0.f, 1.f, 1.f}; // the part of the texture it shows: x, y, width, height
     };
 
     // Live particles of one emitter and its GPU instance buffer.
@@ -51,6 +54,7 @@ namespace {
     struct InstanceData {
         glm::vec4 columns[4];
         glm::vec4 color;
+        glm::vec4 rect; // of the texture: x, y, width, height
     };
 
     float random01(uint32_t &seed) {
@@ -77,6 +81,28 @@ namespace {
         return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
     }
 
+    // A particle of the emitter leaves `origin` within the cone around `axis`.
+    void spawn(
+        EmitterState &state, const ParticleEmitterComponent &emitter, const glm::vec3 &origin, const glm::vec3 &axis,
+        const glm::vec4 &tint, const glm::vec4 &rect
+    ) {
+        Particle particle;
+        particle.position = origin;
+        const float speed = emitter.speed * (1.f + emitter.speedVariation * (random01(state.seed) * 2.f - 1.f));
+        particle.velocity = randomDirection(state.seed, axis, glm::radians(emitter.spreadDegrees)) * speed;
+        particle.lifetime =
+            std::max(0.05f, emitter.lifetime * (1.f + emitter.lifetimeVariation * (random01(state.seed) * 2.f - 1.f)));
+        particle.tint = tint;
+        particle.rect = rect;
+        state.particles.push_back(particle);
+    }
+
+    // The up axis of the emitter in the space its particles live in.
+    glm::vec3 emitterAxis(const ParticleEmitterComponent &emitter, const glm::mat4 &model) {
+        const glm::vec3 axis = emitter.worldSpace ? glm::vec3(model * glm::vec4(0.f, 1.f, 0.f, 0.f)) : glm::vec3(0.f, 1.f, 0.f);
+        return glm::length(axis) > 1.e-6f ? axis : glm::vec3(0.f, 1.f, 0.f);
+    }
+
     void simulate(
         EmitterState &state, const ParticleEmitterComponent &emitter, const glm::mat4 &model, float dt
     ) {
@@ -100,17 +126,10 @@ namespace {
         }
         state.emitAccumulator += emitter.rate * dt;
         const glm::vec3 origin = emitter.worldSpace ? glm::vec3(model[3]) : glm::vec3(0.f);
-        const glm::vec3 axis = emitter.worldSpace ? glm::vec3(model * glm::vec4(0.f, 1.f, 0.f, 0.f)) : glm::vec3(0.f, 1.f, 0.f);
-        const glm::vec3 safeAxis = glm::length(axis) > 1.e-6f ? axis : glm::vec3(0.f, 1.f, 0.f);
+        const glm::vec3 axis = emitterAxis(emitter, model);
         while (state.emitAccumulator >= 1.f && particles.size() < maxParticles) {
             state.emitAccumulator -= 1.f;
-            Particle particle;
-            particle.position = origin;
-            const float speed = emitter.speed * (1.f + emitter.speedVariation * (random01(state.seed) * 2.f - 1.f));
-            particle.velocity = randomDirection(state.seed, safeAxis, glm::radians(emitter.spreadDegrees)) * speed;
-            particle.lifetime =
-                std::max(0.05f, emitter.lifetime * (1.f + emitter.lifetimeVariation * (random01(state.seed) * 2.f - 1.f)));
-            particles.push_back(particle);
+            spawn(state, emitter, origin, axis, glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
         }
         if (state.emitAccumulator > 1.f) { state.emitAccumulator = 1.f; } // cap reached — do not build up a burst
     }
@@ -141,7 +160,8 @@ namespace {
             instance.columns[3] = glm::vec4(worldPos, 1.f);
             const Color &a = emitter.startColor;
             const Color &b = emitter.endColor;
-            instance.color = glm::mix(glm::vec4(a.r, a.g, a.b, a.a), glm::vec4(b.r, b.g, b.b, b.a), t);
+            instance.color = glm::mix(glm::vec4(a.r, a.g, a.b, a.a), glm::vec4(b.r, b.g, b.b, b.a), t) * particle.tint;
+            instance.rect = particle.rect;
             instances.push_back(instance);
         }
         const uint32_t count = static_cast<uint32_t>(instances.size());
@@ -193,10 +213,33 @@ namespace {
 
 } // namespace
 
+uint32_t emit(
+    World &world, Entity entity, uint32_t count, const glm::vec3 *position, const glm::vec4 &tint, const glm::vec4 &rect
+) {
+    if (!entity.isValid() || !entity.hasComponent<ParticleEmitterComponent>()) { return 0; }
+    const ParticleEmitterComponent &emitter = entity.getComponent<ParticleEmitterComponent>();
+    const glm::mat4 model = world.getWorldSpaceTransformMatrix(entity);
+    // The particles of a local emitter live in its space: a place of the world is brought there.
+    glm::vec3 origin = emitter.worldSpace ? glm::vec3(model[3]) : glm::vec3(0.f);
+    if (position != nullptr) {
+        origin = emitter.worldSpace ? *position : glm::vec3(glm::inverse(model) * glm::vec4(*position, 1.f));
+    }
+    EmitterState &state = world.context<ParticlesState>().emitters[entity.getId()];
+    const glm::vec3 axis = emitterAxis(emitter, model);
+    const uint32_t maxParticles = std::max(1u, emitter.maxParticles);
+    uint32_t emitted = 0;
+    while (emitted < count && state.particles.size() < maxParticles) {
+        spawn(state, emitter, origin, axis, tint, rect);
+        emitted++;
+    }
+    return emitted;
+}
+
 WorldSystem worldSystem() {
     WorldSystem system;
     system.name = "particles";
-    system.submit = submit;
+    // The quads are blended: they go after the opaque world.
+    system.submitBlended = submit;
     return system;
 }
 

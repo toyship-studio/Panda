@@ -36,6 +36,10 @@ function(panda_package)
     if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/module.json)
         message(FATAL_ERROR "panda_package(): no module.json in ${CMAKE_CURRENT_SOURCE_DIR}")
     endif ()
+    # The manifest is an input of the configure — its version and name become defines of the
+    # code —, so an edit of it configures again by itself (a build would otherwise keep saying
+    # the version it was configured with).
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/module.json)
     file(READ ${CMAKE_CURRENT_SOURCE_DIR}/module.json _PANDA_PACKAGE_MANIFEST)
     string(JSON _PANDA_PACKAGE_ID GET "${_PANDA_PACKAGE_MANIFEST}" id)
     string(JSON _PANDA_PACKAGE_VERSION GET "${_PANDA_PACKAGE_MANIFEST}" version)

@@ -68,6 +68,8 @@ after the opaque ones, far to near.
 ## Reload
 
 One command: **File → Reload** (Cmd/Ctrl+R or the toolbar button) rereads from disk everything
-that has changed (assets, the script bundle, the world) by mtime. On a conflict (the file is newer
-AND there are unsaved edits in the editor) the editor asks about each asset.
+that has changed (assets, the script bundle, the world). A file has changed when its time is not
+the one the editor last read or wrote: an edit, a checkout — or an older copy put back with the
+date it had. On a conflict (the file has changed AND there are unsaved edits in the editor) the
+editor asks about each asset.
 A targeted Reimport from the context menu of the Content Browser works too.

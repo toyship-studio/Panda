@@ -175,6 +175,8 @@ public:
     bool clipsToBounds() const {
         return m_surface.clipsToBounds();
     }
+    // How much of the view is there, 0..1 — with everything in it: its text or picture and its
+    // subviews fade with it. At 0 the view is not drawn and takes no input.
     void setOpacity(float opacity);
     float getOpacity() const {
         return m_surface.opacity();

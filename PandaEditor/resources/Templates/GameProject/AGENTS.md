@@ -51,7 +51,7 @@ files stay the way to change the project; the tools are for what a file cannot d
   press Reload (Cmd/Ctrl+R) and to report what they see.
 - Reload synchronizes the editor with the disk in a single command: it rereads changed assets,
   the fresh script bundle and the world (by mtime). Broken world JSON is safe — the editor
-  reports the error and keeps the current world. A file that is newer on disk and also has
+  reports the error and keeps the current world. A file that changed on disk and also has
   unsaved edits in the editor is a conflict: `reload` fails and names it, and the user decides
   which version stays (do not pass `discard` without asking).
 - Build the C++ scripts yourself (see "Building scripts") — Reload picks up the fresh library.

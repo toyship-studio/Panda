@@ -6,8 +6,24 @@ namespace Bamboo::UI {
 
 namespace {
 
-    constexpr float DEFAULT_FONT_PIXEL_SIZE = 18.f;
+    // The default font is rasterized for the density of the screen. The texts of a game are some 13
+    // to 20 points: on a dense screen (2x, 3x) that is 26 to 60 pixels, and an atlas of 40 serves
+    // them without stretching the glyphs much; on a plain screen (1x) it is 20 — an atlas much
+    // larger than the text would be minified into noise. (A window that moves to a screen of another
+    // density keeps the atlas it began with.)
+    constexpr float PLAIN_FONT_PIXEL_SIZE = 20.f;
+    constexpr float DENSE_FONT_PIXEL_SIZE = 40.f;
     constexpr float SCRIPT_FONT_PIXEL_SIZE = 40.f; // the fonts of the script serve titles too: rasterized larger, scaled down
+
+    // The faces of the default font, by weight (Panda/resources/default-fonts).
+    const char *defaultFontFile(PandaUI::FontWeight weight) {
+        switch (weight) {
+            case PandaUI::FontWeight::Medium: return "default-fonts/Inter/InterDisplay-Medium.ttf";
+            case PandaUI::FontWeight::Bold: return "default-fonts/Inter/InterDisplay-Bold.ttf";
+            case PandaUI::FontWeight::Regular: break;
+        }
+        return "default-fonts/Inter/InterDisplay-Regular.ttf";
+    }
 
 } // namespace
 
@@ -24,7 +40,19 @@ WindowRegistry::WindowState &WindowRegistry::ensureWindow(PandaUI::WindowHandle 
     if (it != m_windows.end()) { return *it->second; }
 
     auto state = std::make_unique<WindowState>(handle, ownsNativeWindow);
-    state->context.setFontAtlas(getDefaultFont(DEFAULT_FONT_PIXEL_SIZE)); // Sans Regular (base)
+    const Platform::Viewport viewport = m_platform.getViewport(handle);
+    const bool dense = viewport.valid && std::max(viewport.dpi.width, viewport.dpi.height) >= 1.5f;
+    const float pixelSize = dense ? DENSE_FONT_PIXEL_SIZE : PLAIN_FONT_PIXEL_SIZE;
+    state->context.setFontAtlas(getDefaultFont(pixelSize)); // Sans Regular (base)
+    // The other weights of the default font come when a text first asks for one: a game that
+    // writes everything in Regular rasterizes nothing else. A script that brought its own face for
+    // the base family has its one weight: the default font does not mix into it.
+    state->context.setFontLoader([this, pixelSize](PandaUI::FontWeight weight, PandaUI::FontFamily family) {
+        if (family != PandaUI::FontFamily::Sans || m_scriptFonts.contains(static_cast<uint32_t>(family))) {
+            return std::shared_ptr<PandaUI::FontAtlas>();
+        }
+        return getDefaultFont(pixelSize, weight);
+    });
     for (const auto &[family, atlas] : m_scriptFonts) { // the fonts the script registered before this window
         state->context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, static_cast<PandaUI::FontFamily>(family));
     }
@@ -103,7 +131,7 @@ bool WindowRegistry::registerFont(PandaUI::FontFamily family, std::vector<unsign
         data.data(), static_cast<uint32_t>(data.size()), SCRIPT_FONT_PIXEL_SIZE, fontAtlasTextureThunk, &m_platform
     );
     if (!atlas) { return false; }
-    atlas->setFallback(getDefaultFont(DEFAULT_FONT_PIXEL_SIZE));
+    atlas->setFallback(getDefaultFont(DENSE_FONT_PIXEL_SIZE));
     m_scriptFonts[static_cast<uint32_t>(family)] = atlas;
     for (auto &entry : m_windows) {
         entry.second->context.setFontAtlas(atlas, PandaUI::FontWeight::Regular, family);
@@ -130,12 +158,12 @@ PandaUI::TextureHandle WindowRegistry::fontAtlasTextureThunk(void *userData, con
     return platform->createTexture(atlas.rgbaPixels, atlas.width, atlas.height);
 }
 
-std::shared_ptr<PandaUI::FontAtlas> WindowRegistry::getDefaultFont(float pixelSize) {
-    auto it = m_defaultFonts.find(pixelSize);
+std::shared_ptr<PandaUI::FontAtlas> WindowRegistry::getDefaultFont(float pixelSize, PandaUI::FontWeight weight) {
+    const std::pair<float, int> key(pixelSize, static_cast<int>(weight));
+    auto it = m_defaultFonts.find(key);
     if (it != m_defaultFonts.end()) { return it->second; }
 
-    std::vector<unsigned char> fontData =
-        m_platform.loadStaticResource("default-fonts/Inter/InterDisplay-Regular.ttf");
+    std::vector<unsigned char> fontData = m_platform.loadStaticResource(defaultFontFile(weight));
     if (fontData.empty()) { return nullptr; }
 
     std::shared_ptr<PandaUI::FontAtlas> font = PandaUI::FontAtlas::createFromMemory(
@@ -143,7 +171,7 @@ std::shared_ptr<PandaUI::FontAtlas> WindowRegistry::getDefaultFont(float pixelSi
     );
     if (!font) { return nullptr; }
 
-    m_defaultFonts[pixelSize] = font;
+    m_defaultFonts[key] = font;
     return font;
 }
 

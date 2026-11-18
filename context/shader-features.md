@@ -67,7 +67,7 @@ once, in the catalog.
   `environment`, plus `lamps`). The dependencies are closed on reading: `lamps`, `shadows` or
   `occlusion` bring `lights`, switching `lights` off switches them off.
 - The editor applies the set on project open (`ProjectLoader::applyShaderFeatures`) and
-  whenever `project.json` is written or read again — Save, Reload when the file is newer than the
+  whenever `project.json` is written or read again — Save, Reload when the file is not the one of the
   editor's last read or write, Don't Save (`ProjectLoader::applyProjectSettings`, called when the
   project settings document reports the write or the read): it becomes
   `ShaderFeatures::enabled()`, the set of the process; a changed set recooks the scene shaders and

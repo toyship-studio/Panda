@@ -16,7 +16,8 @@ knows nothing about sound.
   panned by their distance and direction from the **Audio Listener** (an entity with that
   component, or the main camera). Scripts drive sources through
   `Bamboo::AudioSourceComponentAPI` (play, stop, pause, one-shots for overlapping sounds, volume,
-  pitch) and the buses through `Bamboo::AudioAPI`.
+  pitch, the playhead and the length of the clip — what a playlist with crossfades needs) and
+  the buses through `Bamboo::AudioAPI`.
 - **In the editor**: the clip tab (Play / Pause / Stop, the position, loop), the inspector sections
   of the source and the listener (with Play / Stop: the live voice in Play, a preview otherwise),
   the AUDIO section of the editor settings (Mute: everything the editor plays, previews and Play

@@ -23,6 +23,13 @@ namespace Audio {
         void stop(World &world, Entity entity, float fadeSeconds = AudioEngine::DEFAULT_STOP_FADE_SECONDS);
         void setPaused(World &world, Entity entity, bool paused);
         bool isPlaying(World &world, Entity entity); // playing and not paused
+        // The playhead of the source's voice, in seconds of its clip: 0 when nothing plays.
+        float time(World &world, Entity entity);
+        // Moves the playhead of a playing (or paused) voice; a source that does not play keeps silent.
+        void setTime(World &world, Entity entity, float seconds);
+        // The length of the source's clip in seconds, playing or not (the clip is loaded for it);
+        // 0 — no clip.
+        float length(Entity entity);
         // A detached voice with the source's settings: it does not follow the entity and does not
         // touch the source's own voice. position null — the entity's position now.
         VoiceHandle playOneShot(

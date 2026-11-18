@@ -445,7 +445,12 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
         steps.push_back(removeStep(buildDirectory, "The toolchain changed: the build folder is made again."));
     }
     // Build configures a tree that is not configured yet: a fresh checkout is built with one button.
-    if (action == BuildAction::Configure || stale || !configured) {
+    // The Export project is configured before every build. It is an IDE project: Xcode and Visual
+    // Studio take the list of the sources from the project as it was generated, and a project that
+    // cmake generates again in the middle of its own build is not read again by that build — a
+    // source file added to the scripts since would fail the link once, and pass the next time. A
+    // second or two of cmake against the minutes of the build.
+    if (action == BuildAction::Configure || stale || !configured || !scripts) {
         if (!scripts) { steps.push_back(exportStepMark(ExportStep::Configure)); }
         std::vector<std::string> arguments;
         if (scripts) {

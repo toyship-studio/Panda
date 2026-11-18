@@ -140,6 +140,9 @@ public:
 
     /* ------------------------------ Compositing ------------------------------ */
 
+    // How much of the view is there, 0..1: the surface, what the view draws — its text, its
+    // picture — and its subviews alike (View::render gives it to the renderer; the surface
+    // draws itself in full). At 0 the view is not drawn and takes no input.
     void setOpacity(float opacity);
     float opacity() const {
         return m_opacity;

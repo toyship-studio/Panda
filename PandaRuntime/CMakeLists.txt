@@ -44,8 +44,21 @@ set(PANDA_RUNTIME_PACKAGE_STAMP ${PANDA_SDK_PLATFORM_LIB_DIR}/PandaRuntime.stamp
 # The actual shader backend of this SDK build. Placed next to the platform
 # libraries and read by PandaRuntimeConfig when an exported game is built,
 # so that the export follows the backend the libraries and shaders are built for.
+# And whether the libraries carry the editor-side API (PND_EDITOR): the layout of engine classes
+# depends on it — the virtual functions of AssetHandler, the fields of the material and shader
+# assets —, so what an exported game compiles itself (its scripts, the engine parts of its modules)
+# must see the engine its libraries were compiled as. The SDK scripts build without it
+# (scripts/build_panda_sdk*.sh: PANDA_EDITOR_API=OFF); a package made from the engine tree of a
+# developer has it, and says so here — else a call through a virtual table of the other layout
+# does something else in silence (the clips of a game loaded and no sound played).
+if(PANDA_EDITOR_API)
+    set(_PANDA_SDK_PACKAGE_EDITOR_API ON)
+else()
+    set(_PANDA_SDK_PACKAGE_EDITOR_API OFF)
+endif()
 file(WRITE ${CMAKE_BINARY_DIR}/PandaSDK/PandaSDKBackend.cmake
     "set(_PANDA_SDK_SHADER_BACKEND \"${PANDA_SHADER_RESOURCE_BACKEND}\")\n"
+    "set(_PANDA_SDK_EDITOR_API ${_PANDA_SDK_PACKAGE_EDITOR_API})\n"
 )
 
 set(PANDA_RUNTIME_PACKAGE_TARGETS

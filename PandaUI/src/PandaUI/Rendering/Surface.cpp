@@ -7,15 +7,6 @@
 
 namespace PandaUI {
 
-namespace {
-
-    Color withOpacity(Color color, float opacity) {
-        color.a *= opacity;
-        return color;
-    }
-
-} // namespace
-
 Surface::Surface(View *owner)
     : m_owner(owner)
     // Transparent default: a regular View/Panel is a layout container, not a "plate".
@@ -145,7 +136,7 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
 
     if (m_shadow.isVisible()) {
         UIRenderer::ShadowData shadow;
-        shadow.color = withOpacity(m_shadow.color, m_opacity);
+        shadow.color = m_shadow.color;
         shadow.offset = m_shadow.offset;
         shadow.radius = m_shadow.radius;
         shadow.spread = m_shadow.spread;
@@ -154,8 +145,8 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
 
     // The fill: a gradient while one is set, the color otherwise (the theme of the moment).
     if (m_backgroundGradient) {
-        const Color start = withOpacity(m_backgroundGradient->start.resolve(), m_opacity);
-        const Color end = withOpacity(m_backgroundGradient->end.resolve(), m_opacity);
+        const Color start = m_backgroundGradient->start.resolve();
+        const Color end = m_backgroundGradient->end.resolve();
         if (start.a > 0.f || end.a > 0.f) {
             const auto mix = [](Color a, Color b) {
                 return Color((a.r + b.r) * 0.5f, (a.g + b.g) * 0.5f, (a.b + b.b) * 0.5f, (a.a + b.a) * 0.5f);
@@ -180,14 +171,14 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
     } else {
         const Color background = m_backgroundColor.resolve();
         if (background.a > 0.f) {
-            rect.color = withOpacity(background, m_opacity);
+            rect.color = background;
             renderer.drawRoundedRect(rect, m_cornerRadii);
         }
     }
 
     // The image on top of the fill: a frame, a texture, a skin. Its own shape, not the corner radius.
     if (m_backgroundImage) {
-        const Color tint = withOpacity(m_backgroundImage.tint.resolve(), m_opacity);
+        const Color tint = m_backgroundImage.tint.resolve();
         if (tint.a > 0.f) {
             UIRenderer::RectData image = rect;
             image.color = tint;
@@ -199,7 +190,7 @@ void Surface::draw(UIRenderer &renderer, Rect frame, const glm::mat4 &transform)
 
     const Color border = m_borderColor.resolve();
     if (m_borderWidth > 0.f && border.a > 0.f) {
-        rect.color = withOpacity(border, m_opacity);
+        rect.color = border;
         rect.texture = TextureHandle();
         rect.textureCoords = Rect(0.f, 0.f, 1.f, 1.f);
         renderer.drawRoundedRectBorder(rect, m_cornerRadii, m_borderWidth);

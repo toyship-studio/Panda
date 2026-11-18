@@ -58,7 +58,7 @@ public:
 
     // Every document that needs attention, in the order of Reload: the settings (they decide how
     // the rest is read: the shader features, the modules), the assets (the worlds reference them),
-    // the worlds. An asset is listed when it has unsaved edits or its file is newer.
+    // the worlds. An asset is listed when it has unsaved edits or its file has changed.
     FileDocumentList list();
 
     // ---- The settings ----

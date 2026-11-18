@@ -13,12 +13,13 @@ small enough to read in one sitting.
 | the component and its DTO | `engine/include/Panda/Particles/ParticleComponents.hpp`, `ParticleDtos.hpp` |
 | encode, decode, the registration | `engine/src/Panda/Particles/ParticlesExtensions.cpp` |
 | the entry point | `engine/src/Panda/Particles/ParticlesModuleEntry.cpp` |
-| a world system with `submit` only, its own clock, per-world state with GPU buffers in `World::context` | `engine/src/Panda/Particles/ParticleSystem.cpp` |
+| a world system with `submitBlended` only, its own clock, per-world state with GPU buffers in `World::context`; bursts asked for by scripts | `engine/src/Panda/Particles/ParticleSystem.cpp` |
+| a script table of a module and its Bamboo API (the SDK part) | `engine/include/Panda/Particles/ParticlesScriptApi.hpp`, `engine/src/Panda/Particles/ParticlesScriptHost.cpp`, `sdk/` |
 | a resource provider: a shader from the module's resource folder, a material with a runtime slot, a procedural mesh, an instance layout; ids in the `0xE0000100` range | `engine/src/Panda/Particles/ParticlesResources.cpp`, `engine/resources/particles-shaders/particles.*.hlsl` |
 | an inspector section: a copy of the component, `commitComponent`, the form rows | `editor/src/Panda/ParticlesEditor/ParticlesEditorExtensions.cpp` |
 
-The emitter simulates and draws in `submit`, so the particles live in the editor's EDIT mode
-too; the emitter's texture goes into a runtime slot of the shared material right before the
+The emitter simulates and draws in `submitBlended`, so the particles live in the editor's EDIT
+mode too; the emitter's texture goes into a runtime slot of the shared material right before the
 instanced draw.
 
 ## Physics — a running world and a script table

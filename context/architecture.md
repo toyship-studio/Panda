@@ -43,7 +43,17 @@ and background jobs (`PandaAsync`).
   documents, the editor's view of assets) is the CMake option `PANDA_EDITOR_API`, on by default
   on desktop: the editor and the authoring tools that build the engine as a subproject need it.
   The SDK build scripts switch it off, so the SDK libraries and the games carry no editor code on
-  any platform; `PandaEditor` and `PandaEditorKit` are configured only with it on.
+  any platform; `PandaEditor` and `PandaEditorKit` are configured only with it on. The option
+  changes the layout of engine classes (the virtual functions of `AssetHandler`, the fields of
+  the material and shader assets), so everything that links the engine must be compiled as its
+  libraries were. Inside a build tree the define is PUBLIC on `Panda`; an SDK package says it
+  next to its libraries (`_PANDA_SDK_EDITOR_API` in `lib/<platform>/PandaSDKBackend.cmake`,
+  written by the tree that packed them) and `PandaRuntimeConfig.cmake` gives `PND_EDITOR` to what
+  an exported game compiles itself — its scripts and the engine parts of its modules. So the
+  package target built in a developer's engine tree (`PandaSDKPackage`, with the API on) yields
+  a game that works like one built from the libraries of the SDK scripts; without the mark its
+  modules called the asset handler through a virtual table of the other layout, and the clips
+  of a game loaded while no sound played.
 - `Modules/<Name>`: engine modules (`Modules/Physics`, `Modules/Terrain`, `Modules/Particles`, `Modules/Audio`). The engine part of a
   module is written against the engine API, the editor part against `PandaEditorKit`. Modules are
   static libraries built by `panda_package()` (`PandaSDK/cmake/PandaPackage.cmake`); there is no
@@ -259,8 +269,9 @@ One file — one document; a tab is a view of a document. The model has two laye
 **File documents** (the application layer) are the files the editor holds in memory: the open
 worlds, `project.json`, `settings.json` and every loaded asset. A file document
 (`FileDocument`) answers five questions — its title and path, whether the memory has unsaved
-edits (`isDirty`), whether the file is newer than what the editor last read or wrote
-(`isChangedOnDisk`, a `DiskStamp` per file), and it can `save` (memory → file) and `reload`
+edits (`isDirty`), whether the file is another one than the editor last read or wrote
+(`isChangedOnDisk`, a `DiskStamp` per file: the time of the file differs — a newer one, or an
+older copy put back with the date it had), and it can `save` (memory → file) and `reload`
 (file → memory). A document owns what its file is in memory and reads and writes the file
 itself. Everything of the model is in one place, `PandaEditor/src/Project/Documents/`:
 
@@ -1138,7 +1149,10 @@ done now and then, with choices before it and a result after it: it has a window
 `UI/ExportWindow` (below).
 
 - The actions (`BuildAction`): **Configure** — cmake makes the build tree (again); **Build** —
-  compiles, configuring a tree that is not configured yet; **Clean** — deletes the build folder;
+  compiles, configuring a tree that is not configured yet — and the Export project before every
+  build: an IDE project lists its sources when it is generated, and one that cmake generates
+  again in the middle of its own build is not read again by that build, so a script file added
+  since would fail the link once; **Clean** — deletes the build folder;
   **Cook** — the data of the game alone, without cmake (the Export project only). What is built
   is chosen once (`scriptsConfig`; `exportTarget` and `exportConfig`) and is the builds' own
   state: the panel and the window show and change it, `start(kind, action)` and the commands

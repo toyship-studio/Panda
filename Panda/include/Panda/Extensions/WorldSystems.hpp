@@ -54,6 +54,11 @@ struct WorldSystem final {
     // scene pass is the first traversal of a frame: a system that follows the camera moves its
     // state there, the other passes of the frame traverse what it prepared.
     void (*submit)(World &, Renderer3D &, const glm::vec3 &cameraPosition, const glm::mat4 &viewProj) = nullptr;
+    // The same pass for what a system blends over the scene (particles, a haze): after the
+    // meshes, when the opaque world is drawn. A blended surface writes no depth: drawn before
+    // the world, it is painted over by everything behind it. Not in the shadow depth passes —
+    // what is blended casts no shadow.
+    void (*submitBlended)(World &, Renderer3D &, const glm::vec3 &cameraPosition, const glm::mat4 &viewProj) = nullptr;
     // Occlusion volume: occluders in the world AABB and the source version (a change — a rebake).
     void (*collectOccluders)(
         World &, const glm::vec3 &minWorld, const glm::vec3 &maxWorld, std::vector<Occluder> &out
