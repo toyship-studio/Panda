@@ -232,7 +232,7 @@ public:
     void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) override;
     void openSettings(Panda::SettingsScope scope, const std::string &section = {}) override;
     void restartEditor() override;
-    void openInExternalEditor(const Panda::path_t &path) override;
+    void openInExternalEditor(const Panda::path_t &path, int line = 0, int column = 0) override;
     Panda::path_t scriptSource(const std::string &className) override;
 
     // ViewportPanelOutput.

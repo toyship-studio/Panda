@@ -100,7 +100,9 @@ exported in a window of its own, **File → Export Game** ([Exporting a game](ex
 built with — the cmake, the generator (Ninja, Makefiles), the C and C++ compilers — is the
 Toolchain section of the editor settings (the Toolchain button of the panel opens it); everything
 is found on its own until you choose otherwise, and a change of the generator or of a compiler
-cleans the build folder by itself.
+cleans the build folder by itself. A file and a line that the output names — an error of the
+compiler, a warning of cmake — are a link: a click opens the file there in the external editor
+([Working with Zed and coding agents](zed-and-agents.md), "One file, one tab").
 
 ## Previews
 

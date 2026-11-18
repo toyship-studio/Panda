@@ -54,8 +54,9 @@ public:
     ) = 0;
     virtual std::optional<Panda::path_t> openFileDialog() = 0; // native file selection dialog
     // A file of the project in the external editor of the editor settings (the source of a
-    // script, a shader, a world file).
-    virtual void openInExternalEditor(const Panda::path_t &path) = 0;
+    // script, a shader, a world file) — at a line of it when one is given (from 1, the column
+    // too; 0 — none): the place an error of a build names.
+    virtual void openInExternalEditor(const Panda::path_t &path, int line = 0, int column = 0) = 0;
     // The source file a script class is registered in (REGISTER_SCRIPT), in the Scripts folder of
     // the project; empty — no file registers it.
     virtual Panda::path_t scriptSource(const std::string &className) = 0;

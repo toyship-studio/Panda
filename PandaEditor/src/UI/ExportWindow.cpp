@@ -569,6 +569,8 @@ void ExportWindowView::syncRun() {
             m_shownLines = 0;
             m_statusShown = false;
         }
+        // Where a path of the output is from, when it is not written in full.
+        if (m_shownLines == 0) { m_log->setFolders({m_builds.buildFolder(BuildTargetKind::Export), m_builds.folder(BuildTargetKind::Export)}); }
         if (output.size() > m_shownLines) {
             m_log->append(std::vector<std::string>(output.begin() + static_cast<std::ptrdiff_t>(m_shownLines), output.end()));
             m_shownLines = output.size();

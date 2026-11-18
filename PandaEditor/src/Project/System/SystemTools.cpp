@@ -9,8 +9,10 @@
 #include <nfd.hpp>
 
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
 
 #ifdef PLATFORM_POSIX
 #    include <cstring>
@@ -531,29 +533,135 @@ bool SystemTools::openWithDefaultApplication(const path_t &path) {
 #endif
 }
 
-void SystemTools::openInEditor(const std::string &command, const path_t &path) {
-    if (command.empty()) {
+namespace {
+
+    // The words of a command line: blanks part them, double quotes keep the blanks of a word.
+    std::vector<std::string> wordsOf(const std::string &text) {
+        std::vector<std::string> words;
+        std::string word;
+        bool quoted = false, any = false;
+        for (const char c : text) {
+            if (c == '"') {
+                quoted = !quoted;
+                any = true;
+            } else if ((c == ' ' || c == '\t') && !quoted) {
+                if (any) { words.push_back(std::move(word)); }
+                word.clear();
+                any = false;
+            } else {
+                word += c;
+                any = true;
+            }
+        }
+        if (any) { words.push_back(std::move(word)); }
+        return words;
+    }
+
+    void replaceAll(std::string &text, const std::string &what, const std::string &with) {
+        for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + with.size())) {
+            text.replace(at, what.size(), with);
+        }
+    }
+
+    // What an editor goes by: the name of its command, without the folder and the extension.
+    std::string editorName(const std::string &command) {
+        std::string name = path_t(command).stem().string();
+        for (char &c : name) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        return name;
+    }
+
+    bool isOneOf(const std::string &name, std::initializer_list<const char *> names) {
+        for (const char *known : names) {
+            if (name == known) { return true; }
+        }
+        return false;
+    }
+
+    // How an editor is told the file and the place in it. One this code does not know gets the
+    // file alone: a place written its own way would be opened as a file of that name.
+    std::vector<std::string> editorArguments(const std::string &name, const path_t &path, int line, int column) {
+        const std::string file = path.string();
+        if (line <= 0) { return {file}; }
+        const std::string place = file + ":" + std::to_string(line) + (column > 0 ? ":" + std::to_string(column) : "");
+        if (isOneOf(name, {"zed", "zeditor", "zed-preview", "subl", "sublime_text"})) { return {place}; }
+        if (isOneOf(name, {"code", "code-insiders", "codium", "cursor", "windsurf"})) { return {"--goto", place}; }
+        if (name == "xed") { return {"--line", std::to_string(line), file}; }
+        return {file};
+    }
+
+#ifdef PLATFORM_MACOS
+    // An editor that is installed as an application only, with no command in PATH: the title of
+    // the application, and where its command line tool is inside the bundle.
+    struct EditorApplication {
+        const char *command;
+        const char *title;
+        const char *tool;
+    };
+    constexpr EditorApplication EDITOR_APPLICATIONS[] = {
+        {"zed", "Zed", "Contents/MacOS/cli"},
+        {"code", "Visual Studio Code", "Contents/Resources/app/bin/code"},
+        {"cursor", "Cursor", "Contents/Resources/app/bin/cursor"},
+        {"subl", "Sublime Text", "Contents/SharedSupport/bin/subl"},
+    };
+
+    std::optional<path_t> toolOfApplication(const std::string &name) {
+        std::vector<path_t> folders = {"/Applications"};
+        if (const char *home = std::getenv("HOME")) { folders.push_back(path_t(home) / "Applications"); }
+        for (const EditorApplication &application : EDITOR_APPLICATIONS) {
+            if (name != application.command) { continue; }
+            for (const path_t &folder : folders) {
+                std::error_code errorCode;
+                const path_t tool = folder / (std::string(application.title) + ".app") / application.tool;
+                if (std::filesystem::is_regular_file(tool, errorCode)) { return tool; }
+            }
+        }
+        return std::nullopt;
+    }
+#endif
+
+} // namespace
+
+void SystemTools::openInEditor(const std::string &editor, const path_t &path, int line, int column) {
+    if (editor.empty()) {
         openWithDefaultApplication(path);
         return;
     }
-    const std::optional<path_t> executable = findExecutable(command);
+    // A command line of the user's own, or a command whose arguments are known here.
+    std::string command = editor;
+    std::vector<std::string> arguments;
+    if (editor.find("{file}") != std::string::npos) {
+        std::vector<std::string> words = wordsOf(editor);
+        command = words.empty() ? std::string() : words.front();
+        for (size_t i = 1; i < words.size(); i++) {
+            replaceAll(words[i], "{file}", path.string());
+            replaceAll(words[i], "{line}", std::to_string(line > 0 ? line : 1));
+            replaceAll(words[i], "{column}", std::to_string(column > 0 ? column : 1));
+            arguments.push_back(std::move(words[i]));
+        }
+    } else {
+        arguments = editorArguments(editorName(editor), path, line, column);
+    }
+    std::optional<path_t> executable = findExecutable(command);
+#ifdef PLATFORM_MACOS
+    if (!executable) { executable = toolOfApplication(editorName(command)); }
+#endif
     if (executable) {
 #ifdef PLATFORM_WINDOWS
         // A command of an editor is often a .cmd script: the shell starts both it and an .exe,
         // without waiting for the editor to close.
-        if (runCommand("cmd.exe", {"/C", "start", "", executable->string(), path.string()})) { return; }
+        std::vector<std::string> shell = {"/C", "start", "", executable->string()};
+        shell.insert(shell.end(), arguments.begin(), arguments.end());
+        if (runCommand("cmd.exe", shell)) { return; }
 #else
-        if (startDetached(*executable, {path.string()})) { return; }
+        if (startDetached(*executable, arguments)) { return; }
 #endif
     }
 #ifdef PLATFORM_MACOS
-    // No command line tool installed: the application itself, by its name or bundle path.
-    static const std::pair<const char *, const char *> APPLICATIONS[] = {
-        {"zed", "Zed"}, {"code", "Visual Studio Code"}, {"cursor", "Cursor"}, {"subl", "Sublime Text"},
-    };
+    // No command line tool at all: the application itself, by its name or the path of its
+    // bundle. It is given the file; a place cannot be told this way.
     std::string application = command;
-    for (const auto &[name, title] : APPLICATIONS) {
-        if (command == name) { application = title; }
+    for (const EditorApplication &known : EDITOR_APPLICATIONS) {
+        if (command == known.command) { application = known.title; }
     }
     if (runCommand("/usr/bin/open", {"-a", application, path.string()})) { return; }
 #endif

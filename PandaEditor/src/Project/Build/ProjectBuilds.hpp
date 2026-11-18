@@ -137,7 +137,8 @@ public:
     path_t cookReportFile() const;
     // The report of the last cook of the project, read from that file; false — no cook was made.
     bool readCookReport(CookReport &report) const;
-    void showFolder(BuildTargetKind kind); // the folder of the cmake project, in the file manager
+    path_t folder(BuildTargetKind kind);   // the folder of the cmake project: Scripts/<name>, Export
+    void showFolder(BuildTargetKind kind); // that folder, in the file manager
     // Where the cmake project is built in its chosen configuration: Scripts/<name>/cmake-build-debug,
     // Export/build/macos-release.
     path_t buildFolder(BuildTargetKind kind);
@@ -181,7 +182,6 @@ private:
         std::string scriptsSignature;
     };
 
-    path_t folder(BuildTargetKind kind);
     bool begin(BuildTargetKind kind, BuildAction action); // false — no project, or a build runs
     // The build that began ends before its first step: the panel gets the reason as a line. fail
     // says it in the log of the editor too (the panel may be out of sight).

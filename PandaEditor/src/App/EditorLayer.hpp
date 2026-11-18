@@ -173,7 +173,7 @@ public:
     void warnOfModulesSwitchedOff();
     // A file of the project outside the editor: in the external editor of the editor settings
     // (the text form of the file: a binary asset opens its sidecar), and in the file manager.
-    void openInExternalEditor(const std::filesystem::path &path);
+    void openInExternalEditor(const std::filesystem::path &path, int line = 0, int column = 0);
     void revealInFileManager(const std::filesystem::path &path);
     // The second window of the editor, over the main one, with this tree: the Settings, the
     // export of the game. One at a time (EditorController says which); an open one comes to the

@@ -374,8 +374,10 @@ namespace {
     UpdateProvider s_updates;
 
     // The external text editor: the documents of the project are text files, and "Open in External
-    // Editor" (a tab, an asset, the settings files) hands the file to this program. The list is
-    // the common editors by their command; any other command is written into settings.json.
+    // Editor" (a tab, an asset, the settings files) hands the file to this program — and a place
+    // of the output of a build, the file at its line. The list is the common editors by their
+    // command; any other command is written into settings.json, as a command line when the
+    // editor is to be told the line its own way (SystemTools::openInEditor).
     void buildExternalTools(CollapsibleSection &section, Panda::TypeContext &store) {
         auto data = std::make_shared<Panda::EditorExternalToolsSettings>(store.get<Panda::EditorExternalToolsSettings>());
         auto emit = [data] { commitSettings<Panda::EditorExternalToolsSettings>(SettingsScope::Editor, *data); };
@@ -400,7 +402,8 @@ namespace {
             emit();
         });
         section.addContent(makeFormHint(
-            "Another program: \"externalTools\": {\"editor\": \"<command or path>\"} in the settings file."
+            "Another program: \"externalTools\": {\"editor\": \"<command or path>\"} in the settings file. For the line of "
+            "a build error — a command line with {file}, {line}, {column}: \"clion --line {line} {file}\"."
         ));
     }
 

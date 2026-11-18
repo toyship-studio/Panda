@@ -364,8 +364,8 @@ void EditorController::extensionsChanged() {
     if (m_statisticsView) { m_statisticsView->rebuildExtensionSections(); }
 }
 
-void EditorController::openInExternalEditor(const Panda::path_t &path) {
-    m_app.openInExternalEditor(path);
+void EditorController::openInExternalEditor(const Panda::path_t &path, int line, int column) {
+    m_app.openInExternalEditor(path, line, column);
 }
 
 Panda::path_t EditorController::scriptSource(const std::string &className) {

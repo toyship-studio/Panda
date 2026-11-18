@@ -1106,7 +1106,7 @@ void EditorLayer::showAbout() {
     Editor::showAboutDialog(&m_editorUI.context(), info);
 }
 
-void EditorLayer::openInExternalEditor(const std::filesystem::path &path) {
+void EditorLayer::openInExternalEditor(const std::filesystem::path &path, int line, int column) {
     if (path.empty()) { return; }
     const std::string &command = m_documents.editorSettings().get<EditorExternalToolsSettings>().editor;
     // The text form of the file: a text document opens as it is; a binary asset (a texture, a
@@ -1125,7 +1125,10 @@ void EditorLayer::openInExternalEditor(const std::filesystem::path &path) {
         sidecar += ".pmeta";
         if (std::filesystem::exists(sidecar)) { target = sidecar; }
     }
-    SystemTools::openInEditor(command, target);
+    // A place is of the file that was named: not of the sidecar that stands in for a binary one.
+    const bool placed = target == path;
+    SystemTools::openInEditor(command, target, placed ? line : 0, placed ? column : 0);
+    if (line > 0) { return; } // a place of one file: its pair is not opened next to it
     const std::string name = path.filename().string();
     const std::string vertexSuffix = "vert.hlsl";
     if (name.size() > vertexSuffix.size() && name.compare(name.size() - vertexSuffix.size(), vertexSuffix.size(), vertexSuffix) == 0) {

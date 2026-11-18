@@ -60,6 +60,14 @@ Every tab of the editor edits one file, and the file is always in reach:
   `"externalTools": {"editor": "zed"}` in `settings.json`: a command, the path of an executable,
   or empty for the application the system opens the file with. File → Settings → Open Settings
   File and Open Project Settings File open the two settings files in it.
+- A build error is one click from its place: in the output of a build (the CMake panel, the
+  Export window) the file and the line a message names — `Probe.cpp:32:5`,
+  `CMakeLists.txt:12` — are a link, and a click opens the file there in the external editor.
+  Zed, Visual Studio Code, Cursor and Sublime Text are told the line the way each takes it. Any
+  other editor is written as a command line with `{file}`, `{line}` and `{column}` in it:
+  `"editor": "clion --line {line} {file}"` (a word with blanks goes in double quotes). An
+  editor that is only a command gets the file alone, and the system default opens it without
+  a line.
 - **Save** (Cmd/Ctrl+S) writes the file of the tab with the focus; **Save All**
   (Cmd/Ctrl+Alt+S, the toolbar button) writes every unsaved file. A file that changed on disk
   since the editor read it is not overwritten in silence: the editor asks which version stays.

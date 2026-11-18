@@ -140,6 +140,7 @@ void CMakePanelView::update(double deltaTime) {
 
 void CMakePanelView::buildStarted() {
     m_log->clear(); // each run starts with a clean output
+    m_log->setFolders({m_builds.buildFolder(SCRIPTS), m_builds.folder(SCRIPTS)});
     m_config->setSelectedIndex(m_builds.scriptsConfig() == Panda::BuildConfig::Release ? 1 : 0);
     updateActions();
     showOutput();

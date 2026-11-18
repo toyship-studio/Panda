@@ -365,6 +365,18 @@ setting of the editor scope (`externalTools.editor`: a command such as `zed`, a 
 for the system default; `SystemTools::openInEditor`); a binary asset opens its text sidecar
 (`.pmeta`), a shader opens both files of the pair.
 
+A file may be opened at a line (`EditorHost::openInExternalEditor(path, line, column)`): the
+output of a build names places, and each is a link (`BuildLogView`, the list of lines the
+CMake panel and the Export window show). What a place is, is not a list of the messages of the
+compilers: `Panda::findBuildOutputLocation` takes the first `<path>:<line>[:<column>]` or
+`<path>(<line>[,<column>])` of a line whose file is there — written in full, or relative to
+the build folder or to the cmake project —, so the compiler, cmake and any other tool are read
+alike and a time of day or a piece of code is never a link. How an editor is told the line is
+`SystemTools::openInEditor`: the editors of the settings list each in their own way, any other
+by a command line with `{file}`, `{line}`, `{column}` written as the setting; on macOS an
+editor that is installed as an application only is reached through the command line tool
+inside its bundle. An editor that cannot be told a line opens the file.
+
 A tab that edits a file of the project is titled with the name of that file (`world.world`,
 `bark.mat`): the title answers "what will Save write". The tabs that are views or tools keep
 the name of what they show — an entity tab the entity, the Game and the Plugins tabs — and

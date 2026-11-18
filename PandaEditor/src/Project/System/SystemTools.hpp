@@ -61,10 +61,18 @@ public:
     static bool openUrl(const std::string &url); // the default browser
     // The file manager shows the folder of `path` (with `path` selected where it can select).
     static void revealInFileManager(const path_t &path);
-    // The file in a text editor: `command` is what the user chose (a command found in PATH and the
-    // usual install folders, the path of an executable, on macOS also an application name);
-    // empty or not found — the application the system opens the file with.
-    static void openInEditor(const std::string &command, const path_t &path);
+    // The file in a text editor, at a line of it when one is given (from 1; the column too, 0 —
+    // none). `editor` is what the user chose:
+    //  * a command — found in PATH and the usual install folders, or the path of an executable, on
+    //    macOS also the name of an application. The editors of the settings list are told the
+    //    place the way each takes it (Zed and Sublime Text: `file:line:column`; Visual Studio
+    //    Code and Cursor: `--goto file:line:column`; Xcode's xed: `--line`); an editor that is not
+    //    known here gets the file alone.
+    //  * a command line with `{file}` in it — for any other editor: its words are the command and
+    //    its arguments, with `{file}`, `{line}` and `{column}` put in
+    //    (`clion --line {line} {file}`). A word with blanks is written in double quotes.
+    //  * empty, or not found — the application the system opens the file with (no place there).
+    static void openInEditor(const std::string &editor, const path_t &path, int line = 0, int column = 0);
     // Restart of the editor: the UI sets the flag and closes the application through the usual
     // flow; main() starts the new instance after the teardown, so the settings written on exit
     // are what the new instance reads.
