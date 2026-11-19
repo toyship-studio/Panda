@@ -55,9 +55,17 @@ The game starts in the start world and carries **what it can reach from there**:
   environment map, the fonts and sounds its entities and scripts are given;
 - the worlds its scripts are given (a `WorldHandle` field of a script, or a list of them), with
   everything those use, and so on;
+- the prefabs its scripts are given (an `EntityHandle` field that holds a prefab: what
+  `WorldAPI::instantiate` makes copies of), with everything those use;
 - the engine's own shaders and the registry of the game.
 
 There is no list of scenes to keep: a world is in the game because the game can get to it.
+
+**A game has no instances of prefabs.** The cook writes every world with its instances already
+expanded — plain entities, as if they had been placed by hand — so nothing is merged when a
+world loads, and a prefab that only stands in worlds is not in the game at all. A prefab a
+script is given is cooked the same way: its entities, with the prefabs nested in it expanded
+([Prefabs](prefabs.md)).
 
 **An asset nothing reaches is left out.** A texture you tried and dropped, a test world, a model
 that is not placed anywhere stay in the project and do not grow the game. The cook says so
@@ -88,7 +96,7 @@ project is not in the game and not in the registry.
 
 | File | What it is |
 | --- | --- |
-| `Assets.pak` | every file the game reads, in one file: the worlds, the materials, the textures, the models, the shaders, the files of the module kinds |
+| `Assets.pak` | every file the game reads, in one file: the worlds, the prefabs its scripts copy, the materials, the textures, the models, the shaders, the files of the module kinds |
 | `project.bin` | where the game starts, its name, the shader features of the project |
 | `modules.txt` | the modules the game links |
 

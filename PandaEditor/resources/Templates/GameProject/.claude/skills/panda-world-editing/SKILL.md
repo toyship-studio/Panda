@@ -41,3 +41,29 @@ the world.
   once in the editor, save the world and use the JSON as a sample.
 - References to assets (mesh, texture, world) are ids from the assets' `.pmeta` sidecars
   (`<file>.pmeta` next to the asset file, key `id`).
+
+## Prefabs and their instances
+
+A prefab (`Assets/**.prefab`) is the `entities` of a world in a file of its own — one tree, its
+root has `"parent": 0`. A world places it with one entry:
+
+```json
+{
+    "id": 4100100001,
+    "prefab": 3100002001,
+    "relationshipComponent": { "parent": 0, "children": [] },
+    "tagComponent": { "tag": "Hall Lamp" },
+    "transformComponent": { "position": {"x":3,"y":0,"z":1}, "rotation": {"x":0,"y":0,"z":0,"w":1} },
+    "overrides": [ { "entity": 78, "pointLightComponent": { "intensity": 20 } } ]
+}
+```
+
+- `prefab` — the asset id from the prefab's `.pmeta`; `id` — a new id for the instance.
+- The entry holds only what this instance has of its own: component keys for the root,
+  `overrides` (by `entity` — the id in the prefab file) for the entities under it, only the
+  fields that differ. The name (`tagComponent`), `position` and `rotation` are the instance's
+  own: always written.
+- Edit the prefab file to change every instance; edit the entry to change one.
+- Do not copy the entities of a prefab into the world: the editor expands the entry when it
+  reads the file. Details: PandaSDK `docs/world-format.md` ("Prefabs and instances") and
+  `docs/prefabs.md`.

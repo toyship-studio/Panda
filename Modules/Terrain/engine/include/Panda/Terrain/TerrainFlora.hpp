@@ -2,6 +2,7 @@
 
 #include "Panda/Assets/Base/AssetRef.hpp"
 #include "Panda/Assets/TextureAsset.hpp"
+#include "Panda/Renderer/InstancedModel.hpp"
 #include "Panda/Renderer/OcclusionVolume.hpp"
 #include "Panda/Terrain/FloraDistances.hpp"
 #include "Panda/Terrain/FloraSettings.hpp"
@@ -18,8 +19,6 @@
 namespace Panda {
 
 class FloraImposter;
-class ImportedMeshAsset;
-class MaterialAsset;
 class Renderer3D;
 class RuntimeMesh;
 class TerrainGrainTexture;
@@ -37,8 +36,9 @@ struct FloraFarView {
 // Rendering of the terrain vegetation: a grid of blocks of BLOCK_SIZE × BLOCK_SIZE m with static
 // instance buffers. The grass of a block is a deterministic scattering of the layer (a jittered
 // grid of cells + hash, probability = placement weight), the trees of a block are the
-// TerrainTrees points within its area. It serializes nothing of its own. Lives inside
-// Terrain2DAsset.
+// TerrainTrees points within its area. What stands at a point is the model of the layer
+// (InstancedModel): an imported mesh, or — for a tree layer — the meshes of a prefab. It
+// serializes nothing of its own. Lives inside Terrain2DAsset.
 class TerrainFlora {
 public:
     TerrainFlora();
@@ -137,9 +137,12 @@ private:
         uint16_t prefixCounts[MAX_VARIANTS][FADE_BUCKETS + 1] = {};
         MeshInstances mesh; // the Mesh kind
     };
+    // The trees of one layer inside a block: a stream of matrices per place of the model of
+    // the layer (InstancedModel::places) — one stream for an imported mesh.
+    using PlacedInstances = std::vector<MeshInstances>;
     struct Block {
-        std::vector<GrassBlock> grass;    // in sync with settings.grass
-        std::vector<MeshInstances> trees; // in sync with settings.trees
+        std::vector<GrassBlock> grass;      // in sync with settings.grass
+        std::vector<PlacedInstances> trees; // in sync with settings.trees
         uint64_t builtVersion = 0;        // 0 = not built; != m_version = stale
         // An edit under the brush: a rebuild is needed, but the contents are VALID and are drawn
         // until replaced (builtVersion must not be zeroed — the block would disappear from the
@@ -158,24 +161,27 @@ private:
         float maxY = 0.f;
     };
 
-    // Bounds of an imported mesh: the "stands on the ground" pivot and the sizes for culling/crown.
-    struct MeshBounds {
-        AssetId meshId = 0; // which asset it was computed for (0 — not loaded)
-        float minY = 0.f;
-        float height = 2.f;
+    // What stands at the points of a layer, with what the blocks need of its box: the height of
+    // it that is put on the ground, and the sizes for culling and for the crown.
+    struct LayerModel {
+        InstancedModel model; // empty — not assigned, still loading, or it draws nothing
+        // The bottom of the box of an imported mesh; the root of a prefab (0): a prefab stands
+        // where its author put the root, and its colliders are placed from the same point.
+        float pivotY = 0.f;
+        float height = 2.f; // above the pivot
         float halfWidth = 1.f;
     };
     struct GrassRender {
         std::unique_ptr<RuntimeMesh> tufts[MAX_VARIANTS]; // Tuft: tuft shapes (depend on brownian)
         float builtBrownian = -1.f;
-        MeshBounds bounds; // Mesh
+        LayerModel model; // Mesh
     };
     // What the blocks were built for: a change of any field = a rebuild.
     struct GrassKey {
         uint32_t kind = 0;
         uint32_t placement = 0;
         uint32_t maskChannel = 0;
-        AssetId meshKey = 0; // id of the LOADED mesh: the pivot is baked into the instance matrices
+        uint64_t modelStamp = 0; // of the LOADED mesh: the pivot is baked into the instance matrices
         float density = 0.f;
         float spacing = 0.f;
         uint32_t soilLayer = 0;
@@ -191,11 +197,11 @@ private:
     };
     struct TreeKey {
         uint32_t id = 0;
-        AssetId meshKey = 0;
+        uint64_t modelStamp = 0; // of the LOADED mesh or prefab: its places are baked into the matrices
         bool imposter = false;
 
         bool operator==(const TreeKey &other) const {
-            return id == other.id && meshKey == other.meshKey && imposter == other.imposter;
+            return id == other.id && modelStamp == other.modelStamp && imposter == other.imposter;
         }
     };
 
@@ -216,12 +222,13 @@ private:
         const TerrainData2D &data, const TerrainTrees &trees
     );
     // Instanced draw calls of one mat4 layer over the resident blocks (a grass Mesh layer or
-    // trees) — shared by the scene and the shadow depth pass: one and the same mesh in both.
+    // trees) — shared by the scene and the shadow depth pass: one and the same model in both.
+    // pick(block, place) — the stream of the block for a place of the model; nullptr — none.
     template<typename Pick>
     void submitMeshBlocks(
-        Renderer3D &renderer, AssetRef<ImportedMeshAsset> mesh, AssetRef<MaterialAsset> material,
-        float drawDistance, float plantHeight, const glm::vec3 &localCameraPosition,
-        const glm::vec4 *frustumPlanes, glm::mat4 &transform, bool countStats, Pick &&pick
+        Renderer3D &renderer, const InstancedModel &model, float drawDistance, float plantHeight,
+        const glm::vec3 &localCameraPosition, const glm::vec4 *frustumPlanes, glm::mat4 &transform,
+        bool countStats, Pick &&pick
     );
     void submitBillboards(
         Renderer3D &renderer, const TreeLayer &layer, size_t treeIndex, bool shadowPass,
@@ -243,7 +250,7 @@ private:
     std::vector<GrassKey> m_builtGrass;
     std::vector<TreeKey> m_builtTrees;
     std::vector<GrassRender> m_grassRenders; // in sync with settings.grass
-    std::vector<MeshBounds> m_treeBounds;    // in sync with settings.trees
+    std::vector<LayerModel> m_treeModels;    // in sync with settings.trees
     // Crowns for the occlusion volume per superblock (terrain local space, lazily): the chunks of
     // the volume collect the crowns dozens of times for one area. The stamp is the content version
     // and a hash of the crown settings of the layers.

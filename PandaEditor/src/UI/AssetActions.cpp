@@ -13,7 +13,10 @@
 #include <PandaEditorKit/Selection.hpp>
 #include <PandaUI/Core/Clipboard.hpp>
 
+#include <Panda/Prefabs/Prefabs.hpp>
+
 #include <filesystem>
+#include <fstream>
 
 namespace Editor {
 
@@ -28,7 +31,7 @@ void AssetActions::contentDidSelectAssets(const std::vector<Panda::AssetId> &ass
     // A world is a document, not an asset with parameters: a click shows it the way a click on a
     // file shows it in a code editor — in the preview tab.
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (assets.size() == 1 && handler && handler->getInfo(assets.front()).type == Panda::AssetType::WORLD) {
+    if (assets.size() == 1 && handler && !handler->documentFilePath(assets.front()).empty()) {
         m_workspace.worldTabs().open(assets.front(), /*preview*/ true);
     }
 }
@@ -38,7 +41,14 @@ void AssetActions::contentDidRequestOpenWorld(Panda::AssetId world) {
 }
 
 void AssetActions::contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) {
-    m_workspace.entities().instantiateMeshes(assets);
+    // Models and prefabs become entities of the world: each kind its own way.
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    std::vector<Panda::AssetId> meshes, prefabs;
+    for (Panda::AssetId asset : assets) {
+        (handler && handler->getInfo(asset).type == Panda::AssetType::PREFAB ? prefabs : meshes).push_back(asset);
+    }
+    if (!meshes.empty()) { m_workspace.entities().instantiateMeshes(meshes); }
+    if (!prefabs.empty()) { m_workspace.entities().instantiatePrefabs(prefabs); }
 }
 
 void AssetActions::contentAddFileItems(Menu &menu, Panda::AssetId asset) {
@@ -63,6 +73,21 @@ CreateActions AssetActions::contentCreateActions(const Panda::path_t &directory)
                            if (!handler) { return; }
                            const Panda::AssetId shader = builtinShaderOptions().front().first;
                            created(handler->documents().createMaterialAsset(directory, shader), "material");
+                       }});
+    // A prefab starts as one entity named after its file, and opens in its tab.
+    actions.push_back({"Prefab", [this, directory] {
+                           Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+                           if (!handler) { return; }
+                           const Panda::path_t path = uniqueAssetPath(directory, "Prefab", ".prefab");
+                           Panda::World scratch;
+                           Panda::Entity root = scratch.instantiateEntity();
+                           root.setName(path.stem().string());
+                           std::ofstream file(path);
+                           file << Panda::Prefabs::save(scratch, root);
+                           file.close();
+                           const Panda::AssetId prefab = handler->documents().registerCreatedAsset(path);
+                           created(prefab, "prefab");
+                           if (prefab) { m_workspace.worldTabs().open(prefab, /*preview*/ false); }
                        }});
     actions.push_back({"Postprocessing", [this, directory] {
                            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
@@ -144,6 +169,8 @@ void AssetActions::contentDidRequestImport(const std::vector<Panda::AssetId> &as
             m_app.documentActions().reloadWorldAsset(id);
             continue;
         }
+        // A prefab: its open document the same way, and — below — the prefab its instances are made of.
+        if (handler->getInfo(id).type == Panda::AssetType::PREFAB) { m_app.documentActions().reloadWorldAsset(id); }
         handler->reload(id);
         // The pictures of the asset are of what it was: its thumbnail and its open previews.
         if (auto *previews = Panda::AssetPreviews::shared()) { previews->invalidate(id); }

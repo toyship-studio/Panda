@@ -7,7 +7,8 @@ once when an agent asks (`reload`), and shows an agent the result through its MC
 
 ## Structure
 
-- `Assets/` — worlds (`.world`, JSON), materials (`.mat`, JSON), textures, meshes (glTF). Next
+- `Assets/` — worlds (`.world`, JSON), prefabs (`.prefab`, JSON), materials (`.mat`, JSON),
+  textures, meshes (glTF). Next
   to each asset file the editor keeps a `<file>.pmeta` sidecar (asset id and import settings):
   together they are the asset registry. Only what lies in `Assets/` is an asset.
 - `Scripts/___PROJECTNAME___/src/` — the game's C++ scripts, built into a library the editor
@@ -37,7 +38,7 @@ files stay the way to change the project; the tools are for what a file cannot d
 | `export` | the game as it will ship: cooks its data and answers with what the pack holds and which assets were left out; `action: "run"` plays the built game by itself and answers with its log and the picture of its last frame |
 | `camera` | places the editor camera of the `scene` view |
 | `save` | writes what the user changed in the editor to the files |
-| `open_world`, `restart`, `quit` | another world, a new start of the editor |
+| `open_world`, `restart`, `quit` | another world (or a prefab) in front, a new start of the editor |
 
 ## Working rules
 
@@ -61,7 +62,7 @@ files stay the way to change the project; the tools are for what a file cannot d
   tells what was taken.
 - Build the C++ scripts yourself (see "Building scripts") — the editor picks up the fresh library.
 - New asset files are registered by the editor; do not edit `.pmeta` sidecars by hand.
-- Detailed formats: `docs/` in the PandaSDK package (`world-format.md`, `assets.md`,
+- Detailed formats: `docs/` in the PandaSDK package (`world-format.md`, `prefabs.md`, `assets.md`,
   `scripting.md`, `export.md`, `zed-and-agents.md`).
 
 ## Editing a world (`.world`)
@@ -92,6 +93,44 @@ A world is one JSON file under `Assets/`. Minimal entity:
 - References to assets (mesh, texture, world) are ids from the assets' `.pmeta` sidecars
   (`<file>.pmeta` next to the asset file, key `id`).
 
+## Prefabs (`.prefab`) and their instances
+
+A prefab is a file under `Assets/` with the `entities` of a world and nothing else — one tree,
+its root has `"parent": 0`. A world (or another prefab) places it with one entry in `entities`:
+
+```json
+{
+    "id": 4100100001,
+    "prefab": 3100002001,
+    "relationshipComponent": { "parent": 0, "children": [] },
+    "tagComponent": { "tag": "Hall Lamp" },
+    "transformComponent": { "position": {"x":3,"y":0,"z":1}, "rotation": {"x":0,"y":0,"z":0,"w":1} },
+    "overrides": [
+        { "entity": 78, "pointLightComponent": { "intensity": 20 } }
+    ]
+}
+```
+
+- `prefab` — the asset id of the prefab (its `.pmeta`). `id` — the id of the instance, unique in
+  the file like any entity id.
+- Nothing of the prefab is copied: the entry holds only what THIS instance has of its own. The
+  component keys of the entry are for the root of the prefab; `overrides` are for the entities
+  under it, each named by `entity` — its `id` in the prefab file. Write only the fields that
+  differ; `null` removes a component; a field of a script is
+  `"scriptListComponent": {"scripts": {"<Class>": {"scriptFields": {"<field>": {"value": …}}}}}`.
+- Always write the name (`tagComponent`), the `position` and the `rotation` of the instance:
+  they are its own and never follow the prefab.
+- To change every instance, edit the prefab file; to change one, edit its entry.
+- The other entities of an instance have no ids in the file: they are derived from the id of
+  the instance and the id in the prefab (the formula and the rest of the format:
+  `world-format.md`, "Prefabs and instances"; the workflow: `prefabs.md`).
+- A script takes a prefab in a field of the type entity (`"type": 2`, `value` — the asset id of
+  the prefab) and makes copies of it with `WorldAPI::instantiate`.
+- Many copies that need not live — a swarm, a forest — are not instances: the `prefab` of a
+  `particleEmitterComponent` makes every particle the meshes of the prefab, and a tree layer of
+  a terrain takes a prefab for its trees, colliders included (`prefabs.md`, "Many copies
+  without entities").
+
 ## Script fields in a world
 
 A script is attached to an entity in `scriptListComponent`; field values are set in the same
@@ -116,7 +155,8 @@ place:
 - `name` — the name of the C++ class (`REGISTER_SCRIPT`).
 - `type` as a number: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh, 8 asset (the
   manifest has the same types as words).
-- `value`: integer/float — a number; entity — the id of an entity of THIS world; texture/
+- `value`: integer/float — a number; entity — the id of an entity of THIS world, or the asset id
+  of a prefab the script makes copies of; texture/
   material/world/font/mesh/asset — the asset id from the asset's `.pmeta` sidecar. A list field
   (`"list": true` in the manifest, a `std::vector` in the class) has an array of such values:
   `"value": [3100002001, 3100002002]`, `[]` when empty.

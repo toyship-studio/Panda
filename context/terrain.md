@@ -50,6 +50,10 @@ Key decisions:
   A mesh with its own vertex layout (`Terrain::Resources::vertexLayout` in the `meshLayouts`
   registry) is drawn in IDS and SHADOW_DEPTH with the terrain programs; flora goes through the
   generic `submitInstanced`.
+- What stands at a point of a mesh layer or a tree layer is an `InstancedModel` (the core): an
+  imported mesh, or — a tree layer with a `prefab` — the meshes of the prefab, each at its place
+  under the root; a block keeps a stream of matrices per place. The colliders of a tree prefab
+  are shapes of the body of the terrain, per tree (`TerrainPhysics`, `context/prefabs.md`).
 
 **Runtime textures are ordinary `AssetRef<TextureAsset>`** created with
 `AssetHandler::createRuntimeAsset` (ids from 0xF0000000; the owner holds the reference; content

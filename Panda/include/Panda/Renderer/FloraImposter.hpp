@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Panda/Assets/ImportedMeshAsset.hpp"
 #include "Panda/Assets/MaterialAsset.hpp"
 #include "Panda/Assets/TextureAsset.hpp"
+#include "Panda/Renderer/InstancedModel.hpp"
 
 #include <Miren/Miren.hpp>
 #include <glm/glm.hpp>
@@ -11,14 +11,15 @@
 
 namespace Panda {
 
-// Automatic baking of impostor atlases for flora meshes: the plant as seen from TILES view
+// Automatic baking of impostor atlases for flora models (InstancedModel — an imported mesh, or
+// the meshes of a prefab, each at its place): the plant as seen from TILES view
 // angles around the vertical axis, into two atlases — color (premultiplied: rgb·coverage,
 // α = silhouette) and world normals (for a veg_crown crown — the normal of EVERY leaf in its
 // own pass: the billboard is lit by the same foliage and the same Cook-Torrance as the mesh).
 // Mips (levels 0..4) are built by generateTextureMipmaps after the last view angle —
 // noise-free minification in the distance. One view angle is baked per frame into its own
-// views (before the scene), the cache is keyed by the mesh and the material set; changing the
-// layer's materials gives a new entry. No hand-made images: the atlas always matches the mesh.
+// views (before the scene), the cache is keyed by the model and the material set; changing the
+// layer's materials gives a new entry. No hand-made images: the atlas always matches the model.
 class FloraImposter {
 public:
     static constexpr int TILES = 8; // view angles around the Y axis
@@ -52,8 +53,10 @@ public:
     FloraImposter(const FloraImposter &) = delete;
     FloraImposter &operator=(const FloraImposter &) = delete;
 
-    // Atlas for the layer's mesh+materials: the first request schedules the bake (ready=false,
-    // draw the mesh for now). Requires a loaded mesh.
+    // Atlas for the layer's model with its materials: the first request schedules the bake
+    // (ready=false, draw the meshes for now). An empty model gives a view that is never ready.
+    View ensure(const InstancedModel &model);
+    // The same for an imported mesh as a whole: a material for all of it, or those of its slots.
     View ensure(AssetRef<ImportedMeshAsset> mesh, AssetRef<MaterialAsset> overrideMaterial);
 
     // One view angle per frame (called by the flora renderer before the scene submit).
@@ -61,12 +64,10 @@ public:
 
 private:
     struct Entry {
-        AssetId meshId = 0;
-        AssetId overrideId = 0;
-        std::vector<AssetId> materialIds; // per-primitive (cache key)
+        uint64_t stamp = 0;               // of the model (cache key)
+        std::vector<AssetId> materialIds; // per part, as they were resolved (cache key)
         // Keeps the assets alive for the lifetime of the atlas (a rebake on change is a new entry).
-        AssetRef<ImportedMeshAsset> mesh;
-        AssetRef<MaterialAsset> overrideMaterial;
+        InstancedModel model;
         AssetRef<TextureAsset> colorAtlas;  // bake render targets = billboard textures
         AssetRef<TextureAsset> normalAtlas;
         Miren::TextureHandle colorDepth{MIREN_INVALID_HANDLE};

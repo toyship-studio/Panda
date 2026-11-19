@@ -52,7 +52,29 @@ namespace RenderSystem {
     // hierarchy for each pass was the cost of a shadow.
     class MeshList final {
     public:
+        // One mesh of the list: a runtime mesh or a primitive shape (`mesh`), or a primitive of
+        // an imported mesh (`imported`), with the transform that puts it into the world.
+        struct Item {
+            UUID id;
+            glm::mat4 transform;
+            glm::vec3 boundsMin = glm::vec3(0.f);
+            glm::vec3 boundsMax = glm::vec3(0.f);
+            bool bounded = false; // no bounds — never culled
+            bool blended = false;
+            // The material it is drawn with; ownMaterial — the entity names it itself (false —
+            // it is the one of the slot of the imported mesh, or the default of a primitive).
+            AssetRef<MaterialAsset> material;
+            bool ownMaterial = false;
+            AssetRef<RuntimeMeshAsset> mesh;      // a runtime mesh or a primitive,
+            AssetRef<ImportedMeshAsset> imported; // or a primitive of an imported mesh
+            uint32_t submeshIndex = 0;
+            uint32_t primitiveIndex = 0;
+        };
+
         void collect(World &world);
+        const std::vector<Item> &items() const {
+            return m_items;
+        }
         // Opaque meshes first, then the blended ones (alphaMode 2 of the material) from the
         // farthest to the nearest to the camera, so that each is drawn over what is behind it.
         // Blended meshes cast no shadow: the depth pass skips them.
@@ -64,19 +86,6 @@ namespace RenderSystem {
         bool bounds(glm::vec3 &outMin, glm::vec3 &outMax, const std::vector<UUID> *entities = nullptr) const;
 
     private:
-        struct Item {
-            UUID id;
-            glm::mat4 transform;
-            glm::vec3 boundsMin = glm::vec3(0.f);
-            glm::vec3 boundsMax = glm::vec3(0.f);
-            bool bounded = false; // no bounds — never culled
-            bool blended = false;
-            AssetRef<MaterialAsset> material;
-            AssetRef<RuntimeMeshAsset> mesh;      // a runtime mesh or a primitive,
-            AssetRef<ImportedMeshAsset> imported; // or a primitive of an imported mesh
-            uint32_t submeshIndex = 0;
-            uint32_t primitiveIndex = 0;
-        };
         void submitItem(Renderer3D &renderer, const Item &item) const;
 
         std::vector<Item> m_items;

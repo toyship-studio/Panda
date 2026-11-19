@@ -7,6 +7,8 @@
 #include "Panda/Serialization/AssetsMapper.hpp"
 #include "Panda/Serialization/ReferenceCollector.hpp"
 #include "Panda/Serialization/WorldMapper.hpp"
+#include <Panda/Prefabs/PrefabComponent.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 
@@ -54,6 +56,11 @@ Panda::path_t getRuntimePostfxPath(Panda::path_t dataPath) {
 Panda::path_t getRuntimeWorldPath(Panda::path_t worldPath) {
     worldPath.replace_extension(".pworld");
     return Panda::path_t("Worlds") / worldPath;
+}
+
+Panda::path_t getRuntimePrefabPath(Panda::path_t prefabPath) {
+    prefabPath.replace_extension(".pprefab");
+    return Panda::path_t("Prefabs") / prefabPath;
 }
 
 // The name of a kind as the report says it ("texture", "terrain2d").
@@ -329,23 +336,42 @@ void GameExporter::use(AssetHandlerEditor &assetHandler, AssetId id) {
 bool GameExporter::cookWorld(AssetHandlerEditor &assetHandler, AssetId id, Rain::Encoder &references) {
     const path_t worldPath = assetHandler.assetPath(id);
     const path_t sourcePath = assetHandler.getProjectPath() / worldPath;
+    const bool prefab = assetHandler.getInfo(id).type == AssetType::PREFAB;
     std::ifstream sourceFile(sourcePath);
     if (!sourceFile.is_open()) {
-        LOG_ERROR_EDITOR("Export: the world %s could not be opened.", worldPath.generic_string().c_str());
+        LOG_ERROR_EDITOR("Export: %s could not be opened.", worldPath.generic_string().c_str());
         return false;
     }
-    // Entities live only in a world: editor JSON → temporary world → runtime binary.
+    std::stringstream text;
+    text << sourceFile.rdbuf();
+    // Entities live only in a world: editor JSON → temporary world → runtime binary. The
+    // instances of prefabs the file holds are entities there, and that is how a game gets them:
+    // it has no instances to read (context/prefabs.md).
     World scratch;
-    Rain::JsonDecoder jsonDecoder;
-    if (!WorldMapper::load(scratch, jsonDecoder, sourceFile)) {
-        LOG_ERROR_EDITOR("Export: the world %s could not be read.", worldPath.generic_string().c_str());
+    if (!Prefabs::load(scratch, text.str())) {
+        LOG_ERROR_EDITOR("Export: %s could not be read.", worldPath.generic_string().c_str());
         return false;
     }
+    std::vector<Entity> parts;
+    for (auto handle : scratch.getAllEntitiesWith<PrefabComponent>()) { parts.push_back(scratch.entity(handle)); }
+    for (Entity part : parts) { part.removeComponent<PrefabComponent>(); }
     std::ostringstream stream(std::ios::binary);
+    std::ostringstream sink;
+    if (prefab) {
+        // A prefab a script is given: its one tree, for World::instantiate.
+        const std::vector<UUID> roots = scratch.orderedChildren(UUID(0));
+        if (roots.empty()) {
+            warn("The prefab " + worldPath.generic_string() + " holds no entity: a script that makes a copy of it gets nothing.");
+        } else {
+            WorldMapper::saveTree(scratch, scratch.getById(roots.front()), m_binaryEncoder, stream);
+            WorldMapper::saveTree(scratch, scratch.getById(roots.front()), references, sink);
+        }
+        addBytes(getRuntimePrefabPath(worldPath).generic_string(), stream.str(), kindName(AssetType::PREFAB), worldDetail(scratch));
+        return true;
+    }
     WorldMapper::save(scratch, m_binaryEncoder, stream);
     addBytes(getRuntimeWorldPath(worldPath).generic_string(), stream.str(), kindName(AssetType::WORLD), worldDetail(scratch));
-    std::ostringstream sink;
-    WorldMapper::save(scratch, references, sink); // what it names: its assets, the worlds its scripts are given
+    WorldMapper::save(scratch, references, sink); // what it names: its assets, the worlds and the prefabs its scripts are given
     return true;
 }
 
@@ -369,9 +395,9 @@ bool GameExporter::collectUsage(AssetHandlerEditor &assetHandler, const ExportSe
         references.clear();
         references.encode(sink, info); // its import settings: the shader of a material, the materials of a model
         const path_t file = projectPath / assetHandler.assetPath(id);
-        if (info.type == AssetType::WORLD) {
+        if (info.type == AssetType::WORLD || info.type == AssetType::PREFAB) {
             if (!cookWorld(assetHandler, id, references)) { return false; }
-            worlds++;
+            worlds += info.type == AssetType::WORLD ? 1 : 0;
         } else if (info.type == AssetType::MATERIAL) {
             MaterialDataDto data;
             if (readJsonFile(file, data)) { references.encode(sink, data); }
@@ -430,6 +456,8 @@ void GameExporter::exportAssetRegistry(AssetHandlerEditor &assetHandler) {
             entry.source.path = getRuntimeMeshPath(editorPath);
         } else if (info.type == AssetType::WORLD) {
             entry.source.path = getRuntimeWorldPath(editorPath);
+        } else if (info.type == AssetType::PREFAB) {
+            entry.source.path = getRuntimePrefabPath(editorPath);
         } else if (info.type == AssetType::POSTPROCESSING) {
             entry.source.path = getRuntimePostfxPath(editorPath);
         } else if (const AssetKind *kind = GameContext::getExtensions().assetKinds.find(info.type);

@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 37;
+constexpr uint32_t SCRIPT_ABI_VERSION = 38;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -161,6 +161,15 @@ using MeshReadFn = bool (*)(
     uint32_t indexCapacity, uint32_t *indexCount
 );
 
+// v38: a copy of what a handle names, with everything under it — a new instance of a prefab (a
+// field of the type entity that holds one: the handle is the id of the prefab asset), or a
+// duplicate of an entity of the world. `parent` — the entity the copy stands under (0 — a prefab
+// makes a root of the world, a duplicate stands next to its original). `position` (x, y, z) and
+// `rotation` (w, x, y, z) of the root in the space of its parent; null — as the original has
+// them. The scripts of the copy are created and started before the call returns. 0 — nothing
+// was made: the handle names neither.
+using WorldInstantiateFn = Handle (*)(Handle original, Handle parent, const float *position, const float *rotation);
+
 using ConsoleLogFn = void (*)(int type, const char *);
 
 using UIGetMainWindowFn = Handle (*)();
@@ -306,6 +315,8 @@ struct ScriptHostApi final {
     WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
     // v36
     MeshReadFn mesh_Read = nullptr;
+    // v38
+    WorldInstantiateFn world_Instantiate = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

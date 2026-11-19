@@ -6,6 +6,7 @@
 #include "Panda/Assets/ImportedMeshAsset.hpp"
 #include "Panda/Assets/TextureAsset.hpp"
 #include "Panda/Assets/ShaderAsset.hpp"
+#include "Panda/Prefabs/PrefabAsset.hpp"
 
 namespace Panda {
 
@@ -17,5 +18,6 @@ template class AssetRef<RuntimeMeshAsset>;
 template class AssetRef<ImportedMeshAsset>;
 template class AssetRef<PostprocessingAsset>;
 template class AssetRef<FontAsset>;
+template class AssetRef<PrefabAsset>;
 
 } // namespace Panda

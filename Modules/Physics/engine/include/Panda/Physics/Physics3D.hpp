@@ -12,6 +12,9 @@
 #include <unordered_set>
 #include <vector>
 
+struct b3BodyId; // box3d (Box3DHandles.hpp for who works with it directly)
+struct b3ShapeId;
+
 namespace Panda {
 
 class World;
@@ -211,6 +214,17 @@ public:
     void unregisterBody(uint32_t bodyIndex) {
         m_bodyEntityMap.erase(bodyIndex);
     }
+    // For world systems that give colliders to what no entity of this world stands for (a
+    // terrain: every tree of a layer is a copy of a prefab): the colliders `owner` carries — an
+    // entity of any world, of the template of a prefab among them — as shapes of a STATIC body
+    // the system owns, placed by the pose and the scale of the owner relative to the body. A ray
+    // that hits them names the entity the body is registered for. The shapes are appended to
+    // outShapes — they go with the body, or the system destroys them — and the geometry the mesh
+    // shapes among them point into to outCooks: the system keeps it while the shapes live.
+    void addStaticShapes(
+        const b3BodyId &body, Entity owner, const glm::vec3 &position, const glm::quat &rotation, const glm::vec3 &scale,
+        std::vector<b3ShapeId> &outShapes, std::vector<std::shared_ptr<MeshColliderCook>> &outCooks
+    );
 
 private:
     bool canUse(Entity entity);
@@ -229,6 +243,14 @@ private:
     void addShapesOf(
         Entity body, Entity owner, const glm::vec3 &relativePosition, const glm::quat &relativeRotation,
         const glm::vec3 &scale, RuntimeBodyData &runtimeData
+    );
+    // The shapes themselves, for a body of an entity and for a body of a world system alike.
+    // named — the entity a ray that hits them names (invalid — the one the body is registered
+    // for); remember — the owner is an entity of the simulation: its components get the shapes.
+    void createShapes(
+        const b3BodyId &bodyId, bool staticBody, Entity owner, Entity named, bool remember,
+        const glm::vec3 &relativePosition, const glm::quat &relativeRotation, const glm::vec3 &scale,
+        std::vector<b3ShapeId> *outShapes, std::vector<std::shared_ptr<MeshColliderCook>> &outCooks
     );
     // Whether the entity, or an entity under it without a body of its own, carries a collider.
     bool hasShapesInSubtree(Entity entity);

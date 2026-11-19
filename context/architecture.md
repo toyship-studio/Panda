@@ -230,7 +230,8 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   belongs to, each the `Output` of its panels and a file of `PandaEditor/src/UI`:
   `EntityActions` — the Hierarchy and the entity tabs (create, duplicate, copy and paste, delete,
   reparent, rename, the transform, components, scripts; every edit a command of the world's
-  history); `AssetActions` — the Content Browser (select, create, rename, reimport, delete —
+  history; and the prefabs: instances, Create Prefab, Unpack, Revert, Apply —
+  `context/prefabs.md`, "The editor"); `AssetActions` — the Content Browser (select, create, rename, reimport, delete —
   assets and folders — and the question before a deletion); `WorldTabs` — the open worlds as
   tabs of the center; `Panda::ProjectBuilds` — the CMake panel. The toolbar and the viewport
   overlay are answered by the coordinator itself. A part changes the model and EXPLICITLY asks
@@ -243,7 +244,10 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   (`EditorController::syncSelection` → `selectionChanged`); a single selected entity is revealed in the Hierarchy — its
   ancestors expand and the tree scrolls to its row when it is out of view
   (`HierarchyPanelView::revealEntity` → `TreeView::revealItem`, applied after the rows are
-  rebuilt). A multi-selection has no primary entity and moves nothing.
+  rebuilt). A multi-selection has no primary entity and moves nothing. The tab of the
+  Hierarchy says which document it shows: its caption is the file in front (`world.world`,
+  `Lamp.prefab` — `DockPanel::caption`, the title of the panel stays "Hierarchy" for the menus),
+  and for a prefab the tree is the tree of its root alone (`setRootEntity`).
   **A selection gesture of the viewport is one thing from the press to the release**
   (`ViewportView`, `RectSelectPhase`): the press picks what is under the pointer, a move within
   the click slop changes nothing (the hand trembles), a move past it stretches a rectangle, the
@@ -300,7 +304,12 @@ older copy put back with the date it had), and it can `save` (memory → file) a
 itself. Everything of the model is in one place, `PandaEditor/src/Project/Documents/`:
 
 - `FileDocument.hpp` — the interface and `DiskStamp`;
-- `WorldFile` — a world and its `.world` file (and the pose of the editor camera in it);
+- `WorldFile` — a world and its `.world` file (and the pose of the editor camera in it). A
+  prefab is a document of the same class (`isPrefab`, by the file): its `.prefab` holds one
+  tree of entities, the document holds them in a world of their own under `prefabRoot()`, with
+  a sky to stand under that is no part of the file. Both are read and written through
+  `Prefabs::load` / `Prefabs::save`, where the instances of prefabs a file holds become
+  entities and back (`context/prefabs.md`);
 - `SettingsFile` — a settings scope and its JSON file: `settings.json` of the user (the editor
   scope, written on every change) and `.Panda/project.json` (the project scope, edits wait for
   Save);
@@ -336,7 +345,12 @@ shown, or none: the selection, the entity tabs and the panels reset) and `docume
 the editor camera: the editor looks at it from its main camera (`documentsLookAtWorld`). The
 game plays a copy of the active world, so that world does not change while the game runs: a tab
 click is refused, a command that changes it (open, new, closing the active tab) stops the game
-first.
+first. The active document may be a prefab (`EditorLayer::isEditingPrefab`): everything that
+edits a world edits it, Play is off, the settings of the world (the sidebar of the viewport)
+are not offered — a prefab has none — and the entity actions keep its one root (new entities,
+pasted ones and models go under it; it is not deleted, moved or duplicated). A saved prefab
+reaches the instances in the other open documents at once
+(`AssetHandlerEditor::prefabChanged`).
 
 Three operations are written once over them, in `DocumentActions`, whatever the file is:
 
@@ -880,7 +894,11 @@ What follows from the rules:
 - A pass of the world only defines the order (`WorldView::submitWorld`): sky → sprites (not in
   the depth pass) → contribution systems (`Extensions::worldSystems`, `WorldSystem::submit`:
   terrain, particles) → meshes. Core geometry is submitted by `RenderSystem` (`Frustum`,
-  `submitSky` / `submitSprites`, `MeshList`). The core knows nothing about terrain. The scene
+  `submitSky` / `submitSprites`, `MeshList`). The core knows nothing about terrain. What a
+  system draws many times without entities — the trees of a terrain layer, the particles of an
+  emitter of a prefab — is an `InstancedModel` (`Panda/Renderer/InstancedModel`): the meshes of
+  an imported model or of a prefab, each at its place, as streams of instance matrices
+  (`context/prefabs.md`). The scene
   blocks of the frame (`SceneBlocks`: the camera, the lights, the shadows, the environment,
   the wind) are assembled once (`Renderer3D::setLighting`) and given to the view of each pass
   that reads them when it begins.
@@ -905,7 +923,20 @@ What follows from the rules:
 - A world copy (`operator=`, used by Play) copies every pool of the registry without
   knowing the types (`registry.storage()` → `push(entity, value)`). `duplicateEntity` goes through
   `ComponentTypeRegistry` (the `duplicated` flag; `IdComponent` and `RelationshipComponent` have it
-  `false`: a duplicate gets a new id and its children are rebuilt). A new component is one line of
+  `false`: a duplicate gets a new id and its children are rebuilt).
+- **A copy of entities is one operation** (`World::copySubtree`) with three faces:
+  `duplicateEntity` (next to the original), `importEntity` (from another world: a paste) and
+  `instantiate` (from the world of a prefab asset: a new instance, every copy marked with
+  `PrefabComponent`). A copy points at its own entities: a component type says which of its
+  fields name entities (`ComponentType::entityRefs` — the scripts: fields of the type entity;
+  the joints of the Physics module), and a reference between two copied entities is brought to
+  the copies; one to an entity outside stays. The entities of an instance of a prefab get ids
+  derived from the id of its root (`derivedEntityId`). In a running world the copy lives at
+  once (`settle`): it takes its place first (`EntityPlacement`), then the systems get its
+  entities (`entityRestored`) and its scripts are created and started
+  (`ScriptSystem::instantiate` / `start` for the new entities). An id of an entity is free in
+  the world and is not the id of an asset (`World::newEntityId`); `changeEntityId` gives an
+  entity another id together with everything that names it. A new component is one line of
   type registration (`CoreComponentTypes.cpp` in the core, or the registration function of a
   module). The copy carries the settings of the world scope, the core's and the modules' alike
   (`SettingsMapper::copy`).
@@ -993,7 +1024,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (36 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (38 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
@@ -1007,7 +1038,9 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   `onApplicationPause`): the editor fires the focus with the input of the Game tab
   (`PlaySession::updateInput`), the runtime with the focus of the window; the pause comes from
   the window being minimized (`Fern` `WindowMinimized` / `WindowRestored`) and later from the
-  background of a mobile platform.
+  background of a mobile platform. v38 appended `world_Instantiate` to `ScriptHostApi`
+  (`WorldAPI::instantiate`): a copy of what a handle names — a duplicate of an entity of the
+  world, or a new instance of the prefab whose asset id the handle is.
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity
@@ -1050,6 +1083,12 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
 
 - `EntityAPI` and `WorldAPI` (loading a world by `WorldHandle`, `findAllByTag`), `Input`
   (keyboard, mouse, touch and multi-touch), `ScriptFieldType::WORLD` for references to worlds.
+- **A script makes entities from a prefab.** A field of the type `EntityHandle` holds an entity
+  of the world or a prefab — then its value is the id of the prefab asset: one field type for
+  "what to make copies of", as in Unity, and no handle type of its own. `WorldAPI::instantiate`
+  looks for an entity of the running world first and for a prefab asset then (an entity never
+  gets the id of an asset: `World::newEntityId`). The cook finds the prefab like any reference:
+  the id passes through `ReferenceCollector` and is an asset of the project.
 - 3D physics from scripts (`Rigidbody3DComponentAPI`, `Physics3DAPI`, `WheelJoint3DComponentAPI`,
   `CharacterMoverAPI`): `context/physics.md`.
 - Published script fields get their values from the world only: `ScriptSystem::instantiate`
@@ -1366,7 +1405,11 @@ second way to do what a text file already does. The user-facing page is
   the editor: a game runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
   `screenshot`, `reload`, `focus`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
-  `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `game_input`, `restart`, `quit`. `build` starts a build
+  `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `game_input`, `restart`, `quit`.
+  `open_world` opens a prefab too, and `status` marks such a document (`prefab`); what the
+  editor does with prefabs is commands (`prefab.create`, `prefab.unpack`, `prefab.open`,
+  `prefab.revert`, `prefab.apply`, `prefab.applyForced`, `prefab.addToWorld`) — an instance
+  itself is written as text. `build` starts a build
   of the project (`ProjectBuilds::start`) and answers when it has ended with what cmake said
   (`ProjectBuilds::lastOutput`): the compiler errors of an agent's own code come back in the
   answer, where the CMake panel alone would have them. `export` is the game as it will ship:
@@ -1412,7 +1455,9 @@ second way to do what a text file already does. The user-facing page is
   and what is there instead, several by that name, disabled, covered by a dialog. A click never
   lands on something else. `ui` waits the same way for what it is asked about (`gone`, `count`,
   `value`, `label`), so a script that drives the editor has no pauses in it. The parts of the
-  editor carry ids for this: a panel its dock id (`hierarchy`, `contentBrowser`), the form of an
+  editor carry ids for this: a dock its place (`leftDock`, `rightDock`, `bottomDock`,
+  `centerDock`: `centerDock/tab:world.world` is the tab of a world, where the Hierarchy tab says
+  the same file), a panel its dock id (`hierarchy`, `contentBrowser`), the form of an
   entity `inspector`, its sections the names of their components, a field of a script the name
   of the field in the class, the buttons of the toolbar what they do (`play`, `undo`).
 - A UI test of the editor is a client of these three tools and nothing more — the editor has no
@@ -1473,7 +1518,8 @@ second way to do what a text file already does. The user-facing page is
 
 - Worlds: a game cannot yet load a second world file into the running world (additive
   loading). The engine side exists (`WorldMapper::loadEntities`, `World::importEntity`); the
-  script API and the rules for the ids of the loaded entities do not.
+  script API and the rules for the ids of the loaded entities do not. A prefab is the way to
+  bring a group of entities into a running world today (`WorldAPI::instantiate`).
 - Worlds: an open world that is not active keeps what its systems built for drawing (the
   meshes of a terrain) until its tab closes. Releasing it on deactivation is
   a hook the world systems do not have yet.

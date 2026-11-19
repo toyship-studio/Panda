@@ -96,18 +96,9 @@ namespace {
         return create;
     }
 
-    // The primitive's material by the rules of a mesh layer (override → per-primitive → default lit).
-    AssetRef<MaterialAsset> resolvePrimitiveMaterial(
-        const AssetRef<MaterialAsset> &overrideMaterial,
-        const std::vector<AssetRef<Asset>> &primitiveMaterials,
-        size_t flatIndex
-    ) {
-        AssetRef<MaterialAsset> material = overrideMaterial;
-        if (!material && flatIndex < primitiveMaterials.size()) {
-            material = primitiveMaterials[flatIndex].as<MaterialAsset>();
-        }
-        if (!material.isValid()) { material = StaticResources::defaultLitMaterial; }
-        return material;
+    // The material of a part as the model resolves it; without one — the default lit.
+    AssetRef<MaterialAsset> partMaterial(const InstancedModel::Draw &draw) {
+        return draw.material.isValid() ? draw.material : StaticResources::defaultLitMaterial;
     }
 
 } // namespace
@@ -117,42 +108,39 @@ FloraImposter::~FloraImposter() {
     // The atlases are assets: the cascade cleanup frees them when the refs of the entries die.
 }
 
-FloraImposter::View FloraImposter::ensure(
-    AssetRef<ImportedMeshAsset> mesh, AssetRef<MaterialAsset> overrideMaterial
-) {
-    View view;
-    ImportedMeshAsset *meshAsset = mesh.get();
-    if (meshAsset == nullptr) { return view; }
+FloraImposter::View FloraImposter::ensure(AssetRef<ImportedMeshAsset> mesh, AssetRef<MaterialAsset> overrideMaterial) {
+    return ensure(InstancedModel::ofMesh(mesh.asBaseAsset(), overrideMaterial.asBaseAsset()));
+}
 
-    const AssetId meshId = mesh.getId();
-    const AssetId overrideId =
-        overrideMaterial.isValid() ? overrideMaterial.getId() : AssetId(0);
-    // The layout belongs to the mesh itself; its snapshot is part of the cache key: a slot change
-    // = a new atlas.
+FloraImposter::View FloraImposter::ensure(const InstancedModel &model) {
+    View view;
+    if (model.empty()) { return view; }
+
+    // The materials belong to the meshes themselves (a slot of an imported mesh may get another
+    // one); their snapshot is part of the cache key: a change = a new atlas.
     std::vector<AssetId> materialIds;
-    materialIds.reserve(meshAsset->getPrimitiveMaterials().size());
-    for (const AssetRef<Asset> &material : meshAsset->getPrimitiveMaterials()) {
-        materialIds.push_back(material.getId());
+    materialIds.reserve(model.parts().size());
+    for (const InstancedModel::Part &part : model.parts()) {
+        InstancedModel::Draw draw;
+        InstancedModel::resolve(part, draw);
+        materialIds.push_back(draw.material.getId());
     }
 
     Entry *entry = nullptr;
     for (auto &candidate : m_entries) {
-        if (candidate->meshId == meshId && candidate->overrideId == overrideId &&
-            candidate->materialIds == materialIds) {
+        if (candidate->stamp == model.stamp() && candidate->materialIds == materialIds) {
             entry = candidate.get();
             break;
         }
     }
     if (entry == nullptr) {
         auto created = std::make_unique<Entry>();
-        created->meshId = meshId;
-        created->overrideId = overrideId;
+        created->stamp = model.stamp();
         created->materialIds = std::move(materialIds);
-        created->mesh = mesh;
-        created->overrideMaterial = overrideMaterial;
+        created->model = model;
         // The atlas frame must match the billboard quad and the pivot baked into the
-        // instance matrices — the bounds of the same mesh that built the instances.
-        if (!meshAsset->getMeshBounds(created->boundsMin, created->boundsMax)) {
+        // instance matrices — the bounds of the same model that built the instances.
+        if (!model.bounds(created->boundsMin, created->boundsMax)) {
             created->boundsMin = glm::vec3(-0.5f, 0.f, -0.5f);
             created->boundsMax = glm::vec3(0.5f, 1.f, 0.5f);
         }
@@ -177,23 +165,21 @@ FloraImposter::View FloraImposter::ensure(
         };
         Miren::FrameBufferSpecification normalSpec(normalAttachments, 2);
         created->normalFb = Miren::createFrameBuffer(normalSpec);
-        // The crown surface comes from the vegCrown material (the override or a mesh slot):
-        // the billboard repeats the Cook-Torrance of the mesh crown (surfaceParams of the billboard).
-        auto readCrownSurface = [&](AssetRef<MaterialAsset> material) {
-            if (!material.isValid() || material.get() == nullptr) { return false; }
-            if (material->getShaderAsset()->getMirenHandle().id !=
-                StaticResources::vegCrownShader->getMirenHandle().id) {
-                return false;
+        // The crown surface comes from the vegCrown material of the model (the first part that
+        // has one): the billboard repeats the Cook-Torrance of the mesh crown (surfaceParams of
+        // the billboard).
+        for (const InstancedModel::Part &part : model.parts()) {
+            InstancedModel::Draw draw;
+            InstancedModel::resolve(part, draw);
+            MaterialAsset *material = draw.material.get();
+            if (material == nullptr) { continue; }
+            if (material->getShaderAsset()->getMirenHandle().id != StaticResources::vegCrownShader->getMirenHandle().id) {
+                continue;
             }
             created->crownMetallic = material->getFloatFieldValue("metallicFactor", 0.f);
             created->crownRoughness = material->getFloatFieldValue("roughnessFactor", 1.f);
             created->crownTranslucency = material->getFloatFieldValue("translucency", 0.f);
-            return true;
-        };
-        if (!readCrownSurface(overrideMaterial)) {
-            for (const AssetRef<Asset> &candidate : meshAsset->getPrimitiveMaterials()) {
-                if (readCrownSurface(candidate.as<MaterialAsset>())) { break; }
-            }
+            break;
         }
         m_entries.push_back(std::move(created));
         entry = m_entries.back().get();
@@ -215,7 +201,6 @@ FloraImposter::View FloraImposter::ensure(
 void FloraImposter::processBaking() {
     for (auto &entry : m_entries) {
         if (entry->bakedTiles >= TILES) { continue; }
-        if (!entry->mesh.isValid()) { continue; } // the mesh is unloaded — wait
         bakeTile(*entry, entry->bakedTiles);
         entry->bakedTiles++;
         if (entry->bakedTiles >= TILES) {
@@ -271,99 +256,89 @@ void FloraImposter::bakeTile(Entry &entry, int tile) {
     bakeScene.assemble(bakeLighting);
     bakeScene.bind(colorView);
     bakeScene.bindBlocks(normalView);
-    const DrawUbo vertUbo{frame.viewProj, glm::mat4(1.f)};
+    for (const InstancedModel::Part &part : entry.model.parts()) {
+        InstancedModel::Draw primitive;
+        if (!InstancedModel::resolve(part, primitive)) { continue; } // its mesh is gone: the tile is baked without it
+        AssetRef<MaterialAsset> material = partMaterial(primitive);
+        // A mesh of the model stands at its place in it.
+        const DrawUbo vertUbo{frame.viewProj, entry.model.places()[part.place]};
 
-    const ImportedMeshAsset *meshAsset = entry.mesh.get();
-    size_t primitiveFlat = 0;
-    for (size_t submeshIndex = 0; submeshIndex < meshAsset->submeshCount(); submeshIndex++) {
-        const ImportedSubmesh &submesh = meshAsset->submeshAt(submeshIndex);
-        for (const ImportedPrimitive &primitive : submesh.primitives) {
-            const size_t flatIndex = primitiveFlat++;
-            if (!primitive.vertexBufferHandle.isValid() ||
-                !primitive.indexBufferHandle.isValid()) {
-                continue;
-            }
-            AssetRef<MaterialAsset> material = resolvePrimitiveMaterial(
-                entry.overrideMaterial, meshAsset->getPrimitiveMaterials(), flatIndex
-            );
+        // The view fade of the foliage is muted for the duration of the bake: the dither of the
+        // edge-on cards would bake holes into the atlas forever — each of the 8 ortho view
+        // angles catches its own "edges", and the billboard systematically lost foliage. The
+        // wind is muted for the same reason: the atlas would bake in a random phase forever —
+        // the drift of the cards and the tilt of the leaves at the moment of the bake.
+        const float savedViewFade = material->getFloatFieldValue("viewFade", 0.f);
+        if (savedViewFade != 0.f) { material->setFieldValue("viewFade", 0.f); }
+        // The wind strength is a SYSTEM field (the value is set by SceneWind, editing the
+        // material field is powerless): the registry itself is muted for the two submits of
+        // the bake.
+        const MaterialFieldValue *systemWind = MaterialSystemValues::find("windStrength");
+        const float savedWind =
+            systemWind && std::holds_alternative<float>(*systemWind)
+                ? std::get<float>(*systemWind)
+                : 0.f;
+        if (savedWind != 0.f) { MaterialSystemValues::set("windStrength", 0.f); }
 
-            // The view fade of the foliage is muted for the duration of the bake: the dither of the
-            // edge-on cards would bake holes into the atlas forever — each of the 8 ortho view
-            // angles catches its own "edges", and the billboard systematically lost foliage. The
-            // wind is muted for the same reason: the atlas would bake in a random phase forever —
-            // the drift of the cards and the tilt of the leaves at the moment of the bake.
-            const float savedViewFade = material->getFloatFieldValue("viewFade", 0.f);
-            if (savedViewFade != 0.f) { material->setFieldValue("viewFade", 0.f); }
-            // The wind strength is a SYSTEM field (the value is set by SceneWind, editing the
-            // material field is powerless): the registry itself is muted for the two submits of
-            // the bake.
-            const MaterialFieldValue *systemWind = MaterialSystemValues::find("windStrength");
-            const float savedWind =
-                systemWind && std::holds_alternative<float>(*systemWind)
-                    ? std::get<float>(*systemWind)
-                    : 0.f;
-            if (savedWind != 0.f) { MaterialSystemValues::set("windStrength", 0.f); }
+        // Color: the primitive's material as is (textures/cutoff/fields), ambient light.
+        Miren::ProgramHandle colorShader = material->getShaderAsset()->getMirenHandle();
+        Miren::setState(MIREN_STATE_DEPTH_TEST); // no culling — the foliage is double-sided
+        material->bindFields();
+        bindBlock(vertUbo);
+        Miren::setVertexBuffer(primitive.vertexBuffer);
+        Miren::setIndexBuffer(primitive.indexBuffer, 0, primitive.indicesCount);
+        Miren::submit(colorView, colorShader);
 
-            // Color: the primitive's material as is (textures/cutoff/fields), ambient light.
-            Miren::ProgramHandle colorShader = material->getShaderAsset()->getMirenHandle();
-            Miren::setState(MIREN_STATE_DEPTH_TEST); // no culling — the foliage is double-sided
-            material->bindFields();
-            bindBlock(vertUbo);
-            Miren::setVertexBuffer(primitive.vertexBufferHandle);
-            Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
-            Miren::submit(colorView, colorShader);
-
-            // Normals. A veg_crown crown has its own pass: the normal of EVERY leaf (the normal
-            // tile through the card basis, the plane faces the camera of the view angle) — the same
-            // one the mesh is lit with in the scene; the pbr pass wrote the vertex normal (the crown
-            // ellipsoid), and the billboard in the distance was a smooth ball next to the variegated
-            // foliage. The other PBR templates — a cutout by the layout fields (veg_grass: the
-            // prefix = pbr, the texture alpha cuts the silhouette like MASK); the rest — solid.
-            // The template is determined by the Miren program: the template asset id of the
-            // materials generated by the import does not match StaticResources, the program is
-            // the same.
-            const bool crownTemplate =
-                colorShader.id == StaticResources::vegCrownShader->getMirenHandle().id;
-            const bool grassTemplate =
-                colorShader.id == StaticResources::vegGrassShader->getMirenHandle().id;
-            const bool pbrTemplate =
-                grassTemplate ||
-                colorShader.id == StaticResources::defaultPbrShader->getMirenHandle().id ||
-                colorShader.id == StaticResources::instancedPbrShader->getMirenHandle().id;
-            AssetRef<ShaderAsset> normalShaderAsset =
-                crownTemplate ? StaticResources::floraImposterNormalCrownShader
-                : pbrTemplate ? StaticResources::floraImposterNormalShader
-                              : StaticResources::floraImposterNormalSolidShader;
-            Miren::ProgramHandle normalShader = normalShaderAsset->getMirenHandle();
-            Miren::setState(MIREN_STATE_DEPTH_TEST);
-            // The back-face flip in the pbr pass is the default_pbr convention (it flips in the
-            // scene as well). The grass does NOT flip the normal (the volume normal of the field —
-            // the decision is made), while its cards are double-sided and half of them face the
-            // bake camera of the view angle with the back side: with the flip the normals went
-            // into the atlas inverted — the billboard was darker than the mesh.
-            // doubleSided is muted for the pass (it is the only one that reads the field — the
-            // flip gets disabled).
-            const uint32_t savedDoubleSided = material->getUIntFieldValue("doubleSided", 0u);
-            const bool suppressDoubleSided = grassTemplate && savedDoubleSided != 0u;
-            if (suppressDoubleSided) { material->setFieldValue("doubleSided", 0u); }
-            if (crownTemplate || pbrTemplate) { material->bindFields(); }
-            if (crownTemplate) {
-                // The direction to the camera of the view angle is one per tile (an ortho camera):
-                // the card plane turns towards the viewer, as towards the camera in the scene.
-                const float toViewer[4] = {
-                    frame.toViewer.x, frame.toViewer.y, frame.toViewer.z, 0.f
-                };
-                Miren::addInputUniformBuffer("IMPOSTER_BAKE", toViewer, sizeof(toViewer));
-            }
-            bindBlock(vertUbo);
-            Miren::setVertexBuffer(primitive.vertexBufferHandle);
-            Miren::setIndexBuffer(primitive.indexBufferHandle, 0, primitive.indicesCount);
-            Miren::submit(normalView, normalShader);
-
-            if (suppressDoubleSided) { material->setFieldValue("doubleSided", savedDoubleSided); }
-            if (savedViewFade != 0.f) { material->setFieldValue("viewFade", savedViewFade); }
-            if (savedWind != 0.f) { MaterialSystemValues::set("windStrength", savedWind); }
+        // Normals. A veg_crown crown has its own pass: the normal of EVERY leaf (the normal
+        // tile through the card basis, the plane faces the camera of the view angle) — the same
+        // one the mesh is lit with in the scene; the pbr pass wrote the vertex normal (the crown
+        // ellipsoid), and the billboard in the distance was a smooth ball next to the variegated
+        // foliage. The other PBR templates — a cutout by the layout fields (veg_grass: the
+        // prefix = pbr, the texture alpha cuts the silhouette like MASK); the rest — solid.
+        // The template is determined by the Miren program: the template asset id of the
+        // materials generated by the import does not match StaticResources, the program is
+        // the same.
+        const bool crownTemplate =
+            colorShader.id == StaticResources::vegCrownShader->getMirenHandle().id;
+        const bool grassTemplate =
+            colorShader.id == StaticResources::vegGrassShader->getMirenHandle().id;
+        const bool pbrTemplate =
+            grassTemplate ||
+            colorShader.id == StaticResources::defaultPbrShader->getMirenHandle().id ||
+            colorShader.id == StaticResources::instancedPbrShader->getMirenHandle().id;
+        AssetRef<ShaderAsset> normalShaderAsset =
+            crownTemplate ? StaticResources::floraImposterNormalCrownShader
+            : pbrTemplate ? StaticResources::floraImposterNormalShader
+                          : StaticResources::floraImposterNormalSolidShader;
+        Miren::ProgramHandle normalShader = normalShaderAsset->getMirenHandle();
+        Miren::setState(MIREN_STATE_DEPTH_TEST);
+        // The back-face flip in the pbr pass is the default_pbr convention (it flips in the
+        // scene as well). The grass does NOT flip the normal (the volume normal of the field —
+        // the decision is made), while its cards are double-sided and half of them face the
+        // bake camera of the view angle with the back side: with the flip the normals went
+        // into the atlas inverted — the billboard was darker than the mesh.
+        // doubleSided is muted for the pass (it is the only one that reads the field — the
+        // flip gets disabled).
+        const uint32_t savedDoubleSided = material->getUIntFieldValue("doubleSided", 0u);
+        const bool suppressDoubleSided = grassTemplate && savedDoubleSided != 0u;
+        if (suppressDoubleSided) { material->setFieldValue("doubleSided", 0u); }
+        if (crownTemplate || pbrTemplate) { material->bindFields(); }
+        if (crownTemplate) {
+            // The direction to the camera of the view angle is one per tile (an ortho camera):
+            // the card plane turns towards the viewer, as towards the camera in the scene.
+            const float toViewer[4] = {
+                frame.toViewer.x, frame.toViewer.y, frame.toViewer.z, 0.f
+            };
+            Miren::addInputUniformBuffer("IMPOSTER_BAKE", toViewer, sizeof(toViewer));
         }
+        bindBlock(vertUbo);
+        Miren::setVertexBuffer(primitive.vertexBuffer);
+        Miren::setIndexBuffer(primitive.indexBuffer, 0, primitive.indicesCount);
+        Miren::submit(normalView, normalShader);
+
+        if (suppressDoubleSided) { material->setFieldValue("doubleSided", savedDoubleSided); }
+        if (savedViewFade != 0.f) { material->setFieldValue("viewFade", savedViewFade); }
+        if (savedWind != 0.f) { MaterialSystemValues::set("windStrength", savedWind); }
     }
 }
 

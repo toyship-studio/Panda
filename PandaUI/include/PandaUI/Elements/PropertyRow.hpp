@@ -4,6 +4,7 @@
 
 #include "PandaUI/Elements/Panel.hpp"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -84,6 +85,18 @@ public:
     // Mark that the value differs between the selected objects (multi-selection): a "* " marker
     // is added to the label. The "mixed" state of the editor itself is set on it separately.
     void setMixed(bool mixed);
+    // The value is the object's own where it otherwise comes from elsewhere — an instance of a
+    // prefab that differs from the prefab here: the label takes the accent color and a bar
+    // stands at the start of the row.
+    void setOverridden(bool overridden);
+    bool isOverridden() const {
+        return m_overridden;
+    }
+    // A right click on the row (its label, the space around the editor): what the form offers
+    // for this field. The point is in window coordinates.
+    void setOnContextMenu(std::function<void(PropertyRow &, Point)> onContextMenu) {
+        m_onContextMenu = std::move(onContextMenu);
+    }
     // Shown or taken out of the form with its place (a field that does not apply now).
     void setVisible(bool visible);
     // The label starts this far to the right, the editors stay in their column: a row that
@@ -92,7 +105,11 @@ public:
     void describeAccessibility(Accessibility &accessibility) const override {
         accessibility.role = "property";
         accessibility.label = m_title;
-        if (m_mixed) { accessibility.value = "mixed"; }
+        if (m_mixed) {
+            accessibility.value = "mixed";
+        } else if (m_overridden) {
+            accessibility.value = "overridden";
+        }
     }
 
     bool pointerDown(PointerEvent &event) override;
@@ -117,6 +134,9 @@ private:
     float m_scrubX = 0.f;
     bool m_scrubbing = false;
     bool m_mixed = false;
+    bool m_overridden = false;
+    std::shared_ptr<Panel> m_overrideBar; // made when the row is first overridden
+    std::function<void(PropertyRow &, Point)> m_onContextMenu;
 };
 
 } // namespace PandaUI

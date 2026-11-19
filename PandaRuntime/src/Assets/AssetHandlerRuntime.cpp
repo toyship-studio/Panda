@@ -10,6 +10,8 @@
 #include "Panda/Assets/ImportedMeshAsset.hpp"
 #include "Panda/Assets/PostprocessingAsset.hpp"
 #include "Panda/Assets/WorldAsset.hpp"
+#include "Panda/Prefabs/PrefabAsset.hpp"
+#include "Panda/Serialization/WorldMapper.hpp"
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Serialization/AssetsMapper.hpp"
@@ -144,6 +146,18 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         } else {
             asset = F_NEW(m_allocator, ShaderAsset)();
             LOG_ERROR("RUNTIME: Shader %u cooked files not found", (uint32_t)id);
+        }
+    } else if (loadedType == AssetType::PREFAB) {
+        // The entities of the prefab as the cook wrote them — plain ones, in binary — in the
+        // world of the asset: what World::instantiate copies.
+        PrefabAsset *prefab = F_NEW(m_allocator, PrefabAsset)();
+        asset = prefab;
+        const path_t prefabPath = m_runtimeDataPath / entryPath;
+        const std::unique_ptr<std::istream> file = GameFiles::open(prefabPath);
+        if (file && WorldMapper::load(prefab->world(), m_binaryDecoder, *file)) {
+            LOG_INFO("RUNTIME: Loaded prefab %u from %s", (uint32_t)id, entryPath.string().c_str());
+        } else {
+            LOG_ERROR("RUNTIME: Prefab %u not found at %s", (uint32_t)id, entryPath.string().c_str());
         }
     } else if (loadedType == AssetType::MATERIAL) {
         auto meta = std::get<AssetInfo::MaterialSettings>(assetInfo.settings);

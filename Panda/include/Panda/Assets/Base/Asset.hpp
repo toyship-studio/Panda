@@ -26,6 +26,7 @@ struct AssetType final {
     static const AssetType WORLD;
     static const AssetType POSTPROCESSING;
     static const AssetType FONT;
+    static const AssetType PREFAB;
 };
 
 inline const AssetType AssetType::NONE{0};
@@ -38,6 +39,7 @@ inline const AssetType AssetType::IMPORTED_MESH{6};
 inline const AssetType AssetType::WORLD{7};
 inline const AssetType AssetType::POSTPROCESSING{8};
 inline const AssetType AssetType::FONT{11}; // 9 and 10 are the terrain kinds of the Terrain module
+inline const AssetType AssetType::PREFAB{12};
 
 using AssetId = UUID;
 

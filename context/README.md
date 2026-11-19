@@ -33,6 +33,9 @@ contract moves.
   (vertices, tiles, fields), what a tree or grass export has to look like, the impostor baker.
 - `plugins.md`: modules (engine systems) and plugins (editor data), the engine and editor
   registries, the package layout and manifest.
+- `prefabs.md`: prefabs — an instance as an entry of a file and as entities of a world, what
+  differs as a patch found at save time, derived ids, the template asset, Apply and Revert, the
+  editor side, the script side.
 - `export.md`: how a project becomes a game — the cook (what the game uses, from the start
   world; what is left out and how it is said), the pack and the files of a game (`AssetPack`,
   `GameFiles`), the check run of a built game.

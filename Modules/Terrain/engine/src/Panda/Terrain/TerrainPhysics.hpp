@@ -5,12 +5,15 @@
 #include <box3d/box3d.h>
 
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace Panda {
 
 class World;
 class Physics3D;
+struct MeshColliderCook; // the geometry a mesh collider shape points into (the Physics module)
 
 // The terrain ↔ box3d bridge (the lifecycle hooks of the terrain world system, which runs
 // after the "physics" system of the Physics module). Terrain2D → a static body with a
@@ -21,7 +24,20 @@ class Physics3D;
 // (World::context<TerrainPhysics::State>). A terrain entity with a body is tracked by the world
 // (World::trackEntity): a transform set on it or above it rebuilds the body where the transform
 // puts it.
+//
+// The trees of a Terrain2D collide too, when their layer says what a tree is with a prefab that
+// holds colliders: every tree of the layer gets the colliders of the prefab — of every entity
+// of it, where it stands under the root — as shapes of the body of the terrain, at the place,
+// the turn and the size of the tree. They are made when the world starts to run, and again
+// where the relief changes under them; what touches a tree touches the terrain entity.
 namespace TerrainPhysics {
+
+    // The shapes of the trees of one cell of TerrainTrees, with the geometry the mesh shapes
+    // among them point into.
+    struct TreeCell {
+        std::vector<b3ShapeId> shapes;
+        std::vector<std::shared_ptr<MeshColliderCook>> cooks;
+    };
 
     struct RuntimeBody {
         UUID entityId = 0;
@@ -29,6 +45,7 @@ namespace TerrainPhysics {
         std::vector<b3ShapeId> chunkShapes;       // by chunk index (null — no shape); 2d: [0]
         std::vector<b3MeshData *> chunkMeshDatas; // 3d: by chunk index (owned)
         b3HeightFieldData *heightField = nullptr; // 2d: owned (unit scale — the asset cache)
+        std::unordered_map<uint64_t, TreeCell> treeCells; // 2d: by cell (z << 32 | x)
     };
 
     struct State {

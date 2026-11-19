@@ -59,6 +59,10 @@ Large directions that are still ahead. Finished work is one line with a pointer 
   editor nobody sits at (`--unattended`) is driven through its MCP server by a test that lives
   outside this repository (`context/pandaui.md`, "Elements: what a UI test sees";
   `context/architecture.md`, "Editor: the MCP server").
+- **Prefabs**: a tree of entities in a file of its own, placed in worlds and in other prefabs;
+  an instance is a reference and what differs, found when the file is written; a prefab opens
+  in a tab like a world; Revert, Apply and Apply Forced; a script makes copies of a prefab an
+  entity field holds; a game is cooked with its instances expanded (`context/prefabs.md`).
 
 ## Ahead (order is open to discussion)
 
@@ -82,8 +86,7 @@ Large directions that are still ahead. Finished work is one line with a pointer 
 5. **Demo games**: bring workflows to production quality regularly (quality, not quantity).
 6. **Loading a world into a running one** (additive): the engine side exists, the script API and
    the rules for the ids of the loaded entities do not (`context/architecture.md`, "Open items").
-7. **Prefabs**: after world, assets and script fields stabilize; a prefab is an asset with
-   overrides.
+7. **Prefabs, next steps** (`context/prefabs.md`, "Open items").
 8. **Input actions**: a mapping layer over raw input (mobile, gamepad, remapping).
 9. **Cooking, next steps** (`context/export.md`, "Open items"): the shaders of one backend per
    export target, a cook that reuses unchanged entries. Deferred: a cached snapshot of the asset

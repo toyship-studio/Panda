@@ -113,6 +113,7 @@ void MeshList::collect(World &world) {
             item.mesh = meshComponent.runtimeMesh.as<RuntimeMeshAsset>();
             item.bounded = item.mesh.get() && item.mesh->getLocalBounds(item.boundsMin, item.boundsMax);
             item.material = meshComponent.material.as<MaterialAsset>();
+            item.ownMaterial = static_cast<bool>(item.material);
             item.blended = isBlended(item.material);
             m_items.push_back(std::move(item));
         }
@@ -128,7 +129,8 @@ void MeshList::collect(World &world) {
             item.transform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
             item.bounded = item.mesh->getLocalBounds(item.boundsMin, item.boundsMax);
             item.material = primitiveComponent.material.as<MaterialAsset>();
-            if (!item.material.get()) { item.material = StaticResources::primitiveMaterial; }
+            item.ownMaterial = item.material.get() != nullptr;
+            if (!item.ownMaterial) { item.material = StaticResources::primitiveMaterial; }
             item.blended = isBlended(item.material);
             m_items.push_back(std::move(item));
         }
@@ -151,6 +153,7 @@ void MeshList::collect(World &world) {
                            );
             // Material: the component override, otherwise — the slot layout of the mesh itself.
             AssetRef<Asset> slot = meshComponent.material;
+            item.ownMaterial = static_cast<bool>(slot);
             if (!slot && item.imported.get()) {
                 slot = item.imported->materialForPrimitive(item.submeshIndex, item.primitiveIndex);
             }

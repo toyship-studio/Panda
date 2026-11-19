@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- `Physics3D::addStaticShapes`: the colliders an entity carries — of any world, of the template
+  of a prefab among them — as shapes of a static body a world system owns, at a pose and a scale
+  the system gives. The terrain gives the colliders of a tree prefab to every tree of a layer
+  with it. The shapes of an entity's own body are made by the same code.
+
 ## 0.3.0
 
 - Compound bodies: a collider on an entity without a body of its own joins the body of the

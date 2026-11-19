@@ -478,6 +478,20 @@ namespace {
         joint.collideConnected = dto.collideConnected;
     }
 
+    // A joint names the entity that carries the other body: the reference of the component to an
+    // entity (ComponentType::entityRefs), so a copy of the two — a duplicate, an instance of a
+    // prefab — is joined to its own copy.
+    template<typename Joint>
+    ComponentType jointType(
+        const char *name, void (*encode)(Rain::Encoder &, Entity), void (*decode)(Rain::Decoder &, Entity)
+    ) {
+        ComponentType type = componentType<Joint>(name, encode, decode);
+        type.entityRefs = [](Entity entity, const EntityRefVisitor &visit) {
+            visit(entity.getComponent<Joint>().connectedEntity);
+        };
+        return type;
+    }
+
 } // namespace
 
 void registerComponentTypes(ComponentTypeRegistry &registry) {
@@ -494,28 +508,28 @@ void registerComponentTypes(ComponentTypeRegistry &registry) {
     registry.add(componentType<MeshCollider3DComponent>(
         "meshCollider3dComponent", encodeMeshCollider3D, decodeMeshCollider3D
     ));
-    registry.add(componentType<RevoluteJoint2DComponent>(
+    registry.add(jointType<RevoluteJoint2DComponent>(
         "revoluteJoint2dComponent", encodeRevoluteJoint2D, decodeRevoluteJoint2D
     ));
-    registry.add(componentType<DistanceJoint2DComponent>(
+    registry.add(jointType<DistanceJoint2DComponent>(
         "distanceJoint2dComponent", encodeDistanceJoint2D, decodeDistanceJoint2D
     ));
-    registry.add(componentType<RevoluteJoint3DComponent>(
+    registry.add(jointType<RevoluteJoint3DComponent>(
         "revoluteJoint3dComponent", encodeRevoluteJoint3D, decodeRevoluteJoint3D
     ));
-    registry.add(componentType<SphericalJoint3DComponent>(
+    registry.add(jointType<SphericalJoint3DComponent>(
         "sphericalJoint3dComponent", encodeSphericalJoint3D, decodeSphericalJoint3D
     ));
-    registry.add(componentType<WheelJoint3DComponent>("wheelJoint3dComponent", encodeWheelJoint3D, decodeWheelJoint3D));
-    registry.add(componentType<WeldJoint3DComponent>("weldJoint3dComponent", encodeWeldJoint3D, decodeWeldJoint3D));
-    registry.add(componentType<PrismaticJoint3DComponent>(
+    registry.add(jointType<WheelJoint3DComponent>("wheelJoint3dComponent", encodeWheelJoint3D, decodeWheelJoint3D));
+    registry.add(jointType<WeldJoint3DComponent>("weldJoint3dComponent", encodeWeldJoint3D, decodeWeldJoint3D));
+    registry.add(jointType<PrismaticJoint3DComponent>(
         "prismaticJoint3dComponent", encodePrismaticJoint3D, decodePrismaticJoint3D
     ));
-    registry.add(componentType<DistanceJoint3DComponent>(
+    registry.add(jointType<DistanceJoint3DComponent>(
         "distanceJoint3dComponent", encodeDistanceJoint3D, decodeDistanceJoint3D
     ));
-    registry.add(componentType<FilterJoint3DComponent>("filterJoint3dComponent", encodeFilterJoint3D, decodeFilterJoint3D));
-    registry.add(componentType<MotorJoint3DComponent>("motorJoint3dComponent", encodeMotorJoint3D, decodeMotorJoint3D));
+    registry.add(jointType<FilterJoint3DComponent>("filterJoint3dComponent", encodeFilterJoint3D, decodeFilterJoint3D));
+    registry.add(jointType<MotorJoint3DComponent>("motorJoint3dComponent", encodeMotorJoint3D, decodeMotorJoint3D));
 }
 
 } // namespace Panda::Physics

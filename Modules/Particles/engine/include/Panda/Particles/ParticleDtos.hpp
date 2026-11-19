@@ -26,6 +26,11 @@ struct ParticleEmitterDto : public Rain::Codable {
     uint32_t maxParticles = 500;
     UUID texture = 0;
     bool worldSpace = true;
+    float emitRadius = 0.f;
+    float turbulence = 0.f;
+    UUID prefab = 0;
+    uint32_t orientation = 0; // ParticleOrientation
+    float spinDegrees = 90.f;
 
     RAIN_FIELDS_BEGIN(ParticleEmitterDto)
     RAIN_FIELD(playing)
@@ -43,6 +48,11 @@ struct ParticleEmitterDto : public Rain::Codable {
     RAIN_FIELD(maxParticles)
     RAIN_FIELD(texture)
     RAIN_FIELD(worldSpace)
+    RAIN_FIELD(emitRadius)
+    RAIN_FIELD(turbulence)
+    RAIN_FIELD(prefab)
+    RAIN_FIELD(orientation)
+    RAIN_FIELD(spinDegrees)
     RAIN_FIELDS_END
 };
 

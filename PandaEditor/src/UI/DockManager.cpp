@@ -37,6 +37,12 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_leftDock = std::make_shared<TabView>();
     m_rightDock = std::make_shared<TabView>();
     m_bottomDock = std::make_shared<TabView>();
+    // What a UI test finds a dock by: two tabs may say the same (the tab of a world and the
+    // Hierarchy, whose caption is the file of that world), and the dock tells them apart.
+    m_leftDock->setAccessibilityId("leftDock");
+    m_rightDock->setAccessibilityId("rightDock");
+    m_bottomDock->setAccessibilityId("bottomDock");
+    m_center->setAccessibilityId("centerDock");
     // All docks always show their tab bar — the tab is the panel title (no separate panel header),
     // and the tab bar carries «+»/fullscreen/close consistently.
     m_leftDock->setOnTabClosed([this](TabView &, int idx) { panelClosed(Dock::Left, idx); });
@@ -239,7 +245,16 @@ void DockManager::setPanelTitle(const std::string &id, std::string title) {
     panel->title = title; // a rebuild of the docks keeps it
     std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
     const int index = tabIndexOf(id);
-    if (tabs && index >= 0) { tabs->setTabTitle(index, std::move(title)); }
+    if (tabs && index >= 0 && panel->caption.empty()) { tabs->setTabTitle(index, std::move(title)); }
+}
+
+void DockManager::setPanelCaption(const std::string &id, std::string caption) {
+    DockPanel *panel = findPanel(id);
+    if (!panel || panel->caption == caption) { return; }
+    panel->caption = std::move(caption);
+    std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
+    const int index = tabIndexOf(id);
+    if (tabs && index >= 0) { tabs->setTabTitle(index, panel->caption.empty() ? panel->title : panel->caption); }
 }
 
 /* ------------------------------ transient panels (editor tabs) ------------------------------ */
@@ -634,7 +649,9 @@ void DockManager::rebuild() {
         // (movable=false: the worlds) are reordered in it.
         if (auto dock = dockTabView(p.dock)) {
             const TabDrag drag = !p.closable ? TabDrag::None : p.movable ? TabDrag::Free : TabDrag::WithinBar;
-            const int idx = dock->addTab(p.title, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon));
+            const int idx = dock->addTab(
+                p.caption.empty() ? p.title : p.caption, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon)
+            );
             // The preview and the unsaved dot live in the specification, their look in the tab.
             if (p.preview) { dock->setTabPreview(idx, true); }
             if (p.dirty) { dock->setTabDirty(idx, true); }

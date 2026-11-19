@@ -7,14 +7,25 @@
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/Assets/StaticResources.hpp"
+#include "Panda/Prefabs/PrefabAsset.hpp"
+#include "Panda/Prefabs/PrefabComponent.hpp"
 
 #include <Rain/Rain.hpp>
 #include <entt/entt.hpp>
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace Panda {
 
 namespace {
+    // The prefabs a running world made instances of, held loaded while it runs: an asset nobody
+    // refers to is freed, and a game that spawns one prefab over and over would read it again
+    // for every instance.
+    struct InstantiatedPrefabs {
+        std::unordered_map<AssetId, AssetRef<PrefabAsset>> held;
+    };
+
     // Physics runs with a fixed step: the frame time is accumulated and spent in whole steps, the
     // remainder waits for the next frame. 60 steps per second with 4 substeps each: the solver
     // works as hard as it did with one step per frame at 60 frames per second.
@@ -93,6 +104,7 @@ void World::finishRunning() {
     PND_ASSERT(m_subtreeTracked.empty(), "ENTITIES ARE STILL TRACKED AFTER THE SYSTEMS HAVE STOPPED");
     m_isRunning = false;
     GameContext::s_runningWorld = nullptr;
+    eraseContext<InstantiatedPrefabs>();
 }
 
 void World::runStartHooks() {
@@ -168,10 +180,54 @@ void World::update(double deltaTime) {
     runPhase(FramePhase::PostUpdate, gameDelta);
 }
 
+UUID World::newEntityId() {
+    AssetHandler *assets = GameContext::getAssetHandler();
+    for (;;) {
+        const UUID id; // a random number
+        if (id != UUID(0) && !m_entityIdMap.contains(id) && !(assets != nullptr && assets->hasAsset(id))) { return id; }
+    }
+}
+
+bool World::changeEntityId(Entity entity, UUID id) {
+    PND_ASSERT(!m_isRunning, "THE ID OF AN ENTITY CHANGES IN A WORLD THAT DOES NOT RUN");
+    const UUID old = entity.getId();
+    if (id == old) { return true; }
+    if (id == UUID(0) || m_entityIdMap.contains(id)) { return false; }
+    m_registry.get<IdComponent>(entity.m_handle).id = id;
+    m_entityIdMap.erase(old);
+    m_entityIdMap[id] = entity;
+    // The two sides of its links.
+    const RelationshipComponent &relationship = m_registry.get<RelationshipComponent>(entity.m_handle);
+    if (const auto parent = m_entityIdMap.find(relationship.parent); parent != m_entityIdMap.end()) {
+        for (UUID &child : m_registry.get<RelationshipComponent>(parent->second.m_handle).children) {
+            if (child == old) { child = id; }
+        }
+    }
+    for (UUID childId : relationship.children) {
+        if (const auto child = m_entityIdMap.find(childId); child != m_entityIdMap.end()) {
+            m_registry.get<RelationshipComponent>(child->second.m_handle).parent = id;
+        }
+    }
+    // Whoever names it in a component.
+    const ComponentTypeRegistry &types = GameContext::getExtensions().components;
+    for (auto handle : m_registry.view<IdComponent>()) {
+        Entity other(handle, this);
+        for (const ComponentType &type : types.types()) {
+            if (type.entityRefs == nullptr || !other.hasComponent(type.typeId)) { continue; }
+            type.entityRefs(other, [old, id](UUID &reference) {
+                if (reference == old) { reference = id; }
+            });
+        }
+    }
+    bumpStructureVersion();
+    m_changed = true;
+    return true;
+}
+
 Entity World::instantiateEntity() {
     entt::entity entityHandle = m_registry.create();
     Entity entity = {entityHandle, this};
-    fillEntity(entity, {});
+    fillEntity(entity, newEntityId());
     m_entityIdMap[entity.getId()] = entity;
     bumpStructureVersion();
     m_changed = true;
@@ -452,29 +508,49 @@ World &World::operator=(World &other) {
     return *this;
 }
 
-Entity World::duplicateEntity(Entity entity) {
+Entity World::duplicateEntity(Entity entity, const EntityPlacement &placement) {
     if (!entity) { return {}; }
-    Entity duplicate = copySubtree(*this, entity);
-    // Next to the source: under the same parent, with the same transform.
-    Entity parent = entity.getParent();
-    if (parent) { attach(duplicate, parent); }
-    // A running world: the duplicate and everything under it appear with their components at
-    // once, past Entity::addComponent — the systems hear about them as about restored entities
-    // (bodies are created), once the whole subtree stands in the hierarchy.
-    if (m_isRunning) { restoreSubtree(duplicate); }
-    bumpStructureVersion();
-    m_changed = true;
+    std::vector<Entity> copies;
+    Entity duplicate = copySubtree(*this, entity, AssetId(0), UUID(0), copies);
+    // Next to the source — under the same parent, with the same transform — unless the
+    // placement says otherwise.
+    settle(duplicate, copies, placement.parent ? placement.parent : entity.getParent(), placement);
     return duplicate;
 }
 
 Entity World::importEntity(World &source, Entity entity) {
     if (!entity) { return {}; }
-    Entity imported = copySubtree(source, entity);
-    // A running world hears about the copy as about a restored entity, like a duplicate.
-    if (m_isRunning) { restoreSubtree(imported); }
+    std::vector<Entity> copies;
+    Entity imported = copySubtree(source, entity, AssetId(0), UUID(0), copies);
+    settle(imported, copies, Entity(), {});
+    return imported;
+}
+
+Entity World::instantiate(const AssetRef<PrefabAsset> &prefab, UUID rootId, const EntityPlacement &placement) {
+    PrefabAsset *asset = prefab.get();
+    Entity root = asset != nullptr ? asset->root() : Entity();
+    if (!root.isValid()) { return {}; }
+    if (m_isRunning) { context<InstantiatedPrefabs>().held.try_emplace(prefab.getId(), prefab); }
+    std::vector<Entity> copies;
+    Entity instance = copySubtree(asset->world(), root, prefab.getId(), rootId, copies);
+    settle(instance, copies, placement.parent, placement);
+    return instance;
+}
+
+void World::settle(Entity root, const std::vector<Entity> &copies, Entity parent, const EntityPlacement &placement) {
+    if (parent) { attach(root, parent); }
+    if (placement.position) { root.getTransform().setPosition(*placement.position); }
+    if (placement.rotation) { root.getTransform().setRotation(*placement.rotation); }
     bumpStructureVersion();
     m_changed = true;
-    return imported;
+    // A running world: the copies appear with their components at once, past
+    // Entity::addComponent. The systems hear about them as about restored entities (bodies are
+    // created) once the whole subtree stands in the hierarchy, then their scripts are created
+    // and started.
+    if (!m_isRunning) { return; }
+    restoreSubtree(root);
+    ScriptSystem::instantiate(*this, copies);
+    ScriptSystem::start(copies);
 }
 
 void World::restoreSubtree(Entity entity) {
@@ -484,29 +560,115 @@ void World::restoreSubtree(Entity entity) {
     }
 }
 
-Entity World::copySubtree(World &source, Entity entity) {
-    const entt::entity src = entity.m_handle;
-    const entt::entity dst = m_registry.create();
-    m_registry.emplace<IdComponent>(dst);
-    m_registry.emplace<RelationshipComponent>(dst);
-    Entity duplicate = {dst, this};
-    // Components by the type registry: Id and Relationship are special (a new id, and the
-    // hierarchy under the duplicate is built below).
-    for (const ComponentType &type : GameContext::getExtensions().components.types()) {
-        if (!type.duplicated) { continue; }
-        auto *from = source.m_registry.storage(type.typeId);
-        auto *to = m_registry.storage(type.typeId);
-        if (from == nullptr || to == nullptr || !from->contains(src)) { continue; }
-        to->push(dst, from->value(src));
+Entity World::copySubtree(World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies) {
+    const ComponentTypeRegistry &types = GameContext::getExtensions().components;
+    // What is copied: the entity and everything under it, a parent before its children; a
+    // deleted child is not copied.
+    std::vector<Entity> originals;
+    std::vector<Entity> pending{entity};
+    while (!pending.empty()) {
+        Entity original = pending.back();
+        pending.pop_back();
+        originals.push_back(original);
+        const std::vector<UUID> &children = original.getChildEntities();
+        for (auto child = children.rbegin(); child != children.rend(); ++child) {
+            if (source.isValid(*child)) { pending.push_back(source.getById(*child)); }
+        }
     }
-    m_entityIdMap[duplicate.getId()] = duplicate;
-    // The children of the source in their order, with their transforms as they are; a deleted
-    // child is not copied.
-    const std::vector<UUID> children = entity.getChildEntities();
-    for (UUID childId : children) {
-        if (source.isValid(childId)) { attach(copySubtree(source, source.getById(childId)), duplicate); }
+
+    // The ids of the copies. An entity of an instance of a prefab — of the one being made, or of
+    // one that is copied whole — has the id derived from the root of its instance; everything
+    // else gets a new one.
+    std::unordered_map<UUID, UUID> ids; // the id of an original → the id of its copy
+    std::unordered_set<UUID> given;
+    const auto taken = [&](UUID id) { return id == UUID(0) || m_entityIdMap.contains(id) || given.contains(id); };
+    const auto give = [&](Entity original, UUID id) {
+        ids[original.getId()] = id;
+        given.insert(id);
+    };
+    struct Part {
+        Entity original;
+        UUID instance; // the original root of its instance
+        UUID source;
+    };
+    std::vector<Part> parts;
+    if (prefab != AssetId(0)) {
+        give(entity, rootId != UUID(0) ? rootId : newEntityId());
+        for (Entity original : originals) {
+            if (!(original == entity)) { parts.push_back({original, entity.getId(), original.getId()}); }
+        }
+    } else {
+        std::unordered_set<UUID> copied;
+        for (Entity original : originals) { copied.insert(original.getId()); }
+        for (Entity original : originals) {
+            const PrefabComponent *link = original.hasComponent<PrefabComponent>() ? &original.getComponent<PrefabComponent>() : nullptr;
+            // A part whose root is copied too stays a part of the copy of that instance.
+            if (link != nullptr && link->instance != original.getId() && copied.contains(link->instance)) {
+                parts.push_back({original, link->instance, link->source});
+            } else {
+                give(original, newEntityId());
+            }
+        }
     }
-    return duplicate;
+    // In the order of the ids, so that the outcome depends on them alone (the reader of a world
+    // file derives the same ids for the same instance).
+    std::sort(parts.begin(), parts.end(), [](const Part &l, const Part &r) {
+        return l.instance != r.instance ? l.instance < r.instance : l.source < r.source;
+    });
+    for (const Part &part : parts) { give(part.original, freeDerivedEntityId(ids.at(part.instance), part.source, taken)); }
+
+    // The copies: the components by the type registry. Id and Relationship are special (a new
+    // id, and the hierarchy under the copy is built below).
+    copies.reserve(originals.size());
+    for (Entity original : originals) {
+        const entt::entity dst = m_registry.create();
+        m_registry.emplace<IdComponent>(dst, ids.at(original.getId()));
+        m_registry.emplace<RelationshipComponent>(dst);
+        for (const ComponentType &type : types.types()) {
+            if (!type.duplicated) { continue; }
+            auto *from = source.m_registry.storage(type.typeId);
+            auto *to = m_registry.storage(type.typeId);
+            if (from == nullptr || to == nullptr || !from->contains(original.m_handle)) { continue; }
+            to->push(dst, from->value(original.m_handle));
+        }
+        Entity copy = {dst, this};
+        m_entityIdMap[copy.getId()] = copy;
+        copies.push_back(copy);
+    }
+    // The hierarchy under the root, the children in the order of the source, with their
+    // transforms as they are.
+    for (size_t i = 1; i < originals.size(); i++) {
+        attach(copies[i], getById(ids.at(originals[i].getParent().getId())));
+    }
+    for (size_t i = 0; i < originals.size(); i++) {
+        Entity original = originals[i];
+        Entity copy = copies[i];
+        // Where the copy came from. An instance of a prefab: every copy is a part of it, and the
+        // root of an instance nested in the prefab keeps the prefab it is of. A plain copy: a
+        // part copied without the root of its instance is a part of nothing.
+        if (prefab != AssetId(0)) {
+            const AssetId nested = original.hasComponent<PrefabComponent>() ? original.getComponent<PrefabComponent>().prefab : AssetId(0);
+            PrefabComponent &link = copy.hasComponent<PrefabComponent>() ? copy.getComponent<PrefabComponent>()
+                                                                        : m_registry.emplace<PrefabComponent>(copy.m_handle);
+            link.instance = entity.getId(); // the id of the original root: brought to the copy below, as any reference
+            link.source = original.getId();
+            link.prefab = i == 0 ? prefab : nested;
+        } else if (copy.hasComponent<PrefabComponent>()) {
+            const PrefabComponent &link = copy.getComponent<PrefabComponent>();
+            if (!ids.contains(link.instance)) { m_registry.remove<PrefabComponent>(copy.m_handle); }
+        }
+        // A reference between two copied entities names the copies.
+        for (const ComponentType &type : types.types()) {
+            if (type.entityRefs == nullptr || !copy.hasComponent(type.typeId)) { continue; }
+            type.entityRefs(copy, [&ids](UUID &reference) {
+                const auto mapped = ids.find(reference);
+                if (mapped != ids.end()) { reference = mapped->second; }
+            });
+        }
+        // The script instances of the original are its own: the copy gets none until it runs.
+        for (ExternalScript &script : copy.getComponent<ScriptListComponent>().scripts) { script.unbind(); }
+    }
+    return copies.front();
 }
 
 bool World::isValidEntt(entt::entity handle) {

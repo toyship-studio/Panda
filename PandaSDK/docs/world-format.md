@@ -78,6 +78,8 @@ flag automatically, the editor asks and sets it on each of them.
 Invariants:
 - **`id` is a random uint32**, unique within the file, not 0. For a new entity generate a
   random number and check that it is unique in the file. Do not reuse the ids of deleted entities.
+  A file that gives one id to two entities, or none to one, is still read — the entity gets an
+  id of its own, what names the id means the first one — and the log says which entity to fix.
 - **`rotation` is a quaternion** (x, y, z, w), not Euler angles. Identity = (0,0,0,1).
 - `relationshipComponent`: `parent: 0` is a root; `children` lists the ids of the children, and
   the children's `parent` points to the parent — **both sides are kept consistent by hand**.
@@ -157,6 +159,92 @@ engine cannot read — a field of another type or shape than the format has: an 
 format has an array, as the `gravity` `[x, y, z]` of a particle emitter — leaves the entity
 without the component, and the log says so (`Component "…": its value is not read`).
 
+## Prefabs and instances
+
+A prefab ([Prefabs](prefabs.md)) is a file `*.prefab` under `Assets`: an object with the
+`entities` of a world file and nothing else — no settings sections — whose entities form one
+tree. The entity with `"parent": 0` is the root of the prefab; a file has exactly one. Everything
+an entity of a world may be, an entity of a prefab may be.
+
+A world — and a prefab — places a prefab by an entry in its `entities` that names it:
+
+```json
+{
+    "id": 4100100001,
+    "prefab": 3100002001,
+    "relationshipComponent": { "parent": 0, "children": [] },
+    "tagComponent": { "tag": "Red Lamp" },
+    "transformComponent": { "position": {"x": 3, "y": 0, "z": 1}, "rotation": {"x": 0, "y": 0, "z": 0, "w": 1} },
+    "overrides": [
+        { "entity": 78, "pointLightComponent": { "color": {"x": 1, "y": 0.1, "z": 0.1, "w": 1}, "intensity": 20 } },
+        { "entity": [90, 12], "scriptListComponent": { "scripts": { "Wheel": { "scriptFields": { "grip": { "value": 0.8 } } } } } },
+        { "entity": 79, "removed": true },
+        { "entity": 80, "parent": 4100100005 }
+    ]
+}
+```
+
+- `id` — the id of the root entity of the instance, like the id of any entity of the file.
+- `prefab` — the id of the prefab asset (the `id` of its `.pmeta`).
+- `relationshipComponent` — where the instance stands in the hierarchy of the file: its `parent`,
+  and in `children` the entities of the file that stand under its root (an entity added to the
+  instance). The entities of the prefab are not listed anywhere.
+- **The other keys are what the root of the instance differs in from the root of the prefab**,
+  written as the same component objects, with only what differs in them. `overrides` says the
+  same for the entities under the root: `entity` is the id of the entity **in the prefab file**
+  — for an entity of a prefab nested in that prefab, the ids on the way down: the id of the
+  nested instance in the prefab file, then the id in its own prefab.
+- What "differs" is, key by key:
+  - a key replaces the value of the prefab, a key the prefab does not have adds it — a whole
+    component under its key adds the component —, and `null` removes it
+    (`"pointLightComponent": null`: this instance has no light);
+  - a vector, a quaternion or a color (an object of `x`, `y`, `z`, `w`) is one value: written
+    whole;
+  - a list of things that have different `name`s — the `scripts` of an entity, the
+    `scriptFields` of a script — is written as an object by name, so one field of one script
+    is `{"scripts": {"Wheel": {"scriptFields": {"grip": {"value": 0.8}}}}}`; any other list is
+    one value;
+- `"removed": true` — the instance has no such entity, nor what stands under it.
+  `"parent": <id>` — the entity stands under another entity of the file than its prefab says
+  (an entity of the file or of an instance, by its id in the world).
+- What the root is called and where it stands are the instance's own: write its name
+  (`tagComponent`), its `position` and its `rotation` always. They never follow the root of the
+  prefab — a prefab that renames its root does not rename its instances — and the editor does
+  not count them as a difference; the scale follows the prefab, unless the entry has one. (An
+  entry without them is read with those of the prefab; the editor writes them at the next save.)
+- An entry with nothing but `id`, `prefab`, `relationshipComponent`, the name and the place is
+  the prefab as it is. The editor writes only what differs — it compares the instance with the prefab at
+  every save — so a value set back to what the prefab has leaves the file.
+
+**The ids of the entities of an instance.** Only the root has an id in the file. Every other
+entity of the instance has the id **derived** from the id of the root and the id the entity has
+in the prefab — the same in the editor, in a cooked game and on every machine:
+
+```python
+def derived_id(instance, source):       # both are the uint32 ids
+    x = (instance << 32) | source
+    x ^= x >> 33; x = (x * 0xff51afd7ed558ccd) & 0xffffffffffffffff
+    x ^= x >> 33; x = (x * 0xc4ceb9fe1a85ec53) & 0xffffffffffffffff
+    x ^= x >> 33
+    return (x & 0xffffffff) or 1
+```
+
+For an entity of a nested prefab `source` is the id it has in the outer prefab — itself
+derived the same way from the id of the nested instance there. This number is what names an
+entity of an instance from outside: the `parent` of an entity added under it, an entity field
+of a script, the `connectedEntity` of a joint. The editor shows these ids nowhere special — a
+reference set in the editor is written for you; by hand, compute it. (A derived id that is
+taken — two random 32-bit numbers have met — is derived again from itself and 1, 2, …; the
+instances of a file are taken in the order of their ids.)
+
+**References inside a prefab.** A field that names another entity of the same prefab (a wheel
+that names its chassis) holds, in the prefab file, the id that entity has in the prefab file.
+Every instance gets it pointing at its own entity. The same in an override: an id of the prefab
+means the entity of this instance.
+
+An instance of a prefab the project does not have is kept as it is: the world shows one entity
+named "Missing Prefab" in its place, and the entry is written back unchanged.
+
 ## Scripts on an entity
 
 ```json
@@ -177,8 +265,10 @@ without the component, and the log says so (`Component "…": its value is not r
   do not compute them by hand.
 - `type`: 0 integer, 1 float, 2 entity, 3 texture, 4 material, 5 world, 6 font, 7 mesh, 8 asset
   (an asset of a kind a module brings: an audio clip — the manifest names the kind in `kind`).
-  `value` for entity — the id of an entity of this world; for texture/material/world/font/mesh/asset
-  — an asset id from the registry (see assets.md); for integer/float — a number.
+  `value` for entity — the id of an entity of this world, or the asset id of a **prefab** (what a
+  script makes copies of: `WorldAPI::instantiate`, scripting.md); for
+  texture/material/world/font/mesh/asset — an asset id from the registry (see assets.md); for
+  integer/float — a number.
 - A list field (`"list": true` in the manifest, a `std::vector` in the class) has an array in
   `value`, of values of its `type`: `{ "name": "levels", "fieldId": 37856845, "type": 5,
   "value": [3100002001, 3100002002] }`. An empty list is `[]`.

@@ -34,7 +34,10 @@ frame: for every runtime mesh, greyboxing primitive and
 primitive of an imported mesh its world transform (the hierarchy is walked here and nowhere
 else), its bounds and its resolved material. Every pass culls against its own frustum and
 submits from the list (`MeshList::submit`). The world systems of the modules (terrain, flora,
-particles) still submit for themselves in every pass.
+particles) still submit for themselves in every pass. What they draw many times — a tree of a
+layer, a particle that is a prefab — is an `InstancedModel`: the meshes of an imported model or
+of a prefab (the `MeshList` of its template), each at its place in the model, drawn with a
+stream of instance matrices per place (`context/prefabs.md`).
 
 **Blended surfaces** (a material with `alphaMode` 2). `MeshList::submit` draws the
 opaque meshes first and then every blended one — a runtime mesh, a primitive, a primitive of an

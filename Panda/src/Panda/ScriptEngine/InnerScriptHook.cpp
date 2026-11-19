@@ -8,6 +8,7 @@
 #include "Panda/Assets/FontAsset.hpp"
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Extensions/Extensions.hpp"
+#include "Panda/Prefabs/PrefabAsset.hpp"
 
 #include <Fern/Fern.hpp>
 #include <algorithm>
@@ -182,6 +183,45 @@ namespace InternalCalls {
         Entity entity = world->instantiateEntity();
         entity.setName(tag);
         return entity.getId();
+    }
+
+    Handle world_Instantiate(Handle original, Handle parentHandle, const float *position, const float *rotation) {
+        World *world = GameContext::getRunningWorld();
+        if (!world || !original) { return 0; }
+        EntityPlacement placement;
+        // A parent that does not exist is an error of the script (said once), not a root.
+        if (parentHandle) {
+            placement.parent = resolveScriptEntity(parentHandle);
+            if (!placement.parent.isValid()) { return 0; }
+        }
+        if (position) { placement.position = glm::vec3(position[0], position[1], position[2]); }
+        if (rotation) { placement.rotation = glm::quat(rotation[0], rotation[1], rotation[2], rotation[3]); }
+        // An entity of the world first: the ids of a world are its own, and an entity never gets
+        // the id of an asset (World::newEntityId).
+        Entity source = world->getById(original);
+        Entity created;
+        if (source.isValid()) {
+            created = world->duplicateEntity(source, placement);
+        } else if (AssetHandler *assets = GameContext::getAssetHandler(); assets != nullptr && assets->hasAsset(original)) {
+            created = world->instantiate(AssetRef<PrefabAsset>(AssetId(original)), UUID(0), placement);
+        }
+        if (!created.isValid()) {
+            static std::unordered_set<uint32_t> reported;
+            if (reported.insert(static_cast<uint32_t>(original)).second) {
+                LOG_ERROR(
+                    "A script asked for a copy of %u, which is neither an entity of the world nor a prefab.",
+                    static_cast<uint32_t>(original)
+                );
+                if (Foundation::EditorLogger::isInitialized()) {
+                    LOG_ERROR_EDITOR(
+                        "Script call: instantiate of %u, which is neither an entity of the world nor a prefab",
+                        static_cast<uint32_t>(original)
+                    );
+                }
+            }
+            return 0;
+        }
+        return created.getId();
     }
 
     void world_DestroyEntity(Handle id) {
@@ -930,6 +970,7 @@ namespace {
         s_hostApi.cameraComponent_GetFieldOfView = InternalCalls::cameraComponent_GetFieldOfView;
         s_hostApi.worldLighting_SetEnvironmentMap = InternalCalls::worldLighting_SetEnvironmentMap;
         s_hostApi.mesh_Read = InternalCalls::mesh_Read;
+        s_hostApi.world_Instantiate = InternalCalls::world_Instantiate;
         s_hostApi.console_Log = InternalCalls::console_Log;
         GameUI::bindHostApi(s_hostApi);
 

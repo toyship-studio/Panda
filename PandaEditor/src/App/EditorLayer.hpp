@@ -131,6 +131,10 @@ public:
     bool hasWorld() {
         return m_documents.activeWorld() != nullptr;
     }
+    // The document in front is a prefab: edited like a world, never played.
+    bool isEditingPrefab() {
+        return hasWorld() && m_documents.activeWorld()->isPrefab();
+    }
     // The world the frame is made of: the playing copy, the edited world, or — while no world is
     // open — the empty one.
     World *shownWorld() {
@@ -144,7 +148,7 @@ public:
     // Not while the game plays: it plays a copy of the active world, and that world stays.
     void activateWorld(WorldFile &world);
     void closeWorld(WorldFile &world); // drops it from memory; its tab has asked about the edits
-    void openWorldAsset(AssetId worldAsset); // a world file in a tab of its own (an open one is activated)
+    void openWorldAsset(AssetId worldAsset); // a world or a prefab file in a tab of its own (an open one is activated)
 
     // ---- The settings. The stores of the project and editor scopes; the world's is the context
     // ---- of the world being edited.
@@ -236,6 +240,7 @@ private:
     // entity tabs and the panels follow.
     void worldDidChange();
     std::string worldDisplayName(); // the name of the open world for the UI (the file / Untitled World); empty — none
+    void showDocumentName();        // the chrome is told which document is in front
     // A Build of the scripts succeeded: the editor loads the new library — at once, or when the
     // game stops (a playing game runs the code of the loaded one).
     void scriptsWereBuilt();

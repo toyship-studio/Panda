@@ -67,6 +67,16 @@ REGISTER_SCRIPT(MoveScript)
 - `WorldAPI::destroyEntity` may be called from any callback, for any entity, the script's own
   included: the entity is destroyed after the callbacks that are running now, and until then it
   is still in the world.
+- `WorldAPI::instantiate(original)` makes a copy of what an `EntityHandle` names, with everything
+  under it: a new instance of a **prefab** (a field of the type `EntityHandle` takes a prefab in
+  the inspector), or a duplicate of an entity of the world. With a parent and a place —
+  `instantiate(original, parent)`, `instantiate(original, position, rotation)`,
+  `instantiate(original, parent, position, rotation)` — the copy stands there before its
+  scripts start. The copy is whole when the call returns: its bodies are in the simulation, its
+  scripts are created with the values of their fields and have had their `start`, and what its
+  entities name of each other (a script field, a joint) are the entities of the copy. An
+  invalid handle comes back when the original is neither a prefab nor an entity. See
+  [Prefabs](prefabs.md).
 - A transform set from a script is a teleport: the body stops and nothing draws the way from the
   old place. The bodies of the entities under it are teleported with it: a car whose wheels are
   children of the chassis is moved by moving the chassis. `CharacterMoverAPI::move` from
@@ -129,7 +139,10 @@ the code would name nothing it can see. So:
   }
   ```
 
-- an `EntityHandle` is the id of an entity and may be made from one: entities are not cooked.
+- an `EntityHandle` is the id of an entity and may be made from one: entities are not cooked. A
+  prefab is an asset, and a handle that names one comes from a field like any asset: the cook
+  packs the prefabs the fields of the game name, and a prefab named by a number in the code is
+  not in the game.
 
 A handle a call returns — `SpriteRendererComponentAPI::getTexture`, a mesh or a texture the
 script created with `AssetManagerAPI` — is used like the handle of a field.

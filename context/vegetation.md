@@ -3,7 +3,8 @@
 The vegetation surface of the engine: the material templates `veg_crown` and `veg_grass` (with
 their instanced variants), the vertex and texture contract they expect from a tree or grass glTF,
 what an export has to look like for the importer and the terrain flora, and the impostor baker
-`FloraImposter` with its `flora_billboard` runtime. The engine knows nothing about how plants are
+`FloraImposter` with its `flora_billboard` runtime (it bakes an `InstancedModel`: an imported
+mesh, or the meshes of a prefab at their places). The engine knows nothing about how plants are
 authored: it consumes ordinary glTF. The consumers are the terrain flora (`context/terrain.md`)
 and the tree and grass exports of authoring tools, which build the engine as a subproject for
 their previews. Moving all of this out of the core into a vegetation module is an open item of

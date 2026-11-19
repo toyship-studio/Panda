@@ -111,6 +111,7 @@ AssetImportPipeline::AssetImportPipeline(AssetHandlerEditor &handler)
     m_registerByExtension.emplace(".gltf", &AssetImportPipeline::registerMeshAsset);
     m_registerByExtension.emplace(".world", &AssetImportPipeline::registerWorldAsset);
     m_registerByExtension.emplace(".postfx", &AssetImportPipeline::registerPostprocessingAsset);
+    m_registerByExtension.emplace(".prefab", &AssetImportPipeline::registerPrefabAsset);
 }
 
 bool AssetImportPipeline::supportsExtension(const path_t &extension) const {
@@ -260,6 +261,10 @@ void AssetImportPipeline::registerWorldAsset(const path_t &path) {
 
 void AssetImportPipeline::registerPostprocessingAsset(const path_t &path) {
     registerPlainAsset(path, AssetType::POSTPROCESSING);
+}
+
+void AssetImportPipeline::registerPrefabAsset(const path_t &path) {
+    registerPlainAsset(path, AssetType::PREFAB);
 }
 
 void AssetImportPipeline::registerPlainAsset(const path_t &path, AssetType type) {

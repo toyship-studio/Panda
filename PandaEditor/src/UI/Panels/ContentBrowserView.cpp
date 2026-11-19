@@ -305,7 +305,8 @@ void ContentBrowserView::addSubviews() {
         }
         const FileEntry *file = m_dataSource.fileAt(index);
         if (!file || !m_output) { return; }
-        if (file->assetId != 0 && assetTypeOf(file->assetId) == "world") {
+        // A world and a prefab are documents: each opens in a tab of its own.
+        if (file->assetId != 0 && (assetTypeOf(file->assetId) == "world" || assetTypeOf(file->assetId) == "prefab")) {
             m_output->contentDidRequestOpenWorld(file->assetId);
         }
     });
@@ -452,9 +453,9 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
             if (std::find(targets.begin(), targets.end(), file->assetId) == targets.end()) { targets = {file->assetId}; }
             const std::string name = file->name;
             const std::string typeOfClicked = assetTypeOf(file->assetId);
-            if (typeOfClicked == "world") { // make it current (same as a double click)
+            if (typeOfClicked == "world" || typeOfClicked == "prefab") { // make it current (same as a double click)
                 const Panda::AssetId worldId = file->assetId;
-                menu->addItem("Open World", [this, worldId] {
+                menu->addItem(typeOfClicked == "world" ? "Open World" : "Open Prefab", [this, worldId] {
                     if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
                 });
             }
@@ -467,10 +468,10 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
                     }, "Rename");
                 });
             }
-            if (assetTypeOf(file->assetId) == "mesh") { // mesh: an instance into the current world
+            if (typeOfClicked == "mesh" || typeOfClicked == "prefab") { // into the world on screen: entities of a model, an instance of a prefab
                 std::vector<Panda::AssetId> meshes;
                 for (Panda::AssetId targetId : targets) {
-                    if (assetTypeOf(targetId) == "mesh") { meshes.push_back(targetId); }
+                    if (assetTypeOf(targetId) == typeOfClicked) { meshes.push_back(targetId); }
                 }
                 menu->addItem(meshes.size() > 1 ? "Add to World (all)" : "Add to World", [this, meshes] {
                     if (m_output) { m_output->contentDidRequestAddToWorld(meshes); }

@@ -67,8 +67,13 @@ struct TreeLayer {
     uint32_t id = 0;
     std::string name = "Tree";
     bool enabled = true;
+    // What a tree of the layer is. A mesh — an imported model as a whole, standing on the bottom
+    // of its box. Or a prefab (it wins when both are named): every mesh the prefab draws, where
+    // it stands under the root, with the root on the ground — and the colliders of the prefab,
+    // which every tree of the layer gets in the physics of the terrain (TerrainPhysics).
     AssetRef<Asset> mesh;         // ImportedMeshAsset
-    AssetRef<Asset> meshMaterial; // override; empty = the slot layout of the mesh asset
+    AssetRef<Asset> meshMaterial; // override of a mesh; empty = the slot layout of the mesh asset
+    AssetRef<Asset> prefab;       // PrefabAsset
     // Beyond the tree range (FloraDistances::tree) the tree continues as a billboard with
     // a baked atlas up to the cap of the imposter zone; disabled — it disappears at the range.
     bool imposter = true;

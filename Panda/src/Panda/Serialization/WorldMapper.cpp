@@ -1,6 +1,7 @@
 #include "Panda/Serialization/WorldMapper.hpp"
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
+#include "Panda/Prefabs/PrefabComponent.hpp"
 #include "Panda/Serialization/ComponentDtos.hpp"
 #include "Panda/Serialization/SettingsMapper.hpp"
 
@@ -12,11 +13,84 @@ namespace Panda {
 
 namespace {
 
+    // An entity as the `entities` of a world file hold it: the id, then the components by the
+    // names of their types. Returns the number of foreign components a coder without opaque
+    // values left out.
+    size_t encodeEntity(Rain::Encoder &encoder, Entity entity, const ComponentTypeRegistry &types) {
+        size_t droppedForeign = 0;
+        encoder.encode("id", entity.getId());
+        for (const ComponentType &type : types.types()) {
+            if (!type.serialized || !entity.hasComponent(type.typeId)) { continue; }
+            type.encode(encoder, entity);
+        }
+        if (entity.hasComponent<ForeignComponents>()) {
+            const ForeignComponents &foreign = entity.getComponent<ForeignComponents>();
+            if (!encoder.supportsRawJson()) {
+                droppedForeign += foreign.items.size();
+            } else {
+                for (const ForeignValue &item : foreign.items) { encoder.encodeRawJson(item.name.c_str(), item.json); }
+            }
+        }
+        return droppedForeign;
+    }
+
+    // What the reading of entities has to say, once per component key.
+    struct EntityIssues {
+        std::set<std::string> foreignKept, foreignDropped, unread;
+
+        void report() const {
+            for (const std::string &name : foreignKept) {
+                LOG_WARN("Component \"%s\": no module provides it, kept as it is", name.c_str());
+            }
+            for (const std::string &name : foreignDropped) {
+                LOG_WARN("Component \"%s\": no module provides it, dropped", name.c_str());
+            }
+            for (const std::string &name : unread) {
+                LOG_WARN(
+                    "Component \"%s\": its value is not read — a field of another type or shape than the format has; "
+                    "the entity is left without the component",
+                    name.c_str()
+                );
+            }
+        }
+    };
+
+    // The components of an entity from the object the decoder stands in: every key but `id` is a
+    // component by the name of its type; a key without a type — a module that is not loaded — is
+    // kept as it is.
+    void decodeEntity(Rain::Decoder &decoder, Entity entity, const ComponentTypeRegistry &types, EntityIssues &issues) {
+        for (const std::string &name : decoder.getMemberKeys()) {
+            if (name == "id") { continue; }
+            if (const ComponentType *type = types.find(name)) {
+                if (type->decode != nullptr) {
+                    type->decode(decoder, entity);
+                    // A component its decode adds, and the entity is without it: the
+                    // value under the key is not what the format has there.
+                    if (!type->builtin && !entity.hasComponent(type->typeId)) { issues.unread.insert(name); }
+                }
+                continue;
+            }
+            // A key without a contribution — the module is not loaded: keep it as is.
+            std::string json;
+            if (!decoder.decodeRawJson(name.c_str(), json)) {
+                issues.foreignDropped.insert(name);
+                continue;
+            }
+            if (name != PREFAB_MISSING_KEY) { issues.foreignKept.insert(name); } // kept on purpose: nothing to tell
+            ForeignComponents &foreign = entity.hasComponent<ForeignComponents>()
+                                             ? entity.getComponent<ForeignComponents>()
+                                             : entity.addComponent<ForeignComponents>();
+            foreign.items.push_back({name, std::move(json)});
+        }
+    }
+
     // --- World document: encoded as a single value (Rain calls the static encode/decode).
 
     struct WorldDocument {
         World *world = nullptr;
         bool settings = true; // false — a fragment: the entities alone
+        // Not 0 — the entities of one tree, from this root down, and no others (a prefab).
+        UUID root = 0;
 
         static void encode(const char *key, Rain::Encoder *encoder, const WorldDocument &document) {
             World &world = *document.world;
@@ -29,14 +103,15 @@ namespace {
             // an entity, then everything under it. The order depends on the world alone — not on
             // how its entities happen to lie in memory — so saving a world twice writes the same
             // file, and an edit is a small diff.
-            std::vector<UUID> pending = world.orderedChildren(UUID(0));
+            const bool whole = document.root == UUID(0);
+            std::vector<UUID> pending = whole ? world.orderedChildren(UUID(0)) : std::vector<UUID>{document.root};
             std::reverse(pending.begin(), pending.end()); // a stack: the first sibling on top
             std::set<UUID> written;
             // An entity the walk from the roots does not reach (a parent that lists it no more)
             // is not lost: it is written after the tree, by id.
             std::vector<UUID> unreached;
             for (auto entityHandle : world.getAllEntitiesWith<IdComponent>()) {
-                if (world.isValidEntt(entityHandle)) { unreached.push_back(world.entity(entityHandle).getId()); }
+                if (whole && world.isValidEntt(entityHandle)) { unreached.push_back(world.entity(entityHandle).getId()); }
             }
             std::sort(unreached.begin(), unreached.end(), [](UUID l, UUID r) { return r < l; }); // popped from the back: ascending
             while (!pending.empty() || !unreached.empty()) {
@@ -52,21 +127,7 @@ namespace {
                 std::vector<UUID> children = world.orderedChildren(entity.getId());
                 pending.insert(pending.end(), children.rbegin(), children.rend());
                 encoder->beginObject(nullptr);
-                encoder->encode("id", entity.getId());
-                for (const ComponentType &type : types.types()) {
-                    if (!type.serialized || !entity.hasComponent(type.typeId)) { continue; }
-                    type.encode(*encoder, entity);
-                }
-                if (entity.hasComponent<ForeignComponents>()) {
-                    const ForeignComponents &foreign = entity.getComponent<ForeignComponents>();
-                    if (!encoder->supportsRawJson()) {
-                        droppedForeign += foreign.items.size();
-                    } else {
-                        for (const ForeignValue &item : foreign.items) {
-                            encoder->encodeRawJson(item.name.c_str(), item.json);
-                        }
-                    }
-                }
+                droppedForeign += encodeEntity(*encoder, entity, types);
                 encoder->endObject();
             }
             encoder->endArray();
@@ -86,35 +147,28 @@ namespace {
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             world.clear();
             SettingsMapper::decode(SettingsScope::World, world.context(), *decoder, {"entities"});
-            std::set<std::string> foreignKept, foreignDropped, unread; // one warning per component key
+            EntityIssues issues;
             if (decoder->beginArray("entities")) {
                 while (decoder->arrayHasElement()) {
                     if (!decoder->beginObject(nullptr)) { break; }
                     UUID id = 0;
                     decoder->decode("id", id);
-                    Entity entity = world.instantiateEntity(id);
-                    for (const std::string &name : decoder->getMemberKeys()) {
-                        if (name == "id") { continue; }
-                        if (const ComponentType *type = types.find(name)) {
-                            if (type->decode != nullptr) {
-                                type->decode(*decoder, entity);
-                                // A component its decode adds, and the entity is without it: the
-                                // value under the key is not what the format has there.
-                                if (!type->builtin && !entity.hasComponent(type->typeId)) { unread.insert(name); }
-                            }
-                            continue;
-                        }
-                        // A key without a contribution — the module is not loaded: keep it as is.
-                        std::string json;
-                        if (!decoder->decodeRawJson(name.c_str(), json)) {
-                            foreignDropped.insert(name);
-                            continue;
-                        }
-                        foreignKept.insert(name);
-                        ForeignComponents &foreign = entity.hasComponent<ForeignComponents>()
-                                                         ? entity.getComponent<ForeignComponents>()
-                                                         : entity.addComponent<ForeignComponents>();
-                        foreign.items.push_back({name, std::move(json)});
+                    // An id is one entity's: a file written by hand that gives one to two, or
+                    // none at all, is read with a new id for the entity — what names the id
+                    // means the first one — and says so.
+                    const bool taken = id != UUID(0) && static_cast<entt::entity>(world.getById(id)) != entt::null;
+                    Entity entity = id == UUID(0) || taken ? world.instantiateEntity() : world.instantiateEntity(id);
+                    decodeEntity(*decoder, entity, types, issues);
+                    if (taken) {
+                        LOG_ERROR_EDITOR(
+                            "World: two entities have the id %u; \"%s\" got the id %u instead — give it an id of its own in the file.",
+                            static_cast<uint32_t>(id), entity.getName().c_str(), static_cast<uint32_t>(entity.getId())
+                        );
+                    } else if (id == UUID(0)) {
+                        LOG_ERROR_EDITOR(
+                            "World: the entity \"%s\" has no id; it got the id %u — write it into the file.", entity.getName().c_str(),
+                            static_cast<uint32_t>(entity.getId())
+                        );
                     }
                     decoder->endObject();
                     decoder->arrayNext();
@@ -122,25 +176,34 @@ namespace {
                 decoder->endArray();
             }
             decoder->endObject();
-            for (const std::string &name : foreignKept) {
-                LOG_WARN("Component \"%s\": no module provides it, kept as it is", name.c_str());
-            }
-            for (const std::string &name : foreignDropped) {
-                LOG_WARN("Component \"%s\": no module provides it, dropped", name.c_str());
-            }
-            for (const std::string &name : unread) {
-                LOG_WARN(
-                    "Component \"%s\": its value is not read — a field of another type or shape than the format has; "
-                    "the entity is left without the component",
-                    name.c_str()
-                );
-            }
+            issues.report();
             // A file written before the encoder dropped the tombstones of undoable deletions lists
             // children that do not exist; the sort and the hierarchy need every link to resolve.
             if (const size_t repaired = world.repairHierarchy()) {
                 LOG_WARN_EDITOR("World: %zu broken hierarchy link(s) repaired; save the world to keep the repair", repaired);
             }
             world.setChanged(false);
+            return true;
+        }
+    };
+
+    // --- One entity: the object of its entry in the `entities` of a world file.
+
+    struct EntityDocument {
+        Entity entity;
+
+        static void encode(const char *key, Rain::Encoder *encoder, const EntityDocument &document) {
+            encoder->beginObject(key);
+            encodeEntity(*encoder, document.entity, GameContext::getExtensions().components);
+            encoder->endObject();
+        }
+
+        static bool decode(const char *key, Rain::Decoder *decoder, EntityDocument &document) {
+            if (!decoder->beginObject(key)) { return false; }
+            EntityIssues issues;
+            decodeEntity(*decoder, document.entity, GameContext::getExtensions().components, issues);
+            decoder->endObject();
+            issues.report();
             return true;
         }
     };
@@ -190,6 +253,26 @@ bool WorldMapper::loadComponent(Entity entity, const ComponentType &type, Rain::
     document.entity = entity;
     document.type = &type;
     return decoder.decode(stream, document);
+}
+
+void WorldMapper::saveEntity(Entity entity, Rain::Encoder &encoder, std::ostream &stream) {
+    EntityDocument document;
+    document.entity = entity;
+    encoder.encode(stream, document);
+}
+
+bool WorldMapper::loadEntity(Entity entity, Rain::Decoder &decoder, std::istream &stream) {
+    EntityDocument document;
+    document.entity = entity;
+    return decoder.decode(stream, document);
+}
+
+void WorldMapper::saveTree(World &world, Entity root, Rain::Encoder &encoder, std::ostream &stream) {
+    WorldDocument document;
+    document.world = &world;
+    document.settings = false;
+    document.root = root.getId();
+    encoder.encode(stream, document);
 }
 
 void WorldMapper::save(const World &world, Rain::Encoder &encoder, std::ostream &stream) {

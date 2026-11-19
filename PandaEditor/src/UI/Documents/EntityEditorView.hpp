@@ -10,6 +10,7 @@
 #include <Panda/Assets/Base/Asset.hpp> // Panda::AssetId
 #include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Entity.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 #include <Panda/ScriptEngine/ExternalScript.hpp> // Panda::ExternalScript, ScriptFieldValue
 
 #include <cstdint>
@@ -49,6 +50,16 @@ public:
         int scriptIndex, const std::string &fieldName, Panda::ScriptFieldValue value, bool structural
     ) = 0;
     virtual void entityDidClickBackground() = 0; // click on the background → clear selection
+    // Prefabs (context/prefabs.md), for the primary target — a part of an instance. What it
+    // differs in from its prefab is taken back (Revert) or written into the prefab (Apply;
+    // forced — taken out of the other instances too). `whole` — the whole instance the entity is
+    // a part of; else the entity itself, a component of it (the name of its type), or a place
+    // of that component (Prefabs::Scope::field).
+    virtual void entityDidRevertPrefab(bool whole, const std::string &component, const std::string &field) = 0;
+    virtual void entityDidApplyPrefab(bool whole, const std::string &component, const std::string &field, bool forced) = 0;
+    virtual void entityDidRestoreRemoved(Panda::UUID source) = 0; // an entity of the prefab the instance removed
+    virtual void entityDidOpenPrefab() = 0;                       // the prefab, in its tab
+    virtual void entityDidSelectPrefabRoot() = 0;                 // the root of the instance
 };
 
 // VIEW: the form of an entity tab (the document model: an entity tab is a view of the world
@@ -70,6 +81,8 @@ public:
     void refreshTransform();
     // Classes for PickScript — the provider is called LIVE when the picker opens.
     void setScriptClassProvider(std::function<std::vector<std::string>()> provider);
+    // The frame: what an instance differs in from its prefab follows the edits of the world.
+    void update(double deltaTime) override;
 
 private:
     enum class Mode { Empty, Entity };
@@ -99,6 +112,19 @@ private:
     void addComponentHeaderMenu(
         PandaUI::CollapsibleSection &section, std::function<void()> onRemove, const Panda::ComponentType *type = nullptr
     );
+    // ---- Prefabs: what the primary target differs in from its prefab, shown.
+    // The strip under the name: the prefab, how much differs, Revert and Apply, and what no row
+    // of the form can show (a component or an entity the instance took off).
+    void rebuildPrefabStrip();
+    // The marks of the rows and of the sections, from m_difference; the strip with them.
+    void showDifference();
+    // The rows of a section whose fields differ are marked; a field that has no row of its name
+    // is named in a line of the section.
+    void markSection(PandaUI::CollapsibleSection &section, const std::string &component, const std::string &prefix);
+    void showDifferenceMenu(PandaUI::Point at, const std::string &component, const std::string &field);
+    // Runs at the start of the next tick, if the form is still there: what a button of the form
+    // asks for rebuilds the form, and a control is not destroyed from its own callback.
+    void later(std::function<void()> action);
     void openScriptPicker(PandaUI::View *anchor, std::function<void(const std::string &)> onPick);
     void openAddComponent(); // the picker of the components the targets can get
 
@@ -119,6 +145,20 @@ private:
     std::shared_ptr<PandaUI::PropertyRow> m_positionRow;
     std::shared_ptr<PandaUI::PropertyRow> m_rotationRow;
     std::shared_ptr<PandaUI::PropertyRow> m_scaleRow;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // the lifetime token of `later`
+    std::shared_ptr<PandaUI::Panel> m_prefabStrip; // under the name; collapsed for a plain entity
+    Panda::Prefabs::Difference m_difference;       // of the primary target
+    uint64_t m_differenceRevision = 0;             // the revision of the world's history it was read at
+    // The sections that show a component: its type, the path of its place in the difference
+    // (a script: `scripts/<Class>/scriptFields`), the section, and the line that names what
+    // differs without a row.
+    struct MarkedSection {
+        std::string component;
+        std::string prefix;
+        PandaUI::CollapsibleSection *section = nullptr;
+        std::shared_ptr<PandaUI::Label> note;
+    };
+    std::vector<MarkedSection> m_markedSections;
     std::shared_ptr<PandaUI::Panel> m_componentsContainer;
     std::shared_ptr<PandaUI::Button> m_addComponent;
     // What Add Component offers the current targets: a row of its picker and what choosing it does.

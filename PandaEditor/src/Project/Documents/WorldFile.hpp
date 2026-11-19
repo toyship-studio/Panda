@@ -14,6 +14,10 @@ class FileDocuments;
 
 // A world and its `.world` file. The editor keeps any number of worlds open, a tab each, one of
 // them active (FileDocuments). The document owns the world: closing the document drops it.
+//
+// A prefab is a document of the same kind (context/prefabs.md): its `.prefab` file holds one
+// tree of entities, and the document holds them in a world of their own — edited like any
+// world, never played. What tells the two apart is the file (isPrefab).
 class WorldFile final : public FileDocument {
 public:
     WorldFile(FileDocuments &owner, uint32_t id);
@@ -27,6 +31,16 @@ public:
     }
     // The file as a tab shows it; "Untitled World" for a world without one.
     std::string name() const;
+    // The document of a prefab: the world holds the entities of its file, under one root.
+    static bool isPrefabFile(const path_t &path) {
+        return path.extension() == ".prefab";
+    }
+    bool isPrefab() const {
+        return isPrefabFile(m_path);
+    }
+    // The root of the prefab: the entity its file starts with. Everything of the prefab stands
+    // under it, and it is what an instance is made of. Invalid — the document is a world.
+    Entity prefabRoot();
 
     std::string title() const override;
     path_t path() const override {
@@ -65,6 +79,7 @@ private:
     World m_world;
     path_t m_path;
     DiskStamp m_stamp;
+    UUID m_prefabRoot = 0; // of a prefab: its root entity
     EditorCameraSettings m_camera;
     bool m_hasCamera = false; // false — the world was not shown yet: the camera stays where it is
 };

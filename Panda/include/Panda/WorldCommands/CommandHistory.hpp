@@ -5,6 +5,7 @@
 #include <Foundation/Foundation.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <type_traits>
 #include <utility>
@@ -35,6 +36,12 @@ public:
         add(Foundation::makeShared<Command>(std::move(command)), false);
     }
 
+    // Grows with every step made, undone or redone: who shows something derived from the document
+    // (what an instance of a prefab differs in) looks again when it is another number.
+    uint64_t revision() const {
+        return m_revision;
+    }
+
     bool canUndo() const {
         return !m_undoStack.empty();
     }
@@ -43,6 +50,7 @@ public:
         if (!canUndo()) { return; }
         auto command = m_undoStack.back();
         m_undoStack.pop_back();
+        m_revision++;
         if (!command->undo()) {
             failed();
             return;
@@ -60,6 +68,7 @@ public:
         if (!canRedo()) { return; }
         auto command = m_redoStack.back();
         m_redoStack.pop_back();
+        m_revision++;
         if (!command->execute()) {
             failed();
             return;
@@ -71,12 +80,14 @@ public:
     void clear() {
         m_undoStack.clear();
         m_redoStack.clear();
+        m_revision++;
     }
 
 private:
     static constexpr size_t MAX_STEPS = 50;
 
     void add(Foundation::Shared<WorldCommand> command, bool run) {
+        m_revision++;
         WorldCommand *last = m_undoStack.empty() ? nullptr : m_undoStack.back().get();
         if (last && last->canMerge(*command)) {
             last->merge(*command);
@@ -100,6 +111,7 @@ private:
 
     std::deque<Foundation::Shared<WorldCommand>> m_undoStack;
     std::deque<Foundation::Shared<WorldCommand>> m_redoStack;
+    uint64_t m_revision = 0;
 };
 
 } // namespace Panda

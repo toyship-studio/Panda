@@ -1,7 +1,10 @@
 #pragma once
 
+#include <vector>
+
 namespace Panda {
 
+class Entity;
 class World;
 
 // World scripts — functions over the ScriptListComponent view: reconciling classes and fields with
@@ -16,6 +19,10 @@ namespace ScriptSystem {
     void syncWithManifest(World &world);
     // Play start: script instances, id binding and passing field values to the DLL.
     void instantiate(World &world);
+    // Entities that appeared in a running world (a duplicate, an instance of a prefab): their
+    // script instances with the values of the fields, then `start` of each in class order.
+    void instantiate(World &world, const std::vector<Entity> &entities);
+    void start(const std::vector<Entity> &entities);
     // Play stop: background tasks are stopped before instance teardown (workers hold references).
     void shutdown(World &world);
     void start(World &world);

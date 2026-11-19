@@ -421,8 +421,13 @@ void EditorController::projectWillClose() {
     selectionChanged();
 }
 
-void EditorController::setWorldDisplayName(const std::string &name) {
-    if (m_hierarchyView) { m_hierarchyView->setRootTitle(name); }
+void EditorController::setWorldDisplayName(const std::string &name, const std::string &file, Panda::UUID prefabRoot) {
+    if (m_hierarchyView) {
+        m_hierarchyView->setRootTitle(name);
+        m_hierarchyView->setRootEntity(prefabRoot);
+    }
+    if (m_dockManager) { m_dockManager->setPanelCaption("hierarchy", file); }
+    if (m_viewportView) { m_viewportView->setWorldSettingsAvailable(prefabRoot == Panda::UUID(0)); }
 }
 
 void EditorController::thumbnailDidBecomeReady(Panda::AssetId assetId) {
@@ -467,12 +472,13 @@ void EditorController::selectionChanged() {
                                  : std::to_string(entities.size()) + " of " + count + " selected"
     );
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
-    // A selected world is shown by its own tab (WorldTabs::open), not by a tab of asset parameters.
+    // A selected world or prefab is shown by its own tab (WorldTabs::open), not by a tab of asset
+    // parameters.
     std::vector<Panda::AssetId> shownAssets;
     if (entities.empty()) {
         auto *handler = Panda::AssetHandlerEditor::current();
         for (Panda::AssetId asset : selection().assets()) {
-            if (handler == nullptr || handler->getInfo(asset).type != Panda::AssetType::WORLD) { shownAssets.push_back(asset); }
+            if (handler == nullptr || handler->documentFilePath(asset).empty()) { shownAssets.push_back(asset); }
         }
     }
     // The tabs follow when the gesture that selects has ended: a tab opening in a dock next to
@@ -502,6 +508,14 @@ void EditorController::transformShown() {
 
 PandaUI::Context *EditorController::context() const {
     return m_root ? m_root->getContext() : nullptr;
+}
+
+Panda::path_t EditorController::contentDirectory() {
+    return m_contentView ? m_contentView->currentDirectory() : Panda::path_t();
+}
+
+void EditorController::openDocumentAsset(Panda::AssetId asset) {
+    if (m_worldTabs) { m_worldTabs->open(asset, /*preview*/ false); }
 }
 
 PandaUI::Rect EditorController::hierarchyFrame() const {
@@ -543,7 +557,8 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     const bool canRedo = stack && stack->canRedo();
     // Play is there whenever the world is edited: without the scripts of the project it explains
     // what is missing (toolbarDidTapPlay) instead of being a dead button.
-    const bool canPlay = isEditMode && m_panelsWorld != nullptr; // nothing to play without a world
+    // Nothing to play without a world, and a prefab is not one.
+    const bool canPlay = isEditMode && m_panelsWorld != nullptr && !m_app.isEditingPrefab();
     const bool canStop = !isEditMode;                  // Stop: only while the world is running
 
     if (canUndo != m_tbCanUndo) { m_tbCanUndo = canUndo; m_toolbarView->setCanUndo(canUndo); }
@@ -751,6 +766,13 @@ void EditorController::viewportDidDropAssets(const std::vector<std::uint32_t> &a
         ids.reserve(assetIds.size());
         for (std::uint32_t id : assetIds) { ids.push_back(Panda::AssetId(id)); }
         m_entityActions->instantiateMeshes(ids);
+        return;
+    }
+    // A prefab dropped onto the viewport becomes an instance in the world on screen.
+    if (kind == "prefab") {
+        std::vector<Panda::AssetId> ids;
+        for (std::uint32_t id : assetIds) { ids.push_back(Panda::AssetId(id)); }
+        m_entityActions->instantiatePrefabs(ids);
         return;
     }
     // A world dropped onto the viewport opens, as a double click on it in the Content Browser does.
@@ -1105,8 +1127,13 @@ void EditorController::registerCommands() {
     entityCommand("entity.selectAll", "Select All", [this] {
         if (!m_panelsWorld) { return false; }
         std::vector<Panda::UUID> ids;
+        // Of a prefab — the entities of its tree: what else its world holds is not a part of it.
+        const Panda::Entity root = m_entityActions->prefabRoot();
         for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {
-            if (m_panelsWorld->isValidEntt(handle)) { ids.push_back(m_panelsWorld->entity(handle).getId()); }
+            Panda::Entity entity = m_panelsWorld->entity(handle);
+            if (!m_panelsWorld->isValidEntt(handle)) { continue; }
+            if (root.isValid() && !(entity == root) && !Panda::Entity(root).isAncestorOf(entity)) { continue; }
+            ids.push_back(entity.getId());
         }
         if (ids.empty()) { return false; }
         selectEntities(ids);
@@ -1115,6 +1142,57 @@ void EditorController::registerCommands() {
     entityCommand("entity.deselect", "Deselect All", [this] {
         if (!selection().hasEntities()) { return false; }
         selectEntities({});
+        return true;
+    });
+
+    // Prefabs (context/prefabs.md): what the menus of the Hierarchy and of the entity form do,
+    // by name — for the palette, a key and an agent. They act on the selection: the first
+    // selected entity, and for Revert and Apply the whole instance it is a part of.
+    command("prefab.create", "Prefab", "Create Prefab from Selection", [this] {
+        Panda::Entity entity = m_entityActions->primaryTarget();
+        if (!entity.isValid()) { return false; }
+        m_entityActions->createPrefab(entity.getId());
+        return true;
+    });
+    command("prefab.unpack", "Prefab", "Unpack Prefab", [this] {
+        const std::vector<Panda::UUID> ids = m_entityActions->targetIds();
+        if (ids.empty()) { return false; }
+        m_entityActions->unpackPrefabs(ids);
+        return true;
+    });
+    command("prefab.open", "Prefab", "Open Prefab of Selection", [this] {
+        Panda::Entity entity = m_entityActions->primaryTarget();
+        if (!Panda::Prefabs::instanceRoot(entity).isValid()) { return false; }
+        m_entityActions->openPrefabOf(entity.getId());
+        return true;
+    });
+    command("prefab.revert", "Prefab", "Revert Instance to Prefab", [this] {
+        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+        if (!root.isValid()) { return false; }
+        m_entityActions->revertPrefab(root.getId(), {});
+        return true;
+    });
+    command("prefab.apply", "Prefab", "Apply Instance to Prefab", [this] {
+        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+        if (!root.isValid()) { return false; }
+        m_entityActions->applyPrefab(root.getId(), {}, /*forced*/ false);
+        return true;
+    });
+    command("prefab.applyForced", "Prefab", "Apply Instance to Prefab, Forced", [this] {
+        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+        if (!root.isValid()) { return false; }
+        m_entityActions->applyPrefab(root.getId(), {}, /*forced*/ true);
+        return true;
+    });
+    // The prefabs selected in the Content Browser, as instances in the world on screen.
+    command("prefab.addToWorld", "Prefab", "Add Selected Prefabs to World", [this] {
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+        std::vector<Panda::AssetId> prefabs;
+        for (Panda::AssetId asset : selection().assets()) {
+            if (handler != nullptr && handler->getInfo(asset).type == Panda::AssetType::PREFAB) { prefabs.push_back(asset); }
+        }
+        if (prefabs.empty() || m_panelsWorld == nullptr) { return false; }
+        m_entityActions->instantiatePrefabs(prefabs);
         return true;
     });
 
@@ -1247,6 +1325,19 @@ bool EditorController::maximizeFocusedDock() {
 // the registry as a tombstone until its command leaves the history: it is not counted.
 int EditorController::liveEntityCount() const {
     int total = 0;
+    // A prefab is the tree under its root: what else its world holds is not a part of it.
+    if (Panda::Entity root = m_entityActions->prefabRoot(); root.isValid() && m_panelsWorld == root.getWorld()) {
+        std::vector<Panda::Entity> pending{root};
+        while (!pending.empty()) {
+            Panda::Entity entity = pending.back();
+            pending.pop_back();
+            total++;
+            for (Panda::UUID child : entity.getChildEntities()) {
+                if (m_panelsWorld->isValid(child)) { pending.push_back(m_panelsWorld->getById(child)); }
+            }
+        }
+        return total;
+    }
     if (m_panelsWorld) {
         for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {
             if (m_panelsWorld->isValidEntt(handle)) { ++total; }

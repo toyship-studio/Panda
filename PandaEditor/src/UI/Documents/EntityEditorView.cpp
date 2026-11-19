@@ -119,6 +119,19 @@ void EntityEditorView::addSubviews() {
     nameRow->addSubview(m_staticLabel);
     nameRow->addSubview(m_static);
     m_body->addContentSubview(nameRow);
+    // A part of an instance of a prefab says so here (rebuildPrefabStrip).
+    m_prefabStrip = std::make_shared<Panel>();
+    m_prefabStrip->setAccessibilityId("prefab");
+    m_prefabStrip->setBackgroundColor(ThemeColor::accentSoft);
+    m_prefabStrip->surface().setCornerRadius(Radius::sm);
+    m_prefabStrip->layout().setFlexDirection(FlexDirection::Column);
+    m_prefabStrip->layout().setGap(4.f);
+    m_prefabStrip->layout().setPadding(Edge::Horizontal, 8.f);
+    m_prefabStrip->layout().setPadding(Edge::Vertical, 6.f);
+    m_prefabStrip->layout().setMargin(Edge::Horizontal, 4.f);
+    m_prefabStrip->layout().setMargin(Edge::Bottom, 6.f);
+    m_prefabStrip->setCollapsed(true);
+    m_body->addContentSubview(m_prefabStrip);
     m_body->addContentSubview(makeThinDivider());
 
     auto transform = std::make_shared<CollapsibleSection>("TRANSFORM");
@@ -240,10 +253,266 @@ void EntityEditorView::bindEntities(const std::vector<Panda::Entity> &entities) 
 
     m_binding = false;
     rebuildComponents(primary);
+    m_difference = Panda::Prefabs::differenceOf(primary);
+    m_differenceRevision = primary.getWorld() != nullptr ? primary.getWorld()->getCommandHistory().revision() : 0;
+    showDifference();
+}
+
+/* ------------------------------ Prefabs ------------------------------ */
+
+namespace {
+
+    // Letters and digits of a name, in lower case: "Field of View" and "fieldOfView" are one
+    // name. The unit a row adds to its title — "Rate (1/s)" — is not a part of it.
+    std::string plainName(const std::string &title) {
+        const std::string name = title.substr(0, title.find(" ("));
+        std::string plain;
+        for (const char c : name) {
+            if (std::isalnum(static_cast<unsigned char>(c))) { plain += static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        }
+        return plain;
+    }
+
+    std::string lastKey(const std::string &path) {
+        const size_t slash = path.rfind('/');
+        return slash == std::string::npos ? path : path.substr(slash + 1);
+    }
+
+    std::shared_ptr<Panel> makeStripRow() {
+        auto row = std::make_shared<Panel>();
+        row->setBackgroundColor(Color(0x00000000));
+        row->layout().setFlexDirection(FlexDirection::Row);
+        row->layout().setAlignItems(Align::Center);
+        row->layout().setGap(6.f);
+        return row;
+    }
+
+    std::shared_ptr<Label> makeStripText(const std::string &text) {
+        auto label = std::make_shared<Label>(text);
+        label->setFont(Typo::Caption);
+        label->setTextRole(TextRole::Secondary);
+        label->layout().setFlexShrink(1.f);
+        return label;
+    }
+
+    std::shared_ptr<Button> makeStripLink(const std::string &title, std::function<void()> onClick) {
+        auto link = makeFormButton(title, ButtonStyle::Link, std::move(onClick));
+        link->layout().setFlexShrink(0.f);
+        return link;
+    }
+
+} // namespace
+
+void EntityEditorView::update(double deltaTime) {
+    EditorView::update(deltaTime);
+    // An edit of the world — in this form, by the gizmo, an undo — may have changed what the
+    // instance differs in: read once per step of the history, not per frame.
+    if (!m_difference.isPart || m_entities.empty() || !m_entities.front().isValid()) { return; }
+    Panda::World *world = m_entities.front().getWorld();
+    const uint64_t revision = world != nullptr ? world->getCommandHistory().revision() : 0;
+    if (revision == m_differenceRevision) { return; }
+    m_differenceRevision = revision;
+    m_difference = Panda::Prefabs::differenceOf(m_entities.front());
+    showDifference();
+}
+
+void EntityEditorView::later(std::function<void()> action) {
+    Context *context = getContext();
+    if (context == nullptr) { return; }
+    context->postDeferred([alive = std::weak_ptr<bool>(m_alive), action = std::move(action)] {
+        if (alive.lock()) { action(); }
+    });
+}
+
+void EntityEditorView::showDifference() {
+    rebuildPrefabStrip();
+    const auto differs = [this](const char *field) { return m_difference.differs("transformComponent", field); };
+    m_positionRow->setOverridden(differs("position"));
+    m_rotationRow->setOverridden(differs("rotation"));
+    m_scaleRow->setOverridden(differs("scale"));
+    for (MarkedSection &marked : m_markedSections) { markSection(*marked.section, marked.component, marked.prefix); }
+}
+
+void EntityEditorView::markSection(CollapsibleSection &section, const std::string &component, const std::string &prefix) {
+    MarkedSection *marked = nullptr;
+    for (MarkedSection &candidate : m_markedSections) {
+        if (candidate.section == &section) { marked = &candidate; }
+    }
+    const Panda::Prefabs::ComponentDifference *difference = m_difference.find(component);
+    // The places of this section that differ: of a component — all of it; of a script — what
+    // is under its own path.
+    std::vector<std::string> fields;
+    bool whole = false; // the section itself is the instance's own (an added component or script)
+    if (difference != nullptr) {
+        whole = difference->kind == Panda::Prefabs::ComponentDifference::Kind::Added;
+        for (const std::string &field : difference->fields) {
+            if (prefix.empty()) {
+                fields.push_back(field);
+            } else if (field.rfind(prefix + "/", 0) == 0) {
+                fields.push_back(field.substr(prefix.size() + 1));
+            } else if (prefix.rfind(field, 0) == 0) {
+                whole = true; // the list of scripts as a whole, or this script, is the instance's own
+            }
+        }
+    }
+    section.setTitleColor(whole || !fields.empty() ? ThemeColor::accentText : ThemeColor::textMuted);
+    std::vector<std::string> unshown = fields;
+    for (const std::shared_ptr<View> &view : section.contentView()->getSubviews()) {
+        PropertyRow *row = dynamic_cast<PropertyRow *>(view.get());
+        if (row == nullptr) { continue; }
+        // A row shows the field it is named after (the name of the field, made readable), or the
+        // one its id names.
+        std::string shown;
+        for (const std::string &field : fields) {
+            const std::string key = lastKey(field.find('/') == std::string::npos || prefix.empty() ? field : field.substr(0, field.find('/')));
+            if (plainName(key) == plainName(row->title()) || key == row->getAccessibilityId()) { shown = field; }
+        }
+        row->setOverridden(whole || !shown.empty());
+        if (!shown.empty()) { std::erase(unshown, shown); }
+        const std::string place = prefix.empty() ? shown : prefix + "/" + shown;
+        row->setOnContextMenu(
+            shown.empty() ? std::function<void(PropertyRow &, Point)>()
+                          : [this, component, place](PropertyRow &, Point at) { showDifferenceMenu(at, component, place); }
+        );
+    }
+    if (marked == nullptr) { return; }
+    // What differs and has no row of its name is said in words.
+    std::string names;
+    for (const std::string &field : unshown) {
+        names += (names.empty() ? "" : ", ") + humanizeIdentifier(lastKey(field));
+    }
+    if (whole) { names = "Added to this instance: the prefab does not have it."; }
+    if (!whole && !names.empty()) { names = "Differs from the prefab: " + names; }
+    if (names.empty()) {
+        if (marked->note) { marked->note->setCollapsed(true); }
+        return;
+    }
+    if (!marked->note) {
+        marked->note = makeFormHint(names);
+        marked->note->setTextColor(ThemeColor::accentText);
+        section.addContent(marked->note);
+    }
+    marked->note->setText(names);
+    marked->note->setCollapsed(false);
+}
+
+void EntityEditorView::showDifferenceMenu(Point at, const std::string &component, const std::string &field) {
+    Context *context = getContext();
+    if (context == nullptr) { return; }
+    auto menu = std::make_shared<Menu>();
+    menu->addItem("Revert to Prefab", [this, component, field] { m_output->entityDidRevertPrefab(false, component, field); });
+    menu->addItem("Apply to Prefab", [this, component, field] { m_output->entityDidApplyPrefab(false, component, field, false); });
+    menu->addItem("Apply Forced", [this, component, field] { m_output->entityDidApplyPrefab(false, component, field, true); });
+    auto popup = std::make_shared<Popup>(menu, Rect(at.x, at.y, 0.f, 0.f));
+    menu->setOnItemSelected([p = popup.get()] { p->dismiss(); });
+    context->addOverlay(popup);
+}
+
+void EntityEditorView::rebuildPrefabStrip() {
+    m_prefabStrip->removeAllSubviews();
+    m_prefabStrip->setCollapsed(!m_difference.isPart);
+    if (!m_difference.isPart || m_entities.empty() || !m_entities.front().isValid()) { return; }
+    Panda::Entity primary = m_entities.front();
+    Panda::Entity root = Panda::Prefabs::instanceRoot(primary);
+    const bool isRoot = root == primary;
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    const std::string prefab = handler != nullptr ? handler->getAssetName(Panda::Prefabs::prefabOf(primary)) : "Prefab";
+
+    // Which prefab, and — for an entity under the root — which instance.
+    auto title = makeStripRow();
+    auto icon = std::make_shared<ImageView>();
+    icon->setContentMode(ImageContentMode::Fit);
+    icon->setTexture(icons().get(Ic::Prefab));
+    icon->setTintColor(ThemeColor::accentText);
+    icon->layout().setSize({Ic::RowSize, Ic::RowSize});
+    icon->layout().setFlexShrink(0.f);
+    title->addSubview(icon);
+    auto open = makeStripLink(prefab, [this] { later([this] { m_output->entityDidOpenPrefab(); }); });
+    open->setTooltip("Open the prefab");
+    open->setAccessibilityId("open");
+    title->addSubview(open);
+    if (!isRoot) {
+        title->addSubview(makeStripText("in"));
+        auto select = makeStripLink(root.getName(), [this] { later([this] { m_output->entityDidSelectPrefabRoot(); }); });
+        select->setTooltip("Select the root of the instance");
+        title->addSubview(select);
+    }
+    m_prefabStrip->addSubview(title);
+
+    // How much differs, and the two things to do with it: of the root — for the whole instance,
+    // of an entity under it — for that entity.
+    const size_t count = isRoot ? Panda::Prefabs::differenceCount(root) : (m_difference.any() ? 1 : 0);
+    if (count > 0) {
+        auto state = makeStripRow();
+        auto text = makeStripText(
+            !isRoot      ? "Differs from the prefab"
+            : count == 1 ? "1 entity differs from the prefab"
+                         : std::to_string(count) + " entities differ from the prefab"
+        );
+        text->setAccessibilityId("differs");
+        text->layout().setFlexGrow(1.f);
+        state->addSubview(text);
+        auto revert = makeFormButton("Revert", ButtonStyle::Neutral, [this, isRoot] {
+            later([this, isRoot] { m_output->entityDidRevertPrefab(isRoot, {}, {}); });
+        });
+        revert->setTooltip(isRoot ? "The instance as its prefab has it" : "The entity as its prefab has it");
+        revert->setAccessibilityId("revert");
+        revert->layout().setFlexShrink(0.f);
+        state->addSubview(revert);
+        auto apply = makeFormButton("Apply", ButtonStyle::Accent, {});
+        apply->setTooltip("Write the difference into the prefab");
+        apply->setAccessibilityId("apply");
+        apply->layout().setFlexShrink(0.f);
+        Button *applyPointer = apply.get();
+        apply->setOnClick([this, applyPointer, isRoot](Button &) {
+            Context *context = getContext();
+            if (context == nullptr) { return; }
+            auto menu = std::make_shared<Menu>();
+            menu->addItem("Apply to Prefab", [this, isRoot] { m_output->entityDidApplyPrefab(isRoot, {}, {}, false); });
+            menu->addItem("Apply Forced", [this, isRoot] { m_output->entityDidApplyPrefab(isRoot, {}, {}, true); });
+            const Rect frame = applyPointer->getWorldFrame();
+            auto popup = std::make_shared<Popup>(menu, Rect(frame.origin.x, frame.origin.y + frame.size.height, 0.f, 0.f));
+            menu->setOnItemSelected([p = popup.get()] { p->dismiss(); });
+            context->addOverlay(popup);
+        });
+        state->addSubview(apply);
+        m_prefabStrip->addSubview(state);
+    }
+
+    // What no row of the form can show: it is not in the instance any more.
+    const auto gone = [this](const std::string &what, const char *action, std::function<void()> restore) {
+        auto row = makeStripRow();
+        auto text = makeStripText(what);
+        text->layout().setFlexGrow(1.f);
+        row->addSubview(text);
+        row->addSubview(makeStripLink(action, std::move(restore)));
+        m_prefabStrip->addSubview(row);
+    };
+    const ComponentInspectorRegistry &inspectors = editorExtensions().componentInspectors;
+    for (const Panda::Prefabs::ComponentDifference &difference : m_difference.components) {
+        if (difference.kind != Panda::Prefabs::ComponentDifference::Kind::Removed) { continue; }
+        const ComponentInspector *inspector = inspectors.find(difference.component);
+        const std::string component = difference.component;
+        gone("Removed: " + (inspector != nullptr ? inspector->displayName : component), "Restore", [this, component] {
+            later([this, component] { m_output->entityDidRevertPrefab(false, component, {}); });
+        });
+    }
+    if (m_difference.moved) {
+        gone("Moved from its place in the prefab", "Put Back", [this] {
+            later([this] { m_output->entityDidRevertPrefab(false, "parent", {}); });
+        });
+    }
+    for (const Panda::Prefabs::RemovedEntity &removed : m_difference.removed) {
+        const Panda::UUID source = removed.source;
+        gone("Removed: " + removed.name, "Restore", [this, source] {
+            later([this, source] { m_output->entityDidRestoreRemoved(source); });
+        });
+    }
 }
 
 void EntityEditorView::rebuildComponents(Panda::Entity primary) {
     m_componentsContainer->removeAllSubviews();
+    m_markedSections.clear();
     auto add = [this](std::shared_ptr<CollapsibleSection> section) {
         m_componentsContainer->addSubview(makeThinDivider());
         m_componentsContainer->addSubview(section);
@@ -310,6 +579,7 @@ EntityEditorView::buildComponentSection(const ComponentInspector &inspector, Pan
         const ComponentInspectorContext context{*world, m_entities};
         inspector.build(*section, context);
     }
+    m_markedSections.push_back({component, {}, section.get(), nullptr});
     return section;
 }
 
@@ -356,6 +626,14 @@ void EntityEditorView::addComponentHeaderMenu(
                 Panda::World *world = m_entities.empty() ? nullptr : m_entities.front().getWorld();
                 if (world != nullptr && resetComponent(*world, m_entities, *type)) { editorHost().refreshFromWorld(); }
             });
+            menu->addSeparator();
+        }
+        // The component differs from the prefab of the instance: back to it, or into it.
+        if (type != nullptr && m_difference.find(type->name) != nullptr) {
+            const std::string component = type->name;
+            menu->addItem("Revert to Prefab", [this, component] { m_output->entityDidRevertPrefab(false, component, {}); });
+            menu->addItem("Apply to Prefab", [this, component] { m_output->entityDidApplyPrefab(false, component, {}, false); });
+            menu->addItem("Apply Forced", [this, component] { m_output->entityDidApplyPrefab(false, component, {}, true); });
             menu->addSeparator();
         }
         menu->addItem("Remove Component", [onRemove] { if (onRemove) { onRemove(); } });
@@ -420,6 +698,8 @@ std::shared_ptr<CollapsibleSection> EntityEditorView::buildScriptSection(Panda::
         row->setAccessibilityId(name); // a UI test finds the row by the name of the field in the class
         section->addContent(row);
     }
+    // What the instance differs in from its prefab here: the fields of this script.
+    m_markedSections.push_back({"scriptListComponent", "scripts/" + script.getName() + "/scriptFields", section.get(), nullptr});
     // Where the class is written: the file that registers it, opened in the external editor.
     const Panda::path_t source = editorHost().scriptSource(script.getName());
     if (!source.empty()) {

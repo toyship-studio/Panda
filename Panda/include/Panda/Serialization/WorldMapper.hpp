@@ -34,6 +34,16 @@ public:
     static bool loadEntities(
         World &world, Rain::Decoder &decoder, std::istream &stream, std::vector<Entity> &added
     );
+    // One tree of the world — `root` and everything under it — as it is, with its ids, in the
+    // format of a fragment: `{"entities": [...]}`. What the file of a prefab holds.
+    static void saveTree(World &world, Entity root, Rain::Encoder &encoder, std::ostream &stream);
+    // One entity in the form the `entities` of a world file hold it: an object with its id and
+    // its components by the names of their types.
+    static void saveEntity(Entity entity, Rain::Encoder &encoder, std::ostream &stream);
+    // The components of such an object into an entity that was just made
+    // (World::instantiateEntity): the id and the place in the hierarchy are not read. false —
+    // the stream was not parsed.
+    static bool loadEntity(Entity entity, Rain::Decoder &decoder, std::istream &stream);
     // One component of an entity in the form the world file holds it — an object with the name
     // of the type as its key: `{"pointLightComponent": {...}}`. The text form of a component:
     // the clipboard of the inspector, a snippet an agent writes.

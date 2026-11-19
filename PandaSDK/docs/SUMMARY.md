@@ -9,6 +9,7 @@
 - [Assets and the project registry](assets.md)
 - [Shaders](shaders.md)
 - [The `.world` format](world-format.md)
+- [Prefabs](prefabs.md)
 - [Exporting a game](export.md)
 - [Working with Zed and coding agents](zed-and-agents.md)
 - [Writing a module](modules/index.md)

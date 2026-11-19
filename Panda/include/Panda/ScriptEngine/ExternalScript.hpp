@@ -192,6 +192,11 @@ public:
         for (ScriptField &field : fields) { field.instanceId = _id; }
     }
 
+    // The container has an instance in the script bundle.
+    bool isBound() const {
+        return id != 0;
+    }
+
     // The instance is gone: the world does not run anymore.
     void unbind() {
         id = 0;

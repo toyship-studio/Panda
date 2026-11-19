@@ -173,6 +173,16 @@ namespace {
 
     // Matrix of a mat4 instance: position · yaw · scale · pivot (the bottom of the mesh AABB — the
     // plant "stands" on the ground regardless of the exported pivot).
+    // A tree layer is its prefab when it names one; otherwise its mesh.
+    bool isPrefabLayer(const TreeLayer &layer) {
+        return layer.prefab.getId() != 0;
+    }
+
+    uint64_t treeModelStamp(const TreeLayer &layer) {
+        return isPrefabLayer(layer) ? InstancedModel::stampOfPrefab(layer.prefab)
+                                    : InstancedModel::stampOfMesh(layer.mesh, layer.meshMaterial);
+    }
+
     glm::mat4 plantMatrix(float x, float y, float z, float yaw, float scale, float meshMinY) {
         glm::mat4 model = glm::translate(glm::mat4(1.f), glm::vec3(x, y, z));
         model = glm::rotate(model, yaw, glm::vec3(0.f, 1.f, 0.f));
@@ -279,7 +289,7 @@ namespace {
 
 bool TerrainFlora::GrassKey::operator==(const GrassKey &other) const {
     return kind == other.kind && placement == other.placement && maskChannel == other.maskChannel &&
-           meshKey == other.meshKey && density == other.density && spacing == other.spacing &&
+           modelStamp == other.modelStamp && density == other.density && spacing == other.spacing &&
            soilLayer == other.soilLayer && minHeight == other.minHeight &&
            maxHeight == other.maxHeight && maxSlopeDeg == other.maxSlopeDeg &&
            noiseCoverage == other.noiseCoverage && scaleMin == other.scaleMin &&
@@ -305,15 +315,13 @@ void TerrainFlora::syncKeys(const FloraSettings &settings) {
     std::vector<GrassKey> grass(settings.grass.size());
     for (size_t i = 0; i < settings.grass.size(); i++) {
         const GrassLayer &layer = settings.grass[i];
-        // Mesh key = the id of the LOADED asset (0 — still loading): the pivot is baked into the
-        // matrices, the completed load changes the key and the blocks are rebuilt by themselves.
-        AssetId meshKey = 0;
-        if (layer.kind == GrassKind::Mesh && layer.mesh.as<ImportedMeshAsset>().get() != nullptr) {
-            meshKey = layer.mesh.getId();
-        }
+        // Model key = the stamp of the LOADED source (0 — still loading): the pivot is baked into
+        // the matrices, the completed load changes the key and the blocks are rebuilt by themselves.
+        const uint64_t modelStamp =
+            layer.kind == GrassKind::Mesh ? InstancedModel::stampOfMesh(layer.mesh, layer.meshMaterial) : 0;
         grass[i] = GrassKey{
             static_cast<uint32_t>(layer.kind), static_cast<uint32_t>(layer.placement),
-            layer.maskChannel, meshKey, layer.density, layer.spacing, layer.soilLayer,
+            layer.maskChannel, modelStamp, layer.density, layer.spacing, layer.soilLayer,
             layer.minHeight, layer.maxHeight, layer.maxSlopeDeg, layer.noiseCoverage,
             layer.scaleMin, layer.scaleMax, layer.enabled
         };
@@ -321,9 +329,7 @@ void TerrainFlora::syncKeys(const FloraSettings &settings) {
     std::vector<TreeKey> trees(settings.trees.size());
     for (size_t i = 0; i < settings.trees.size(); i++) {
         const TreeLayer &layer = settings.trees[i];
-        AssetId meshKey = 0;
-        if (layer.mesh.as<ImportedMeshAsset>().get() != nullptr) { meshKey = layer.mesh.getId(); }
-        trees[i] = TreeKey{layer.id, meshKey, layer.imposter};
+        trees[i] = TreeKey{layer.id, treeModelStamp(layer), layer.imposter};
     }
     if (grass == m_builtGrass && trees == m_builtTrees) { return; }
 
@@ -436,17 +442,17 @@ void TerrainFlora::collectOccludersSuperBlock(
     const float x0 = static_cast<float>(superX) * SUPER_BLOCK_SIZE;
     const float z0 = static_cast<float>(superZ) * SUPER_BLOCK_SIZE;
     trees.forEachIn(x0, z0, x0 + SUPER_BLOCK_SIZE, z0 + SUPER_BLOCK_SIZE, [&](const TreeInstance &tree) {
-        for (size_t i = 0; i < settings.trees.size() && i < m_treeBounds.size(); i++) {
+        for (size_t i = 0; i < settings.trees.size() && i < m_treeModels.size(); i++) {
             const TreeLayer &layer = settings.trees[i];
             if (layer.id != tree.layer) { continue; }
-            if (!layer.enabled || layer.canopyDensity <= 0.f || m_treeBounds[i].meshId == 0) { return; }
+            if (!layer.enabled || layer.canopyDensity <= 0.f || m_treeModels[i].model.empty()) { return; }
             float surfaceHeight;
             glm::vec3 normal;
             if (!data.sampleSurface(tree.x, tree.z, surfaceHeight, normal)) { return; }
-            const float height = m_treeBounds[i].height * tree.scale;
+            const float height = m_treeModels[i].height * tree.scale;
             Occluder instance;
             instance.center = glm::vec3(tree.x, surfaceHeight + 0.675f * height, tree.z);
-            instance.radiusXZ = m_treeBounds[i].halfWidth * tree.scale;
+            instance.radiusXZ = m_treeModels[i].halfWidth * tree.scale;
             instance.radiusY = 0.325f * height;
             instance.density = glm::clamp(layer.canopyDensity, 0.f, 1.f);
             out.push_back(instance);
@@ -516,29 +522,37 @@ void TerrainFlora::ensureLayout() {
 }
 
 void TerrainFlora::ensureLayerResources(const FloraSettings &settings) {
-    // Bounds of the imported mesh: the pivot (bottom of the AABB) and the sizes are baked into the
-    // instance matrices and the crowns; a change/completed load of the asset changes the layer
-    // key → block rebuild.
-    const auto updateBounds = [](MeshBounds &bounds, const AssetRef<Asset> &meshRef) {
-        AssetRef<ImportedMeshAsset> mesh = meshRef.as<ImportedMeshAsset>();
-        const AssetId meshId = mesh.isValid() ? meshRef.getId() : AssetId(0);
-        if (bounds.meshId == meshId) { return; }
-        bounds = MeshBounds{};
-        bounds.meshId = meshId;
+    // The model of a layer, made again when its source is another one (or the same prefab,
+    // loaded again): its places, its pivot and its sizes are baked into the instance matrices
+    // and the crowns; the key of the layer changes with the same stamp → block rebuild.
+    const auto update = [](LayerModel &layer, uint64_t stamp, bool prefab, const auto &make) {
+        if (layer.model.stamp() == stamp) { return; }
+        layer = LayerModel{};
+        if (stamp == 0) { return; }
+        layer.model = make();
         glm::vec3 boundsMin, boundsMax;
-        if (meshId != 0 && mesh->getMeshBounds(boundsMin, boundsMax)) {
-            bounds.minY = boundsMin.y;
-            bounds.height = std::max(boundsMax.y - boundsMin.y, 0.1f);
-            bounds.halfWidth =
-                std::max(std::max(boundsMax.x - boundsMin.x, boundsMax.z - boundsMin.z) * 0.5f, 0.1f);
+        if (!layer.model.bounds(boundsMin, boundsMax)) { return; }
+        if (prefab) {
+            // The root of a prefab stands on the ground; its width is counted from the root.
+            layer.height = std::max(boundsMax.y, 0.1f);
+            layer.halfWidth = std::max(
+                std::max(std::abs(boundsMin.x), std::abs(boundsMax.x)), std::max(std::abs(boundsMin.z), std::abs(boundsMax.z))
+            );
+            layer.halfWidth = std::max(layer.halfWidth, 0.1f);
+            return;
         }
+        layer.pivotY = boundsMin.y;
+        layer.height = std::max(boundsMax.y - boundsMin.y, 0.1f);
+        layer.halfWidth = std::max(std::max(boundsMax.x - boundsMin.x, boundsMax.z - boundsMin.z) * 0.5f, 0.1f);
     };
     m_grassRenders.resize(settings.grass.size());
     for (size_t i = 0; i < settings.grass.size(); i++) {
         const GrassLayer &layer = settings.grass[i];
         GrassRender &render = m_grassRenders[i];
         if (layer.kind == GrassKind::Mesh) {
-            updateBounds(render.bounds, layer.mesh);
+            update(render.model, InstancedModel::stampOfMesh(layer.mesh, layer.meshMaterial), false, [&layer] {
+                return InstancedModel::ofMesh(layer.mesh, layer.meshMaterial);
+            });
             continue;
         }
         // A brownian change is only a regeneration of the tiny tuft meshes (the block instances
@@ -552,9 +566,13 @@ void TerrainFlora::ensureLayerResources(const FloraSettings &settings) {
             render.tufts[variant]->update(mesh);
         }
     }
-    m_treeBounds.resize(settings.trees.size());
+    m_treeModels.resize(settings.trees.size());
     for (size_t i = 0; i < settings.trees.size(); i++) {
-        updateBounds(m_treeBounds[i], settings.trees[i].mesh);
+        const TreeLayer &layer = settings.trees[i];
+        const bool prefab = isPrefabLayer(layer);
+        update(m_treeModels[i], treeModelStamp(layer), prefab, [&layer, prefab] {
+            return prefab ? InstancedModel::ofPrefab(layer.prefab) : InstancedModel::ofMesh(layer.mesh, layer.meshMaterial);
+        });
     }
 }
 
@@ -591,7 +609,9 @@ void TerrainFlora::releaseBlock(Block &block) {
         }
         releaseInstances(grass.mesh);
     }
-    for (MeshInstances &trees : block.trees) { releaseInstances(trees); }
+    for (PlacedInstances &trees : block.trees) {
+        for (MeshInstances &placed : trees) { releaseInstances(placed); }
+    }
     block.grass.clear();
     block.trees.clear();
     block.builtVersion = 0;
@@ -664,7 +684,7 @@ void TerrainFlora::rebuildSuperBlock(
     const float x0 = static_cast<float>(superX) * SUPER_BLOCK_SIZE;
     const float z0 = static_cast<float>(superZ) * SUPER_BLOCK_SIZE;
     std::vector<float> meshMinY(settings.trees.size(), 0.f);
-    for (size_t i = 0; i < m_treeBounds.size() && i < meshMinY.size(); i++) { meshMinY[i] = m_treeBounds[i].minY; }
+    for (size_t i = 0; i < m_treeModels.size() && i < meshMinY.size(); i++) { meshMinY[i] = m_treeModels[i].pivotY; }
     std::vector<std::vector<glm::mat4>> matrices;
     float minY = 0.f;
     float maxY = 0.f;
@@ -710,17 +730,31 @@ void TerrainFlora::rebuildBlock(
     // Trees: the points of the TerrainTrees cell that coincides with the block.
     {
         std::vector<float> meshMinY(settings.trees.size(), 0.f);
-        for (size_t i = 0; i < m_treeBounds.size() && i < meshMinY.size(); i++) { meshMinY[i] = m_treeBounds[i].minY; }
+        for (size_t i = 0; i < m_treeModels.size() && i < meshMinY.size(); i++) { meshMinY[i] = m_treeModels[i].pivotY; }
         std::vector<std::vector<glm::mat4>> matrices;
         gatherTreeMatrices(
             settings, data, trees, meshMinY, x0, z0, x1, z1,
-            [&](size_t i) { return settings.trees[i].enabled && m_treeBounds[i].meshId != 0; },
+            [&](size_t i) { return settings.trees[i].enabled && !m_treeModels[i].model.empty(); },
             matrices, minY, maxY, any
         );
+        const glm::mat4 identity(1.f);
+        std::vector<glm::mat4> placed;
         for (size_t i = 0; i < matrices.size(); i++) {
             if (matrices[i].empty()) { continue; }
-            block.trees[i].count = static_cast<uint32_t>(matrices[i].size());
-            block.trees[i].buffer = createMatrixBuffer(matrices[i]);
+            // A stream per place of the model: where a tree stands × where the mesh stands in
+            // the tree. An imported mesh has one place — the tree itself.
+            const std::vector<glm::mat4> &places = m_treeModels[i].model.places();
+            block.trees[i].resize(places.size());
+            for (size_t place = 0; place < places.size(); place++) {
+                block.trees[i][place].count = static_cast<uint32_t>(matrices[i].size());
+                if (places[place] == identity) {
+                    block.trees[i][place].buffer = createMatrixBuffer(matrices[i]);
+                    continue;
+                }
+                placed.resize(matrices[i].size());
+                for (size_t tree = 0; tree < placed.size(); tree++) { placed[tree] = matrices[i][tree] * places[place]; }
+                block.trees[i][place].buffer = createMatrixBuffer(placed);
+            }
         }
     }
 
@@ -733,8 +767,8 @@ void TerrainFlora::rebuildBlock(
         const float cell = grassCell(layer);
         if (cell <= 0.f) { continue; }
         const bool meshKind = layer.kind == GrassKind::Mesh;
-        const MeshBounds &bounds = m_grassRenders[layerIndex].bounds;
-        if (meshKind && bounds.meshId == 0) { continue; } // the mesh is not assigned/is loading
+        const LayerModel &layerModel = m_grassRenders[layerIndex].model;
+        if (meshKind && layerModel.model.empty()) { continue; } // the mesh is not assigned/is loading
         GrassBlock &grassBlock = block.grass[layerIndex];
         const uint32_t layerSeed = grassSeed(layerIndex);
         const float minNormalY = slopeMinNormalY(layer.maxSlopeDeg);
@@ -758,7 +792,7 @@ void TerrainFlora::rebuildBlock(
                 any = true;
                 const float yaw = hash01(ux, uz, 31u + layerSeed) * glm::two_pi<float>();
                 if (meshKind) {
-                    matrices.push_back(plantMatrix(plant.px, plant.height, plant.pz, yaw, plant.scale, bounds.minY));
+                    matrices.push_back(plantMatrix(plant.px, plant.height, plant.pz, yaw, plant.scale, layerModel.pivotY));
                     continue;
                 }
                 FloraInstance instance;
@@ -812,8 +846,7 @@ void TerrainFlora::rebuildBlock(
 template<typename Pick>
 void TerrainFlora::submitMeshBlocks(
     Renderer3D &renderer,
-    AssetRef<ImportedMeshAsset> mesh,
-    AssetRef<MaterialAsset> material,
+    const InstancedModel &model,
     float drawDistance,
     float plantHeight,
     const glm::vec3 &localCameraPosition,
@@ -828,8 +861,10 @@ void TerrainFlora::submitMeshBlocks(
         for (int bx = rangeX.min; bx <= rangeX.max; bx++) {
             Block &block = m_blocks[static_cast<size_t>(bz) * m_blocksX + bx];
             if (block.builtVersion == 0) { continue; }
-            const MeshInstances *instances = pick(block);
-            if (instances == nullptr || instances->count == 0 || !instances->buffer.isValid()) { continue; }
+            // Every place of the model has a stream of the same trees: the first one says
+            // whether the block holds any.
+            const MeshInstances *first = pick(block, 0);
+            if (first == nullptr || first->count == 0 || !first->buffer.isValid()) { continue; }
             const glm::vec2 center(
                 (static_cast<float>(bx) + 0.5f) * BLOCK_SIZE, (static_cast<float>(bz) + 0.5f) * BLOCK_SIZE
             );
@@ -842,12 +877,13 @@ void TerrainFlora::submitMeshBlocks(
             const glm::vec3 aabbMax(aabbMin.x + BLOCK_SIZE, block.maxY + plantHeight + 0.5f, aabbMin.z + BLOCK_SIZE);
             if (!aabbInsideFrustum(frustumPlanes, aabbMin, aabbMax)) { continue; }
 
-            renderer.submitInstanced(
-                transform, mesh, material, instances->buffer, StaticResources::instanceMat4Layout,
-                instances->count
-            );
+            for (uint32_t place = 0; place < model.places().size(); place++) {
+                const MeshInstances *instances = pick(block, place);
+                if (instances == nullptr || instances->count == 0 || !instances->buffer.isValid()) { continue; }
+                model.submit(renderer, transform, place, instances->buffer, instances->count);
+            }
             if (!countStats) { continue; }
-            s_frameStats.instances += instances->count;
+            s_frameStats.instances += first->count;
             if (block.visibleStamp != m_frameStamp) {
                 block.visibleStamp = m_frameStamp;
                 s_frameStats.visibleBlocks++;
@@ -870,13 +906,12 @@ void TerrainFlora::submitBillboards(
     const glm::vec4 *frustumPlanes,
     glm::mat4 &transform
 ) {
-    AssetRef<ImportedMeshAsset> mesh = layer.mesh.as<ImportedMeshAsset>();
-    if (!mesh.isValid()) { return; }
+    if (treeIndex >= m_treeModels.size() || m_treeModels[treeIndex].model.empty()) { return; }
     if (!m_imposter) {
         if (shadowPass) { return; }
         m_imposter = std::make_unique<FloraImposter>();
     }
-    const FloraImposter::View imposterView = m_imposter->ensure(mesh, layer.meshMaterial.as<MaterialAsset>());
+    const FloraImposter::View imposterView = m_imposter->ensure(m_treeModels[treeIndex].model);
     if (!imposterView.ready) { return; }
     const float imposterDistance = imposterRange();
     // Runtime slots of the billboard material — per layer, before the series of superblock submits.
@@ -951,14 +986,18 @@ void TerrainFlora::renderShadowCasters(
 ) {
     if (renderer.getMode() != RenderingMode::SHADOW_DEPTH) { return; }
     PANDA_PROFILE_SCOPE_N("TerrainFlora::renderShadowCasters");
-    for (size_t i = 0; i < settings.trees.size() && i < m_treeBounds.size(); i++) {
+    // The stream of a block for a place of the model of a tree layer.
+    const auto treeStream = [](size_t layer) {
+        return [layer](const Block &block, uint32_t place) -> const MeshInstances * {
+            return layer < block.trees.size() && place < block.trees[layer].size() ? &block.trees[layer][place] : nullptr;
+        };
+    };
+    for (size_t i = 0; i < settings.trees.size() && i < m_treeModels.size(); i++) {
         const TreeLayer &layer = settings.trees[i];
-        AssetRef<ImportedMeshAsset> mesh = layer.mesh.as<ImportedMeshAsset>();
-        if (!layer.enabled || !mesh.isValid()) { continue; }
+        if (!layer.enabled || m_treeModels[i].model.empty()) { continue; }
         submitMeshBlocks(
-            renderer, mesh, layer.meshMaterial.as<MaterialAsset>(), m_distances.tree,
-            m_treeBounds[i].height * layer.scaleMax, localCameraPosition, frustumPlanes, transform, false,
-            [i](const Block &block) { return i < block.trees.size() ? &block.trees[i] : nullptr; }
+            renderer, m_treeModels[i].model, m_distances.tree, m_treeModels[i].height * layer.scaleMax,
+            localCameraPosition, frustumPlanes, transform, false, treeStream(i)
         );
         if (layer.imposter) {
             submitBillboards(renderer, layer, i, true, localCameraPosition, frustumPlanes, transform);
@@ -967,12 +1006,13 @@ void TerrainFlora::renderShadowCasters(
     for (size_t i = 0; i < settings.grass.size() && i < m_grassRenders.size(); i++) {
         const GrassLayer &layer = settings.grass[i];
         if (!layer.enabled || layer.kind != GrassKind::Mesh || !layer.castShadows) { continue; }
-        AssetRef<ImportedMeshAsset> mesh = layer.mesh.as<ImportedMeshAsset>();
-        if (!mesh.isValid()) { continue; }
+        if (m_grassRenders[i].model.model.empty()) { continue; }
         submitMeshBlocks(
-            renderer, mesh, layer.meshMaterial.as<MaterialAsset>(), grassMeshFadeEnd(m_distances),
-            m_grassRenders[i].bounds.height * layer.scaleMax, localCameraPosition, frustumPlanes, transform,
-            false, [i](const Block &block) { return i < block.grass.size() ? &block.grass[i].mesh : nullptr; }
+            renderer, m_grassRenders[i].model.model, grassMeshFadeEnd(m_distances),
+            m_grassRenders[i].model.height * layer.scaleMax, localCameraPosition, frustumPlanes, transform, false,
+            [i](const Block &block, uint32_t place) -> const MeshInstances * {
+                return place == 0 && i < block.grass.size() ? &block.grass[i].mesh : nullptr;
+            }
         );
     }
 }
@@ -1070,12 +1110,13 @@ void TerrainFlora::render(
     // Pass 2a: trees — meshes up to the tree distance, beyond it the billboards of the layer.
     for (size_t i = 0; i < settings.trees.size(); i++) {
         const TreeLayer &layer = settings.trees[i];
-        AssetRef<ImportedMeshAsset> mesh = layer.mesh.as<ImportedMeshAsset>();
-        if (!layer.enabled || !mesh.isValid()) { continue; } // not assigned/loading
+        if (!layer.enabled || m_treeModels[i].model.empty()) { continue; } // not assigned/loading
         submitMeshBlocks(
-            renderer, mesh, layer.meshMaterial.as<MaterialAsset>(), m_distances.tree,
-            m_treeBounds[i].height * layer.scaleMax, localCameraPosition, frustumPlanes, transform, true,
-            [i](const Block &block) { return i < block.trees.size() ? &block.trees[i] : nullptr; }
+            renderer, m_treeModels[i].model, m_distances.tree, m_treeModels[i].height * layer.scaleMax,
+            localCameraPosition, frustumPlanes, transform, true,
+            [i](const Block &block, uint32_t place) -> const MeshInstances * {
+                return i < block.trees.size() && place < block.trees[i].size() ? &block.trees[i][place] : nullptr;
+            }
         );
         if (layer.imposter) {
             submitBillboards(renderer, layer, i, false, localCameraPosition, frustumPlanes, transform);
@@ -1098,7 +1139,7 @@ void TerrainFlora::render(
         const GrassRender &grassRender = m_grassRenders[layerIndex];
         if (layer.kind == GrassKind::Mesh) {
             AssetRef<ImportedMeshAsset> mesh = layer.mesh.as<ImportedMeshAsset>();
-            if (!mesh.isValid()) { continue; } // not assigned/loading
+            if (!mesh.isValid() || grassRender.model.model.empty()) { continue; } // not assigned/loading
             AssetRef<MaterialAsset> meshMaterial = layer.meshMaterial.as<MaterialAsset>();
             // The per-tuft dissolve distances go as a runtime field of the veg_grass shader (not
             // serialized into .mat; for foreign materials — bushes on PBR — the setter is silent,
@@ -1111,11 +1152,10 @@ void TerrainFlora::render(
                 if (material.get()) { material->setRuntimeField("grassFade", fade); }
             }
             submitMeshBlocks(
-                renderer, mesh, meshMaterial, std::max(m_distances.grass, meshFadeEnd),
-                grassRender.bounds.height * layer.scaleMax, localCameraPosition, frustumPlanes, transform,
-                true,
-                [layerIndex](const Block &block) {
-                    return layerIndex < block.grass.size() ? &block.grass[layerIndex].mesh : nullptr;
+                renderer, grassRender.model.model, std::max(m_distances.grass, meshFadeEnd),
+                grassRender.model.height * layer.scaleMax, localCameraPosition, frustumPlanes, transform, true,
+                [layerIndex](const Block &block, uint32_t place) -> const MeshInstances * {
+                    return place == 0 && layerIndex < block.grass.size() ? &block.grass[layerIndex].mesh : nullptr;
                 }
             );
             continue;

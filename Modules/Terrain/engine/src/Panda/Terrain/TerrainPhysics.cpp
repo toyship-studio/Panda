@@ -3,13 +3,17 @@
 #include "Panda/GameLogic/World.hpp"
 #include "Panda/Physics/Box3DHandles.hpp"
 #include "Panda/Physics/Physics3D.hpp"
+#include "Panda/Prefabs/PrefabAsset.hpp"
 #include "Panda/Renderer/Vertex.hpp"
 #include "Panda/Terrain/Terrain2DAsset.hpp"
 #include "Panda/Terrain/Terrain3DAsset.hpp"
 #include "Panda/Terrain/TerrainMesher3D.hpp"
 
+#include <glm/gtc/quaternion.hpp>
+
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <vector>
 
 namespace Panda {
@@ -229,8 +233,131 @@ namespace TerrainPhysics {
             }
         }
 
+        /* ------------------------------ The colliders of the trees ------------------------------ */
+
+        // An entity of a tree prefab that carries a collider, with its pose under the root of the
+        // prefab: the root at the origin, unturned; its scale stays (as the meshes of the prefab
+        // are placed — InstancedModel).
+        struct TreeCollider {
+            Entity owner;
+            glm::vec3 position{0.f};
+            glm::quat rotation{1.f, 0.f, 0.f, 0.f};
+            glm::vec3 scale{1.f};
+        };
+
+        std::vector<TreeCollider> treeColliders(PrefabAsset &prefab) {
+            std::vector<TreeCollider> colliders;
+            Entity root = prefab.root();
+            if (!root.isValid()) { return colliders; }
+            World &world = prefab.world();
+            const TransformComponent rootPose = root.calculateWorldSpaceTransform();
+            const glm::quat toRoot = glm::inverse(rootPose.getRotation());
+            std::vector<UUID> pending{root.getId()};
+            while (!pending.empty()) {
+                Entity entity = world.getById(pending.back());
+                pending.pop_back();
+                if (!entity.isValid()) { continue; }
+                for (UUID child : entity.getChildEntities()) { pending.push_back(child); }
+                if (!entity.hasComponent<BoxCollider3DComponent>() && !entity.hasComponent<SphereCollider3DComponent>() &&
+                    !entity.hasComponent<CapsuleCollider3DComponent>() && !entity.hasComponent<MeshCollider3DComponent>()) {
+                    continue;
+                }
+                const TransformComponent pose = entity.calculateWorldSpaceTransform();
+                TreeCollider collider;
+                collider.owner = entity;
+                collider.position = toRoot * (pose.getPosition() - rootPose.getPosition());
+                collider.rotation = glm::normalize(toRoot * pose.getRotation());
+                collider.scale = glm::abs(pose.getScale());
+                colliders.push_back(collider);
+            }
+            return colliders;
+        }
+
+        uint64_t treeCellKey(int cellX, int cellZ) {
+            return (static_cast<uint64_t>(static_cast<uint32_t>(cellZ)) << 32) | static_cast<uint32_t>(cellX);
+        }
+
+        void destroyTreeCell(TreeCell &cell) {
+            for (b3ShapeId shape : cell.shapes) {
+                if (b3Shape_IsValid(shape)) { b3DestroyShape(shape, false); }
+            }
+            cell.shapes.clear();
+            cell.cooks.clear(); // after the shapes that point into them
+        }
+
+        // The shapes of the trees of the cells [cellX0, cellX1] × [cellZ0, cellZ1], made again.
+        void createTreeShapes(
+            Physics3D &physics, Entity entity, Terrain2DAsset &asset, RuntimeBody &runtime, int cellX0, int cellZ0,
+            int cellX1, int cellZ1
+        ) {
+            const FloraSettings &flora = asset.getFloraSettings();
+            const TerrainTrees &trees = asset.getTrees();
+            // The layers whose trees collide: a prefab that holds a collider.
+            struct Kind {
+                uint32_t layer = 0;
+                std::vector<TreeCollider> colliders;
+            };
+            std::vector<Kind> kinds;
+            if (!trees.empty()) {
+                for (const TreeLayer &layer : flora.trees) {
+                    if (!layer.enabled || layer.prefab.getId() == 0) { continue; }
+                    PrefabAsset *prefab = layer.prefab.as<PrefabAsset>().get();
+                    if (prefab == nullptr) { continue; }
+                    Kind kind{layer.id, treeColliders(*prefab)};
+                    if (!kind.colliders.empty()) { kinds.push_back(std::move(kind)); }
+                }
+            }
+            const TerrainData2D &data = asset.getData();
+            const glm::vec3 terrainScale = glm::abs(entity.calculateWorldSpaceTransform().getScale());
+            const float cellSize = TerrainTrees::CELL_SIZE;
+            for (int cellZ = cellZ0; cellZ <= cellZ1; cellZ++) {
+                for (int cellX = cellX0; cellX <= cellX1; cellX++) {
+                    const uint64_t key = treeCellKey(cellX, cellZ);
+                    if (const auto old = runtime.treeCells.find(key); old != runtime.treeCells.end()) {
+                        destroyTreeCell(old->second);
+                        runtime.treeCells.erase(old);
+                    }
+                    if (kinds.empty()) { continue; }
+                    TreeCell cell;
+                    const float x0 = static_cast<float>(cellX) * cellSize;
+                    const float z0 = static_cast<float>(cellZ) * cellSize;
+                    trees.forEachIn(x0, z0, x0 + cellSize, z0 + cellSize, [&](const TreeInstance &tree) {
+                        for (const Kind &kind : kinds) {
+                            if (kind.layer != tree.layer) { continue; }
+                            float height;
+                            glm::vec3 normal;
+                            if (!data.sampleSurface(tree.x, tree.z, height, normal)) { return; }
+                            // The tree in the frame of the body: the place of its root on the
+                            // relief, its turn around the vertical, its size — as the flora
+                            // draws it (TerrainFlora: the root of a prefab stands on the ground).
+                            const glm::quat turn = glm::angleAxis(tree.yaw, glm::vec3(0.f, 1.f, 0.f));
+                            const glm::vec3 base(tree.x, height, tree.z);
+                            for (const TreeCollider &collider : kind.colliders) {
+                                physics.addStaticShapes(
+                                    runtime.body, collider.owner, terrainScale * (base + turn * (collider.position * tree.scale)),
+                                    turn * collider.rotation, collider.scale * tree.scale * terrainScale, cell.shapes, cell.cooks
+                                );
+                            }
+                            return;
+                        }
+                    });
+                    if (!cell.shapes.empty()) { runtime.treeCells.emplace(key, std::move(cell)); }
+                }
+            }
+        }
+
+        // …of the whole terrain.
+        void createTreeShapes(Physics3D &physics, Entity entity, Terrain2DAsset &asset, RuntimeBody &runtime) {
+            const TerrainData2D &data = asset.getData();
+            const float cellSize = TerrainTrees::CELL_SIZE;
+            const int cellsX = static_cast<int>(std::ceil(static_cast<float>(data.cellsX) * data.cellSize / cellSize));
+            const int cellsZ = static_cast<int>(std::ceil(static_cast<float>(data.cellsZ) * data.cellSize / cellSize));
+            createTreeShapes(physics, entity, asset, runtime, 0, 0, std::max(cellsX - 1, 0), std::max(cellsZ - 1, 0));
+        }
+
         // The mesh and heightfield data a body owns. The shapes that refer to it must be gone.
         void releaseData(RuntimeBody &runtime) {
+            runtime.treeCells.clear(); // their shapes went with the body
             for (b3MeshData *mesh : runtime.chunkMeshDatas) {
                 if (mesh != nullptr) { b3DestroyMesh(mesh); }
             }
@@ -263,6 +390,7 @@ namespace TerrainPhysics {
                 if (asset == nullptr) { return; }
                 runtime.body = createStaticBody(worldId, entity);
                 createHeightFieldShape(runtime.body, entity, *asset, runtime);
+                createTreeShapes(physics, entity, *asset, runtime);
             } else if (entity.hasComponent<Terrain3DComponent>()) {
                 Terrain3DComponent &component = entity.getComponent<Terrain3DComponent>();
                 Terrain3DAsset *asset = component.physicsEnabled ? resolveTerrain3D(component.terrain) : nullptr;
@@ -445,6 +573,12 @@ namespace TerrainPhysics {
             body->heightField = nullptr;
         }
         createHeightFieldShape(body->body, entity, *asset, *body);
+        // The trees stand on the relief: those of the cells the edit reaches settle again.
+        {
+            const float cellSize = TerrainTrees::CELL_SIZE;
+            const auto cellOf = [&](uint32_t vertex) { return static_cast<int>(std::floor(static_cast<float>(vertex) * data.cellSize / cellSize)); };
+            createTreeShapes(physics, entity, *asset, *body, cellOf(minX), cellOf(minZ), cellOf(maxX), cellOf(maxZ));
+        }
 
         const glm::mat4 transform = entity.calculateWorldSpaceTransform().getLocalTransform();
         float minHeight = TerrainData2D::decodeHeight(data.heights[0]);

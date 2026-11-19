@@ -9,6 +9,8 @@
 #include <Panda/Assets/MaterialAsset.hpp>
 #include <Panda/Assets/StaticResources.hpp>
 #include <Panda/Assets/WorldAsset.hpp>
+#include <Panda/Prefabs/PrefabAsset.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 #include <Panda/Base/ColorSpace.hpp>
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
@@ -17,6 +19,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 
 namespace Panda {
 
@@ -85,7 +88,20 @@ void AssetHandlerEditor::reload(AssetId id) {
         m_import.importTexturesFromGltfMeta(meta);
         m_import.createMaterialsFromGltf(id);
     }
+    // A prefab is read again together with the prefabs that hold it, and its instances follow.
+    if (const auto info = m_registry.find(id); info != m_registry.end() && info->second.type == AssetType::PREFAB) {
+        prefabChanged(id);
+        return;
+    }
     loadInternal(id, true);
+}
+
+void AssetHandlerEditor::prefabChanged(AssetId id, const Prefabs::Applied *forced) {
+    const std::function<void(AssetId)> read = [this](AssetId prefab) {
+        // One that nobody holds is read when it is next asked for.
+        if (m_registry.contains(prefab) && isLoaded(prefab)) { loadInternal(prefab, true); }
+    };
+    Prefabs::prefabChanged(id, m_instanceWorlds ? m_instanceWorlds() : std::vector<World *>(), read, forced);
 }
 
 void AssetHandlerEditor::reloadLoadedShaders() {
@@ -216,6 +232,22 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             removeMissingFiles(id);
         } else {
             LOG_ERROR_EDITOR("World %s: the file is missing (asset %u).", relativePath.string().c_str(), id);
+            markMissingFiles(id);
+        }
+    } else if (loadedType == AssetType::PREFAB) {
+        // The template of the prefab: the entities of its file in a world of their own, the
+        // prefabs nested in it expanded (they are loaded on the way).
+        PrefabAsset *prefab = F_NEW(m_allocator, PrefabAsset)();
+        asset = prefab;
+        std::ifstream file(m_projectPath / relativePath);
+        if (file.is_open()) {
+            std::stringstream text;
+            text << file.rdbuf();
+            Prefabs::loadTemplate(id, text.str(), *prefab);
+            LOG_TRACE("Loaded prefab %s (asset %u)", relativePath.string().c_str(), id);
+            removeMissingFiles(id);
+        } else {
+            LOG_ERROR_EDITOR("Prefab %s: the file is missing (asset %u).", relativePath.string().c_str(), id);
             markMissingFiles(id);
         }
     } else if (loadedType == AssetType::POSTPROCESSING) {
@@ -629,6 +661,7 @@ AssetId AssetHandlerEditor::freshAssetId() const {
 }
 
 void AssetHandlerEditor::closeProject() {
+    Prefabs::clear(); // the templates hold the prefab assets of the project
     // Sidecars are written one by one in the course of work — there is nothing to save on close.
     // Undo stacks are cleared before cleanup: their commands hold AssetRef and would not let the
     // assets be freed. Then assets without live references are freed; the ids of a new project may
@@ -663,6 +696,13 @@ path_t AssetHandlerEditor::worldFilePath(AssetId id) {
         return {};
     }
     return m_projectPath / relative;
+}
+
+path_t AssetHandlerEditor::documentFilePath(AssetId id) {
+    const auto info = m_registry.find(id);
+    if (info == m_registry.end() || (info->second.type != AssetType::WORLD && info->second.type != AssetType::PREFAB)) { return {}; }
+    const path_t relative = assetPath(id);
+    return relative.empty() ? path_t() : m_projectPath / relative;
 }
 
 std::unordered_set<path_t> AssetHandlerEditor::getAssetPaths(AssetId id) {

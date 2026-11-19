@@ -291,8 +291,9 @@ palette.
   script API `Bamboo/TerrainAPI.hpp`, shaders, editor part in the namespace `TerrainEditor`.
   See `context/terrain.md`.
 - `Modules/Particles` (`dev.pandaengine.particles`; targets `PandaParticles`,
-  `PandaParticlesEditor`): `particleEmitterComponent`, CPU simulation with its own clock in
-  `submitBlended`, instanced camera-facing quads; the script table `particles`
+  `PandaParticlesEditor`): `particleEmitterComponent`, CPU simulation with its own clock (once
+  a frame, in `submit`), instanced camera-facing quads in `submitBlended` or — an emitter with a
+  `prefab` — the meshes of the prefab as instances with the opaque world; the script table `particles`
   (`Bamboo/Components/ParticleEmitterComponentAPI.hpp`): emission on and off, and bursts — a
   number of particles at once at a place of the world, with a tint and a part of the texture
   per burst. It was added without touching the core.

@@ -29,6 +29,11 @@ namespace {
         dto.maxParticles = emitter.maxParticles;
         dto.texture = emitter.texture.getId();
         dto.worldSpace = emitter.worldSpace;
+        dto.emitRadius = emitter.emitRadius;
+        dto.turbulence = emitter.turbulence;
+        dto.prefab = emitter.prefab.getId();
+        dto.orientation = static_cast<uint32_t>(emitter.orientation);
+        dto.spinDegrees = emitter.spinDegrees;
         encoder.encode("particleEmitterComponent", dto);
     }
 
@@ -51,6 +56,13 @@ namespace {
         emitter.maxParticles = dto.maxParticles;
         emitter.texture = AssetRef<Asset>(dto.texture);
         emitter.worldSpace = dto.worldSpace;
+        emitter.emitRadius = dto.emitRadius;
+        emitter.turbulence = dto.turbulence;
+        emitter.prefab = AssetRef<Asset>(dto.prefab);
+        emitter.orientation = dto.orientation <= static_cast<uint32_t>(ParticleOrientation::Emitter)
+                                  ? static_cast<ParticleOrientation>(dto.orientation)
+                                  : ParticleOrientation::Velocity;
+        emitter.spinDegrees = dto.spinDegrees;
     }
 
 } // namespace

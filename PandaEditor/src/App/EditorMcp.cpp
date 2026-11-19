@@ -383,10 +383,11 @@ void EditorMcp::registerTools() {
     });
     m_server.addTool({
         "open_world",
-        "Opens a world file of the project in a tab of the editor and makes it the active world (the one the "
-        "viewports show and Play runs). Stops the game if it plays.",
+        "Opens a world file of the project — or a prefab file — in a tab of the editor and makes it the document "
+        "in front: the one the viewports and the Hierarchy show. A world is what Play runs; a prefab is edited "
+        "the same way and never played (`status` marks it `prefab`). Stops the game if it plays.",
         R"({"type":"object","properties":{)"
-        R"("path":{"type":"string","description":"The .world file: relative to the project folder (Assets/world.world) or absolute."}},)"
+        R"("path":{"type":"string","description":"The .world or .prefab file: relative to the project folder (Assets/world.world, Assets/Prefabs/Lamp.prefab) or absolute."}},)"
         R"("required":["path"]})",
         [this](const rapidjson::Value &arguments) { return openWorld(arguments); },
     });
@@ -631,6 +632,10 @@ Mcp::PendingResult EditorMcp::status() {
         writeText(writer, error ? world->path().string() : relative.generic_string());
         writer.Key("active");
         writer.Bool(world.get() == m_editor.documents().activeWorld());
+        if (world->isPrefab()) { // a prefab open in a tab: edited like a world, never played
+            writer.Key("prefab");
+            writer.Bool(true);
+        }
         writer.Key("unsaved");
         writer.Bool(world->isDirty());
         writer.Key("changedOnDisk");
@@ -1080,7 +1085,7 @@ Mcp::PendingResult EditorMcp::camera(const rapidjson::Value &arguments) {
 Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const std::string name = Mcp::stringArgument(arguments, "path");
-    if (name.empty()) { return Mcp::ready(Mcp::ToolResult::error("path is the .world file to open")); }
+    if (name.empty()) { return Mcp::ready(Mcp::ToolResult::error("path is the .world or .prefab file to open")); }
     path_t file(name);
     if (file.is_relative()) { file = m_editor.project().getOpenedProjectPath() / file; }
     file = file.lexically_normal();
@@ -1093,7 +1098,7 @@ Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
     // The game plays a copy of the active world: it ends before another world takes that place.
     m_editor.stop();
     if (m_editor.documents().openWorld(file) == nullptr) {
-        return Mcp::ready(Mcp::ToolResult::error("The world could not be opened: " + file.string() + "\n" + logSince(from)));
+        return Mcp::ready(Mcp::ToolResult::error(file.filename().string() + " could not be opened: " + file.string() + "\n" + logSince(from)));
     }
     if (m_editor.controller()) { m_editor.controller()->showSceneView(); }
     return Mcp::ready(textResult("Opened " + file.filename().string() + ".\n" + logSince(from)));

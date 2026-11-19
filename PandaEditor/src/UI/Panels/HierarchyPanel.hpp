@@ -39,6 +39,12 @@ public:
     virtual void hierarchyDidRequestPaste() = 0;
     virtual void hierarchyDidRequestDelete(const std::vector<Panda::UUID> &entityIds) = 0;
     virtual void hierarchyDidReparent(const std::vector<Panda::UUID> &itemIds, Panda::UUID newParentId) = 0; // 0 = to root
+    // Prefabs (context/prefabs.md): the entity with everything under it becomes a prefab and an
+    // instance of it; the instances the entities are parts of become plain entities; the prefab
+    // an entity is a part of opens in its tab.
+    virtual void hierarchyDidRequestCreatePrefab(Panda::UUID entityId) = 0;
+    virtual void hierarchyDidRequestUnpack(const std::vector<Panda::UUID> &entityIds) = 0;
+    virtual void hierarchyDidRequestOpenPrefab(Panda::UUID entityId) = 0;
 };
 
 // VIEW: the hierarchy panel. The tree is read directly from the engine World (TreeItem = UUID), and
@@ -51,6 +57,9 @@ public:
     void setWorld(Panda::World *world); // tree source; reload() after structural changes
     void reload();                      // re-read the tree (recomputes the root entities)
     void setRootTitle(std::string title); // root name = the name of the open world file
+    // A prefab is one tree: the Hierarchy shows that entity and what is under it, and nothing
+    // else of its world. 0 — a world: every entity without a parent.
+    void setRootEntity(Panda::UUID entity);
     void setStatusText(const std::string &text);
     void setSelectedEntities(const std::vector<Panda::UUID> &entityIds); // programmatic highlight of the selection
     void expandEntity(Panda::UUID entityId, bool expanded);
@@ -75,6 +84,7 @@ private:
     HierarchyPanelOutput *m_output;
     Panda::World *m_world = nullptr;
     std::string m_rootTitle = "World";
+    Panda::UUID m_rootEntity = 0; // of a prefab: its root
     // The rows under the root of the tree, recomputed in reload(): the root entities, or — while
     // the search has text — every entity whose name has it, as a flat list by name.
     std::vector<std::uint32_t> m_rootChildren;

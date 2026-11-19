@@ -5,12 +5,17 @@
 #include <Rain/Rain.hpp>
 #include <entt/entt.hpp>
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
 
 namespace Panda {
+
+// Given every reference to an entity a component holds, one at a time; it may write another id
+// into it.
+using EntityRefVisitor = std::function<void(UUID &)>;
 
 // A component type as a contribution to the engine registry (context/plugins.md). The name is the
 // component's key in .world and the only identity for the core; the operations are what the core
@@ -35,6 +40,12 @@ struct ComponentType final {
     // not know the type (the script host's add/remove by name).
     void (*create)(Entity) = nullptr;
     void (*remove)(Entity) = nullptr;
+    // The references to entities the component holds — the scripts: their fields of the type
+    // entity; a joint: the body it is connected to. A type that holds none leaves it null. A
+    // copy of entities points at its own copies through it (a duplicate, a paste, an instance of
+    // a prefab): an id written into a component is a number like any other, and only its type
+    // knows that it names an entity.
+    void (*entityRefs)(Entity, const EntityRefVisitor &) = nullptr;
 };
 
 template<typename T>

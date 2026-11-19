@@ -64,6 +64,7 @@ struct TreeLayerDto : public Rain::Codable {
     bool enabled = true;
     UUID mesh = 0;
     UUID meshMaterial = 0;
+    UUID prefab = 0;
     bool imposter = true;
     float canopyDensity = 0.6f;
     float scaleMin = 0.9f;
@@ -75,6 +76,7 @@ struct TreeLayerDto : public Rain::Codable {
     RAIN_FIELD(enabled)
     RAIN_FIELD(mesh)
     RAIN_FIELD(meshMaterial)
+    RAIN_FIELD(prefab)
     RAIN_FIELD(imposter)
     RAIN_FIELD(canopyDensity)
     RAIN_FIELD(scaleMin)

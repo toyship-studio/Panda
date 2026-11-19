@@ -103,6 +103,13 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
   part), the contact events go to the body entity as before. A triangle mesh collider on a part
   gets a cook of its own with the pose baked into the triangles (box3d mesh shapes have no frame);
   a convex one is placed by `b3CreateTransformedHullShape`. Same rules in 2D (`BoxCollider2D`).
+- **Shapes for what is not an entity.** A world system that owns a static body may give it the
+  colliders of an entity of any world — of the template of a prefab among them:
+  `Physics3D::addStaticShapes(body, owner, position, rotation, scale, shapes, cooks)`, the same
+  code that makes the shapes of an entity's own body (`createShapes`), without writing the
+  shapes into the components and without a name for a ray (a hit names the entity the body is
+  registered for). The terrain gives every tree of a prefab layer the colliders of the prefab
+  this way (`context/prefabs.md`); the system keeps the shapes and the cooks.
 - **Mesh collider** (`MeshCollider3DComponent`): a collider shaped by a mesh, in the local space of
   the entity (its scale applies, there is no offset). The mesh is an imported or a runtime mesh
   asset; an empty reference means the mesh the entity renders — the primitive of its

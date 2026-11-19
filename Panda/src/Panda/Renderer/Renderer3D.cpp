@@ -313,6 +313,29 @@ void Renderer3D::submitInstanced(
     }
 }
 
+void Renderer3D::submitInstanced(
+    glm::mat4 &model,
+    const InstancedModel::Part &part,
+    Miren::VertexBufferHandle instanceBuffer,
+    Miren::VertexLayoutHandle instanceLayout,
+    uint32_t instanceCount
+) {
+    PANDA_PROFILE_SCOPE_N("Renderer3D::submitInstanced part");
+    if (m_mode != RenderingMode::DEFAULT && m_mode != RenderingMode::SHADOW_DEPTH) { return; }
+    if (!instanceBuffer.isValid() || !instanceLayout.isValid() || instanceCount == 0) { return; }
+    InstancedModel::Draw draw;
+    if (!InstancedModel::resolve(part, draw)) { return; }
+    if (m_mode == RenderingMode::SHADOW_DEPTH && draw.vertexLayout.id != StaticResources::generalVertexLayout.id) {
+        // As for any instanced mesh: the builtin instanced depth knows only the common vertex.
+        AssetRef<ShaderAsset> shader = draw.material ? draw.material->getShaderAsset() : AssetRef<ShaderAsset>();
+        if (!shader || !shader->getShadowMirenHandle().isValid()) { return; }
+    }
+    AssetRef<MaterialAsset> material = draw.material.get() != nullptr ? draw.material : StaticResources::instancedLitMaterial;
+    drawInstancedPrimitive(
+        model, material, draw.vertexBuffer, draw.indexBuffer, draw.indicesCount, instanceBuffer, instanceLayout, instanceCount
+    );
+}
+
 void Renderer3D::submitSky(
     glm::mat4 &skyViewProj, AssetRef<RuntimeMeshAsset> skyMesh, AssetRef<MaterialAsset> material
 ) {

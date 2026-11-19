@@ -605,16 +605,27 @@ namespace {
         });
         section->addContent(std::make_shared<PropertyRow>("Name", nameField));
 
-        addAssetRow(*section, "Mesh", "mesh", static_cast<uint32_t>(layer.mesh.getId()), [editing, i](uint32_t id) {
-            editing.data->trees[i].mesh = assetRefOf(id);
-            editing.emit();
-        });
-        addAssetRow(*section, "Material Override", "material", static_cast<uint32_t>(layer.meshMaterial.getId()),
-            [editing, i](uint32_t id) {
-                editing.data->trees[i].meshMaterial = assetRefOf(id);
+        // What a tree is: a prefab — its meshes where they stand under its root, and its
+        // colliders for the physics of the terrain — or one imported mesh.
+        addAssetRow(*section, "Prefab", "prefab", static_cast<uint32_t>(layer.prefab.getId()),
+            [editing, i, rebuild = host.rebuild](uint32_t id) {
+                editing.data->trees[i].prefab = assetRefOf(id);
                 editing.emit();
+                rebuild();
             }
-        );
+        )->setHelp("The meshes and the colliders of the prefab");
+        if (layer.prefab.getId() == 0) {
+            addAssetRow(*section, "Mesh", "mesh", static_cast<uint32_t>(layer.mesh.getId()), [editing, i](uint32_t id) {
+                editing.data->trees[i].mesh = assetRefOf(id);
+                editing.emit();
+            });
+            addAssetRow(*section, "Material Override", "material", static_cast<uint32_t>(layer.meshMaterial.getId()),
+                [editing, i](uint32_t id) {
+                    editing.data->trees[i].meshMaterial = assetRefOf(id);
+                    editing.emit();
+                }
+            );
+        }
         // Beyond Tree Distance (Settings → Flora) — a billboard with a baked atlas (color+normals, auto).
         addToggle<Panda::FloraSettings>(*section, editing, "Imposter", layer.imposter, [i](Panda::FloraSettings &flora, bool v) {
             flora.trees[i].imposter = v;

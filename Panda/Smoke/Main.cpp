@@ -28,12 +28,16 @@
 #include <Panda/Serialization/ComponentDtos.hpp>
 #include <Panda/Serialization/ReferenceCollector.hpp>
 #include <Panda/Serialization/WorldMapper.hpp>
+#include <Panda/Prefabs/PrefabAsset.hpp>
+#include <Panda/Prefabs/PrefabComponent.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 #include <Rain/Coders/BinaryDecoder.hpp>
 #include <Rain/Coders/BinaryEncoder.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 #include <Panda/Packages/PackageLoader.hpp>
 #if PANDA_SMOKE_HAS_PHYSICS
+#include <Panda/Physics/Physics3D.hpp>
 #include <Panda/Physics/PhysicsExtensions.hpp>
 #endif
 #if PANDA_SMOKE_HAS_TERRAIN
@@ -86,9 +90,34 @@ public:
     SmokeAssetHandler()
         : Panda::AssetHandler(Foundation::getAllocator()) {}
 
+    // The prefabs of the checks: the text of the file of each, by the id of its asset.
+    std::unordered_map<Panda::AssetId, std::string> prefabs;
+
+    bool hasAsset(Panda::AssetId id) const override {
+        return m_loadedAssets.contains(id) || prefabs.contains(id);
+    }
+    void reload(Panda::AssetId id) {
+        loadInternal(id, true);
+    }
+
 protected:
     Panda::Asset *loadInternal(Panda::AssetId id, bool forcedReload = false) override {
         auto it = m_loadedAssets.find(id);
+        if (it != m_loadedAssets.end() && !forcedReload) { return it->second.asset; }
+#ifdef PND_EDITOR
+        const auto prefab = prefabs.find(id);
+        if (prefab != prefabs.end()) {
+            if (it != m_loadedAssets.end()) {
+                F_DELETE(m_allocator, it->second.asset);
+                m_loadedAssets.erase(it);
+                bumpResolveGeneration();
+            }
+            auto *asset = F_NEW(m_allocator, Panda::PrefabAsset)();
+            m_loadedAssets[id] = {asset};
+            Panda::Prefabs::loadTemplate(id, prefab->second, *asset);
+            return asset;
+        }
+#endif
         return it != m_loadedAssets.end() ? it->second.asset : nullptr;
     }
 };
@@ -735,6 +764,278 @@ int main(int argc, const char **argv) {
         );
         delete defaultsWorld;
     }
+
+#ifdef PND_EDITOR
+    // Prefabs (context/prefabs.md): an instance is an entry in a file and entities in a world;
+    // it follows its prefab except in what it differs in; what differs is found when the file
+    // is written. None of this is seen in a picture.
+    std::printf("prefabs\n");
+    {
+        using Panda::UUID;
+        const auto entity = [](const char *name, uint32_t id, uint32_t parent, const char *children, float y, const char *more) {
+            char text[2048];
+            std::snprintf(
+                text, sizeof(text),
+                "{\"id\":%u,\"tagComponent\":{\"tag\":\"%s\"},\"relationshipComponent\":{\"parent\":%u,\"children\":[%s]},"
+                "\"transformComponent\":{\"position\":{\"x\":0,\"y\":%g,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0,\"w\":1},"
+                "\"scale\":{\"x\":1,\"y\":1,\"z\":1}}%s}",
+                id, name, parent, children, y, more
+            );
+            return std::string(text);
+        };
+        const auto light = [](float intensity, float radius) {
+            char text[512];
+            std::snprintf(
+                text, sizeof(text),
+                ",\"scriptListComponent\":{\"scripts\":[]},\"pointLightComponent\":{\"color\":{\"x\":1,\"y\":1,\"z\":1,\"w\":1},"
+                "\"intensity\":%g,\"radius\":%g,\"isEnabled\":true,\"coneAngle\":0,\"coneSoftness\":0.25,\"castShadows\":false}",
+                intensity, radius
+            );
+            return std::string(text);
+        };
+        const std::string noScripts = ",\"scriptListComponent\":{\"scripts\":[]}";
+        // A lamp: a root whose script names the bulb under it, the bulb with a light, a shade.
+        const std::string blink = ",\"scriptListComponent\":{\"scripts\":[{\"name\":\"Blink\",\"scriptFields\":["
+                                  "{\"name\":\"bulb\",\"fieldId\":11,\"type\":2,\"value\":2},"
+                                  "{\"name\":\"speed\",\"fieldId\":12,\"type\":1,\"value\":2}]}]}";
+        const auto lamp = [&](float intensity, float radius, bool shade, bool cord) {
+            std::string text = "{\"entities\":[" + entity("Lamp", 1, 0, shade ? "2,3" : cord ? "2,4" : "2", 0.f, blink.c_str()) + "," +
+                               entity("Bulb", 2, 1, "", 2.f, light(intensity, radius).c_str());
+            if (shade) { text += "," + entity("Shade", 3, 1, "", 2.5f, noScripts.c_str()); }
+            if (cord) { text += "," + entity("Cord", 4, 1, "", 1.f, noScripts.c_str()); }
+            return text + "]}";
+        };
+        const Panda::AssetId LAMP(9001), POST(9002), LOOP(9003);
+        assetHandler->prefabs[LAMP] = lamp(10.f, 5.f, true, false);
+        // A post: a lamp nested in it, its bulb wider there.
+        assetHandler->prefabs[POST] =
+            "{\"entities\":[" + entity("Post", 60, 0, "50", 0.f, noScripts.c_str()) +
+            ",{\"id\":50,\"prefab\":9001,\"relationshipComponent\":{\"parent\":60,\"children\":[]},"
+            "\"transformComponent\":{\"position\":{\"x\":0,\"y\":3,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0,\"w\":1}},"
+            "\"overrides\":[{\"entity\":2,\"pointLightComponent\":{\"radius\":9}}]}]}";
+        // A prefab that holds itself.
+        assetHandler->prefabs[LOOP] =
+            "{\"entities\":[" + entity("Loop", 70, 0, "71", 0.f, noScripts.c_str()) +
+            ",{\"id\":71,\"prefab\":9003,\"relationshipComponent\":{\"parent\":70,\"children\":[]}}]}";
+        const std::function<void(Panda::AssetId)> reload = [assetHandler](Panda::AssetId id) { assetHandler->reload(id); };
+
+        const std::string place = "\"transformComponent\":{\"position\":{\"x\":5,\"y\":0,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0,\"w\":1}}";
+        const std::string file =
+            "{\"entities\":[{\"id\":100,\"prefab\":9001,\"relationshipComponent\":{\"parent\":0,\"children\":[101]}," + place +
+            ",\"overrides\":[{\"entity\":2,\"pointLightComponent\":{\"intensity\":20}}]}," + entity("Sticker", 101, 100, "", 0.f, noScripts.c_str()) +
+            ",{\"id\":200,\"prefab\":9001,\"relationshipComponent\":{\"parent\":0,\"children\":[]}," + place + "}," +
+            "{\"id\":300,\"prefab\":9002,\"relationshipComponent\":{\"parent\":0,\"children\":[]}," + place +
+            ",\"overrides\":[{\"entity\":[50,2],\"pointLightComponent\":{\"intensity\":33}}]}," +
+            "{\"id\":400,\"prefab\":9999,\"relationshipComponent\":{\"parent\":0,\"children\":[]}," + place +
+            ",\"overrides\":[{\"entity\":7,\"tagComponent\":{\"tag\":\"Kept\"}}]}]}";
+
+        auto *instances = new Panda::World();
+        report("a world with instances loads", Panda::Prefabs::load(*instances, file));
+        const auto intensityOf = [](Panda::Entity entity) {
+            return entity.isValid() && entity.hasComponent<Panda::PointLightComponent>() ? entity.getComponent<Panda::PointLightComponent>().intensity : -1.f;
+        };
+        const auto radiusOf = [](Panda::Entity entity) {
+            return entity.isValid() && entity.hasComponent<Panda::PointLightComponent>() ? entity.getComponent<Panda::PointLightComponent>().radius : -1.f;
+        };
+        const auto bulbFieldOf = [](Panda::Entity entity) {
+            if (!entity.isValid()) { return UUID(0); }
+            auto &scripts = entity.getComponent<Panda::ScriptListComponent>().scripts;
+            if (scripts.empty() || !scripts[0].hasField("bulb")) { return UUID(0); }
+            const UUID *value = std::get_if<UUID>(&scripts[0].getField("bulb").value);
+            return value != nullptr ? *value : UUID(0);
+        };
+        const UUID bulb100 = Panda::derivedEntityId(UUID(100), UUID(2));
+        const UUID bulb200 = Panda::derivedEntityId(UUID(200), UUID(2));
+        const UUID bulb300 = Panda::derivedEntityId(UUID(300), Panda::derivedEntityId(UUID(50), UUID(2)));
+        report(
+            "the entities of an instance are entities of the world, with ids derived from its root",
+            instances->getById(bulb100).isValid() && instances->getById(bulb200).isValid() && instances->getById(UUID(100)).getName() == "Lamp" &&
+                instances->getById(bulb100).getParent() == instances->getById(UUID(100))
+        );
+        report("an instance has what it overrides, another one what the prefab has",
+               intensityOf(instances->getById(bulb100)) == 20.f && intensityOf(instances->getById(bulb200)) == 10.f);
+        report("a reference inside a prefab names the entity of the instance",
+               bulbFieldOf(instances->getById(UUID(100))) == bulb100 && bulbFieldOf(instances->getById(UUID(200))) == bulb200);
+        report("an entity added under an instance stands under it",
+               instances->getById(UUID(101)).isValid() && instances->getById(UUID(101)).getParent() == instances->getById(UUID(100)));
+        report(
+            "a prefab nested in a prefab: what the outer one overrides, and what the world overrides by the path",
+            radiusOf(instances->getById(bulb300)) == 9.f && intensityOf(instances->getById(bulb300)) == 33.f
+        );
+        report("an instance of a prefab that is not there is one entity", instances->getById(UUID(400)).isValid());
+
+        // The file again: every instance is one entry that holds what differs and nothing else.
+        const std::string saved = Panda::Prefabs::save(*instances);
+        const std::map<uint32_t, std::string> entries = entitiesJson(saved);
+        const auto entryOf = [&entries](uint32_t id) {
+            const auto found = entries.find(id);
+            return found != entries.end() ? found->second : std::string();
+        };
+        report("a file holds an entry per instance, not its entities", entries.size() == 5 && entries.contains(100) && entries.contains(101));
+        report(
+            "an entry holds the name and the place of the instance, what it differs in and nothing else",
+            entryOf(100) ==
+                "{\"id\":100,\"prefab\":9001,\"relationshipComponent\":{\"parent\":0,\"children\":[101]},"
+                "\"tagComponent\":{\"tag\":\"Lamp\"},"
+                "\"transformComponent\":{\"position\":{\"x\":5.0,\"y\":0.0,\"z\":0.0},\"rotation\":{\"x\":0.0,\"y\":0.0,\"z\":0.0,\"w\":1.0}},"
+                "\"overrides\":[{\"entity\":2,\"pointLightComponent\":{\"intensity\":20.0}}]}"
+        );
+        report("an entity of a nested prefab is named by the ids on the way down",
+               entryOf(300).find("\"overrides\":[{\"entity\":[50,2],\"pointLightComponent\":{\"intensity\":33.0}}]") != std::string::npos);
+        report("the entry of a missing prefab is written back as it was read",
+               entryOf(400).find("\"prefab\":9999") != std::string::npos &&
+                   entryOf(400).find("\"overrides\":[{\"entity\":7,\"tagComponent\":{\"tag\":\"Kept\"}}]") != std::string::npos);
+        auto *again = new Panda::World();
+        const bool reloaded = Panda::Prefabs::load(*again, saved);
+        report("a world with instances saved twice is the same file", reloaded && Panda::Prefabs::save(*again) == saved);
+        delete again;
+
+        // The prefab changes: brighter, wider, the shade gone, a cord come. Every instance
+        // follows, except in what it differs in.
+        assetHandler->prefabs[LAMP] = lamp(15.f, 7.f, false, true);
+        const UUID shade200 = Panda::derivedEntityId(UUID(200), UUID(3));
+        const bool shadeBefore = instances->getById(shade200).isValid();
+        Panda::Prefabs::prefabChanged(LAMP, {instances}, reload);
+        report(
+            "a changed prefab reaches its instances, an override stays",
+            intensityOf(instances->getById(bulb100)) == 20.f && radiusOf(instances->getById(bulb100)) == 7.f &&
+                intensityOf(instances->getById(bulb200)) == 15.f && radiusOf(instances->getById(bulb200)) == 7.f
+        );
+        report("an entity the prefab lost leaves its instances, one it gained comes",
+               shadeBefore && !instances->getById(shade200).isValid() && instances->getById(Panda::derivedEntityId(UUID(200), UUID(4))).isValid());
+        report("the prefab that nests it follows too",
+               radiusOf(instances->getById(bulb300)) == 9.f && intensityOf(instances->getById(bulb300)) == 33.f &&
+                   instances->getById(Panda::derivedEntityId(UUID(300), Panda::derivedEntityId(UUID(50), UUID(4)))).isValid());
+        report("a prefab that changed leaves the world as saved as it was", !instances->isChanged());
+
+        // What differs, as the editor shows it; Revert and Apply.
+        instances->getById(bulb200).getComponent<Panda::PointLightComponent>().radius = 3.f;
+        Panda::Prefabs::Difference difference = Panda::Prefabs::differenceOf(instances->getById(bulb200));
+        report("what an entity differs in is named by its component and its field",
+               difference.isPart && difference.differs("pointLightComponent", "radius") && !difference.differs("pointLightComponent", "intensity") &&
+                   !difference.differs("transformComponent", ""));
+        Panda::Prefabs::Scope radius{instances->getById(bulb200), "pointLightComponent", "radius"};
+        Panda::Prefabs::setEntry(instances->getById(UUID(200)), Panda::Prefabs::entryWithout(instances->getById(UUID(200)), radius));
+        report("Revert puts the value of the prefab back",
+               radiusOf(instances->getById(bulb200)) == 7.f && !Panda::Prefabs::differenceOf(instances->getById(bulb200)).any());
+        // A field of a script: the difference is named by the script and the field, and taking
+        // it back leaves the entity the scripts of the prefab — the list is read again, not joined.
+        {
+            Panda::Entity lamp200 = instances->getById(UUID(200));
+            auto &scripts = lamp200.getComponent<Panda::ScriptListComponent>().scripts;
+            if (!scripts.empty() && scripts[0].hasField("speed")) { scripts[0].getField("speed").value = 9.f; }
+            const bool named = Panda::Prefabs::differenceOf(lamp200).differs("scriptListComponent", "scripts/Blink/scriptFields/speed");
+            Panda::Prefabs::Scope speed{lamp200, "scriptListComponent", "scripts/Blink/scriptFields/speed"};
+            Panda::Prefabs::setEntry(lamp200, Panda::Prefabs::entryWithout(lamp200, speed));
+            auto &after = lamp200.getComponent<Panda::ScriptListComponent>().scripts;
+            const float *value = after.size() == 1 && after[0].hasField("speed") ? std::get_if<float>(&after[0].getField("speed").value) : nullptr;
+            report("a script field taken back leaves the scripts of the prefab, once",
+                   named && value != nullptr && *value == 2.f && bulbFieldOf(lamp200) == bulb200);
+        }
+        instances->getById(UUID(100)).setName("Hall Lamp"); // what an instance is called is its own, like where it stands
+        const Panda::Prefabs::Applied applied = Panda::Prefabs::apply(instances->getById(UUID(100)), {}, assetHandler->prefabs[LAMP]);
+        report("Apply writes the difference into the prefab file", applied.any() && applied.file.find("\"intensity\": 20.0") != std::string::npos);
+        assetHandler->prefabs[LAMP] = applied.file;
+        Panda::Prefabs::prefabChanged(LAMP, {instances}, reload);
+        report("after Apply the other instances have the value and the applied one differs in nothing",
+               intensityOf(instances->getById(bulb200)) == 20.f && Panda::Prefabs::differenceCount(instances->getById(UUID(100))) == 0);
+        report("the name of an instance is not applied, and not taken from it by the prefab",
+               applied.file.find("Hall Lamp") == std::string::npos && instances->getById(UUID(100)).getName() == "Hall Lamp" &&
+                   instances->getById(UUID(200)).getName() == "Lamp");
+        report("the sticker added under the instance became an entity of the prefab",
+               applied.file.find("\"tag\": \"Sticker\"") != std::string::npos &&
+                   instances->getById(Panda::derivedEntityId(UUID(200), UUID(101))).isValid());
+
+        // Copies: a new instance, a duplicate of one — each points at its own entities.
+        Panda::Entity made = instances->instantiate(Panda::AssetRef<Panda::PrefabAsset>(LAMP));
+        const UUID madeBulb = made.isValid() ? Panda::derivedEntityId(made.getId(), UUID(2)) : UUID(0);
+        report("a new instance: its entities by derived ids, its references its own",
+               made.isValid() && instances->getById(madeBulb).isValid() && bulbFieldOf(made) == madeBulb);
+        Panda::Entity copy = instances->duplicateEntity(instances->getById(UUID(100)));
+        const UUID copyBulb = copy.isValid() ? Panda::derivedEntityId(copy.getId(), UUID(2)) : UUID(0);
+        report("a duplicate of an instance is an instance of its own",
+               copy.isValid() && instances->getById(copyBulb).isValid() && bulbFieldOf(copy) == copyBulb &&
+                   Panda::Prefabs::instanceRoot(instances->getById(copyBulb)) == copy);
+
+        // A prefab that holds itself is refused, not followed forever.
+        auto *loop = new Panda::World();
+        const bool loopLoaded = Panda::Prefabs::load(
+            *loop, "{\"entities\":[{\"id\":500,\"prefab\":9003,\"relationshipComponent\":{\"parent\":0,\"children\":[]}}]}"
+        );
+        report("a prefab that holds itself is refused", loopLoaded && loop->getById(UUID(500)).isValid());
+        delete loop;
+
+        // The patch of an object: a list of named things is compared by name.
+        rapidjson::Document base, value, patch;
+        base.Parse("{\"scripts\":[{\"name\":\"A\",\"speed\":1,\"at\":{\"x\":1,\"y\":2}},{\"name\":\"B\",\"speed\":2}],\"list\":[1,2]}");
+        value.Parse("{\"scripts\":[{\"name\":\"A\",\"speed\":5,\"at\":{\"x\":1,\"y\":3}},{\"name\":\"C\",\"speed\":3}],\"list\":[1,2]}");
+        const bool differs = Panda::Prefabs::diff(base, value, patch, patch.GetAllocator());
+        rapidjson::StringBuffer patchText;
+        rapidjson::Writer<rapidjson::StringBuffer> patchWriter(patchText);
+        patch.Accept(patchWriter);
+        report("a list of named things is compared by name, a vector as one value",
+               differs && std::string(patchText.GetString()) ==
+                              "{\"scripts\":{\"A\":{\"speed\":5,\"at\":{\"x\":1,\"y\":3}},\"C\":{\"speed\":3},\"B\":null}}");
+        Panda::Prefabs::merge(base, patch, base.GetAllocator());
+        report("a patch merged into its base gives the value", base == value);
+
+        // A tree of a terrain is a copy of a prefab that no entity stands for: the colliders of
+        // the prefab are shapes of the body of the terrain, where the tree stands, at its turn
+        // and its size. Nothing of it is seen in a picture.
+        {
+            const Panda::AssetId TREE(9004);
+            const std::string trunk = noScripts + ",\"capsuleCollider3dComponent\":{\"isSensor\":false,"
+                                                  "\"offset\":{\"x\":0,\"y\":0,\"z\":0},\"radius\":0.5,\"halfHeight\":1.5,"
+                                                  "\"density\":1,\"friction\":0.5,\"restitution\":0}";
+            // The trunk stands 2 m above the root of the prefab.
+            assetHandler->prefabs[TREE] = "{\"entities\":[" + entity("Tree", 1, 0, "2", 0.f, noScripts.c_str()) + "," +
+                                          entity("Trunk", 2, 1, "", 2.f, trunk.c_str()) + "]}";
+            Panda::FloraSettings flora;
+            Panda::TreeLayer layer;
+            layer.id = 1;
+            layer.prefab = Panda::AssetRef<Panda::Asset>(TREE);
+            flora.trees.push_back(layer);
+            Panda::TerrainTrees trees;
+            Panda::TreeInstance tree;
+            tree.x = 10.f;
+            tree.z = 12.f;
+            tree.yaw = 0.7f;
+            tree.scale = 2.f;
+            tree.layer = 1;
+            trees.add(tree);
+            auto *forest = new Panda::World();
+            Panda::Entity ground = forest->instantiateEntity();
+            ground.getTransform().setPosition({100.f, 5.f, 100.f});
+            auto &groundTerrain = ground.addComponent<Panda::Terrain2DComponent>();
+            groundTerrain.terrain = Panda::GameContext::getAssetHandler()
+                                        ->createRuntimeAsset<Panda::Terrain2DAsset>(Panda::TerrainData2D::makeFlat(32, 32, 1.f), flora, trees)
+                                        .asBaseAsset();
+            groundTerrain.physicsEnabled = true;
+            forest->startRunning();
+            Panda::Physics3D *physics = forest->findContext<Panda::Physics3D>();
+            Panda::Entity touched;
+            const auto fall = [&](float x, float z) {
+                Panda::RaycastHit3D hit;
+                if (physics == nullptr || !physics->raycast(Panda::Vec3(x, 100.f, z), Panda::Vec3(0.f, -1.f, 0.f), 200.f, Panda::Entity(), hit)) {
+                    return -1000.f;
+                }
+                touched = hit.entity;
+                return hit.point.y;
+            };
+            // The ground is at 5. The tree is twice its size: the trunk 4 m above the ground, a
+            // capsule of 3 m to each side and a radius of 1 — its top is 8 m above the ground.
+            const float aside = fall(120.f, 120.f);
+            const float atTree = fall(110.f, 112.f);
+            report("the trees of a prefab layer collide where they stand",
+                   std::abs(atTree - 13.f) < 0.05f && std::abs(aside - 5.f) < 0.05f && touched == ground);
+            forest->finishRunning();
+            delete forest;
+        }
+
+        delete instances;
+        Panda::Prefabs::clear();
+    }
+#endif
 
     // The shadow of the cube (x ∈ [-1..1], y ∈ [0.5..2.5]) from the sun at +x at 45° lies at
     // x ∈ [-3.5..-1.5].

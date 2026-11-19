@@ -49,6 +49,9 @@ public:
     // owns the view), the chrome (header, close) is the panel's.
     void setSidebarContent(std::shared_ptr<PandaUI::View> content);
     void setSidebarVisible(bool visible);
+    // The settings of the world are of a world file: the document in front has them or — a
+    // prefab — does not, and then the button and the sidebar are gone.
+    void setWorldSettingsAvailable(bool available);
     bool isSidebarVisible() const {
         return m_sidebarVisible;
     }
@@ -109,7 +112,8 @@ private:
     void setupLayout() override;
     void setupStyle() override;
 
-    // Asset drop target: a model ("asset.mesh") becomes entities of the world, a world ("asset.world") opens.
+    // Asset drop target: a model ("asset.mesh") and a prefab ("asset.prefab") become entities of
+    // the world, a world ("asset.world") opens.
     bool canAcceptDrop(const PandaUI::DragInfo &drag) override;
     void dragEntered(const PandaUI::DragInfo &drag) override;
     void dragExited() override;

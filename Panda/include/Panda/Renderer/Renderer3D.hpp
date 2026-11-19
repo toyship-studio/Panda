@@ -6,6 +6,7 @@
 #include "Panda/Assets/RuntimeMeshAsset.hpp"
 #include "Panda/Assets/ImportedMeshAsset.hpp"
 #include "Panda/GameLogic/Camera.hpp"
+#include "Panda/Renderer/InstancedModel.hpp"
 #include "Panda/Renderer/RenderingMode.hpp"
 #include "Panda/Renderer/SceneBlocks.hpp"
 #include "Panda/Renderer/ShaderInterface/ShaderBlocks.hpp"
@@ -54,6 +55,16 @@ public:
         glm::mat4 &model,
         AssetRef<ImportedMeshAsset> mesh,
         AssetRef<MaterialAsset> overrideMaterial,
+        Miren::VertexBufferHandle instanceBuffer,
+        Miren::VertexLayoutHandle instanceLayout,
+        uint32_t instanceCount
+    );
+    // One mesh of an instanced model (InstancedModel::Part): a primitive of an imported mesh or a
+    // mesh of the registry. Its material: the part's own → the slot of the imported mesh → the
+    // builtin instancedLit.
+    void submitInstanced(
+        glm::mat4 &model,
+        const InstancedModel::Part &part,
         Miren::VertexBufferHandle instanceBuffer,
         Miren::VertexLayoutHandle instanceLayout,
         uint32_t instanceCount

@@ -646,6 +646,7 @@ void registerCoreAssetKinds(EditorExtensions &extensions) {
     extensions.assetKinds.add({"mesh", Ic::Mesh, Color(0x8B7FD1FF), createMeshEditor});
     extensions.assetKinds.add({"runtimeMesh", Ic::Mesh, Color(0x8B7FD1FF), nullptr});
     extensions.assetKinds.add({"world", Ic::AssetWorld, Color(0x6FC1FFFF), nullptr});
+    extensions.assetKinds.add({"prefab", Ic::Prefab, Color(0x5B9BF0FF), nullptr});
     extensions.assetKinds.add({"postfx", Ic::Sprite, Color(0xD16FA8FF), createPostprocessingEditor});
     extensions.assetKinds.add({"font", Ic::FileFont, Color(0xE0B35AFF), createFontEditor});
 }

@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "dev.pandaengine.terrain",
     "name": "Terrain",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "authors": ["Andreichev Michail"],
     "description": "Heightmap and voxel terrains: layered materials with splatmaps, tiled LOD, grass and tree flora with imposters.",
     "category": "world",
@@ -11,7 +11,7 @@
     "engine": "^0.1.0",
     "platforms": [],
     "parts": ["engine", "editor", "sdk"],
-    "dependencies": [{"id": "dev.pandaengine.physics", "version": "^0.3.0"}],
+    "dependencies": [{"id": "dev.pandaengine.physics", "version": "^0.4.0"}],
     "links": {
         "homepage": "https://github.com/toyship-studio/Panda",
         "repository": "https://github.com/toyship-studio/Panda/tree/main/Modules/Terrain",

@@ -124,10 +124,30 @@ free to change its memory layout.
 | `encode`, `decode` | the functions above; `serialized = false` (and both `nullptr`) for a type that is not written |
 | `create`, `remove` | `addComponent<T>()` / `addTag<T>()` and `removeComponent<T>()` — the script host adds and removes by name |
 | `duplicated` | whether an entity duplicate copies it (true) |
+| `entityRefs` | null by default. A component that holds the id of another entity names its references here — see below |
 
 A type that is not written to the file — a runtime-only marker — registers with
 `componentType<T>(name, nullptr, nullptr)` and `serialized = false`; it still needs the
 registration for its pool.
+
+## A component that names an entity
+
+The id of an entity in a component is a number like any other: only the type knows that it is
+a reference. A copy of entities has to know — a duplicate, a paste, an instance of a prefab
+([Prefabs](../prefabs.md)) must point at its own copies, not at the originals: the wheel of a
+copied car is joined to the copied chassis. A component that holds such an id says so:
+
+```cpp
+ComponentType type = componentType<TetherComponent>("tetherComponent", encodeTether, decodeTether);
+type.entityRefs = [](Entity entity, const EntityRefVisitor &visit) {
+    visit(entity.getComponent<TetherComponent>().anchor); // every UUID that names an entity
+};
+extensions.components.add(type);
+```
+
+`visit` is given each reference by reference and may write another id into it. The scripts of
+the core (their fields of the type entity) and the joints of the Physics module do this; a
+component without `entityRefs` is copied as it is, and its ids keep naming the originals.
 
 ## Reading components in a system
 

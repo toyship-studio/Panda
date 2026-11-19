@@ -4,6 +4,12 @@ Heightmap (2D) and voxel (3D) terrains for Panda: layered materials with splatma
 tiled LOD pyramid around the camera, grass tufts and grass meshes, tree layers with
 baked imposters, static physics bodies, and a scripting API (`Bamboo::TerrainAPI`).
 
+A tree of a layer is an imported mesh, or a prefab: the meshes of the prefab where they stand
+under its root (the root on the ground), and its colliders — every tree of such a layer gets
+them in the physics, as shapes of the body of the terrain. A trunk one cannot walk through is a
+capsule in the tree prefab; a rock is a convex mesh collider. Nothing else of the prefab is
+used: a tree is not an entity.
+
 Engine part contributions: `terrain2dComponent` / `terrain3dComponent`, asset kinds
 `terrain2d` / `terrain3d` (`.terrain`), world settings `terrain` (LOD distances, tile rings)
 and `flora` (flora distances), world system (submit, occluders, physics), static resources

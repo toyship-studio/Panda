@@ -1,6 +1,7 @@
 #include "UI/EntityActions.hpp"
 
 #include "App/EditorLayer.hpp"
+#include "Project/Documents/WorldFile.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "UI/EditorController.hpp"
 #include "UI/EditorDialogs.hpp"
@@ -18,6 +19,8 @@
 #include <Panda/WorldCommands/Impl/EditScriptFieldCommand.hpp>
 #include <Panda/WorldCommands/Impl/EntityTransformCommand.hpp>
 #include <Panda/WorldCommands/Impl/HierarchyCommand.hpp>
+#include <Panda/WorldCommands/Impl/InstanceEntryCommand.hpp>
+#include <Panda/Prefabs/PrefabAsset.hpp>
 #include <PandaEditorKit/ComponentCommands.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/Selection.hpp>
@@ -25,6 +28,7 @@
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 
+#include <fstream>
 #include <sstream>
 #include <unordered_set>
 
@@ -67,6 +71,25 @@ EntityActions::EntityActions(EditorController &workspace, Panda::EditorLayer &ap
 
 Panda::World *EntityActions::world() {
     return m_app.panelsWorld();
+}
+
+Panda::Entity EntityActions::prefabRoot() {
+    // The game plays a world, never a prefab.
+    Panda::WorldFile *active = m_app.isPlaying() ? nullptr : m_app.documents().activeWorld();
+    return active != nullptr ? active->prefabRoot() : Panda::Entity();
+}
+
+Panda::AssetId EntityActions::shownPrefab() {
+    Panda::WorldFile *active = m_app.isPlaying() ? nullptr : m_app.documents().activeWorld();
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    return active != nullptr && active->isPrefab() && handler != nullptr ? handler->getAssetId(active->path()) : Panda::AssetId(0);
+}
+
+Panda::Entity EntityActions::parentFor(Panda::UUID parentId) {
+    Panda::World *shown = world();
+    if (shown == nullptr) { return {}; }
+    Panda::Entity parent = shown->getById(parentId);
+    return parent.isValid() ? parent : prefabRoot();
 }
 
 /* ------------------------------ The targets of an edit ------------------------------ */
@@ -136,7 +159,7 @@ void EntityActions::createEntity(Panda::UUID parentId) {
     if (shown == nullptr) { return; }
     Panda::Entity created = shown->instantiateEntity();
     created.setName("GameObject " + std::to_string(m_nextEntity++));
-    shown->setParent(created, shown->getById(parentId)); // no such parent — a root
+    shown->setParent(created, parentFor(parentId)); // no such parent — a root
     recordCreated({created});
 }
 
@@ -160,7 +183,7 @@ void EntityActions::createPrimitive(Panda::UUID parentId, PrimitiveKind kind) {
 
     Panda::Entity created = shown->instantiateEntity();
     created.setName(std::string(spec.name) + " " + std::to_string(m_nextEntity++));
-    shown->setParent(created, shown->getById(parentId)); // no such parent — a root
+    shown->setParent(created, parentFor(parentId)); // no such parent — a root
     // An empty material is the built-in checker. A collider is added by hand: the core knows no
     // physics (the components of the Physics module come through Add Component).
     created.addComponent<Panda::PrimitiveMeshComponent>().kind = spec.meshKind;
@@ -171,7 +194,14 @@ void EntityActions::hierarchyDidRequestDuplicate(const std::vector<Panda::UUID> 
     Panda::World *shown = world();
     if (shown == nullptr) { return; }
     std::vector<Panda::Entity> duplicates;
-    for (Panda::Entity source : entitiesOf(*shown, ids)) { duplicates.push_back(shown->duplicateEntity(source)); }
+    const Panda::Entity root = prefabRoot();
+    for (Panda::Entity source : entitiesOf(*shown, ids)) {
+        if (source == root) {
+            LOG_WARN_EDITOR("A prefab has one root: %s is not duplicated.", source.getName().c_str());
+            continue;
+        }
+        duplicates.push_back(shown->duplicateEntity(source));
+    }
     recordCreated(duplicates);
 }
 
@@ -213,11 +243,12 @@ void EntityActions::hierarchyDidRequestCopy(const std::vector<Panda::UUID> &ids)
     const std::vector<Panda::Entity> entities = entitiesOf(*shown, ids);
     if (entities.empty()) { return; }
     // The clipboard holds text: a fragment of a world file. It pastes into this world, into another
-    // world or project (another editor window), and reads in any text editor.
+    // world or project (another editor window), and reads in any text editor. An instance of a
+    // prefab is there as a file holds it: the prefab and what differs.
     Rain::JsonEncoder encoder(true);
     std::ostringstream text;
     Panda::WorldMapper::saveEntities(*shown, entities, encoder, text);
-    setClipboardText(text.str());
+    setClipboardText(Panda::Prefabs::collapse(text.str()));
 }
 
 void EntityActions::hierarchyDidRequestPaste() {
@@ -226,11 +257,19 @@ void EntityActions::hierarchyDidRequestPaste() {
     const std::string text = getClipboardText();
     if (text.empty()) { return; }
     Rain::JsonDecoder decoder;
-    std::istringstream stream(text);
+    std::string expanded;
     std::vector<Panda::Entity> added;
-    if (!Panda::WorldMapper::loadEntities(*shown, decoder, stream, added) || added.empty()) {
+    if (Panda::Prefabs::expand(text, expanded)) {
+        std::istringstream stream(expanded);
+        Panda::WorldMapper::loadEntities(*shown, decoder, stream, added);
+    }
+    if (added.empty()) {
         LOG_WARN_EDITOR("Paste — the clipboard holds no entities (a fragment of a world file)");
         return;
+    }
+    // In a prefab everything stands under its root.
+    if (Panda::Entity root = prefabRoot(); root.isValid()) {
+        for (Panda::Entity entity : added) { shown->setParent(entity, root); }
     }
     recordCreated(added);
 }
@@ -238,7 +277,12 @@ void EntityActions::hierarchyDidRequestPaste() {
 void EntityActions::hierarchyDidRequestDelete(const std::vector<Panda::UUID> &ids) {
     Panda::World *shown = world();
     if (shown == nullptr || ids.empty()) { return; }
-    Panda::AddRemoveEntitiesCommand command(shown->getById(std::unordered_set<Panda::UUID>(ids.begin(), ids.end())));
+    std::unordered_set<Panda::Entity> deleted = shown->getById(std::unordered_set<Panda::UUID>(ids.begin(), ids.end()));
+    if (Panda::Entity root = prefabRoot(); root.isValid() && deleted.erase(root) > 0) {
+        LOG_WARN_EDITOR("%s is the root of the prefab and stays: a prefab is the tree under it.", root.getName().c_str());
+    }
+    if (deleted.empty()) { return; }
+    Panda::AddRemoveEntitiesCommand command(deleted);
     shown->getCommandHistory().execute(command); // the entities go with everything under them
     shown->setChanged();
     selection().deselectEntities();
@@ -248,10 +292,12 @@ void EntityActions::hierarchyDidRequestDelete(const std::vector<Panda::UUID> &id
 void EntityActions::hierarchyDidReparent(const std::vector<Panda::UUID> &items, Panda::UUID newParentId) {
     Panda::World *shown = world();
     if (shown == nullptr) { return; }
-    const std::vector<Panda::Entity> entities = entitiesOf(*shown, items);
+    std::vector<Panda::Entity> entities = entitiesOf(*shown, items);
+    // The root of a prefab stays its root, and nothing else of the prefab stands beside it.
+    if (Panda::Entity root = prefabRoot(); root.isValid()) { std::erase(entities, root); }
     if (entities.empty()) { return; }
     // A drop onto the root of the world makes roots: the command takes "no parent" too.
-    Panda::Entity parent = newParentId != Panda::UUID(0) ? shown->getById(newParentId) : Panda::Entity();
+    Panda::Entity parent = parentFor(newParentId);
     Panda::HierarchyCommand command(entities, parent);
     shown->getCommandHistory().execute(command);
     shown->setChanged();
@@ -276,8 +322,205 @@ void EntityActions::instantiateMeshes(const std::vector<Panda::AssetId> &meshes)
         if (root.isValid()) { roots.push_back(root); }
     }
     if (roots.empty()) { return; }
+    if (Panda::Entity prefab = prefabRoot(); prefab.isValid()) {
+        for (Panda::Entity root : roots) { shown->setParent(root, prefab); }
+    }
     recordCreated(roots);
     LOG_INFO_EDITOR("Added %zu %s to the world", roots.size(), roots.size() == 1 ? "mesh" : "meshes");
+}
+
+/* ------------------------------ Prefabs ------------------------------ */
+
+void EntityActions::instantiatePrefabs(const std::vector<Panda::AssetId> &prefabs, Panda::UUID parentId) {
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    Panda::World *shown = world();
+    if (handler == nullptr || shown == nullptr || prefabs.empty()) { return; }
+    const Panda::AssetId inside = shownPrefab();
+    Panda::EntityPlacement placement;
+    placement.parent = parentFor(parentId);
+    std::vector<Panda::Entity> roots;
+    for (Panda::AssetId prefab : prefabs) {
+        if (handler->getInfo(prefab).type != Panda::AssetType::PREFAB) { continue; }
+        // An instance of a prefab inside itself — or inside a prefab it holds — would hold itself.
+        if (inside != Panda::AssetId(0) && Panda::Prefabs::dependsOn(prefab, inside)) {
+            LOG_WARN_EDITOR(
+                "%s holds %s: an instance of it here would hold itself.", handler->getAssetName(prefab).c_str(),
+                handler->getAssetName(inside).c_str()
+            );
+            continue;
+        }
+        Panda::Entity root = shown->instantiate(Panda::AssetRef<Panda::PrefabAsset>(prefab), Panda::UUID(0), placement);
+        if (!root.isValid()) {
+            LOG_ERROR_EDITOR("%s holds no entity: there is nothing to put into the world.", handler->getAssetName(prefab).c_str());
+            continue;
+        }
+        roots.push_back(root);
+    }
+    if (roots.empty()) { return; }
+    // The scripts of the new entities follow the loaded classes like the rest of the world.
+    Panda::ScriptEngine *scripts = Panda::GameContext::getScriptEngine();
+    if (scripts != nullptr && scripts->isLoaded() && !shown->isRunning()) { shown->updateScriptsAndFields(); }
+    recordCreated(roots);
+}
+
+void EntityActions::createPrefab(Panda::UUID id) {
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    Panda::World *shown = world();
+    Panda::Entity entity = shown != nullptr ? shown->getById(id) : Panda::Entity();
+    if (handler == nullptr || !entity.isValid() || m_app.isPlaying()) { return; }
+    if (entity == prefabRoot()) {
+        LOG_WARN_EDITOR("%s is the root of this prefab already.", entity.getName().c_str());
+        return;
+    }
+    // A part of an instance that is not its root belongs to that prefab: it is made a prefab there.
+    if (Panda::Entity root = Panda::Prefabs::instanceRoot(entity); root.isValid() && !(root == entity)) {
+        LOG_WARN_EDITOR(
+            "%s is a part of an instance of %s: open that prefab to make a prefab of a part of it, or unpack the instance.",
+            entity.getName().c_str(), handler->getAssetName(Panda::Prefabs::prefabOf(entity)).c_str()
+        );
+        return;
+    }
+    // The file: in the folder the Content Browser shows, named after the entity.
+    const Panda::path_t directory = m_workspace.contentDirectory();
+    if (directory.empty()) { return; }
+    std::string name = entity.getName();
+    for (char &c : name) {
+        if (c == '/' || c == '\\' || c == ':') { c = ' '; }
+    }
+    const Panda::path_t path = uniqueAssetPath(directory, name.empty() ? "Prefab" : name, ".prefab");
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        LOG_ERROR_EDITOR("The prefab %s could not be written.", path.string().c_str());
+        return;
+    }
+    file << Panda::Prefabs::createFrom(entity);
+    file.close();
+    const Panda::AssetId prefab = handler->documents().registerCreatedAsset(path);
+    if (!prefab) { return; }
+    // The entities stand in the world as an instance of the new prefab from now on. Their ids
+    // change with it, so the steps of the history that name them are over.
+    Panda::Prefabs::convertToInstance(entity, prefab);
+    shown->getCommandHistory().clear();
+    m_workspace.refreshAssetPanels();
+    m_workspace.refreshFromWorld();
+    m_workspace.selectEntities({entity.getId()});
+}
+
+void EntityActions::unpackPrefabs(const std::vector<Panda::UUID> &ids) {
+    Panda::World *shown = world();
+    if (shown == nullptr || m_app.isPlaying()) { return; }
+    std::unordered_set<Panda::Entity> roots;
+    for (Panda::Entity entity : entitiesOf(*shown, ids)) {
+        if (Panda::Entity root = Panda::Prefabs::instanceRoot(entity); root.isValid()) { roots.insert(root); }
+    }
+    if (roots.empty()) { return; }
+    for (Panda::Entity root : roots) { Panda::Prefabs::unpack(root); }
+    shown->getCommandHistory().clear(); // the ids of nested instances changed with it
+    m_workspace.refreshFromWorld();
+}
+
+void EntityActions::openPrefabOf(Panda::UUID id) {
+    Panda::World *shown = world();
+    Panda::Entity entity = shown != nullptr ? shown->getById(id) : Panda::Entity();
+    if (const Panda::AssetId prefab = Panda::Prefabs::prefabOf(entity)) { m_workspace.openDocumentAsset(prefab); }
+}
+
+bool EntityActions::refusePrefabEditInPlay() {
+    if (!m_app.isPlaying()) { return false; }
+    // An instance is brought to another entry as a whole — entities come and go, components are
+    // read again: not something to do to a world while its scripts and bodies run.
+    LOG_WARN_EDITOR("The game is playing: an instance is reverted and applied in Edit. Stop the game first.");
+    return true;
+}
+
+void EntityActions::revertPrefab(Panda::UUID rootId, const Panda::Prefabs::Scope &scope) {
+    if (refusePrefabEditInPlay()) { return; }
+    Panda::World *shown = world();
+    Panda::Entity root = shown != nullptr ? shown->getById(rootId) : Panda::Entity();
+    const std::string before = Panda::Prefabs::entryOf(root);
+    const std::string after = Panda::Prefabs::entryWithout(root, scope);
+    if (before.empty() || after.empty() || before == after) { return; }
+    Panda::InstanceEntryCommand command(*shown, rootId, before, after);
+    shown->getCommandHistory().execute(command);
+    m_workspace.refreshFromWorld();
+}
+
+void EntityActions::restoreRemoved(Panda::UUID rootId, Panda::UUID source) {
+    if (refusePrefabEditInPlay()) { return; }
+    Panda::World *shown = world();
+    Panda::Entity root = shown != nullptr ? shown->getById(rootId) : Panda::Entity();
+    const std::string before = Panda::Prefabs::entryOf(root);
+    const std::string after = Panda::Prefabs::entryRestoring(root, source);
+    if (before.empty() || after.empty() || before == after) { return; }
+    Panda::InstanceEntryCommand command(*shown, rootId, before, after);
+    shown->getCommandHistory().execute(command);
+    m_workspace.refreshFromWorld();
+}
+
+void EntityActions::applyPrefab(Panda::UUID rootId, const Panda::Prefabs::Scope &scope, bool forced) {
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    Panda::World *shown = world();
+    Panda::Entity root = shown != nullptr ? shown->getById(rootId) : Panda::Entity();
+    const Panda::AssetId prefab = Panda::Prefabs::prefabOf(root);
+    if (handler == nullptr || !prefab || refusePrefabEditInPlay()) { return; }
+    const Panda::path_t path = handler->documentFilePath(prefab);
+    const std::string name = handler->getAssetName(prefab);
+    // The prefab is written as its file has it: edits of it that are not saved yet would be lost
+    // under the new file, or written with it unasked.
+    Panda::WorldFile *document = m_app.documents().findWorld(path);
+    if (document != nullptr && document->isDirty()) {
+        LOG_WARN_EDITOR("%s has unsaved edits: save it (or close it without saving), then apply.", name.c_str());
+        return;
+    }
+    std::ifstream source(path);
+    std::stringstream text;
+    text << source.rdbuf();
+    if (!source.is_open()) {
+        LOG_ERROR_EDITOR("%s could not be read: nothing was applied.", name.c_str());
+        return;
+    }
+    source.close();
+    const Panda::Prefabs::Applied applied = Panda::Prefabs::apply(root, scope, text.str());
+    if (!applied.any()) {
+        LOG_INFO_EDITOR("Nothing to apply: the instance differs from %s in nothing there.", name.c_str());
+        return;
+    }
+    std::ofstream target(path);
+    if (!target.is_open()) {
+        LOG_ERROR_EDITOR("%s could not be written: nothing was applied.", name.c_str());
+        return;
+    }
+    target << applied.file;
+    target.close();
+    // Apply Forced: the files of the project that are not open lose what they have of their own
+    // in the applied places; the open documents lose it in memory (prefabChanged) and wait for Save.
+    int rewritten = 0;
+    if (forced) {
+        for (const auto &[id, info] : handler->getRegistry()) {
+            if ((info.type != Panda::AssetType::WORLD && info.type != Panda::AssetType::PREFAB) || id == prefab) { continue; }
+            const Panda::path_t file = handler->documentFilePath(id);
+            if (file.empty() || m_app.documents().findWorld(file) != nullptr) { continue; }
+            std::ifstream input(file);
+            std::stringstream content;
+            content << input.rdbuf();
+            input.close();
+            std::string stripped;
+            if (!Panda::Prefabs::stripApplied(applied, content.str(), stripped)) { continue; }
+            std::ofstream output(file);
+            output << stripped;
+            rewritten++;
+        }
+    }
+    handler->prefabChanged(prefab, forced ? &applied : nullptr);
+    m_app.documentActions().reloadWorldAsset(prefab); // its open tab shows the new file
+    shown->setChanged(); // its file holds the difference that the instance has no more
+    if (forced && rewritten > 0) {
+        LOG_INFO_EDITOR("Applied to %s; %d other file%s of the project lost the overrides of the same places.", name.c_str(), rewritten, rewritten == 1 ? "" : "s");
+    } else {
+        LOG_INFO_EDITOR("Applied to %s.", name.c_str());
+    }
+    m_workspace.refreshAssetPanels();
+    m_workspace.refreshFromWorld();
 }
 
 /* ------------------------------ The entity tabs ------------------------------ */
@@ -450,6 +693,35 @@ void EntityActions::entityDidEditScriptField(
 
 void EntityActions::entityDidClickBackground() {
     m_workspace.deselectAll();
+}
+
+void EntityActions::entityDidRevertPrefab(bool whole, const std::string &component, const std::string &field) {
+    Panda::Entity primary = primaryTarget();
+    Panda::Entity root = Panda::Prefabs::instanceRoot(primary);
+    if (!root.isValid()) { return; }
+    revertPrefab(root.getId(), whole ? Panda::Prefabs::Scope{} : Panda::Prefabs::Scope{primary, component, field});
+}
+
+void EntityActions::entityDidApplyPrefab(bool whole, const std::string &component, const std::string &field, bool forced) {
+    Panda::Entity primary = primaryTarget();
+    Panda::Entity root = Panda::Prefabs::instanceRoot(primary);
+    if (!root.isValid()) { return; }
+    applyPrefab(root.getId(), whole ? Panda::Prefabs::Scope{} : Panda::Prefabs::Scope{primary, component, field}, forced);
+}
+
+void EntityActions::entityDidRestoreRemoved(Panda::UUID source) {
+    Panda::Entity root = Panda::Prefabs::instanceRoot(primaryTarget());
+    if (root.isValid()) { restoreRemoved(root.getId(), source); }
+}
+
+void EntityActions::entityDidOpenPrefab() {
+    Panda::Entity primary = primaryTarget();
+    if (primary.isValid()) { openPrefabOf(primary.getId()); }
+}
+
+void EntityActions::entityDidSelectPrefabRoot() {
+    Panda::Entity root = Panda::Prefabs::instanceRoot(primaryTarget());
+    if (root.isValid()) { m_workspace.selectEntities({root.getId()}); }
 }
 
 } // namespace Editor

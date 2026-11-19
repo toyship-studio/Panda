@@ -35,18 +35,13 @@ namespace {
 
 } // namespace
 
-void syncWithManifest(World &world) {
-    ScriptEngine *scriptEngine = GameContext::getScriptEngine();
-    if (!scriptEngine || !scriptEngine->isLoaded()) { return; }
-    auto view = world.getAllEntitiesWith<ScriptListComponent>();
-    auto manifest = scriptEngine->getManifest();
-    for (auto entityHandle : view) {
-        if (!world.isValidEntt(entityHandle)) { continue; }
-        auto &component = view.get<ScriptListComponent>(entityHandle);
-        for (ExternalScript &container : component.scripts) {
+namespace {
+
+    // The script containers of one entity against the manifest of the loaded scripts.
+    void syncEntity(Entity entity, const ScriptBundleManifest &manifest) {
+        for (ExternalScript &container : entity.getComponent<ScriptListComponent>().scripts) {
             const ScriptClassManifest &clazz = manifest.getClass(container.getName().c_str());
             if (!clazz) {
-                Entity entity = world.entity(entityHandle);
                 LOG_ERROR_EDITOR(
                     "The entity %s has the script %s, which the built scripts do not have. Build the scripts and reload.",
                     entity.getName().c_str(), container.getName().c_str()
@@ -96,17 +91,11 @@ void syncWithManifest(World &world) {
             }
         }
     }
-}
 
-void instantiate(World &world) {
-    ScriptEngine *scriptEngine = GameContext::getScriptEngine();
-    if (!scriptEngine || !scriptEngine->isLoaded()) { return; }
-    auto view = world.getAllEntitiesWith<ScriptListComponent>();
-    for (auto entityHandle : view) {
-        if (!world.isValidEntt(entityHandle)) { continue; }
-        auto &component = view.get<ScriptListComponent>(entityHandle);
-        const UUID entityId = world.entity(entityHandle).getId();
-        for (ExternalScript &container : component.scripts) {
+    // The script instances of one entity, with the values of their fields.
+    void instantiateEntity(Entity entity) {
+        const UUID entityId = entity.getId();
+        for (ExternalScript &container : entity.getComponent<ScriptListComponent>().scripts) {
             const Handle scriptInstanceId = ExternalCalls::instantiateScript(entityId, container.getName().c_str());
             if (!scriptInstanceId) {
                 LOG_ERROR_EDITOR("The script %s could not be created: the built scripts have no class of that name. Build the scripts and reload.", container.getName().c_str());
@@ -116,13 +105,69 @@ void instantiate(World &world) {
             for (ScriptField &field : container.getFields()) { container.applyField(field); }
         }
     }
+
+    // The containers of the given entities in class order.
+    std::vector<ExternalScript *> inExecutionOrder(const std::vector<Entity> &entities) {
+        std::vector<ExternalScript *> scripts;
+        for (Entity entity : entities) {
+            if (!entity.isValid()) { continue; }
+            for (ExternalScript &container : entity.getComponent<ScriptListComponent>().scripts) {
+                scripts.emplace_back(&container);
+            }
+        }
+        std::stable_sort(scripts.begin(), scripts.end(), [](const ExternalScript *lhs, const ExternalScript *rhs) {
+            return lhs->getOrder() < rhs->getOrder();
+        });
+        return scripts;
+    }
+
+} // namespace
+
+void syncWithManifest(World &world) {
+    ScriptEngine *scriptEngine = GameContext::getScriptEngine();
+    if (!scriptEngine || !scriptEngine->isLoaded()) { return; }
+    auto view = world.getAllEntitiesWith<ScriptListComponent>();
+    const ScriptBundleManifest manifest = scriptEngine->getManifest();
+    for (auto entityHandle : view) {
+        if (!world.isValidEntt(entityHandle)) { continue; }
+        syncEntity(world.entity(entityHandle), manifest);
+    }
+}
+
+void instantiate(World &world) {
+    ScriptEngine *scriptEngine = GameContext::getScriptEngine();
+    if (!scriptEngine || !scriptEngine->isLoaded()) { return; }
+    auto view = world.getAllEntitiesWith<ScriptListComponent>();
+    for (auto entityHandle : view) {
+        if (!world.isValidEntt(entityHandle)) { continue; }
+        instantiateEntity(world.entity(entityHandle));
+    }
+}
+
+void instantiate(World &, const std::vector<Entity> &entities) {
+    ScriptEngine *scriptEngine = GameContext::getScriptEngine();
+    if (!scriptEngine || !scriptEngine->isLoaded()) { return; }
+    // The entities came from elsewhere — a prefab, a copy made in another build of the scripts:
+    // their containers follow the classes that are loaded now, like those of a world at its load.
+    const ScriptBundleManifest manifest = scriptEngine->getManifest();
+    for (Entity entity : entities) {
+        if (!entity.isValid() || entity.getComponent<ScriptListComponent>().scripts.empty()) { continue; }
+        syncEntity(entity, manifest);
+        instantiateEntity(entity);
+    }
+}
+
+void start(const std::vector<Entity> &entities) {
+    for (ExternalScript *script : inExecutionOrder(entities)) {
+        if (script->isBound()) { script->invokeStart(); }
+    }
 }
 
 void shutdown(World &world) {
     // Workers and deferred completions hold references to script instances, so
     // they are stopped before the instances are removed.
     cancelAndWaitScriptAsync();
-    ExternalCalls::clear();
+    if (ExternalCalls::clear) { ExternalCalls::clear(); } // a world may run with no scripts loaded
     auto view = world.getAllEntitiesWith<ScriptListComponent>();
     for (auto entityHandle : view) {
         if (!world.isValidEntt(entityHandle)) { continue; }

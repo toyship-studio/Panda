@@ -14,10 +14,11 @@ class World;
 
 namespace Particles {
 
-    // World system of the particles: simulation on the CPU and an instanced submit of camera-facing
-    // quads in the scene pass, after the opaque world (the quads are blended). It takes time from
-    // its own clock, not from World::update — particles live the same way both in the editor (EDIT
-    // does not simulate the world) and in the game.
+    // World system of the particles: simulation on the CPU and an instanced submit — of
+    // camera-facing quads in the scene pass, after the opaque world (the quads are blended), or,
+    // for an emitter of a prefab, of the meshes of the prefab with the opaque world and in the
+    // shadow depth passes. It takes time from its own clock, not from World::update — particles
+    // live the same way both in the editor (EDIT does not simulate the world) and in the game.
     WorldSystem worldSystem();
 
     // Particles of an emitter at once, whatever its rate and whether it plays: a puff, a splash,

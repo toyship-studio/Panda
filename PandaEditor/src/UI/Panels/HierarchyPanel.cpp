@@ -8,6 +8,8 @@
 #include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Entity.hpp>
 #include <Panda/GameLogic/World.hpp>
+#include <Panda/Prefabs/PrefabComponent.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -55,13 +57,20 @@ namespace {
             m_label->setText(text);
         }
         // An empty name (the world root) — the icon is hidden, the row stays a plain caption.
-        void setIcon(const char *name) {
+        // prefab — the entity came from a prefab: its row is in the color of the accent, so the
+        // part of the tree that is kept in another file reads apart from what the world holds.
+        void setIcon(const char *name, bool prefab = false) {
             const bool hidden = name == nullptr;
             m_icon->setHidden(hidden);
             m_icon->layout().setDisplay(hidden ? Display::None : Display::Flex);
             if (!hidden) {
                 m_icon->setTexture(icons().get(name));
-                m_icon->setTintColor(ThemeColor::textMuted);
+                m_icon->setTintColor(prefab ? ThemeColor::accentText : ThemeColor::textMuted);
+            }
+            if (prefab) {
+                m_label->setTextColor(ThemeColor::accentText);
+            } else {
+                m_label->setTextRole(TextRole::Primary);
             }
         }
 
@@ -125,18 +134,20 @@ void HierarchyPanelView::configureTree() {
     m_tree->setSelectionMode(TreeSelectionMode::Multiple);
 
     TreeDataSource dataSource;
-    dataSource.rootItem = [] { return toItem(0); }; // synthetic "World" root (UUID 0)
+    // The top row: the synthetic root of a world (UUID 0) — or, for a prefab, its root entity:
+    // a prefab is the tree of that entity, and the Hierarchy shows it as it is.
+    dataSource.rootItem = [this] { return toItem(static_cast<std::uint32_t>(m_rootEntity)); };
     dataSource.numberOfChildren = [this](TreeItem item) -> int {
         if (!m_world) { return 0; }
         const std::uint32_t uuid = toUuid(item);
-        if (uuid == 0) { return static_cast<int>(m_rootChildren.size()); }
+        if (uuid == static_cast<std::uint32_t>(m_rootEntity)) { return static_cast<int>(m_rootChildren.size()); }
         if (!m_search.empty()) { return 0; } // the matches are a flat list
         return static_cast<int>(childrenOf(uuid).size());
     };
     dataSource.childAt = [this](TreeItem item, int index) -> TreeItem {
         if (!m_world) { return toItem(0); }
         const std::uint32_t uuid = toUuid(item);
-        const std::vector<std::uint32_t> &children = uuid == 0 ? m_rootChildren : childrenOf(uuid);
+        const std::vector<std::uint32_t> &children = uuid == static_cast<std::uint32_t>(m_rootEntity) ? m_rootChildren : childrenOf(uuid);
         return index >= 0 && index < static_cast<int>(children.size()) ? toItem(children[static_cast<size_t>(index)]) : toItem(0);
     };
     dataSource.cellForReuse = [] { return std::make_shared<EntityCell>(); };
@@ -150,7 +161,11 @@ void HierarchyPanelView::configureTree() {
         }
         Panda::Entity entity = m_world->getById(Panda::UUID(uuid));
         entityCell.setText(entity.isValid() ? entity.getName() : m_rootTitle);
-        entityCell.setIcon(entity.isValid() ? entityIconName(entity) : nullptr);
+        // A part of an instance of a prefab; its root — and the root of a prefab nested in it —
+        // carries the sign of a prefab.
+        const bool part = Panda::Prefabs::instanceRoot(entity).isValid();
+        const bool prefabRoot = part && entity.getComponent<Panda::PrefabComponent>().prefab != Panda::AssetId(0);
+        entityCell.setIcon(entity.isValid() ? (prefabRoot ? Ic::Prefab : entityIconName(entity)) : nullptr, part);
     };
     dataSource.titleForItem = [this](TreeItem item) -> std::string {
         const std::uint32_t uuid = toUuid(item);
@@ -204,6 +219,27 @@ void HierarchyPanelView::showContextMenu(TreeView &tree, Panda::UUID entityId, P
         return create;
     };
     if (entityId != Panda::UUID(0)) {
+        // The whole selection when the clicked row is a part of it, else the row alone.
+        const auto clicked = [this, entityId] {
+            std::vector<Panda::UUID> ids;
+            for (TreeItem item : m_tree->selectedItems()) {
+                if (const std::uint32_t uuid = toUuid(item)) { ids.push_back(Panda::UUID(uuid)); }
+            }
+            if (std::find(ids.begin(), ids.end(), entityId) == ids.end()) { ids = {entityId}; }
+            return ids;
+        };
+        Panda::Entity entity = m_world != nullptr ? m_world->getById(entityId) : Panda::Entity();
+        Panda::Entity instance = Panda::Prefabs::instanceRoot(entity);
+        if (instance.isValid()) {
+            menu->addItem("Open Prefab", [this, entityId] { m_output->hierarchyDidRequestOpenPrefab(entityId); });
+            menu->addItem("Unpack Prefab", [this, clicked] { m_output->hierarchyDidRequestUnpack(clicked()); });
+        }
+        // An entity that is not a part of an instance, or the root of one (its prefab is then a
+        // variant of that one).
+        if (!instance.isValid() || instance == entity) {
+            menu->addItem("Create Prefab", [this, entityId] { m_output->hierarchyDidRequestCreatePrefab(entityId); });
+        }
+        menu->addSeparator();
         menu->addSubmenu("Add Child", makeCreateMenu());
         menu->addItem("Rename", [this, entityId] { m_output->hierarchyDidRequestRename(entityId); });
         menu->addItem("Duplicate", [this, entityId] { m_output->hierarchyDidRequestDuplicate({entityId}); });
@@ -264,6 +300,13 @@ void HierarchyPanelView::setWorld(Panda::World *world) {
     reload();
 }
 
+void HierarchyPanelView::setRootEntity(Panda::UUID entity) {
+    if (m_rootEntity == entity) { return; }
+    m_rootEntity = entity;
+    m_tree->setExpanded(toItem(static_cast<std::uint32_t>(entity)), true); // the top row is always open
+    reload();
+}
+
 void HierarchyPanelView::setRootTitle(std::string title) {
     if (title.empty()) { title = "World"; }
     if (m_rootTitle == title) { return; }
@@ -288,13 +331,17 @@ const std::vector<std::uint32_t> &HierarchyPanelView::childrenOf(std::uint32_t u
 void HierarchyPanelView::reload() {
     m_rootChildren.clear();
     m_children.clear();
+    // A prefab: its one tree, from its root entity — the top row. What else its world holds
+    // (nothing of the file) is not shown.
+    Panda::Entity only = m_world != nullptr && m_rootEntity != Panda::UUID(0) ? m_world->getById(m_rootEntity) : Panda::Entity();
     if (m_world && m_search.empty()) {
-        m_rootChildren = childrenOf(0);
+        m_rootChildren = childrenOf(static_cast<std::uint32_t>(m_rootEntity));
     } else if (m_world) {
         std::vector<std::pair<std::string, std::uint32_t>> matches; // the search: lowercase name → id
         m_world->getAllEntitiesWith<Panda::IdComponent>().each([&](Panda::IdComponent &idc) {
             Panda::Entity entity = m_world->getById(idc.id);
             if (!entity.isValid()) { return; }
+            if (only.isValid() && !only.isAncestorOf(entity)) { return; } // the root is the top row already
             std::string name = entity.getName();
             for (char &c : name) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
             if (name.find(m_search) != std::string::npos) { matches.emplace_back(std::move(name), static_cast<std::uint32_t>(idc.id)); }

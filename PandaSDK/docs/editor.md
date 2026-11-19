@@ -66,6 +66,13 @@ publishes none says so, a class the last script build does not have is marked, a
 under the section opens the source of the class in your text editor (Settings → Editor →
 External Tools).
 
+**Prefabs.** A prefab — a tree of entities kept in a file of its own and placed in worlds any
+number of times — opens in a tab of the center like a world and is edited the same way; it is
+not played. The tab of the Hierarchy is titled with the file in front (`world.world`,
+`Lamp.prefab`). In a world the entities of an instance of a prefab are drawn in the accent
+color, and the inspector of such an entity marks what it has of its own, with Revert and Apply
+next to it. Everything about them is on its own page: [Prefabs](prefabs.md).
+
 A click on a world file in the Content Browser shows that world in the preview tab (its title
 is in italics): the next world clicked takes the same tab. A double click on the file or on the
 tab keeps it open, and so does the first edit. The tabs of the worlds can be dragged into

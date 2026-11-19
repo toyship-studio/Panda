@@ -10,9 +10,21 @@
 #include <Miren/Miren.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace Panda {
+
+class PrefabAsset;
+
+// Where a copy of entities stands (World::duplicateEntity, World::instantiate): under which
+// entity, and the position and the rotation of its root in the space of that parent. What is
+// not said stays as the original has it.
+struct EntityPlacement final {
+    Entity parent; // invalid — a duplicate stands next to its original, an instance is a root of the world
+    std::optional<glm::vec3> position;
+    std::optional<glm::quat> rotation;
+};
 
 class World final {
 public:
@@ -178,11 +190,29 @@ public:
     // list is added, a parent id without an entity and a cycle make the entity a root. The parent
     // field is the truth. Returns the number of repaired links; each is logged.
     size_t repairHierarchy();
-    Entity duplicateEntity(Entity entity);
-    // A copy of an entity of ANOTHER world with everything under it, as a root of this world: new
-    // ids, the hierarchy below the copy rebuilt, the component values as they are (a reference to
-    // an entity outside the subtree keeps its id, as in a duplicate). What a paste is made of.
+    // A copy of the entity with everything under it, next to it. A copy — this one, an import, an
+    // instance — points at its own entities: a reference between two copied entities
+    // (ComponentType::entityRefs: a field of a script, a joint) names the copies, a reference to
+    // an entity outside the copied ones keeps its id. In a running world the copy lives at once:
+    // the systems get its entities, its scripts are created and started.
+    Entity duplicateEntity(Entity entity, const EntityPlacement &placement = {});
+    // A copy of an entity of ANOTHER world with everything under it, as a root of this world, with
+    // new ids. What a paste is made of.
     Entity importEntity(World &source, Entity entity);
+    // A new instance of a prefab as a root of this world: copies of the entities of the prefab,
+    // each marked with where it came from (PrefabComponent). `rootId` — the id of the root of the
+    // instance, 0 for a new one; the ids of the entities under it are derived from it
+    // (derivedEntityId), so whoever chooses the root id knows them all. Invalid — the prefab has
+    // no entities (its file is missing or empty).
+    Entity instantiate(const AssetRef<PrefabAsset> &prefab, UUID rootId = UUID(0), const EntityPlacement &placement = {});
+    // The entity gets another id, and everything of the world that names it names it by the new
+    // one: its parent and its children, the references of the components
+    // (ComponentType::entityRefs). false — the id is taken, nothing changed. For a world that
+    // does not run.
+    bool changeEntityId(Entity entity, UUID id);
+    // An id no entity of this world has and no asset either (a field of a script that takes an
+    // entity takes a prefab too, by the id of its asset). Never 0.
+    UUID newEntityId();
     bool isValidEntt(entt::entity handle);
     bool isValid(UUID entityId);
 
@@ -207,8 +237,14 @@ private:
     // each.
     void runPhase(FramePhase phase, double time);
     // The entity of `source` and everything under it, copied into this world; `source` is this
-    // world for a duplicate and another one for an import.
-    Entity copySubtree(World &source, Entity entity);
+    // world for a duplicate, another one for an import, the world of a prefab for an instance —
+    // then `prefab` is its asset and every copy is marked as a part of the instance. `copies`
+    // gets the copied entities, the root first.
+    Entity copySubtree(World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies);
+    // The copy takes its place — under `parent`, at the pose of the placement — and, in a running
+    // world, comes to life: the systems hear of its entities, which have just appeared with all
+    // their components, and their scripts are created and started where they stand.
+    void settle(Entity root, const std::vector<Entity> &copies, Entity parent, const EntityPlacement &placement);
     // The tombstone of the entity was put on or taken off (Entity::setDeleted): the running
     // systems lose or get back the entity and everything under it (entityRemoved / entityRestored).
     void deletionChanged(Entity entity);

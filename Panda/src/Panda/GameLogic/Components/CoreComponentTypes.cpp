@@ -75,6 +75,10 @@ namespace {
     void decodeScripts(Rain::Decoder &decoder, Entity entity) {
         ScriptListComponentDto dto;
         if (!decoder.decode("scriptListComponent", dto)) { return; }
+        // The component says what the scripts of the entity are: read into an entity that has
+        // some — an instance of a prefab brought to its entry (Prefabs::setEntry), a component
+        // set by its text — it replaces them, it does not join them.
+        entity.getComponent<ScriptListComponent>().scripts.clear();
         for (ExternalScriptDto &scriptDto : dto.scripts) {
             std::vector<ScriptField> fields;
             for (ScriptFieldDto &fieldDto : scriptDto.scriptFields) {
@@ -82,6 +86,42 @@ namespace {
             }
             entity.addScript(ExternalScript(entity.getId(), 0, scriptDto.name, fields));
         }
+    }
+
+    // The fields of the type entity are the references of the scripts to entities.
+    void scriptEntityRefs(Entity entity, const EntityRefVisitor &visit) {
+        for (ExternalScript &script : entity.getComponent<ScriptListComponent>().scripts) {
+            for (ScriptField &field : script.getFields()) {
+                if (field.type != ScriptFieldType::ENTITY) { continue; }
+                if (UUID *one = std::get_if<UUID>(&field.value)) {
+                    visit(*one);
+                } else if (std::vector<UUID> *many = std::get_if<std::vector<UUID>>(&field.value)) {
+                    for (UUID &id : *many) { visit(id); }
+                }
+            }
+        }
+    }
+
+    // --- The link to a prefab: where an entity of an instance came from (context/prefabs.md).
+
+    void encodePrefab(Rain::Encoder &encoder, Entity entity) {
+        const PrefabComponent &prefab = entity.getComponent<PrefabComponent>();
+        PrefabComponentDto dto;
+        dto.instance = prefab.instance;
+        dto.source = prefab.source;
+        dto.prefab = prefab.prefab;
+        encoder.encode(PREFAB_LINK_KEY, dto);
+    }
+    void decodePrefab(Rain::Decoder &decoder, Entity entity) {
+        PrefabComponentDto dto;
+        if (!decoder.decode(PREFAB_LINK_KEY, dto)) { return; }
+        PrefabComponent &prefab = entity.addComponent<PrefabComponent>();
+        prefab.instance = dto.instance;
+        prefab.source = dto.source;
+        prefab.prefab = dto.prefab;
+    }
+    void prefabEntityRefs(Entity entity, const EntityRefVisitor &visit) {
+        visit(entity.getComponent<PrefabComponent>().instance);
     }
 
     // --- Static tag: a bool in the file (in old worlds every entity has false).
@@ -296,8 +336,13 @@ void registerCoreComponentTypes(ComponentTypeRegistry &registry) {
     ));
     registry.add(componentType<SkyComponent>("cubeMapComponent", encodeSky, decodeSky));
     registry.add(componentType<PrimitiveMeshComponent>("primitiveMeshComponent", encodePrimitiveMesh, decodePrimitiveMesh));
-    registry.add(builtin(componentType<ScriptListComponent>("scriptListComponent", encodeScripts, decodeScripts)));
+    ComponentType scripts = componentType<ScriptListComponent>("scriptListComponent", encodeScripts, decodeScripts);
+    scripts.entityRefs = scriptEntityRefs;
+    registry.add(builtin(scripts));
     registry.add(componentType<IsStaticComponent>("isStatic", encodeStatic, decodeStatic));
+    ComponentType prefab = componentType<PrefabComponent>(PREFAB_LINK_KEY, encodePrefab, decodePrefab);
+    prefab.entityRefs = prefabEntityRefs;
+    registry.add(prefab);
     // Not written: the runtime mesh (lives only in memory), the undo tombstone, the blobs of
     // foreign plugins (the mapper writes them by their own keys).
     registry.add(unserialized<RuntimeMeshComponent>("runtimeMeshComponent"));

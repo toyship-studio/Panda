@@ -63,7 +63,9 @@ public:
         return file ? file->name() : "World";
     }
     std::string icon() override {
-        return Ic::AssetWorld; // the file the tab edits: the icon of a world in the Content Browser
+        // The file the tab edits: the icon it has in the Content Browser.
+        const Panda::WorldFile *file = m_tabs.worldFile(m_worldId);
+        return file != nullptr && file->isPrefab() ? Ic::Prefab : Ic::AssetWorld;
     }
     std::shared_ptr<PandaUI::View> view() override {
         return m_host;

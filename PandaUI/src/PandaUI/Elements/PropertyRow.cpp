@@ -41,8 +41,11 @@ void PropertyRow::applyAppearance() {
     layout().setGap(m_appearance.gap);
     layout().setMinHeight(Length::points(m_appearance.minHeight));
     m_label->setFont(m_appearance.labelFont);
-    // Over a description the title is the name of a thing, not the label of a field.
-    m_label->setTextColor(m_description ? m_appearance.describedLabelColor : m_appearance.labelColor);
+    // Over a description the title is the name of a thing, not the label of a field. A value of
+    // the object's own (setOverridden) is said by the accent.
+    m_label->setTextColor(
+        m_overridden ? ThemeColor::accentText : m_description ? m_appearance.describedLabelColor : m_appearance.labelColor
+    );
     m_labelColumn->layout().setGap(m_appearance.descriptionGap);
     if (m_description) {
         m_description->setFont(m_appearance.descriptionFont);
@@ -97,6 +100,25 @@ void PropertyRow::setMixed(bool mixed) {
     if (m_mixed == mixed) { return; }
     m_mixed = mixed;
     refreshLabel();
+}
+
+void PropertyRow::setOverridden(bool overridden) {
+    if (m_overridden == overridden) { return; }
+    m_overridden = overridden;
+    if (overridden && !m_overrideBar) {
+        // A bar in the margin of the form, outside the flow of the row: nothing moves.
+        m_overrideBar = std::make_shared<Panel>();
+        m_overrideBar->setUserInteractionEnabled(false);
+        m_overrideBar->setBackgroundColor(ThemeColor::accent);
+        m_overrideBar->layout().setPositionType(PositionType::Absolute);
+        m_overrideBar->layout().setPosition(Edge::Left, Length::points(-6.f));
+        m_overrideBar->layout().setPosition(Edge::Top, Length::points(5.f));
+        m_overrideBar->layout().setPosition(Edge::Bottom, Length::points(5.f));
+        m_overrideBar->layout().setWidth(Length::points(2.f));
+        addSubview(m_overrideBar);
+    }
+    if (m_overrideBar) { m_overrideBar->setCollapsed(!overridden); }
+    applyAppearance();
 }
 
 void PropertyRow::refreshLabel() {
@@ -175,6 +197,10 @@ bool PropertyRow::overLabel(Point windowPosition) const {
 }
 
 bool PropertyRow::pointerDown(PointerEvent &event) {
+    if (event.button == PointerButton::Right && m_onContextMenu) {
+        m_onContextMenu(*this, event.position);
+        return true;
+    }
     if (m_scrubField == nullptr || event.button != PointerButton::Left || !m_scrubField->isEnabled() ||
         !overLabel(event.position)) {
         return false;

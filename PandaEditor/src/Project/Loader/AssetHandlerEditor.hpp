@@ -11,8 +11,10 @@
 
 #include <Panda/Assets/Base/AssetHandler.hpp>
 #include <Panda/Assets/Base/AssetRef.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 #include <Panda/Renderer/MaterialData.hpp>
 #include <cstdint>
+#include <functional>
 #include <map>
 
 namespace Panda {
@@ -33,6 +35,15 @@ public:
     void registerAsset(const path_t &path);
     bool canImport(const path_t &path);
     void reload(AssetId id);
+    // A prefab changed — its file was written by the editor or changed on disk, an Apply put a
+    // difference into it — or is gone: it is read again, and so is every prefab that holds it,
+    // and their instances in the open worlds (setInstanceWorlds) follow, each keeping what it
+    // differs in (Prefabs::prefabChanged). `forced` — the Apply Forced that changed it.
+    void prefabChanged(AssetId id, const Prefabs::Applied *forced = nullptr);
+    // The worlds the editor holds open: where the instances of a changed prefab are.
+    void setInstanceWorlds(std::function<std::vector<World *>()> worlds) {
+        m_instanceWorlds = std::move(worlds);
+    }
     // The project shaders compile for the shader features of the project: a changed set recompiles
     // the loaded ones in place (the same reload as after an edit of the source).
     void reloadLoadedShaders();
@@ -93,6 +104,9 @@ public:
     // The file of a world asset, with the folder of the project. Empty — there is no such asset
     // or it is not a world: the log says which.
     path_t worldFilePath(AssetId id);
+    // The file of an asset that opens in a tab of the center — a world or a prefab — with the
+    // folder of the project. Empty — the asset is neither.
+    path_t documentFilePath(AssetId id);
     std::string getAssetName(AssetId id); // the file name of the asset
     // Total size of the asset's files in the project (bytes; 0 — no files). Shown in the inspector;
     // in the future the size in the runtime Asset Package (cooked form) will stand next to it.
@@ -148,6 +162,7 @@ private:
     Asset *loadInternal(AssetId id, bool forcedReload = false) override;
 
     path_t m_projectPath;
+    std::function<std::vector<World *>()> m_instanceWorlds;
     AssetDocuments m_documents;     // document layer (composition; reaches the database through friend)
     AssetImportPipeline m_import;   // import orchestration (composition, like documents)
     Rain::JsonEncoder m_jsonEncoder;

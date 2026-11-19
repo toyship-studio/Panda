@@ -889,12 +889,40 @@ void Physics3D::addShapesOf(
     Entity body, Entity owner, const glm::vec3 &relativePosition, const glm::quat &relativeRotation,
     const glm::vec3 &scale, RuntimeBodyData &runtimeData
 ) {
-    const b3BodyId bodyId = bodyIdOf(runtimeData);
     const bool staticBody = body.getComponent<Rigidbody3DComponent>().type == Rigidbody3DComponent::BodyType::STATIC;
+    std::vector<std::shared_ptr<MeshColliderCook>> cooks;
+    // The shapes name the entity whose colliders they are (a ray cast reports it).
+    createShapes(
+        bodyIdOf(runtimeData), staticBody, owner, owner, true, relativePosition, relativeRotation, scale, nullptr, cooks
+    );
+    for (std::shared_ptr<MeshColliderCook> &cook : cooks) {
+        if (owner == body) {
+            runtimeData.ownMeshCook = std::move(cook);
+        } else {
+            runtimeData.partMeshCooks.push_back(std::move(cook));
+        }
+    }
+}
+
+void Physics3D::addStaticShapes(
+    const b3BodyId &body, Entity owner, const glm::vec3 &position, const glm::quat &rotation, const glm::vec3 &scale,
+    std::vector<b3ShapeId> &outShapes, std::vector<std::shared_ptr<MeshColliderCook>> &outCooks
+) {
+    if (!isInitialized() || !owner.isValid()) { return; }
+    createShapes(body, true, owner, Entity(), false, position, rotation, scale, &outShapes, outCooks);
+}
+
+void Physics3D::createShapes(
+    const b3BodyId &bodyId, bool staticBody, Entity owner, Entity named, bool remember,
+    const glm::vec3 &relativePosition, const glm::quat &relativeRotation, const glm::vec3 &scale,
+    std::vector<b3ShapeId> *outShapes, std::vector<std::shared_ptr<MeshColliderCook>> &outCooks
+) {
     const b3Quat frameRotation = toB3Quat(relativeRotation);
     // Common properties of a collider shape (density/friction/restitution/sensor + events for
-    // scripts). The shape names the entity whose collider it is (a ray cast reports it).
-    auto makeShapeDef = [owner](bool isSensor, float density, float friction, float restitution) {
+    // scripts). The shape names an entity for a ray cast; without one the hit is of the entity
+    // its body is registered for.
+    const uint32_t namedId = named.isValid() ? static_cast<uint32_t>(named.getId()) : 0u;
+    auto makeShapeDef = [namedId](bool isSensor, float density, float friction, float restitution) {
         b3ShapeDef shapeDef = b3DefaultShapeDef();
         shapeDef.density = density;
         shapeDef.baseMaterial.friction = friction;
@@ -904,8 +932,14 @@ void Physics3D::addShapesOf(
         // begin/end touch.
         shapeDef.enableSensorEvents = true;
         shapeDef.enableContactEvents = true;
-        shapeDef.userData = reinterpret_cast<void *>(static_cast<uintptr_t>(static_cast<uint32_t>(owner.getId())));
+        shapeDef.userData = reinterpret_cast<void *>(static_cast<uintptr_t>(namedId));
         return shapeDef;
+    };
+    // A shape that was made: into the component of an entity of the simulation, and into the
+    // list of the one who asked.
+    auto made = [&](b3ShapeId shapeId, uint8_t *runtimeData) {
+        if (remember) { memcpy(runtimeData, &shapeId, sizeof(b3ShapeId)); }
+        if (outShapes != nullptr && B3_IS_NON_NULL(shapeId)) { outShapes->push_back(shapeId); }
     };
     // A point of the owner's local space in the body's: the offsets of the colliders are not scaled
     // (the sizes are), as they never were.
@@ -916,8 +950,7 @@ void Physics3D::addShapesOf(
         const b3Transform boxFrame = {placed(bc3d.offset), frameRotation};
         b3BoxHull boxHull = b3MakeTransformedBoxHull(half.x, half.y, half.z, boxFrame);
         b3ShapeDef shapeDef = makeShapeDef(bc3d.isSensor, bc3d.density, bc3d.friction, bc3d.restitution);
-        b3ShapeId shapeId = b3CreateHullShape(bodyId, &shapeDef, &boxHull.base);
-        memcpy(&bc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
+        made(b3CreateHullShape(bodyId, &shapeDef, &boxHull.base), bc3d.runtimeData);
     }
     if (owner.hasComponent<SphereCollider3DComponent>()) {
         auto &sc3d = owner.getComponent<SphereCollider3DComponent>();
@@ -925,8 +958,7 @@ void Physics3D::addShapesOf(
         sphere.center = placed(sc3d.offset);
         sphere.radius = glm::abs(sc3d.radius) * glm::max(scale.x, glm::max(scale.y, scale.z));
         b3ShapeDef shapeDef = makeShapeDef(sc3d.isSensor, sc3d.density, sc3d.friction, sc3d.restitution);
-        b3ShapeId shapeId = b3CreateSphereShape(bodyId, &shapeDef, &sphere);
-        memcpy(&sc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
+        made(b3CreateSphereShape(bodyId, &shapeDef, &sphere), sc3d.runtimeData);
     }
     if (owner.hasComponent<CapsuleCollider3DComponent>()) {
         auto &cc3d = owner.getComponent<CapsuleCollider3DComponent>();
@@ -940,8 +972,7 @@ void Physics3D::addShapesOf(
         capsule.center2 = toB3Vec3(center + up * halfHeight);
         capsule.radius = glm::abs(cc3d.radius) * glm::max(scale.x, scale.z);
         b3ShapeDef shapeDef = makeShapeDef(cc3d.isSensor, cc3d.density, cc3d.friction, cc3d.restitution);
-        b3ShapeId shapeId = b3CreateCapsuleShape(bodyId, &shapeDef, &capsule);
-        memcpy(&cc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
+        made(b3CreateCapsuleShape(bodyId, &shapeDef, &capsule), cc3d.runtimeData);
     }
     if (owner.hasComponent<MeshCollider3DComponent>()) {
         auto &mc3d = owner.getComponent<MeshCollider3DComponent>();
@@ -952,13 +983,9 @@ void Physics3D::addShapesOf(
             shapeId = createMeshColliderShape(
                 bodyId, shapeDef, cook, mc3d.convex, staticBody, relativePosition, relativeRotation, scale, owner
             );
-            if (owner == body) {
-                runtimeData.ownMeshCook = cook;
-            } else {
-                runtimeData.partMeshCooks.push_back(cook);
-            }
+            outCooks.push_back(cook);
         }
-        memcpy(&mc3d.runtimeData, &shapeId, sizeof(b3ShapeId));
+        made(shapeId, mc3d.runtimeData);
     }
 }
 

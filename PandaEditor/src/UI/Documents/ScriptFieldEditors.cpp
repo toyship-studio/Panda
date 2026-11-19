@@ -116,9 +116,12 @@ std::shared_ptr<View> makeScriptValueEditor(
         }
         case Panda::ScriptFieldType::ENTITY: {
             if (world == nullptr) { return nullptr; }
-            return std::make_shared<EntityWell>(*world, itemAs<Panda::UUID>(value), [set](Panda::UUID id) {
+            auto well = std::make_shared<EntityWell>(*world, itemAs<Panda::UUID>(value), [set](Panda::UUID id) {
                 set(ScriptItem(id));
             });
+            // What a script is given to make copies of may be a prefab (WorldAPI::instantiate).
+            well->setAcceptsPrefabs(true);
+            return well;
         }
         default: return nullptr; // UNKNOWN
     }
@@ -195,7 +198,8 @@ namespace {
         // entities.
         std::vector<std::uint64_t> accepted(const DragPayload &payload) const {
             if (m_field.type == Panda::ScriptFieldType::ENTITY) {
-                return payload.type == "entity" ? payload.items : std::vector<std::uint64_t>();
+                // Entities of the world, and prefabs: an entity field takes either.
+                return payload.type == "entity" || payload.type == "asset.prefab" ? payload.items : std::vector<std::uint64_t>();
             }
             const char *kind = assetKindOf(m_field.type, m_field.kind);
             if (kind == nullptr) { return {}; }

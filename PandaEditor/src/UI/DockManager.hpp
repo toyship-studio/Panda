@@ -48,6 +48,10 @@ struct DockPanel {
     // false — a transient tab its owner reopens itself (the worlds of the project session): it
     // is not saved among the pinned tabs of the layout.
     bool restored = true;
+    // What the tab says in place of the title; empty — the title. The title is the name of the
+    // panel (the "+" menu lists it); the caption is what it shows now (the Hierarchy: the file of
+    // the document in front).
+    std::string caption;
 };
 
 // Commands from the visibility strip — implemented by DockManager (it is the docking coordinator).
@@ -95,6 +99,7 @@ public:
 
     void setPanelDirty(const std::string &id, bool dirty); // "unsaved" indicator (dot) on the panel's tab
     void setPanelTitle(const std::string &id, std::string title); // the tab title (the file of its document)
+    void setPanelCaption(const std::string &id, std::string caption); // DockPanel::caption; empty — the title again
 
     // --- Temporary editor tabs of objects (transient): the mechanism for the tabbed inspector. ---
     // The policy (which object is in preview, replacement/deduplication) lives in the caller; docking

@@ -150,7 +150,7 @@ void EditorLayer::onAttach() {
         std::make_unique<Editor::StartScreenController>(m_editorUI.loadImage("ui/start/Logo.png"), m_loader, this);
     m_editorController = std::make_unique<Editor::EditorController>(*this);
     m_editorController->setWorld(panelsWorld()); // panels read the real engine world directly
-    m_editorController->setWorldDisplayName(worldDisplayName()); // the world could load before the controller
+    showDocumentName(); // the world could load before the controller
     // A ready thumbnail → targeted update of the visible grid cell (cells are configured once).
     m_previews->setOnThumbnailReady([this](Panda::AssetId assetId) {
         if (m_editorController) { m_editorController->thumbnailDidBecomeReady(assetId); }
@@ -487,6 +487,14 @@ void EditorLayer::play() {
         LOG_WARN_EDITOR("Nothing to play: no world is open (File \xE2\x86\x92 New \xE2\x86\x92 World, or open a world file).");
         return;
     }
+    // A prefab is a part of worlds, not a place a game runs in.
+    if (m_documents.activeWorld()->isPrefab()) {
+        LOG_WARN_EDITOR(
+            "%s is a prefab and is not played: bring the tab of a world to the front.",
+            m_documents.activeWorld()->name().c_str()
+        );
+        return;
+    }
     m_play.begin(editingWorld());
     // Nobody is at the screen (--unattended): the game is driven from its first frame — it has
     // the input whatever has the focus, and a cursor it locks is one of its own, never the
@@ -553,7 +561,8 @@ void EditorLayer::closeWorld(WorldFile &world) {
 
 void EditorLayer::openWorldAsset(AssetId worldAssetId) {
     AssetHandlerEditor *assetHandler = AssetHandlerEditor::current();
-    const path_t worldPath = assetHandler != nullptr ? assetHandler->worldFilePath(worldAssetId) : path_t();
+    // A world, or a prefab: both are documents of the center (WorldFile).
+    const path_t worldPath = assetHandler != nullptr ? assetHandler->documentFilePath(worldAssetId) : path_t();
     if (worldPath.empty()) { return; }
     // Nothing is dropped: the world opens in a tab of its own next to the open ones. The game
     // plays a copy of the active world, so it stops before another world takes that place.
@@ -570,6 +579,16 @@ void EditorLayer::newWorld() {
     // A new world opens in a tab of its own next to the open ones: nothing is dropped.
     stop();
     m_documents.newWorld();
+}
+
+// What the Hierarchy says it shows: the file of the document in front, and of a prefab its one
+// tree.
+void EditorLayer::showDocumentName() {
+    if (!m_editorController) { return; }
+    WorldFile *active = m_documents.activeWorld();
+    const std::string file = active == nullptr ? std::string() : active->name();
+    Entity prefabRoot = active != nullptr ? active->prefabRoot() : Entity();
+    m_editorController->setWorldDisplayName(worldDisplayName(), file, prefabRoot.isValid() ? prefabRoot.getId() : UUID(0));
 }
 
 std::string EditorLayer::worldDisplayName() {
@@ -601,7 +620,7 @@ void EditorLayer::worldDidChange() {
     m_menuBar.rebuild();
     if (!m_editorController) { return; }
     m_editorController->worldContextChanged();
-    m_editorController->setWorldDisplayName(worldDisplayName());
+    showDocumentName();
     m_editorController->refreshFromWorld(); // the Hierarchy rereads the tree
     m_editorController->worldTabs().sync(); // no tab outlives its world
 }
@@ -618,6 +637,28 @@ EditorCameraSettings EditorLayer::documentsEditorCamera() {
 // it is.
 void EditorLayer::documentsLookAtWorld() {
     World &world = editingWorld();
+    // A prefab has no camera of its own to look from: the editor camera frames its entities.
+    if (isEditingPrefab()) {
+        Entity root = m_documents.activeWorld()->prefabRoot();
+        glm::vec3 low(0.f), high(0.f);
+        bool any = false;
+        std::vector<Entity> pending{root};
+        while (!pending.empty()) {
+            Entity entity = pending.back();
+            pending.pop_back();
+            if (!entity.isValid()) { continue; }
+            const glm::vec3 position = glm::vec3(world.getWorldSpaceTransformMatrix(entity)[3]);
+            low = any ? glm::min(low, position) : position;
+            high = any ? glm::max(high, position) : position;
+            any = true;
+            for (UUID child : entity.getChildEntities()) { pending.push_back(world.getById(child)); }
+        }
+        if (any) {
+            const float radius = std::max(glm::length(high - low) * 0.5f + 1.f, 1.f);
+            m_viewports.cameraController().frame((low + high) * 0.5f, radius, m_viewports.editorCamera().getFieldOfView());
+        }
+        return;
+    }
     Entity camera = world.findMainCameraEntity();
     if (!camera.isValid()) { return; }
     const glm::mat4 transform = world.getWorldSpaceTransformMatrix(camera);

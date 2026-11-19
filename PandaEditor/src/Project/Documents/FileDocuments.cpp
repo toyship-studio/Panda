@@ -5,6 +5,7 @@
 
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
+#include <Panda/Prefabs/Prefabs.hpp>
 
 #include <filesystem>
 
@@ -170,12 +171,12 @@ WorldFile &FileDocuments::newWorld() {
 }
 
 WorldFile *FileDocuments::openWorld(const path_t &path) {
-    if (path.extension() != ".world") {
-        LOG_ERROR_EDITOR("Cannot open world from unsupported file: %s", path.string().c_str());
+    if (path.extension() != ".world" && !WorldFile::isPrefabFile(path)) {
+        LOG_ERROR_EDITOR("%s is neither a world nor a prefab and cannot be opened as one.", path.string().c_str());
         return nullptr;
     }
     if (!isSubpath(path, m_projectPath)) {
-        LOG_ERROR_EDITOR("World must be inside the project directory: %s", path.string().c_str());
+        LOG_ERROR_EDITOR("%s is outside the folder of the project and cannot be opened.", path.string().c_str());
         return nullptr;
     }
     WorldFile *world = loadWorld(path);
@@ -225,6 +226,11 @@ bool FileDocuments::saveWorld(WorldFile &world) {
     if (!world.write(world.path())) { return false; }
     syncStartWorld(world);
     registerWorldAsset(world.path());
+    // A saved prefab reaches its instances in the open worlds at once.
+    AssetHandlerEditor *handler = AssetHandlerEditor::current();
+    if (world.isPrefab() && handler != nullptr) {
+        if (const AssetId prefab = handler->getAssetId(world.path())) { handler->prefabChanged(prefab); }
+    }
     return true;
 }
 
@@ -255,6 +261,7 @@ bool FileDocuments::saveWorldAs(WorldFile &world) {
 }
 
 void FileDocuments::syncStartWorld(const WorldFile &world) {
+    if (world.isPrefab()) { return; } // a game starts in a world
     ProjectWorldSettings &settings = m_projectSettings.settings().get<ProjectWorldSettings>();
     if (settings.startWorld.empty()) { settings.startWorld = projectRelative(world.path()); }
 }
@@ -287,6 +294,14 @@ std::unique_ptr<AssetFile> FileDocuments::assetFile(AssetId id) {
 void FileDocuments::openProject(const path_t &projectPath) {
     m_projectPath = projectPath;
     m_projectSettings.open(projectPath / ".Panda" / "project.json");
+    // The open documents are where the instances of a changed prefab are (context/prefabs.md).
+    if (AssetHandlerEditor *handler = AssetHandlerEditor::current()) {
+        handler->setInstanceWorlds([this] {
+            std::vector<World *> worlds;
+            for (const std::unique_ptr<WorldFile> &world : m_worlds) { worlds.push_back(&world->world()); }
+            return worlds;
+        });
+    }
 }
 
 void FileDocuments::openWorlds(const ProjectSession &session) {
@@ -346,6 +361,7 @@ void FileDocuments::prepareComponentTypes() {
 }
 
 void FileDocuments::updateScriptFields() {
+    Prefabs::scriptsReloaded(); // the prefabs the instances are compared with follow the same classes
     for (const std::unique_ptr<WorldFile> &world : m_worlds) {
         world->world().updateScriptsAndFields();
     }

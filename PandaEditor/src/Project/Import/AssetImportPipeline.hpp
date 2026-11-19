@@ -58,6 +58,7 @@ private:
     void registerMaterialAsset(const path_t &path);
     void registerMeshAsset(const path_t &path);
     void registerWorldAsset(const path_t &path);
+    void registerPrefabAsset(const path_t &path);
     void registerPostprocessingAsset(const path_t &path);
     // A file asset without settings: id and location (world, postfx, plugin kinds).
     void registerPlainAsset(const path_t &path, AssetType type);

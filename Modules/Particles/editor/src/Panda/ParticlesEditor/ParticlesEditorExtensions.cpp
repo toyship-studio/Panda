@@ -57,6 +57,40 @@ namespace {
             emit();
         });
         addToggleRow(section, "World Space", data->worldSpace, [data, emit](bool v) { data->worldSpace = v; emit(); });
+        addNumberRow(section, "Emit Radius (m)", 0.f, 1000.f, data->emitRadius, [data, emit](float v) { data->emitRadius = v; emit(); })
+            ->setHelp("Particles are born within this distance of the emitter");
+        addNumberRow(section, "Turbulence (m/s²)", 0.f, 100.f, data->turbulence, [data, emit](float v) { data->turbulence = v; emit(); })
+            ->setHelp("A wandering push, each particle its own");
+        // What a particle is: a quad with the texture, or the meshes of a prefab. The rows that
+        // speak of a prefab particle are there while a prefab is.
+        struct PrefabRows {
+            std::weak_ptr<PropertyRow> orientation;
+            std::weak_ptr<PropertyRow> spin;
+        };
+        auto rows = std::make_shared<PrefabRows>();
+        auto showRows = [data, rows] {
+            const bool isPrefab = data->prefab.getId() != 0;
+            if (auto row = rows->orientation.lock()) { row->setVisible(isPrefab); }
+            if (auto row = rows->spin.lock()) { row->setVisible(isPrefab && data->orientation == Panda::ParticleOrientation::Random); }
+        };
+        addAssetRow(section, "Prefab", "prefab", static_cast<uint32_t>(data->prefab.getId()), [data, emit, showRows](uint32_t id) {
+            data->prefab = assetRefOf(id);
+            showRows();
+            emit();
+        })->setHelp("A particle is the meshes of the prefab instead of a quad");
+        rows->orientation = addComboRow(
+            section, "Orientation", {"Velocity", "Random", "Emitter"}, static_cast<int>(data->orientation),
+            [data, emit, showRows](int v) {
+                data->orientation = static_cast<Panda::ParticleOrientation>(v);
+                showRows();
+                emit();
+            }
+        );
+        rows->spin = addNumberRow(section, "Spin Degrees (1/s)", -3600.f, 3600.f, data->spinDegrees, [data, emit](float v) {
+            data->spinDegrees = v;
+            emit();
+        });
+        showRows();
     }
 
 } // namespace

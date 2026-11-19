@@ -7,6 +7,7 @@ the SDK package; it talks to the engine through the `particles` table
 - `Bamboo/Components/ParticleEmitterComponentAPI.hpp` — the particle emitter of an entity:
   `setPlaying` / `isPlaying` (the emission by the rate), `emit` (a burst at the entity) and
   `emitAt` (a burst at a place of the world, with a tint over the emitter's colors and a part of
-  its texture). The rate, the lifetime, the cone, the sizes, the colors and the texture are the
-  component's, set in the inspector; a script reaches an emitter through the entity that carries
+  its texture). The rate, the lifetime, the cone, the sizes, the colors, the texture and the
+  prefab a particle is are the component's, set in the inspector (the tint and the texture part
+  of a burst speak of quads: an emitter of a prefab takes the count and the place); a script reaches an emitter through the entity that carries
   it (an `EntityHandle` field, or a name).

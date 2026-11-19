@@ -39,6 +39,7 @@ private:
     uint32_t m_indicesCount = 0;
 
     friend class Renderer3D;
+    friend class InstancedModel;
 };
 
 } // namespace Panda

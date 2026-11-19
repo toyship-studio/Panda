@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Panda/GameLogic/Components/BaseComponents.hpp"
+#include "Panda/Prefabs/PrefabComponent.hpp"
 
 #include <Rain/Rain.hpp>
 
@@ -18,6 +19,20 @@ struct RelationshipComponentDto : public Rain::Codable {
     RAIN_FIELDS_BEGIN(RelationshipComponentDto)
     RAIN_FIELD(parent)
     RAIN_FIELD(children)
+    RAIN_FIELDS_END
+};
+
+// The link of an entity to the prefab it came from (PrefabComponent), as the expanded form of a
+// world holds it (context/prefabs.md): a world FILE has an entry per instance instead.
+struct PrefabComponentDto : public Rain::Codable {
+    UUID instance = 0;
+    UUID source = 0;
+    UUID prefab = 0;
+
+    RAIN_FIELDS_BEGIN(PrefabComponentDto)
+    RAIN_FIELD(instance)
+    RAIN_FIELD(source)
+    RAIN_FIELD(prefab)
     RAIN_FIELDS_END
 };
 

@@ -42,7 +42,8 @@ the `Assets` folder). An asset is in the game when something in the game leads t
 1. the start world;
 2. what a used asset names, followed until nothing new is found (`collectUsage`): what a world
    shows and what its scripts are given (a world among that: the worlds a game can go to are
-   the ones a script field holds — one, or a list of them), the shader and the textures of a
+   the ones a script field holds — one, or a list of them; and a prefab: the ones a script
+   makes copies of are the ones an entity field holds), the shader and the textures of a
    material, the materials of a model, the materials of a postprocessing chain, what a file of
    a module kind names.
 
@@ -54,6 +55,14 @@ from an id (`BAMBOO_RESOURCE_HANDLE`; `context/architecture.md`, "SDK API"). A s
 chooses among assets at run time publishes a list field. So the editor, where every asset of the
 project is at hand, and the game, which has the reached ones only, cannot disagree about a
 script: nothing works in Play and is missing after an export.
+
+**A game has no instances of prefabs** (`context/prefabs.md`). The cook reads a world the way
+the editor does — the entries of instances become entities (`Prefabs::load`) — takes the marks
+that say where an entity came from off them, and writes plain entities: a world of a game is
+loaded as it is, with nothing to merge, and a prefab that only stands in worlds is not an asset
+of the game. A prefab that a script field names is cooked like a world — its one tree, the
+prefabs nested in it expanded, in binary (`Prefabs/<path>.pprefab`) — and the runtime loads it
+into the world of a `PrefabAsset` for `World::instantiate`.
 
 **How a reference is found.** A reference to an asset is always written as an id (`AssetRef`, a
 `UUID` field of a DTO, a script field of an asset type). `ReferenceCollector`
@@ -72,7 +81,8 @@ game names; the runtime needs none of the editor's rules.
 
 | Asset | In the pack | Form |
 | --- | --- | --- |
-| world | `Worlds/<path>.pworld` | binary Rain of the world document, registered data only |
+| world | `Worlds/<path>.pworld` | binary Rain of the world document, registered data only; the instances of prefabs as plain entities |
+| prefab (one a script field names) | `Prefabs/<path>.pprefab` | binary Rain of its one tree, expanded |
 | material | `Materials/<path>.pmaterial` | binary Rain; the fields brought to the template of the shader |
 | postprocessing chain | `Postfx/<path>.ppostfx` | binary Rain |
 | texture | `Textures/<path>.ptex` | the file the import cooked (`.Panda/Textures`): the same bytes the editor loads (`context/rendering.md`, "Compressed textures") |

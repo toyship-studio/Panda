@@ -8,7 +8,9 @@
 
 #include <Panda/GameLogic/Components/BaseComponents.hpp>
 #include <Panda/GameLogic/Entity.hpp>
+#include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/GameLogic/World.hpp>
+#include <Panda/Prefabs/PrefabAsset.hpp>
 
 #include <algorithm>
 #include <string>
@@ -76,6 +78,13 @@ protected:
         m_doubleClick = false; // the next activation (the keyboard) is a plain click again
         if (!entity) {
             m_owner->openPicker();
+        } else if (m_owner->isPrefab()) {
+            // A prefab is a file: shown where it lies, selected like any asset.
+            if (doubleClick) {
+                editorHost().selectAsset(Panda::AssetId(entity));
+            } else {
+                editorHost().revealAsset(Panda::AssetId(entity));
+            }
         } else if (doubleClick) {
             editorHost().selectEntity(entity);
         } else {
@@ -129,8 +138,20 @@ EntityWell::EntityWell(Panda::World &world, Panda::UUID initial, std::function<v
     refresh();
 }
 
+void EntityWell::setAcceptsPrefabs(bool accepts) {
+    m_acceptsPrefabs = accepts;
+    refresh();
+}
+
+bool EntityWell::isPrefab() const {
+    if (!m_acceptsPrefabs || !m_entityId || m_world->getById(m_entityId).isValid()) { return false; }
+    Panda::AssetHandler *assets = Panda::GameContext::getAssetHandler();
+    return assets != nullptr && assets->hasAsset(m_entityId) && Panda::AssetRef<Panda::PrefabAsset>(Panda::AssetId(m_entityId)).get() != nullptr;
+}
+
 bool EntityWell::canAcceptDrop(const DragInfo &drag) {
-    return drag.payload.type == "entity" && !drag.payload.items.empty();
+    if (drag.payload.items.empty()) { return false; }
+    return drag.payload.type == "entity" || (m_acceptsPrefabs && drag.payload.type == "asset.prefab");
 }
 
 void EntityWell::dragEntered(const DragInfo &) {
@@ -167,14 +188,27 @@ void EntityWell::openPicker() {
         if (entity.isValid() && !entity.getParent()) { roots.push_back(entity); }
     });
     std::sort(roots.begin(), roots.end(), [](Panda::Entity &a, Panda::Entity &b) { return a.getName() < b.getName(); });
+    // The first row of a field that takes a prefab leads to the prefabs of the project.
+    if (m_acceptsPrefabs) {
+        items.push_back({"Prefab\xE2\x80\xA6", "an asset of the project", Ic::Prefab});
+        ids.push_back(Panda::UUID(0));
+    }
     for (Panda::Entity root : roots) { collectEntities(*m_world, root, {}, items, ids); }
     const Rect frame = m_main->getWorldFrame();
+    const Point at(frame.origin.x, frame.origin.y + frame.size.height);
     // The form may be rebuilt while the picker is open (an undo): the choice then finds no field.
     std::weak_ptr<View> alive = weak_from_this();
     showPicker(
-        context, Point(frame.origin.x, frame.origin.y + frame.size.height), "Search entities…", std::move(items),
-        [this, alive, ids](int index) {
-            if (!alive.expired()) { setValue(ids[static_cast<size_t>(index)]); }
+        context, at, "Search entities…", std::move(items),
+        [this, alive, ids, context, at](int index) {
+            if (alive.expired()) { return; }
+            if (m_acceptsPrefabs && index == 0) {
+                editorHost().pickAsset(context, at, "prefab", [this, alive](uint32_t id) {
+                    if (!alive.expired()) { setValue(Panda::UUID(id)); }
+                });
+                return;
+            }
+            setValue(ids[static_cast<size_t>(index)]);
         }
     );
 }
@@ -192,14 +226,18 @@ void EntityWell::describeAccessibility(PandaUI::Accessibility &accessibility) co
 void EntityWell::refresh() {
     Panda::Entity entity = m_entityId ? m_world->getById(m_entityId) : Panda::Entity();
     const bool hasValue = static_cast<bool>(m_entityId);
+    const bool prefab = isPrefab();
     if (!hasValue) {
-        m_label->setText("None (entity)");
+        m_label->setText(m_acceptsPrefabs ? "None (entity or prefab)" : "None (entity)");
+    } else if (prefab) {
+        m_label->setText(editorHost().assetTitle(Panda::AssetId(m_entityId)));
     } else {
         m_label->setText(entity.isValid() ? entity.getName() : "Missing entity");
     }
-    m_label->setTextRole(hasValue && entity.isValid() ? TextRole::Primary : TextRole::Muted);
-    m_icon->setTexture(icons().get(entityIconName(entity)));
-    m_icon->setTintColor(hasValue && entity.isValid() ? Theme::current().textPrimary : Theme::current().textMuted);
+    const bool found = hasValue && (prefab || entity.isValid());
+    m_label->setTextRole(found ? TextRole::Primary : TextRole::Muted);
+    m_icon->setTexture(icons().get(prefab ? Ic::Prefab : entityIconName(entity)));
+    m_icon->setTintColor(prefab ? Theme::current().accentText : found ? Theme::current().textPrimary : Theme::current().textMuted);
     // The clear button exists only while there is something to clear.
     m_clearButton->setHidden(!hasValue);
     m_clearButton->layout().setDisplay(hasValue ? Display::Flex : Display::None);

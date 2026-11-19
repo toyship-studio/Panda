@@ -127,6 +127,28 @@ public:
     void entityDidClickBackground() override {
         out().entityDidClickBackground(); // globally: clear the selection
     }
+    // Prefabs: the entity of the tab is the one that is reverted or applied. The form follows
+    // the world like after any edit that is not its own (refreshFromWorld).
+    void entityDidRevertPrefab(bool whole, const std::string &component, const std::string &field) override {
+        TargetGuard g(m_host, targets());
+        out().entityDidRevertPrefab(whole, component, field);
+    }
+    void entityDidApplyPrefab(bool whole, const std::string &component, const std::string &field, bool forced) override {
+        TargetGuard g(m_host, targets());
+        out().entityDidApplyPrefab(whole, component, field, forced);
+    }
+    void entityDidRestoreRemoved(Panda::UUID source) override {
+        TargetGuard g(m_host, targets());
+        out().entityDidRestoreRemoved(source);
+    }
+    void entityDidOpenPrefab() override {
+        TargetGuard g(m_host, targets());
+        out().entityDidOpenPrefab();
+    }
+    void entityDidSelectPrefabRoot() override {
+        TargetGuard g(m_host, targets());
+        out().entityDidSelectPrefabRoot();
+    }
 
 private:
     EntityEditorOutput &out() {

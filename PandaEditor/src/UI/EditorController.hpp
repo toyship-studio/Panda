@@ -81,7 +81,10 @@ public:
     // ---- The world the panels show. The application tells when it is another one.
     void setWorld(Panda::World *world);       // a project opened: the world of the panels, the assets of the project
     void setActiveWorld(Panda::World *world); // Play / Stop / another world in front: the panels show this one
-    void setWorldDisplayName(const std::string &name); // the root of the Hierarchy: the name of the world file
+    // The document in front: its name is the root of the Hierarchy, its file the caption of the
+    // Hierarchy tab (`world.world`, `Tree.prefab`; empty — no document). `prefabRoot` — of a
+    // prefab: its root entity, the one tree the Hierarchy shows (0 — a world: all of it).
+    void setWorldDisplayName(const std::string &name, const std::string &file, Panda::UUID prefabRoot);
     // Another world, another project or none: the entity tabs point into the previous world —
     // they close; the navigation history points at what is gone — it is cleared.
     void worldContextChanged();
@@ -190,6 +193,8 @@ public:
         return *m_worldTabs;
     }
     PandaUI::Context *context() const; // where a dialog is shown; nullptr — the chrome is in no window yet
+    Panda::path_t contentDirectory(); // the folder the Content Browser shows; empty — no project
+    void openDocumentAsset(Panda::AssetId asset); // a world or a prefab in its tab
     PandaUI::Rect hierarchyFrame() const;
     // The selection (Editor::selection()) and, at once, the panels and the tabs that show it.
     void selectEntities(const std::vector<Panda::UUID> &ids);

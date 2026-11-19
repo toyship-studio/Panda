@@ -83,6 +83,7 @@ namespace TerrainSerialization {
                 layerDto.enabled = layer.enabled;
                 layerDto.mesh = layer.mesh.getId();
                 layerDto.meshMaterial = layer.meshMaterial.getId();
+                layerDto.prefab = layer.prefab.getId();
                 layerDto.imposter = layer.imposter;
                 layerDto.canopyDensity = layer.canopyDensity;
                 layerDto.scaleMin = layer.scaleMin;
@@ -135,6 +136,7 @@ namespace TerrainSerialization {
                 layer.enabled = layerDto.enabled;
                 layer.mesh = AssetRef<Asset>(layerDto.mesh);
                 layer.meshMaterial = AssetRef<Asset>(layerDto.meshMaterial);
+                layer.prefab = AssetRef<Asset>(layerDto.prefab);
                 layer.imposter = layerDto.imposter;
                 layer.canopyDensity = layerDto.canopyDensity;
                 layer.scaleMin = layerDto.scaleMin;

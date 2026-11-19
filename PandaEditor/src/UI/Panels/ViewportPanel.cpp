@@ -274,6 +274,11 @@ void ViewportPanelView::setSidebarContent(std::shared_ptr<View> content) {
     setNeedsLayout();
 }
 
+void ViewportPanelView::setWorldSettingsAvailable(bool available) {
+    if (m_worldSettingsButton) { m_worldSettingsButton->setCollapsed(!available); }
+    if (!available && isSidebarVisible()) { setSidebarVisible(false); }
+}
+
 void ViewportPanelView::setSidebarVisible(bool visible) {
     if (m_sidebarVisible == visible) { return; }
     m_sidebarVisible = visible;
@@ -312,8 +317,8 @@ void ViewportPanelView::viewportViewDidRectSelect(Point start, Point current, bo
 
 bool ViewportPanelView::canAcceptDrop(const DragInfo &drag) {
     const std::string &t = drag.payload.type;
-    // What a drop here means something for: a model becomes entities, a world opens.
-    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.world");
+    // What a drop here means something for: a model and a prefab become entities, a world opens.
+    return !drag.payload.items.empty() && (t == "asset.mesh" || t == "asset.prefab" || t == "asset.world");
 }
 
 void ViewportPanelView::dragEntered(const DragInfo &) {

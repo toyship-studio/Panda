@@ -90,6 +90,7 @@ namespace ExternalCalls {
     Scripting::CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView = nullptr;
     Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
     Scripting::MeshReadFn mesh_Read = nullptr;
+    Scripting::WorldInstantiateFn world_Instantiate = nullptr;
     Console_Log console_Log = nullptr;
     UI_GetMainWindow ui_GetMainWindow = nullptr;
     UI_CreateWindow ui_CreateWindow = nullptr;
@@ -317,6 +318,7 @@ namespace {
         cameraComponent_GetFieldOfView = hostApi.cameraComponent_GetFieldOfView;
         worldLighting_SetEnvironmentMap = hostApi.worldLighting_SetEnvironmentMap;
         mesh_Read = hostApi.mesh_Read;
+        world_Instantiate = hostApi.world_Instantiate;
         console_Log = hostApi.console_Log;
         ui_GetMainWindow = hostApi.ui_GetMainWindow;
         ui_CreateWindow = hostApi.ui_CreateWindow;
