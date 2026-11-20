@@ -19,7 +19,7 @@ class AssetHandlerEditor;
 struct ExportSettings {
     path_t runtimeDataDirectory; // what the Export project puts into the game: project.bin, modules.txt, Assets.pak
     path_t reportFile;           // what the cook made, for people and tools (not a part of the game)
-    // The world the game starts in: `"world".startWorld` of project.json, relative to the project.
+    // The world the game starts in: `startWorld` of project.json, relative to the project.
     std::string startWorld;
     std::string appName = "Panda Game"; // the name of the save folder of the game
     // Enabled modules of the project that have an engine part (ProjectModules::enabledIds):

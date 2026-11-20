@@ -9,10 +9,10 @@ void registerEditorSettingsTypes(SettingsRegistry &registry) {
     if (s_registered) { return; }
     s_registered = true;
     // In the order the files are written in.
-    registry.add(settingsField<&ProjectSettings::rendering>(SettingsScope::Project, "rendering"));
     registry.add(settingsField<&ProjectSettings::name>(SettingsScope::Project, "name"));
-    registry.add(settingsField<&ProjectSettings::world>(SettingsScope::Project, "world"));
-    registry.add(settingsField<&ProjectSettings::modules>(SettingsScope::Project, "modules"));
+    registry.add(settingsField<&ProjectSettings::startWorld>(SettingsScope::Project, "startWorld"));
+    registry.add(settingsField<&ProjectSettings::shaderFeatures>(SettingsScope::Project, "shaderFeatures"));
+    registry.add(settingsField<&ProjectSettings::disabledModules>(SettingsScope::Project, "disabledModules"));
     registry.add(settingsField<&ProjectSettings::mcp>(SettingsScope::Project, "mcp"));
     registry.add(settingsField<&EditorSettings::viewport>(SettingsScope::Editor, "viewport"));
     registry.add(settingsField<&EditorSettings::appearance>(SettingsScope::Editor, "appearance"));

@@ -91,13 +91,14 @@ below.
 
 ## Enabling per project and export
 
-The `modules` section of `.Panda/project.json` is the set of the project:
+`disabledModules` of `.Panda/project.json` says which modules of the distribution the project
+switches off:
 
 ```json
-"modules": { "entries": [{ "id": "dev.pandaengine.particles", "version": "", "enabled": false }] }
+"disabledModules": ["dev.pandaengine.particles"]
 ```
 
-Every module of the distribution is enabled unless an entry switches it off. When the project
+Every other module of the distribution is enabled. When the project
 opens, the editor resolves the set: a module whose dependency is disabled, or missing from
 this build, is disabled too, with a warning in the Output panel; the enabled modules register
 with dependencies first. Switching a module off in an open project takes effect after an

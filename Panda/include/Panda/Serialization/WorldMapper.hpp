@@ -4,6 +4,7 @@
 #include "Panda/GameLogic/World.hpp"
 
 #include <Rain/Rain.hpp>
+#include <Rain/Value.hpp>
 
 #include <istream>
 #include <ostream>
@@ -52,6 +53,16 @@ public:
     // replaced, one it does not have is added. false — the stream was not parsed or does not
     // hold this component; the entity is untouched then.
     static bool loadComponent(Entity entity, const ComponentType &type, Rain::Decoder &decoder, std::istream &stream);
+
+    // The same as JSON values (Rain::Value): the form of the file, for the code that works on it
+    // without the types of what it holds — the prefabs, whose patches are differences of such
+    // values. No text is written or read on the way.
+    static Rain::Value save(const World &world);
+    static bool load(World &world, const Rain::Value &value);
+    static Rain::Value saveTree(World &world, Entity root);
+    static Rain::Value saveEntity(Entity entity);
+    static Rain::Value saveComponent(Entity entity, const ComponentType &type);
+    static bool loadComponent(Entity entity, const ComponentType &type, const Rain::Value &value);
 };
 
 } // namespace Panda

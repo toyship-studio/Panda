@@ -462,7 +462,7 @@ void ExportWindowView::update(double deltaTime) {
 
 void ExportWindowView::syncChoices() {
     const std::string startWorld =
-        m_app.project().hasOpenedProject() ? m_app.documents().projectSettings().world.startWorld
+        m_app.project().hasOpenedProject() ? m_app.documents().projectSettings().startWorld
                                             : std::string();
     if (!m_choicesShown || startWorld != m_shownStartWorld) {
         m_shownStartWorld = startWorld;
@@ -476,7 +476,7 @@ void ExportWindowView::syncChoices() {
             Panda::AssetHandlerEditor *assets = Panda::AssetHandlerEditor::current();
             const std::string world = assets && id ? assets->assetPath(Panda::AssetId(id)).generic_string() : std::string();
             editSettings<Panda::ProjectSettings>(Panda::SettingsScope::Project, [&world](Panda::ProjectSettings &settings) {
-                settings.world.startWorld = world;
+                settings.startWorld = world;
             });
         });
         well->setAccessibilityId("startWorld");

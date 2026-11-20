@@ -61,9 +61,9 @@ once, in the catalog.
 
 ## Settings
 
-- Project scope, `.Panda/project.json`, section `rendering`: `{"features": ["lights", …]}`
-  (`ProjectRenderingSettings`, the `rendering` field of the editor's `ProjectSettings`: the game
-  never reads project.json, the export writes the set into its manifest). A project without the section
+- Project scope, `.Panda/project.json`, key `shaderFeatures`: `["lights", …]`
+  (`ProjectSettings::shaderFeatures` of the editor: the game never reads project.json, the
+  export writes the set into its manifest). A project without the key
   has every feature; the project template of the editor writes the lean set (`lights`, `shadows`,
   `environment`, plus `lamps`). The dependencies are closed on reading: `lamps`, `shadows` or
   `occlusion` bring `lights`, switching `lights` off switches them off.

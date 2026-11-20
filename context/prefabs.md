@@ -117,6 +117,13 @@ makes a duplicate and a paste point at their own copies.
 
 ## Authoring (`Panda/Prefabs/Prefabs.hpp`, compiled with the editor API only)
 
+The code is in four parts (`Panda/src/Panda/Prefabs/`, what they share in
+`PrefabsInternal.hpp`): `PrefabJson` — the JSON a patch is made of and the patch of an object;
+`PrefabTemplates` — the templates, a prefab as its instances are compared with it, and what
+follows a prefab that changed; `PrefabEntries` — an entry ↔ the entities of an instance, and the
+files; `Prefabs` — an instance in a world: what it differs in, Revert, Apply, making and
+unpacking one.
+
 - `Prefabs::load(world, text)` / `Prefabs::save(world, root)` — a world from the text of its
   file and back; `expand` / `collapse` are the same as text → text. Expanding puts the patches
   of an entry over the entities of the prefab; collapsing compares every entity with its source
@@ -135,7 +142,7 @@ makes a duplicate and a paste point at their own copies.
   command `InstanceEntryCommand` holding the two texts, so it is an undo step like any edit. The
   Revert of a whole instance takes its additions out in the same step (a `CompositeCommand` with
   the deletion); an addition alone is reverted by deleting it.
-- **One operation takes a difference back** (`strip` in `Prefabs.cpp`): places — an entity of
+- **One operation takes a difference back** (`strip`, `Prefabs.cpp`): places — an entity of
   a prefab by its path, and a mask of what of it (`{"pointLightComponent": {"intensity":
   true}}`, `{"*": true}`, `{"removed": true}`, `{"parent": true}`) — are taken out of an entry.
   Revert, Restore and Put Back are places of their scope in the entry of their instance; Apply

@@ -1,191 +1,128 @@
 #include "Rain/Coders/JsonEncoder.hpp"
 #include "Rain/TypeRegistry.hpp"
 
+#include <ostream>
+
 namespace Rain {
 
 JsonEncoder::JsonEncoder(bool pretty, bool encodeOptionalAsNull)
     : Encoder(encodeOptionalAsNull)
     , m_pretty(pretty)
     , m_isArray(false)
-    , m_document()
+    , m_root()
     , m_objectStack()
-    , m_arrayStack()
-    , m_allocator(&m_document.GetAllocator()) {}
+    , m_arrayStack() {}
 
-void JsonEncoder::encode(std::ostream &stream, void *data, Rain::TypeInfo info) {
+Value JsonEncoder::encodeValue(void *data, TypeInfo info) {
     info.encoderFunc(nullptr, this, info, data);
-    if (m_document.HasParseError()) {
-        // Parse error
-    }
-    rapidjson::OStreamWrapper streamWrapper(stream);
-    if (m_pretty) {
-        rapidjson::PrettyWriter prettyWriter(streamWrapper);
-        m_document.Accept(prettyWriter);
-    } else {
-        rapidjson::Writer writer(streamWrapper);
-        m_document.Accept(writer);
-    }
+    Value value = std::move(m_root);
+    m_root = Value();
     m_objectStack.clear();
     m_arrayStack.clear();
     m_isArray = false;
-    if (m_document.IsArray()) {
-        m_document.Clear();
-    } else {
-        m_document.RemoveAllMembers();
-    }
+    return value;
 }
 
-void JsonEncoder::encodeNull(const char *key) {
-    rapidjson::Value value;
-    value.SetNull();
-    addValue(key, value);
+void JsonEncoder::encode(std::ostream &stream, void *data, TypeInfo info) {
+    writeJson(stream, encodeValue(data, info), m_pretty ? JsonLayout::Pretty : JsonLayout::Compact);
+}
+
+Value &JsonEncoder::add(const char *key, Value value) {
+    if (m_isArray) { return m_arrayStack.back().value->push(std::move(value)); }
+    Value &object = m_objectStack.empty() ? m_root : *m_objectStack.back().value;
+    return object.add(key != nullptr ? key : "", std::move(value));
 }
 
 void JsonEncoder::beginObject(const char *key) {
-    // if (key) {
-    //     std::cout << "BEGIN OBJECT " << key << std::endl;
-    // } else {
-    //     std::cout << "BEGIN OBJECT" << std::endl;
-    // }
-    rapidjson::Value *added;
-    if (m_objectStack.empty()) {
-        m_document.SetObject();
-        added = &m_document;
+    Value *added;
+    if (m_isArray) {
+        added = &m_arrayStack.back().value->push(Value::object());
+    } else if (m_objectStack.empty()) {
+        m_root = Value::object();
+        added = &m_root;
     } else {
-        rapidjson::Value obj(rapidjson::kObjectType);
-        addValue(key, obj);
-        if (m_isArray) {
-            uint32_t size = m_arrayStack.back().ref->GetArray().Size();
-            added = &m_arrayStack.back().ref->GetArray()[size - 1];
-        } else {
-            added = &currentObject().FindMember(key)->value;
-        }
+        added = &add(key, Value::object());
     }
     m_objectStack.push_back({added, m_isArray});
     m_isArray = false;
 }
 
 void JsonEncoder::endObject() {
-    // std::cout << "END OBJECT" << std::endl;
-    // assert(!m_objectStack.empty());
     m_isArray = m_objectStack.back().isPartOfArray;
     m_objectStack.pop_back();
 }
 
 void JsonEncoder::beginArray(const char *key) {
-    // if (key) {
-    //     std::cout << "BEGIN ARRAY " << key << std::endl;
-    // } else {
-    //     std::cout << "BEGIN ARRAY" << std::endl;
-    // }
-    if (m_objectStack.empty()) {
-        m_document.SetArray();
-        m_arrayStack.push_back({&m_document, m_isArray});
+    Value *added;
+    if (m_isArray) {
+        added = &m_arrayStack.back().value->push(Value::array());
+    } else if (m_objectStack.empty()) {
+        m_root = Value::array();
+        added = &m_root;
     } else {
-        rapidjson::Value arr(rapidjson::kArrayType);
-        rapidjson::Value *added;
-        if (m_isArray) {
-            m_arrayStack.back().ref->PushBack(arr, *m_allocator);
-            uint32_t size = m_arrayStack.back().ref->GetArray().Size();
-            added = &m_arrayStack.back().ref->GetArray()[size - 1];
-        } else {
-            currentObject().AddMember(rapidjson::StringRef(key), arr, *m_allocator);
-            added = &currentObject().FindMember(key)->value;
-        }
-        m_arrayStack.push_back({added, m_isArray});
+        added = &add(key, Value::array());
     }
+    m_arrayStack.push_back({added, m_isArray});
     m_isArray = true;
 }
 
 void JsonEncoder::endArray() {
-    // std::cout << "END ARRAY" << std::endl;
-    // assert(!m_arrayStack.empty());
     m_isArray = m_arrayStack.back().isPartOfArray;
     m_arrayStack.pop_back();
 }
 
-rapidjson::Value &JsonEncoder::currentObject() {
-    return m_objectStack.empty() ? m_document : *m_objectStack.back().ref;
+void JsonEncoder::encodeNull(const char *key) {
+    add(key, Value());
 }
 
 void JsonEncoder::encode(const char *key, const int &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const uint32_t &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const int64_t &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const uint64_t &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const bool &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const float &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const double &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const std::string &data) {
-    rapidjson::Value value;
-    value = rapidjson::Value(data.c_str(), *m_allocator);
-    addValue(key, value);
+    add(key, Value(data));
 }
 
 void JsonEncoder::encode(const char *key, const char *&data) {
-    rapidjson::Value value;
-    value = rapidjson::Value(data, *m_allocator);
-    addValue(key, value);
+    add(key, Value(data != nullptr ? data : ""));
 }
 
 void JsonEncoder::encode(const char *key, const UUID &data) {
-    rapidjson::Value value;
-    value = data;
-    addValue(key, value);
-}
-
-void JsonEncoder::addValue(const char *key, rapidjson::Value &value) {
-    if (m_isArray) {
-        m_arrayStack.back().ref->PushBack(value, *m_allocator);
-    } else {
-        currentObject().AddMember(rapidjson::StringRef(key), value, *m_allocator);
-    }
+    UUID id = data;
+    add(key, Value(static_cast<uint32_t>(id)));
 }
 
 void JsonEncoder::encodeRawJson(const char *key, const std::string &json) {
-    rapidjson::Document fragment(m_allocator);
-    fragment.Parse(json.c_str());
-    if (fragment.HasParseError()) {
+    Value fragment;
+    if (!parseJson(json, fragment)) {
         encodeNull(key);
         return;
     }
-    rapidjson::Value value;
-    value.CopyFrom(fragment, *m_allocator);
-    addValue(key, value);
+    add(key, std::move(fragment));
 }
 
 } // namespace Rain

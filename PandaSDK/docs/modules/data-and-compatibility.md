@@ -54,7 +54,7 @@ switched off, or in a distribution that was built without it (`-DPANDA_MODULE_<N
 
 | Version | Where | What it guards |
 |---|---|---|
-| the module `version` (semver) | `module.json`, `PANDA_PACKAGE_VERSION`, `modules.txt`, the `modules` section of a project | the identity of a release of the module; the registry and the package page |
+| the module `version` (semver) | `module.json`, `PANDA_PACKAGE_VERSION`, `modules.txt` | the identity of a release of the module; the registry and the package page |
 | `engine` of the manifest | `module.json` | the engine versions the module builds against (not enforced today) |
 | `dependencies[].version` | `module.json` | the versions of the modules it needs (the ids are enforced, the ranges not yet) |
 | `<NAME>_HOST_API_VERSION` | the script table ABI | the layout of the table: a mismatch is `nullptr` on the script side |

@@ -608,7 +608,7 @@ bool ProjectBuilds::cook() {
     // The cook is a function of the files of the project: the game starts in the start world of
     // the project settings, whatever world the editor shows now, and carries what that world
     // reaches. An edit that is not saved is not in the game — the cook says which.
-    const std::string startWorld = m_documents.projectSettings().world.startWorld;
+    const std::string startWorld = m_documents.projectSettings().startWorld;
     const std::vector<std::string> errors = GameExporter::validate(projectPath, startWorld, *assetHandler);
     if (!errors.empty()) {
         for (const std::string &text : errors) { error(text); }
@@ -637,7 +637,7 @@ bool ProjectBuilds::cook() {
     settings.reportFile = cookReportFile();
     settings.startWorld = startWorld;
     settings.appName = m_project.projectName();
-    settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().modules);
+    settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().disabledModules);
     LOG_INFO_EDITOR("Cooking the runtime data to %s", settings.runtimeDataDirectory.string().c_str());
 
     GameExporter exporter;

@@ -72,11 +72,11 @@ PreviewStage::PreviewStage() {
 // orbits — the far side of the subject is its shaded side. No shadows, no occlusion, no fog: a
 // picture of an asset, not of a place.
 void PreviewStage::setUpStudio() {
-    WorldLightingSettings &lighting = m_world.getLightingSettings();
+    WorldLightingSettings &lighting = m_world.getSettings().lighting;
     lighting.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
     lighting.ambientIntensity = 0.1f;
     lighting.environmentIntensity = 1.f;
-    WorldGraphicsSettings &graphics = m_world.getGraphicsSettings();
+    WorldGraphicsSettings &graphics = m_world.getSettings().graphics;
     graphics.shadows.enabled = false;
     graphics.occlusion.enabled = false;
     graphics.ssao.enabled = false;

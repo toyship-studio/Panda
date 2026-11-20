@@ -9,7 +9,7 @@
 #    include "Panda/GameLogic/World.hpp"
 #    include "Panda/Prefabs/PrefabAsset.hpp"
 
-#    include <rapidjson/document.h>
+#    include <Rain/Value.hpp>
 
 #    include <functional>
 #    include <string>
@@ -17,8 +17,8 @@
 
 namespace Panda::Prefabs {
 
-using Json = rapidjson::Value;
-using JsonAllocator = rapidjson::Document::AllocatorType;
+// The form of the file a prefab works on: an entity, an entry, a patch — JSON values of Rain.
+using Json = Rain::Value;
 
 // ---- The files ------------------------------------------------------------------------------
 
@@ -48,8 +48,8 @@ std::string collapse(const std::string &expanded);
 // is one value.
 
 // false — the two are the same and `patch` is untouched.
-bool diff(const Json &base, const Json &value, Json &patch, JsonAllocator &allocator);
-void merge(Json &target, const Json &patch, JsonAllocator &allocator);
+bool diff(const Json &base, const Json &value, Json &patch);
+void merge(Json &target, const Json &patch);
 
 // ---- An instance in a world -----------------------------------------------------------------
 

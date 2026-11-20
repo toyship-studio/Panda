@@ -11,14 +11,11 @@
 
 namespace Panda {
 
-bool ProjectModules::isEnabled(const ProjectModuleSettings &settings, const std::string &id) {
-    for (const ModuleRef &module : settings.entries) {
-        if (module.id == id) { return module.enabled; }
-    }
-    return true;
+bool ProjectModules::isEnabled(const std::vector<std::string> &disabled, const std::string &id) {
+    return std::find(disabled.begin(), disabled.end(), id) == disabled.end();
 }
 
-std::vector<const BuiltinModule *> ProjectModules::resolve(const ProjectModuleSettings &settings) {
+std::vector<const BuiltinModule *> ProjectModules::resolve(const std::vector<std::string> &disabled) {
     const std::vector<BuiltinModule> &table = builtinModules();
     std::vector<const BuiltinModule *> resolved;
     std::unordered_set<std::string> visiting;
@@ -29,7 +26,7 @@ std::vector<const BuiltinModule *> ProjectModules::resolve(const ProjectModuleSe
         for (const BuiltinModule *entry : resolved) {
             if (entry == &module) { return true; }
         }
-        if (!isEnabled(settings, module.id)) { return false; }
+        if (!isEnabled(disabled, module.id)) { return false; }
         if (!visiting.insert(module.id).second) {
             LOG_WARN_EDITOR("Module %s is in a dependency cycle; it is not loaded.", module.id);
             return false;
@@ -62,9 +59,9 @@ std::vector<const BuiltinModule *> ProjectModules::resolve(const ProjectModuleSe
     return resolved;
 }
 
-bool ProjectModules::restartNeeded(const ProjectModuleSettings &settings) {
+bool ProjectModules::restartNeeded(const std::vector<std::string> &disabled) {
     PackageLoader &loader = GameContext::getPackageLoader();
-    const std::vector<const BuiltinModule *> enabled = resolve(settings);
+    const std::vector<const BuiltinModule *> enabled = resolve(disabled);
     for (const BuiltinModule &module : builtinModules()) {
         const bool wanted = std::find(enabled.begin(), enabled.end(), &module) != enabled.end();
         const bool registered = loader.find(module.id) != nullptr;
@@ -73,17 +70,17 @@ bool ProjectModules::restartNeeded(const ProjectModuleSettings &settings) {
     return false;
 }
 
-bool ProjectModules::loadNeeded(const ProjectModuleSettings &settings) {
+bool ProjectModules::loadNeeded(const std::vector<std::string> &disabled) {
     PackageLoader &loader = GameContext::getPackageLoader();
-    for (const BuiltinModule *module : resolve(settings)) {
+    for (const BuiltinModule *module : resolve(disabled)) {
         if (loader.find(module->id) == nullptr) { return true; }
     }
     return false;
 }
 
-int ProjectModules::load(const ProjectModuleSettings &settings) {
+int ProjectModules::load(const std::vector<std::string> &disabled) {
     PackageLoader &loader = GameContext::getPackageLoader();
-    const std::vector<const BuiltinModule *> enabled = resolve(settings);
+    const std::vector<const BuiltinModule *> enabled = resolve(disabled);
     int loaded = 0;
     for (const BuiltinModule &module : builtinModules()) {
         const bool wanted = std::find(enabled.begin(), enabled.end(), &module) != enabled.end();
@@ -101,10 +98,10 @@ int ProjectModules::load(const ProjectModuleSettings &settings) {
     return loaded;
 }
 
-int ProjectModules::loadEditorParts(const ProjectModuleSettings &settings) {
+int ProjectModules::loadEditorParts(const std::vector<std::string> &disabled) {
     static std::unordered_set<std::string> s_registered; // editor parts are not unloaded
     int loaded = 0;
-    for (const BuiltinModule *module : resolve(settings)) {
+    for (const BuiltinModule *module : resolve(disabled)) {
         if (module->editor == nullptr || s_registered.count(module->id) > 0) { continue; }
         Editor::EditorExtensions &extensions = Editor::editorExtensions();
         extensions.componentInspectors.setGroup(module->name); // what its components are filed under
@@ -116,9 +113,9 @@ int ProjectModules::loadEditorParts(const ProjectModuleSettings &settings) {
     return loaded;
 }
 
-std::vector<std::string> ProjectModules::enabledIds(const ProjectModuleSettings &settings) {
+std::vector<std::string> ProjectModules::enabledIds(const std::vector<std::string> &disabled) {
     std::vector<std::string> ids;
-    for (const BuiltinModule *module : resolve(settings)) { ids.emplace_back(module->id); }
+    for (const BuiltinModule *module : resolve(disabled)) { ids.emplace_back(module->id); }
     return ids;
 }
 

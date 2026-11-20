@@ -24,45 +24,10 @@ struct EditorCameraSettings : public Rain::Codable {
     }
 };
 
-// A module in the project set (context/plugins.md, decision 4): built-in SDK modules and modules
-// of the project folder are enabled by default — an entry with enabled=false disables one (version —
-// the one the project is configured for, empty = any available). The set is the truth for loading
-// in the editor and for export.
-struct ModuleRef final : public Rain::Codable {
-    std::string id;
-    std::string version;
-    bool enabled = true;
-
-    RAIN_FIELDS_BEGIN(ModuleRef)
-    RAIN_FIELD(id)
-    RAIN_FIELD(version)
-    RAIN_FIELD(enabled)
-    RAIN_FIELDS_END
-};
-
-// The sections of `.Panda/project.json` (in version control) that are the editor's own: one
-// struct, ProjectSettings, a field for each key; the modules add their sections to the same file
-// through the settings registry. Paths are relative to the project, with forward slashes.
-
-// "world": the start world of the project. A game starts in it and carries what it reaches
-// (context/export.md); the editor opens it when the session has no worlds.
-struct ProjectWorldSettings final : public Rain::Codable {
-    std::string startWorld;
-
-    RAIN_FIELDS_BEGIN(ProjectWorldSettings)
-    RAIN_FIELD(startWorld)
-    RAIN_FIELDS_END
-};
-
-// "modules": the module set of the project (ModuleRef). An empty list — every module of the
-// distribution is enabled.
-struct ProjectModuleSettings final : public Rain::Codable {
-    std::vector<ModuleRef> entries;
-
-    RAIN_FIELDS_BEGIN(ProjectModuleSettings)
-    RAIN_FIELD(entries)
-    RAIN_FIELDS_END
-};
+// `.Panda/project.json` (in version control): the settings of the project the editor owns are
+// the keys of the file, each a field of ProjectSettings (EditorSettingsTypes registers them in
+// the order the file is written in); the modules add their sections to the same file through
+// the settings registry. Paths are relative to the project, with forward slashes.
 
 // "mcp": the MCP server of the editor for this project (App/EditorMcp, PandaSDK/docs/zed-and-agents.md):
 // an AI agent that works in the project folder looks at the editor and drives it through it. The
@@ -79,18 +44,6 @@ struct ProjectMcpSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-// "rendering": the shader features of the project (ShaderFeatures.hpp). The default is every
-// feature of the catalog, so a project without the section keeps its look; the project template
-// writes the lean set. A change applies on save (the shaders of the project recompile); the
-// export writes the set into the game's manifest.
-struct ProjectRenderingSettings final : public Rain::Codable {
-    std::vector<std::string> features = ShaderFeatureSet::all().names();
-
-    RAIN_FIELDS_BEGIN(ProjectRenderingSettings)
-    RAIN_FIELD(features)
-    RAIN_FIELDS_END
-};
-
 // The settings of the project the editor owns, as fields: `projectSettings().name`.
 struct ProjectSettings final {
     // "name": the name of the project. What the editor calls the project (the window, the recent
@@ -100,10 +53,18 @@ struct ProjectSettings final {
     // anywhere: they follow from the name, the folder of the project may be called anything. A
     // folder whose project.json does not name it is not opened (ProjectLoader::readName).
     std::string name;
-    ProjectWorldSettings world;
-    ProjectModuleSettings modules;
+    // "startWorld": the world the game starts in; it carries what that world reaches
+    // (context/export.md). The editor opens it when the session has no worlds.
+    std::string startWorld;
+    // "shaderFeatures": the shader features of the project (ShaderFeatures.hpp). Without the key
+    // — every feature of the catalog, so a project keeps its look; the template writes the lean
+    // set. A change applies on save (the shaders of the project recompile); the export writes the
+    // set into the game's manifest.
+    std::vector<std::string> shaderFeatures = ShaderFeatureSet::all().names();
+    // "disabledModules": the modules of the distribution the project switches off, by id
+    // (ProjectModules); every other one is on.
+    std::vector<std::string> disabledModules;
     ProjectMcpSettings mcp;
-    ProjectRenderingSettings rendering;
 };
 
 // A world the session had open: its file (relative to the project) and where the editor camera

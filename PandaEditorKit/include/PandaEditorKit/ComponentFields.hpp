@@ -11,9 +11,10 @@
 
 namespace Editor {
 
-// The fields of one component of several entities as their file has them — the text of the
-// component (componentText) — for the form of the entities to compare field by field. A field is
-// named by its path in that text, the way a row of the form names it (PropertyRow::field):
+// The fields of one component of several entities as their file has them — the component as a
+// JSON value (WorldMapper::saveComponent) — for the form of the entities to compare field by
+// field. A field is named by its path in that value, the way a row of the form names it
+// (PropertyRow::field):
 // `intensity`, `camera/fieldOfView`, `gravity/1`; a list of things with names is gone through by
 // the names (`scripts/Enemy/scriptFields/speed`). The entities that do not have the component
 // take no part.
@@ -32,8 +33,8 @@ public:
     bool has(const std::string &path) const;
 
 private:
-    struct Texts;
-    std::unique_ptr<Texts> m_texts;
+    struct Values;
+    std::unique_ptr<Values> m_values;
 };
 
 } // namespace Editor

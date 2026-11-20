@@ -69,11 +69,11 @@ intensity of the lights) is world data.
 
 ### The set
 
-`.Panda/project.json`, section `rendering` (Project Settings → Rendering writes the same):
+`.Panda/project.json`, key `shaderFeatures` (Project Settings → Rendering writes the same):
 
 ```json
 {
-  "rendering": { "features": ["lights", "lamps", "shadows", "environment", "ssao"] }
+  "shaderFeatures": ["lights", "lamps", "shadows", "environment", "ssao"]
 }
 ```
 
@@ -181,7 +181,7 @@ is not computed and not compiled in. The switches, from the heaviest:
 
 | What | Where it is set | The cheap end | The costly end |
 |---|---|---|---|
-| The features | `.Panda/project.json`, `rendering.features` | none: the scene is unlit, a pixel is a texture and a color | all of them |
+| The features | `.Panda/project.json`, `shaderFeatures` | none: the scene is unlit, a pixel is a texture and a color | all of them |
 | Lamps | the feature `lamps` | off: no loop over lamps in a lit pixel (a game that has none, or bakes them into its vertices) | the nearest 8 in every lit pixel, each may cast shadows |
 | Screen-space occlusion | the feature `ssao`, the world's `graphics.ssao` | off: no passes | two passes over the depth of the frame; `slices`, `steps`, `fullResolution` |
 | The shadows of the sun | the feature `shadows`, the world's `graphics.shadows` | `softness` 0 — four taps where the sun shows; one or two cascades (`cascadeCount`) of 1024 (`tileSize`), a short `distance` | `softness` above 0 — the sun as a disc: 28 taps where the sun shows; three or four cascades of 2048 and more |

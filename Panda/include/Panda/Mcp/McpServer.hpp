@@ -16,7 +16,7 @@
 // starts it.
 
 #include <Fern/Net/Socket.hpp>
-#include <rapidjson/document.h>
+#include <Rain/Value.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -53,15 +53,15 @@ struct Tool final {
     std::string inputSchema;
     // Runs on the main thread inside the frame. `arguments` is the "arguments" object of the call
     // (an object, maybe without members).
-    std::function<PendingResult(const rapidjson::Value &arguments)> call;
+    std::function<PendingResult(const Rain::Value &arguments)> call;
 };
 
 // The arguments of a call by name, with a default for what the caller left out.
-std::string stringArgument(const rapidjson::Value &arguments, const char *name, const std::string &fallback = {});
-bool boolArgument(const rapidjson::Value &arguments, const char *name, bool fallback);
-double numberArgument(const rapidjson::Value &arguments, const char *name, double fallback);
+std::string stringArgument(const Rain::Value &arguments, const char *name, const std::string &fallback = {});
+bool boolArgument(const Rain::Value &arguments, const char *name, bool fallback);
+double numberArgument(const Rain::Value &arguments, const char *name, double fallback);
 // An array of exactly `count` numbers; false — absent or of another shape.
-bool numbersArgument(const rapidjson::Value &arguments, const char *name, double *values, size_t count);
+bool numbersArgument(const Rain::Value &arguments, const char *name, double *values, size_t count);
 
 class Server final {
 public:

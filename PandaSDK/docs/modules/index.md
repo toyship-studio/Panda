@@ -60,6 +60,7 @@ three modules of the distribution are the worked examples:
   and written back as it is. The keys and the field names a module writes are a contract
   (see [Data and compatibility](data-and-compatibility.md)).
 - **Modules are static and chosen per project.** There is no dynamic loading. The set of
-  modules a project enables is the `modules` section of `.Panda/project.json`; the editor
+  modules a project enables is every module of the distribution but those `disabledModules` of
+  `.Panda/project.json` names; the editor
   registers exactly that set when the project opens, and the exported game links exactly that
   set.

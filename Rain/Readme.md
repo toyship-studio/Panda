@@ -37,6 +37,25 @@ Rain supports primitive values, strings, paths, UUIDs, enums, optionals,
 vectors, `std::unordered_map<std::string, T>`, nested `Codable` objects, and
 custom encode/decode hooks.
 
+## JSON Values
+
+Data whose type is not at hand — a document to compare or patch, a section a program does not
+know — is a `Rain::Value`: null, a boolean, a number, a string, an array, or an object of named
+values in their order. `parseJson` and `writeJson` turn JSON text into a value and back (strict
+JSON, or relaxed with comments and trailing commas for files people write by hand); the JSON
+coders turn typed data into a value and back without text in between:
+
+```cpp
+Rain::JsonEncoder encoder;
+Rain::Value save = encoder.encodeValue(player);   // typed → value
+save.set("level", 7);                              // edited as a value
+Rain::JsonDecoder decoder;
+decoder.decodeValue(save, player);                 // value → typed
+std::string text = Rain::writeJson(save, Rain::JsonLayout::Pretty);
+```
+
+RapidJSON is what reads and writes the text underneath; it stays inside Rain.
+
 ## Building
 
 Rain needs CMake 3.22 or newer and a C++20 compiler. It carries its dependencies, RapidJSON and

@@ -233,19 +233,19 @@ namespace InternalCalls {
     void worldLighting_SetAmbientColor(float r, float g, float b, float a) {
         World *world = GameContext::getRunningWorld();
         if (!world) { return; }
-        world->getLightingSettings().ambientColor = Color(r, g, b, a);
+        world->getSettings().lighting.ambientColor = Color(r, g, b, a);
     }
 
     void worldLighting_SetAmbientIntensity(float intensity) {
         World *world = GameContext::getRunningWorld();
         if (!world) { return; }
-        world->getLightingSettings().ambientIntensity = intensity;
+        world->getSettings().lighting.ambientIntensity = intensity;
     }
 
     void worldLighting_SetEnvironmentIntensity(float intensity) {
         World *world = GameContext::getRunningWorld();
         if (!world) { return; }
-        world->getLightingSettings().environmentIntensity = intensity;
+        world->getSettings().lighting.environmentIntensity = intensity;
     }
 
     void worldLighting_SetEnvironmentMap(Handle textureId) {
@@ -255,7 +255,7 @@ namespace InternalCalls {
         }
         World *world = GameContext::getRunningWorld();
         if (!world) { return; }
-        world->getLightingSettings().environmentMap = AssetRef<Asset>(textureId);
+        world->getSettings().lighting.environmentMap = AssetRef<Asset>(textureId);
     }
 
     /// ENTITY

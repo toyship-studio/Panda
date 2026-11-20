@@ -71,7 +71,7 @@ void PostprocessingFrameInputs::setView(const WorldView &view, World &world) {
     sunScreen = view.sunScreen();
     projection = view.camera().projection;
     viewProj = view.camera().viewProj;
-    const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
+    const WorldGraphicsSettings &graphics = world.getSettings().graphics;
     ssao = graphics.ssao;
     fog.settings = graphics.fog;
     fog.viewProj = viewProj;

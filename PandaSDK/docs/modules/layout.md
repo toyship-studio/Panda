@@ -64,7 +64,7 @@ The build reads four fields:
 
 | Field | Read by |
 |---|---|
-| `id` | a reverse domain (`dev.pandaengine.<name>` for engine modules, your own domain otherwise); the entry point names, the registration table of the editor, `modules.txt` of an export, the `modules` section of a project |
+| `id` | a reverse domain (`dev.pandaengine.<name>` for engine modules, your own domain otherwise); the entry point names, the registration table of the editor, `modules.txt` of an export, `disabledModules` of a project |
 | `version` | semver; `PANDA_PACKAGE_VERSION` in the code, `PackageLoader::loadStatic` |
 | `parts` | which of `engine`, `editor`, `sdk` the folder has; `engine` is mandatory, the build assembles the parts by this list |
 | `dependencies` | `[{ "id", "version" }]`: the editor enables the module only with its dependencies and registers them first; the export lists them first (see [Build, test and ship](build-and-test.md)) |

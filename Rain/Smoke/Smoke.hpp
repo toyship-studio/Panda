@@ -53,4 +53,8 @@ bool testMissingFieldPolicies();
 
 bool testFixedArrayFieldMeta();
 
+bool testValueEditing();
+bool testValueEquality();
+bool testJsonValueRoundTrip();
+
 } // namespace RainSmoke

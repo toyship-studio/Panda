@@ -71,7 +71,7 @@ void WorldView::render(World &world, const ViewCamera &camera) {
     if (!m_color.isValid()) { return; } // no size yet
     // The wind of this world for everything its frame draws (the scene blocks, the system
     // material fields, the modules): a world brings its own, nobody sets it from outside.
-    SceneWind::apply(world.getWindSettings());
+    SceneWind::apply(world.getSettings().wind);
     m_renderer3d.resetStats();
     m_camera = camera;
     // What the world draws is read once, for every pass of the frame.

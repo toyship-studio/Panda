@@ -24,7 +24,7 @@ contract moves.
   includes, global UBOs generated from C++ structs), system material fields and scene wind.
 - `lighting.md`: sun shadows (CSM), the Occlusion Volume, the world environment map.
 - `shader-features.md`: the scene data a project enables — the feature catalog and the `PANDA_*`
-  blocks, the names as a fixed contract, the `rendering` project settings, how a feature is
+  blocks, the names as a fixed contract, `shaderFeatures` of the project settings, how a feature is
   switched off (compile and compute; the blocks are always bound), the scene shaders compiled
   per project.
 - `terrain.md`: terrain 2D/3D: assets, the LOD pyramid, brushes, flora, the terrain editor,

@@ -181,7 +181,7 @@ bool ProjectLoader::openProject(const path_t &path, std::string *problem) {
     // The module set of the project (ProjectModules): the contributions are needed before the asset
     // registry and the worlds. Engine parts are not unloaded — the modules of the previous project
     // stay, new ones are added; the live worlds get pools for the new component types.
-    if (ProjectModules::load(m_documents.projectSettings().modules) > 0) {
+    if (ProjectModules::load(m_documents.projectSettings().disabledModules) > 0) {
         m_documents.prepareComponentTypes();
         // The sections of the new modules were read as foreign values: they get their types now.
         SettingsMapper::adoptForeign(SettingsScope::Project, m_documents.projectSettingsFile().settings());
@@ -516,9 +516,8 @@ void ProjectLoader::applyProjectSettings() {
 }
 
 bool ProjectLoader::applyShaderFeatures() {
-    const ProjectRenderingSettings &rendering = m_documents.projectSettings().rendering;
     std::string unknown;
-    const ShaderFeatureSet features = ShaderFeatureSet::fromNames(rendering.features, &unknown);
+    const ShaderFeatureSet features = ShaderFeatureSet::fromNames(m_documents.projectSettings().shaderFeatures, &unknown);
     if (!unknown.empty()) {
         LOG_WARN_EDITOR("Project settings: unknown shader features are ignored: %s", unknown.c_str());
     }

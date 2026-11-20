@@ -49,6 +49,7 @@ namespace Detail {
     template<typename Owner, typename T>
     struct FieldOf<T Owner::*> {
         using Type = Owner;
+        using Value = T;
     };
 } // namespace Detail
 
@@ -57,16 +58,24 @@ template<auto Field>
 using SettingsOwner = typename Detail::FieldOf<decltype(Field)>::Type;
 
 // A key that is a field of one struct in the store: the settings an owner keeps together, read
-// as fields of a single value (the editor's own: settingsField<&ProjectSettings::name>). The
-// field is any value Rain codes — a string, a Codable section; its default is the struct's.
+// as fields of one value (the core's `World::getSettings().graphics`, the editor's
+// `projectSettings().name`). The field is any value Rain codes — a string, a list, a Codable
+// section; its default is the one the struct gives it.
 template<auto Field>
 SettingsType settingsField(SettingsScope scope, const char *name) {
     using Owner = SettingsOwner<Field>;
+    using Value = typename Detail::FieldOf<decltype(Field)>::Value;
     SettingsType type;
     type.scope = scope;
     type.name = name;
-    type.encode = [](const char *key, Rain::Encoder &encoder, TypeContext &store) { encoder.encode(key, store.get<Owner>().*Field); };
-    type.decode = [](const char *key, Rain::Decoder &decoder, TypeContext &store) { decoder.decode(key, store.get<Owner>().*Field); };
+    type.encode = [](const char *key, Rain::Encoder &encoder, TypeContext &store) {
+        const Rain::TypeInfo info = Rain::getTypeRegistry()->findOrCreateType<Value>();
+        info.encoderFunc(key, &encoder, info, &(store.get<Owner>().*Field));
+    };
+    type.decode = [](const char *key, Rain::Decoder &decoder, TypeContext &store) {
+        const Rain::TypeInfo info = Rain::getTypeRegistry()->findOrCreateType<Value>();
+        info.decoderFunc(key, &decoder, info, &(store.get<Owner>().*Field));
+    };
     type.copy = [](TypeContext &from, TypeContext &to) { to.get<Owner>().*Field = from.get<Owner>().*Field; };
     type.reset = [](TypeContext &store) { store.get<Owner>().*Field = Owner{}.*Field; };
     return type;

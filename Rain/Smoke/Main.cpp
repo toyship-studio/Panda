@@ -35,6 +35,9 @@ int main() {
         {"testBinaryRoundTrip", RainSmoke::testBinaryRoundTrip},
         {"testMissingFieldPolicies", RainSmoke::testMissingFieldPolicies},
         {"testFixedArrayFieldMeta", RainSmoke::testFixedArrayFieldMeta},
+        {"testValueEditing", RainSmoke::testValueEditing},
+        {"testValueEquality", RainSmoke::testValueEquality},
+        {"testJsonValueRoundTrip", RainSmoke::testJsonValueRoundTrip},
     };
 
     int failures = 0;

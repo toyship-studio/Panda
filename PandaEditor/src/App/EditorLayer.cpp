@@ -119,7 +119,7 @@ void EditorLayer::onAttach() {
     // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
     // fields (windStrength/windGustiness), not the default.
-    SceneWind::apply(editingWorld().getWindSettings());
+    SceneWind::apply(editingWorld().getSettings().wind);
     if (!m_loader.hasOpenedProject()) { updateWindowState(); }
     // The user's keys, next to the editor's settings.json; the menu is rebuilt by the listener.
     const path_t settingsPath = m_documents.editorSettingsFile().path();
@@ -832,7 +832,7 @@ void EditorLayer::loaderDidLoadCloseProject() {
 void EditorLayer::loadEditorParts() {
     if (!m_loader.hasOpenedProject() || !m_editorController) { return; }
     const size_t iconFolders = Editor::editorExtensions().iconFolders.size();
-    if (ProjectModules::loadEditorParts(m_documents.projectSettings().modules) > 0) {
+    if (ProjectModules::loadEditorParts(m_documents.projectSettings().disabledModules) > 0) {
         // The editor parts register their editor-scope sections after settings.json was read: the
         // sections kept as foreign values get their types now.
         SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettingsFile().settings());
@@ -865,12 +865,11 @@ bool EditorLayer::isModalOpen() {
 }
 
 bool EditorLayer::isReopenNeededForModules() {
-    return m_loader.hasOpenedProject() && ProjectModules::loadNeeded(m_documents.projectSettings().modules);
+    return m_loader.hasOpenedProject() && ProjectModules::loadNeeded(m_documents.projectSettings().disabledModules);
 }
 
 bool EditorLayer::reopenProjectForModules() {
-    const ProjectModuleSettings &modules = m_documents.projectSettings().modules;
-    if (ProjectModules::loadNeeded(modules)) {
+    if (ProjectModules::loadNeeded(m_documents.projectSettings().disabledModules)) {
         // A module switched on in the file: its contributions are needed before the asset registry
         // and the world, so the project opens again — that reads everything fresh.
         LOG_INFO_EDITOR("project.json switches a module on: the project is opened again");
@@ -887,7 +886,7 @@ bool EditorLayer::reopenProjectForModules() {
 
 void EditorLayer::warnOfModulesSwitchedOff() {
     if (!m_loader.hasOpenedProject()) { return; }
-    if (ProjectModules::restartNeeded(m_documents.projectSettings().modules)) {
+    if (ProjectModules::restartNeeded(m_documents.projectSettings().disabledModules)) {
         LOG_WARN_EDITOR("A module was switched off in project.json: restart the editor to drop it.");
     }
 }

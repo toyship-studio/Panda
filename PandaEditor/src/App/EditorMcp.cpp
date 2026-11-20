@@ -22,8 +22,7 @@
 #include <PandaUI/Elements/ScrollView.hpp>
 #include <PandaUI/Runtime/AccessibilityTree.hpp>
 #include <miniz.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
+#include <Rain/Value.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -41,7 +40,6 @@ namespace {
     using Foundation::LogHistory;
     using Foundation::LogRecord;
     using LogLevel = Foundation::Logger::MessageType;
-    using JsonWriter = rapidjson::Writer<rapidjson::StringBuffer>;
     using SaveChangesChoice = SystemTools::SaveChangesChoice;
 
     const char *INSTRUCTIONS =
@@ -100,8 +98,84 @@ namespace {
         return text;
     }
 
+    // An answer the way it is written — an object, a key, a value… — collected into a JSON value
+    // of Rain and written out at the end (text): the tools build their answers in this order.
+    class JsonWriter final {
+    public:
+        void StartObject() {
+            open(Rain::Value::object());
+        }
+        void EndObject() {
+            m_stack.pop_back();
+        }
+        void StartArray() {
+            open(Rain::Value::array());
+        }
+        void EndArray() {
+            m_stack.pop_back();
+        }
+        void Key(const char *key) {
+            m_key = key;
+        }
+        void String(const char *text) {
+            put(Rain::Value(text));
+        }
+        void String(const char *text, size_t length) {
+            put(Rain::Value(std::string_view(text, length)));
+        }
+        void Bool(bool value) {
+            put(Rain::Value(value));
+        }
+        void Int(int value) {
+            put(Rain::Value(value));
+        }
+        void Uint(unsigned value) {
+            put(Rain::Value(value));
+        }
+        void Uint64(uint64_t value) {
+            put(Rain::Value(value));
+        }
+        void Null() {
+            put(Rain::Value());
+        }
+        // The decimals beyond `places` go (cut, not rounded): numbers read by a person or an agent.
+        void SetMaxDecimalPlaces(int places) {
+            m_scale = std::pow(10.0, places);
+        }
+        void Double(double value) {
+            put(Rain::Value(m_scale > 0.0 && std::abs(value) < 1e15 ? std::trunc(value * m_scale) / m_scale : value));
+        }
+        // JSON text put in as the value it holds.
+        void RawValue(const std::string &json) {
+            Rain::Value value;
+            Rain::parseJson(json, value);
+            put(std::move(value));
+        }
+        std::string text() const {
+            return Rain::writeJson(m_root);
+        }
+
+    private:
+        Rain::Value &put(Rain::Value value) {
+            if (m_stack.empty()) {
+                m_root = std::move(value);
+                return m_root;
+            }
+            Rain::Value &container = *m_stack.back();
+            return container.isArray() ? container.push(std::move(value)) : container.add(m_key, std::move(value));
+        }
+        void open(Rain::Value container) {
+            m_stack.push_back(&put(std::move(container)));
+        }
+
+        Rain::Value m_root;
+        std::vector<Rain::Value *> m_stack;
+        std::string m_key;
+        double m_scale = 0.0;
+    };
+
     void writeText(JsonWriter &writer, const std::string &text) {
-        writer.String(text.data(), static_cast<rapidjson::SizeType>(text.size()));
+        writer.String(text.data(), text.size());
     }
 
     void writeVector(JsonWriter &writer, glm::vec3 value) {
@@ -112,8 +186,8 @@ namespace {
         writer.EndArray();
     }
 
-    std::string takeText(rapidjson::StringBuffer &buffer) {
-        return std::string(buffer.GetString(), buffer.GetSize());
+    std::string takeText(const JsonWriter &writer) {
+        return writer.text();
     }
 
     Mcp::ToolResult textResult(std::string text) {
@@ -277,8 +351,7 @@ std::vector<std::string> EditorMcp::dirtyDocuments() const {
 
 std::string EditorMcp::cameraJson() const {
     CameraController &camera = m_editor.viewports().cameraController();
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
+    JsonWriter writer;
     writer.SetMaxDecimalPlaces(3);
     writer.StartObject();
     writer.Key("position");
@@ -286,7 +359,7 @@ std::string EditorMcp::cameraJson() const {
     writer.Key("forward");
     writeVector(writer, camera.getForward());
     writer.EndObject();
-    return takeText(buffer);
+    return takeText(writer);
 }
 
 void EditorMcp::registerTools() {
@@ -297,7 +370,7 @@ void EditorMcp::registerTools() {
         "on disk by itself, whether a change waits to be taken), the shader features of the project, the number of "
         "errors in the log. Call it first.",
         {},
-        [this](const rapidjson::Value &) { return status(); },
+        [this](const Rain::Value &) { return status(); },
     });
     m_server.addTool({
         "logs",
@@ -308,7 +381,7 @@ void EditorMcp::registerTools() {
         R"("since":{"type":"integer","description":"Only the lines from this sequence number on (`next` of an earlier answer). Without it: the last lines."},)"
         R"("level":{"type":"string","enum":["trace","info","warning","error"],"description":"The lowest level to return. Default: info."},)"
         R"("limit":{"type":"integer","description":"At most this many lines, the newest ones. Default 100, at most 1000."}}})",
-        [this](const rapidjson::Value &arguments) { return logs(arguments); },
+        [this](const Rain::Value &arguments) { return logs(arguments); },
     });
     m_server.addTool({
         "screenshot",
@@ -324,7 +397,7 @@ void EditorMcp::registerTools() {
         R"("wait":{"type":"number","description":"Seconds to wait before the shot: assets still loading, a moment of the game to reach. Default 0, at most 30."},)"
         R"("file":{"type":"string","description":"Also write the PNG to this file: an absolute path, or one relative to the project folder."},)"
         R"("image":{"type":"boolean","description":"Return the picture in the answer. Default true; false when the file is enough."}}})",
-        [this](const rapidjson::Value &arguments) { return screenshot(arguments); },
+        [this](const Rain::Value &arguments) { return screenshot(arguments); },
     });
     m_server.addTool({
         "reload",
@@ -334,7 +407,7 @@ void EditorMcp::registerTools() {
         "and names it. Answers with what the editor logged.",
         R"({"type":"object","properties":{)"
         R"("discard":{"type":"boolean","description":"The disk wins: every unsaved edit made in the editor is dropped and its document is read again from its file, changed on disk or not. Default false."}}})",
-        [this](const rapidjson::Value &arguments) { return reload(arguments); },
+        [this](const Rain::Value &arguments) { return reload(arguments); },
     });
     m_server.addTool({
         "focus",
@@ -348,7 +421,7 @@ void EditorMcp::registerTools() {
         R"({"type":"object","properties":{)"
         R"("front":{"type":"boolean","description":"true (the default) — the editor is in front; false — it is behind."},)"
         R"("wait":{"type":"number","description":"Seconds before the answer: the time the editor has to take what waits. Default 1, at most 30."}}})",
-        [this](const rapidjson::Value &arguments) { return focus(arguments); },
+        [this](const Rain::Value &arguments) { return focus(arguments); },
     });
     m_server.addTool({
         "save",
@@ -356,20 +429,20 @@ void EditorMcp::registerTools() {
         "files. A file changed on disk since the editor read it is a conflict: the tool fails and names it.",
         R"({"type":"object","properties":{)"
         R"("overwrite":{"type":"boolean","description":"In a conflict the version of the editor wins and the file on disk is overwritten. Default false."}}})",
-        [this](const rapidjson::Value &arguments) { return save(arguments); },
+        [this](const Rain::Value &arguments) { return save(arguments); },
     });
     m_server.addTool({
         "play",
         "Starts the game inside the editor (Play): the scripts and the physics run in a copy of the active world, "
         "the Game tab shows the frame. Answers with what the start logged.",
         {},
-        [this](const rapidjson::Value &) { return play(); },
+        [this](const Rain::Value &) { return play(); },
     });
     m_server.addTool({
         "stop",
         "Stops the game (Stop): the editor returns to the world being edited; what the game changed is gone.",
         {},
-        [this](const rapidjson::Value &) { return stop(); },
+        [this](const Rain::Value &) { return stop(); },
     });
     m_server.addTool({
         "camera",
@@ -379,7 +452,7 @@ void EditorMcp::registerTools() {
         R"({"type":"object","properties":{)"
         R"("position":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3,"description":"[x, y, z] of the camera."},)"
         R"("target":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3,"description":"[x, y, z] of the point to look at."}}})",
-        [this](const rapidjson::Value &arguments) { return camera(arguments); },
+        [this](const Rain::Value &arguments) { return camera(arguments); },
     });
     m_server.addTool({
         "open_world",
@@ -389,7 +462,7 @@ void EditorMcp::registerTools() {
         R"({"type":"object","properties":{)"
         R"("path":{"type":"string","description":"The .world or .prefab file: relative to the project folder (Assets/world.world, Assets/Prefabs/Lamp.prefab) or absolute."}},)"
         R"("required":["path"]})",
-        [this](const rapidjson::Value &arguments) { return openWorld(arguments); },
+        [this](const Rain::Value &arguments) { return openWorld(arguments); },
     });
     m_server.addTool({
         "open_project",
@@ -401,7 +474,7 @@ void EditorMcp::registerTools() {
         R"("path":{"type":"string","description":"The folder of the project (the one that holds .Panda/project.json), absolute."},)"
         R"("discard":{"type":"boolean","description":"Switch although documents are unsaved: their changes are lost. Default false."}},)"
         R"("required":["path"]})",
-        [this](const rapidjson::Value &arguments) { return openProject(arguments); },
+        [this](const Rain::Value &arguments) { return openProject(arguments); },
     });
     m_server.addTool({
         "show",
@@ -414,7 +487,7 @@ void EditorMcp::registerTools() {
         R"("settings":{"type":"string","enum":["world","project","editor","keymap","close"],"description":"world: the sidebar of the viewport. project, editor, keymap: a page of the Settings window (a window of its own). close: closes the second window of the editor — Settings or Export Game (the command export.open opens that one)."},)"
         R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
         R"("entity":{"type":"string","description":"The name of the entity."}}})",
-        [this](const rapidjson::Value &arguments) { return show(arguments); },
+        [this](const Rain::Value &arguments) { return show(arguments); },
     });
     m_server.addTool({
         "ui",
@@ -442,7 +515,7 @@ void EditorMcp::registerTools() {
         R"("label":{"type":"string","description":"Wait until the one element the path names has this label."},)"
         R"("window":{"type":"string","enum":["main","settings","export"],"description":"Default: the window in front — the second window of the editor (Settings, Export Game) while one is open."},)"
         R"("of":{"type":"number","description":"The width of the screenshot the frames are for. Default 1280."}}})",
-        [this](const rapidjson::Value &arguments) { return ui(arguments); },
+        [this](const Rain::Value &arguments) { return ui(arguments); },
     });
     m_server.addTool({
         "pointer",
@@ -473,7 +546,7 @@ void EditorMcp::registerTools() {
         R"("steps":{"type":"integer","description":"drag: the frames of the movement, default 8. scroll: the events of the swipe, each by dx, dy; default 1."},)"
         R"("of":{"type":"number","description":"The width of the screenshot the coordinates were read from. Default 1280."},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
-        [this](const rapidjson::Value &arguments) { return pointer(arguments); },
+        [this](const Rain::Value &arguments) { return pointer(arguments); },
     });
     m_server.addTool({
         "key",
@@ -487,7 +560,7 @@ void EditorMcp::registerTools() {
         R"("target":{"type":"string","description":"The path of the element to click before the keys."},)"
         R"("wait":{"type":"number","description":"Seconds to wait for the target. Default 2, at most 30."},)"
         R"("shift":{"type":"boolean"},"alt":{"type":"boolean"},"ctrl":{"type":"boolean"},"super":{"type":"boolean","description":"Command on macOS."}}})",
-        [this](const rapidjson::Value &arguments) { return key(arguments); },
+        [this](const Rain::Value &arguments) { return key(arguments); },
     });
     m_server.addTool({
         "game_input",
@@ -514,7 +587,7 @@ void EditorMcp::registerTools() {
         R"("scroll":{"type":"number","description":"Notches of the wheel, positive — away from the user."},)"
         R"("touches":{"type":"array","items":{"type":"object","properties":{"at":{"type":"array","items":{"type":"number"}},"to":{"type":"array","items":{"type":"number"}}}}},)"
         R"("of":{"type":"number","description":"The width of the screenshot the points were read from; default: points of the view."}}})",
-        [this](const rapidjson::Value &arguments) { return gameInput(arguments); },
+        [this](const Rain::Value &arguments) { return gameInput(arguments); },
     });
     m_server.addTool({
         "command",
@@ -527,7 +600,7 @@ void EditorMcp::registerTools() {
         R"("id":{"type":"string"},)"
         R"("keys":{"type":"array","items":{"type":"string"},"description":"Bind these chords to the command."},)"
         R"("reset":{"type":"boolean","description":"Return the command to its default keys."}}})",
-        [this](const rapidjson::Value &arguments) { return command(arguments); },
+        [this](const Rain::Value &arguments) { return command(arguments); },
     });
     m_server.addTool({
         "build",
@@ -542,7 +615,7 @@ void EditorMcp::registerTools() {
         R"("target":{"type":"string","enum":["scripts","export"]},)"
         R"("action":{"type":"string","enum":["build","configure","clean"]},)"
         R"("lines":{"type":"number","description":"How many of the last lines of the output to answer with. Default 80."}}})",
-        [this](const rapidjson::Value &arguments) { return build(arguments); },
+        [this](const Rain::Value &arguments) { return build(arguments); },
     });
     m_server.addTool({
         "export",
@@ -564,7 +637,7 @@ void EditorMcp::registerTools() {
         R"("limit":{"type":"number","description":"How many of the largest files and of the unused assets to list; run: how many of the last lines of the log. Default 15; run: 40."},)"
         R"("frames":{"type":"number","description":"run: how many frames the game plays before it leaves. Default 120."},)"
         R"("width":{"type":"number","description":"run: the picture is scaled down to this width. Default 1280."}}})",
-        [this](const rapidjson::Value &arguments) { return exportGame(arguments); },
+        [this](const Rain::Value &arguments) { return exportGame(arguments); },
     });
     m_server.addTool({
         "restart",
@@ -573,22 +646,21 @@ void EditorMcp::registerTools() {
         "answers again in a few seconds (poll `status`). Fails when documents are unsaved.",
         R"({"type":"object","properties":{)"
         R"("discard":{"type":"boolean","description":"Restart although documents are unsaved: their changes are lost. Default false."}}})",
-        [this](const rapidjson::Value &arguments) { return exit(Exit::Restart, arguments); },
+        [this](const Rain::Value &arguments) { return exit(Exit::Restart, arguments); },
     });
     m_server.addTool({
         "quit",
         "Closes the editor. Fails when documents are unsaved.",
         R"({"type":"object","properties":{)"
         R"("discard":{"type":"boolean","description":"Close although documents are unsaved: their changes are lost. Default false."}}})",
-        [this](const rapidjson::Value &arguments) { return exit(Exit::Quit, arguments); },
+        [this](const Rain::Value &arguments) { return exit(Exit::Quit, arguments); },
     });
 }
 
 /* ------------------------------ status, logs ------------------------------ */
 
 Mcp::PendingResult EditorMcp::status() {
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
+    JsonWriter writer;
     writer.SetMaxDecimalPlaces(3);
     writer.StartObject();
 
@@ -608,7 +680,7 @@ Mcp::PendingResult EditorMcp::status() {
         writer.Key("project");
         writer.Null();
         writer.EndObject();
-        return Mcp::ready(textResult(takeText(buffer)));
+        return Mcp::ready(textResult(takeText(writer)));
     }
     const path_t &projectPath = m_editor.project().getOpenedProjectPath();
     writer.Key("project");
@@ -668,7 +740,7 @@ Mcp::PendingResult EditorMcp::status() {
 
     writer.Key("camera");
     const std::string camera = cameraJson();
-    writer.RawValue(camera.data(), camera.size(), rapidjson::kObjectType);
+    writer.RawValue(camera);
 
     const Renderer3D::Statistics stats3d = m_editor.viewports().worldView().renderer3D().getStats();
     const Renderer2D::Statistics stats2d = m_editor.viewports().worldView().renderer2D().getStats();
@@ -705,7 +777,7 @@ Mcp::PendingResult EditorMcp::status() {
 
     writer.Key("shaderFeatures");
     writer.StartArray();
-    for (const std::string &feature : m_editor.documents().projectSettings().rendering.features) {
+    for (const std::string &feature : m_editor.documents().projectSettings().shaderFeatures) {
         writeText(writer, feature);
     }
     writer.EndArray();
@@ -721,10 +793,10 @@ Mcp::PendingResult EditorMcp::status() {
     writer.EndObject();
 
     writer.EndObject();
-    return Mcp::ready(textResult(takeText(buffer)));
+    return Mcp::ready(textResult(takeText(writer)));
 }
 
-Mcp::PendingResult EditorMcp::logs(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::logs(const Rain::Value &arguments) {
     const uint64_t since = static_cast<uint64_t>(std::max(0.0, Mcp::numberArgument(arguments, "since", 0.0)));
     const size_t limit = static_cast<size_t>(std::clamp(Mcp::numberArgument(arguments, "limit", 100.0), 1.0, 1000.0));
     const std::string level = Mcp::stringArgument(arguments, "level", "info");
@@ -762,7 +834,7 @@ void EditorMcp::showViewport(ViewportKind view) {
     }
 }
 
-Mcp::PendingResult EditorMcp::screenshot(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::screenshot(const Rain::Value &arguments) {
     auto shot = std::make_shared<Screenshot>();
     const std::string view = Mcp::stringArgument(arguments, "view");
     // The window is there without a project (the start screen); a viewport is not.
@@ -971,8 +1043,7 @@ Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
         if (!output) { return Mcp::ToolResult::error("The picture could not be written to " + shot.file.string()); }
     }
 
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
+    JsonWriter writer;
     writer.StartObject();
     writer.Key("view");
     writer.String(shot.settings ? "settings" : shot.window ? "window" : viewName(shot.view));
@@ -985,14 +1056,14 @@ Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
         writeText(writer, shot.file.string());
     }
     writer.EndObject();
-    result.text = takeText(buffer);
+    result.text = takeText(writer);
     if (!shot.returnImage) { result.png.clear(); }
     return result;
 }
 
 /* ------------------------------ acting on the editor ------------------------------ */
 
-Mcp::PendingResult EditorMcp::reload(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::reload(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const bool discard = Mcp::boolArgument(arguments, "discard", false);
     const uint64_t from = LogHistory::nextSequence();
@@ -1013,7 +1084,7 @@ Mcp::PendingResult EditorMcp::reload(const rapidjson::Value &arguments) {
     return Mcp::ready(std::move(result));
 }
 
-Mcp::PendingResult EditorMcp::save(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::save(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const bool overwrite = Mcp::boolArgument(arguments, "overwrite", false);
     const uint64_t from = LogHistory::nextSequence();
@@ -1034,7 +1105,7 @@ Mcp::PendingResult EditorMcp::save(const rapidjson::Value &arguments) {
     return Mcp::ready(std::move(result));
 }
 
-Mcp::PendingResult EditorMcp::focus(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::focus(const Rain::Value &arguments) {
     const bool front = Mcp::boolArgument(arguments, "front", true);
     const double until = nowSeconds() + std::clamp(Mcp::numberArgument(arguments, "wait", 1.0), 0.0, 30.0);
     const uint64_t from = LogHistory::nextSequence();
@@ -1063,17 +1134,17 @@ Mcp::PendingResult EditorMcp::stop() {
     return Mcp::ready(textResult("Stopped.\n" + logSince(from)));
 }
 
-Mcp::PendingResult EditorMcp::camera(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::camera(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     CameraController &controller = m_editor.viewports().cameraController();
     double values[3];
-    if (arguments.HasMember("position")) {
+    if (arguments.find("position") != nullptr) {
         if (!Mcp::numbersArgument(arguments, "position", values, 3)) {
             return Mcp::ready(Mcp::ToolResult::error("position is an array of three numbers: [x, y, z]"));
         }
         controller.setPosition(glm::vec3(values[0], values[1], values[2]));
     }
-    if (arguments.HasMember("target")) {
+    if (arguments.find("target") != nullptr) {
         if (!Mcp::numbersArgument(arguments, "target", values, 3)) {
             return Mcp::ready(Mcp::ToolResult::error("target is an array of three numbers: [x, y, z]"));
         }
@@ -1082,7 +1153,7 @@ Mcp::PendingResult EditorMcp::camera(const rapidjson::Value &arguments) {
     return Mcp::ready(textResult(cameraJson()));
 }
 
-Mcp::PendingResult EditorMcp::openWorld(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::openWorld(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const std::string name = Mcp::stringArgument(arguments, "path");
     if (name.empty()) { return Mcp::ready(Mcp::ToolResult::error("path is the .world or .prefab file to open")); }
@@ -1348,8 +1419,7 @@ Fern::Window *EditorMcp::inputWindow() const {
 
 std::string EditorMcp::pointerJson() const {
     PandaUI::Context &context = inputContext();
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
+    JsonWriter writer;
     writer.StartObject();
     // The elements under the pointer, from the innermost out: what a click there reaches.
     writer.Key("under");
@@ -1366,7 +1436,7 @@ std::string EditorMcp::pointerJson() const {
         writer.Null();
     }
     writer.EndObject();
-    return takeText(buffer);
+    return takeText(writer);
 }
 
 Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
@@ -1645,7 +1715,7 @@ std::vector<EditorMcp::InputStep> EditorMcp::gestureSteps(const Gesture &gesture
     return steps;
 }
 
-Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::pointer(const Rain::Value &arguments) {
     Fern::Window *window = inputWindow();
     if (window == nullptr) { return Mcp::ready(Mcp::ToolResult::error("The editor has no window")); }
     const Fern::Size size = window->getSize();
@@ -1684,7 +1754,7 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
     // The place of the gesture: a point of a screenshot, or an element by its path.
     const std::string from = Mcp::stringArgument(arguments, "target");
     const std::string to = Mcp::stringArgument(arguments, "toTarget");
-    const bool hasPoint = arguments.IsObject() && arguments.HasMember("x") && arguments.HasMember("y");
+    const bool hasPoint = arguments.isObject() && arguments.find("x") != nullptr && arguments.find("y") != nullptr;
     if (from.empty() && !hasPoint) {
         return Mcp::ready(Mcp::ToolResult::error("Pass `target` (the path of an element, see `ui`) or `x` and `y` (a point of a `window` screenshot)"));
     }
@@ -1720,7 +1790,7 @@ Mcp::PendingResult EditorMcp::pointer(const rapidjson::Value &arguments) {
     });
 }
 
-Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::key(const Rain::Value &arguments) {
     const std::string text = Mcp::stringArgument(arguments, "text");
     const std::string keyName = Mcp::stringArgument(arguments, "key");
     const std::string targetPath = Mcp::stringArgument(arguments, "target");
@@ -1763,7 +1833,7 @@ Mcp::PendingResult EditorMcp::key(const rapidjson::Value &arguments) {
     });
 }
 
-Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::ui(const Rain::Value &arguments) {
     struct Query {
         std::string path;
         std::string window;
@@ -1784,13 +1854,13 @@ Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
     query->of = Mcp::numberArgument(arguments, "of", SCREENSHOT_DEFAULT_WIDTH);
     query->gone = Mcp::boolArgument(arguments, "gone", false);
     query->count = static_cast<int>(Mcp::numberArgument(arguments, "count", -1.0));
-    if (arguments.IsObject() && arguments.HasMember("value") && arguments["value"].IsString()) {
+    if (arguments.isObject() && arguments.find("value") != nullptr && arguments.find("value")->isString()) {
         query->hasValue = true;
-        query->value = arguments["value"].GetString();
+        query->value = arguments.find("value")->getString();
     }
-    if (arguments.IsObject() && arguments.HasMember("label") && arguments["label"].IsString()) {
+    if (arguments.isObject() && arguments.find("label") != nullptr && arguments.find("label")->isString()) {
         query->hasLabel = true;
-        query->label = arguments["label"].GetString();
+        query->label = arguments.find("label")->getString();
     }
     if (query->window != "" && query->window != "main" && query->window != "settings" && query->window != "export") {
         return Mcp::ready(Mcp::ToolResult::error("window is \"main\", \"settings\" or \"export\""));
@@ -1868,19 +1938,18 @@ Mcp::PendingResult EditorMcp::ui(const rapidjson::Value &arguments) {
             return Mcp::ToolResult::error(why);
         }
         const double scale = pointsPerScreenshotPixel(*window, query->of);
-        rapidjson::StringBuffer buffer;
-        JsonWriter writer(buffer);
+        JsonWriter writer;
         writer.StartObject();
         writer.Key("elements");
         writer.StartArray();
         for (const AccessibilityElement *element : answer) { writeElement(writer, *element, scale, query->depth); }
         writer.EndArray();
         writer.EndObject();
-        return textResult(takeText(buffer));
+        return textResult(takeText(writer));
     };
 }
 
-Mcp::PendingResult EditorMcp::build(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::build(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const std::string target = Mcp::stringArgument(arguments, "target", "scripts");
     const std::string action = Mcp::stringArgument(arguments, "action", "build");
@@ -1915,12 +1984,11 @@ Mcp::PendingResult EditorMcp::build(const rapidjson::Value &arguments) {
     };
 }
 
-Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::command(const Rain::Value &arguments) {
     Editor::Commands &commands = m_editor.commands();
     const std::string id = Mcp::stringArgument(arguments, "id");
     if (id.empty()) {
-        rapidjson::StringBuffer buffer;
-        JsonWriter writer(buffer);
+        JsonWriter writer;
         writer.StartArray();
         for (const Editor::Commands::Command &entry : commands.all()) {
             writer.StartObject();
@@ -1943,17 +2011,17 @@ Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
             writer.EndObject();
         }
         writer.EndArray();
-        return Mcp::ready(textResult(takeText(buffer)));
+        return Mcp::ready(textResult(takeText(writer)));
     }
     if (commands.find(id) == nullptr) { return Mcp::ready(Mcp::ToolResult::error("No such command: " + id)); }
     if (Mcp::boolArgument(arguments, "reset", false)) {
         commands.resetBinding(id);
         return Mcp::ready(textResult("The default keys: " + commands.keys(id)));
     }
-    if (arguments.IsObject() && arguments.HasMember("keys") && arguments["keys"].IsArray()) {
+    if (arguments.isObject() && arguments.find("keys") != nullptr && arguments.find("keys")->isArray()) {
         std::vector<Editor::KeyChord> chords;
-        for (const auto &item : arguments["keys"].GetArray()) {
-            const Editor::KeyChord chord = item.IsString() ? Editor::KeyChord::parse(item.GetString()) : Editor::KeyChord();
+        for (const auto &item : arguments.find("keys")->items()) {
+            const Editor::KeyChord chord = item.isString() ? Editor::KeyChord::parse(item.getString()) : Editor::KeyChord();
             if (!chord.isSet()) { return Mcp::ready(Mcp::ToolResult::error("Not a key chord: write it as \"cmd-shift-p\", \"f5\"")); }
             chords.push_back(chord);
         }
@@ -1966,7 +2034,7 @@ Mcp::PendingResult EditorMcp::command(const rapidjson::Value &arguments) {
     return playInput({InputStep{}, InputStep{}});
 }
 
-Mcp::PendingResult EditorMcp::show(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::show(const Rain::Value &arguments) {
     if (!hasProject() || !m_editor.controller()) {
         return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor"));
     }
@@ -2070,7 +2138,7 @@ namespace {
 
 } // namespace
 
-Mcp::PendingResult EditorMcp::exportGame(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::exportGame(const Rain::Value &arguments) {
     if (!hasProject()) { return Mcp::ready(Mcp::ToolResult::error("No project is open in the editor")); }
     const std::string action = Mcp::stringArgument(arguments, "action");
     if (action == "run") { return runBuiltGame(arguments); }
@@ -2193,15 +2261,15 @@ namespace {
         return false;
     }
 
-    bool pointArgument(const rapidjson::Value &value, glm::vec2 &out) {
-        if (!value.IsArray() || value.Size() != 2 || !value[0].IsNumber() || !value[1].IsNumber()) { return false; }
-        out = glm::vec2(value[0].GetFloat(), value[1].GetFloat());
+    bool pointArgument(const Rain::Value &value, glm::vec2 &out) {
+        if (!value.isArray() || value.size() != 2 || !value.items()[0].isNumber() || !value.items()[1].isNumber()) { return false; }
+        out = glm::vec2(value.items()[0].getFloat(), value.items()[1].getFloat());
         return true;
     }
 
 } // namespace
 
-Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::gameInput(const Rain::Value &arguments) {
     if (!m_editor.isPlaying()) { return Mcp::ready(Mcp::ToolResult::error("The game is not playing: `play` first")); }
     struct Finger {
         glm::vec2 at{0.f}, to{0.f};
@@ -2222,11 +2290,11 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
     };
     auto g = std::make_shared<Gesture>();
     g->seconds = std::clamp(Mcp::numberArgument(arguments, "seconds", 0.15), 0.02, 30.0);
-    if (arguments.IsObject() && arguments.HasMember("keys") && arguments["keys"].IsArray()) {
-        for (const auto &k : arguments["keys"].GetArray()) {
+    if (arguments.isObject() && arguments.find("keys") != nullptr && arguments.find("keys")->isArray()) {
+        for (const auto &k : arguments.find("keys")->items()) {
             Fern::Key key;
-            if (!k.IsString() || !fernKeyByName(k.GetString(), key)) {
-                return Mcp::ready(Mcp::ToolResult::error(std::string("Unknown key: ") + (k.IsString() ? k.GetString() : "?")));
+            if (!k.isString() || !fernKeyByName(k.getString(), key)) {
+                return Mcp::ready(Mcp::ToolResult::error(std::string("Unknown key: ") + (k.isString() ? k.getString() : std::string("?"))));
             }
             g->keys.push_back(key);
         }
@@ -2234,11 +2302,11 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
     const Rect frame = Input::getViewportFrame();
     const double of = Mcp::numberArgument(arguments, "of", 0.0);
     g->scale = of > 0.0 && frame.size.width > 0.f ? frame.size.width / static_cast<float>(of) : 1.f;
-    if (arguments.IsObject() && arguments.HasMember("mouse")) {
-        if (!pointArgument(arguments["mouse"], g->mouse)) { return Mcp::ready(Mcp::ToolResult::error("mouse is [x, y]")); }
+    if (arguments.isObject() && arguments.find("mouse") != nullptr) {
+        if (!pointArgument((*arguments.find("mouse")), g->mouse)) { return Mcp::ready(Mcp::ToolResult::error("mouse is [x, y]")); }
         g->hasMouse = true;
         g->mouseTo = g->mouse;
-        if (arguments.HasMember("to") && !pointArgument(arguments["to"], g->mouseTo)) {
+        if (arguments.find("to") != nullptr && !pointArgument((*arguments.find("to")), g->mouseTo)) {
             return Mcp::ready(Mcp::ToolResult::error("to is [x, y]"));
         }
     }
@@ -2248,15 +2316,15 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
         g->hasButton = true;
         g->button = button == "right" ? Fern::MouseButton::RIGHT : button == "middle" ? Fern::MouseButton::MIDDLE : Fern::MouseButton::LEFT;
     }
-    if (arguments.IsObject() && arguments.HasMember("touches") && arguments["touches"].IsArray()) {
+    if (arguments.isObject() && arguments.find("touches") != nullptr && arguments.find("touches")->isArray()) {
         int id = 7000;
-        for (const auto &t : arguments["touches"].GetArray()) {
+        for (const auto &t : arguments.find("touches")->items()) {
             Finger f;
-            if (!t.IsObject() || !t.HasMember("at") || !pointArgument(t["at"], f.at)) {
+            if (!t.isObject() || t.find("at") == nullptr || !pointArgument((*t.find("at")), f.at)) {
                 return Mcp::ready(Mcp::ToolResult::error("a touch is {\"at\": [x, y], \"to\": [x, y]}"));
             }
             f.to = f.at;
-            if (t.HasMember("to") && !pointArgument(t["to"], f.to)) { return Mcp::ready(Mcp::ToolResult::error("to of a touch is [x, y]")); }
+            if (t.find("to") != nullptr && !pointArgument((*t.find("to")), f.to)) { return Mcp::ready(Mcp::ToolResult::error("to of a touch is [x, y]")); }
             f.id = id++;
             g->fingers.push_back(f);
         }
@@ -2316,7 +2384,7 @@ Mcp::PendingResult EditorMcp::gameInput(const rapidjson::Value &arguments) {
     };
 }
 
-Mcp::PendingResult EditorMcp::runBuiltGame(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::runBuiltGame(const Rain::Value &arguments) {
     const path_t game = m_editor.builds().builtGame().executable;
     if (game.empty()) {
         return Mcp::ready(Mcp::ToolResult::error(
@@ -2382,7 +2450,7 @@ Mcp::PendingResult EditorMcp::runBuiltGame(const rapidjson::Value &arguments) {
     };
 }
 
-Mcp::PendingResult EditorMcp::openProject(const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::openProject(const Rain::Value &arguments) {
     const path_t folder = path_t(Mcp::stringArgument(arguments, "path")).lexically_normal();
     std::error_code error;
     if (folder.empty() || !folder.is_absolute() || !std::filesystem::is_directory(folder, error)) {
@@ -2408,7 +2476,7 @@ Mcp::PendingResult EditorMcp::openProject(const rapidjson::Value &arguments) {
     return Mcp::ready(textResult("The editor opens " + name + ": poll `status`."));
 }
 
-Mcp::PendingResult EditorMcp::exit(Exit kind, const rapidjson::Value &arguments) {
+Mcp::PendingResult EditorMcp::exit(Exit kind, const Rain::Value &arguments) {
     const std::vector<std::string> dirty = dirtyDocuments();
     if (!dirty.empty() && !Mcp::boolArgument(arguments, "discard", false)) {
         std::string text = "Unsaved documents: ";

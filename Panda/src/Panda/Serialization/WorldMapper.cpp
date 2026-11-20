@@ -5,6 +5,9 @@
 #include "Panda/Serialization/ComponentDtos.hpp"
 #include "Panda/Serialization/SettingsMapper.hpp"
 
+#include <Rain/Coders/JsonDecoder.hpp>
+#include <Rain/Coders/JsonEncoder.hpp>
+
 #include <algorithm>
 
 #include <set>
@@ -285,6 +288,46 @@ bool WorldMapper::load(World &world, Rain::Decoder &decoder, std::istream &strea
     WorldDocument document;
     document.world = &world;
     return decoder.decode(stream, document);
+}
+
+Rain::Value WorldMapper::save(const World &world) {
+    WorldDocument document;
+    document.world = const_cast<World *>(&world);
+    return Rain::JsonEncoder().encodeValue(document);
+}
+
+bool WorldMapper::load(World &world, const Rain::Value &value) {
+    WorldDocument document;
+    document.world = &world;
+    return Rain::JsonDecoder().decodeValue(value, document);
+}
+
+Rain::Value WorldMapper::saveTree(World &world, Entity root) {
+    WorldDocument document;
+    document.world = &world;
+    document.settings = false;
+    document.root = root.getId();
+    return Rain::JsonEncoder().encodeValue(document);
+}
+
+Rain::Value WorldMapper::saveEntity(Entity entity) {
+    EntityDocument document;
+    document.entity = entity;
+    return Rain::JsonEncoder().encodeValue(document);
+}
+
+Rain::Value WorldMapper::saveComponent(Entity entity, const ComponentType &type) {
+    ComponentDocument document;
+    document.entity = entity;
+    document.type = &type;
+    return Rain::JsonEncoder().encodeValue(document);
+}
+
+bool WorldMapper::loadComponent(Entity entity, const ComponentType &type, const Rain::Value &value) {
+    ComponentDocument document;
+    document.entity = entity;
+    document.type = &type;
+    return Rain::JsonDecoder().decodeValue(value, document);
 }
 
 // A fragment goes through a scratch world on both sides: the entities are copied into it and it is

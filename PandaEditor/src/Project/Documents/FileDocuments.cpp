@@ -335,7 +335,7 @@ bool FileDocuments::saveWorldAs(WorldFile &world) {
 
 void FileDocuments::syncStartWorld(const WorldFile &world) {
     if (world.isPrefab()) { return; } // a game starts in a world
-    std::string &startWorld = projectSettings().world.startWorld;
+    std::string &startWorld = projectSettings().startWorld;
     if (startWorld.empty()) { startWorld = projectRelative(world.path()); }
 }
 

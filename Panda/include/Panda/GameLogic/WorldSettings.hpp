@@ -5,15 +5,15 @@
 #include "Panda/Assets/Base/AssetRef.hpp"
 #include "Panda/Renderer/CascadedShadowMap.hpp"
 #include "Panda/Renderer/OcclusionVolume.hpp"
+#include "Panda/Renderer/SceneWind.hpp"
 
 #include <Rain/Rain.hpp>
 
 namespace Panda {
 
-// The core settings of the world: sections of the world scope of the settings registry
-// (`Extensions::settings`, the keys "lighting" and "graphics" of .world; the wind is
-// SceneWindSettings under "wind") — in World::context like the settings of the modules, read
-// through World::getLightingSettings / getGraphicsSettings / getWindSettings.
+// The settings of the world the core owns: the sections "lighting", "graphics" and "wind" of a
+// .world, the fields of one struct (WorldSettings, read through World::getSettings) in
+// World::context next to the settings of the modules (the settings registry: settingsField).
 
 struct WorldLightingSettings final : public Rain::Codable {
     Color ambientColor = Color(1.f, 1.f, 1.f, 1.f);
@@ -52,6 +52,14 @@ struct WorldGraphicsSettings final : public Rain::Codable {
     RAIN_FIELD(ssao)
     RAIN_FIELD(fog)
     RAIN_FIELDS_END
+};
+
+struct WorldSettings final {
+    WorldLightingSettings lighting;
+    WorldGraphicsSettings graphics;
+    // The wind of every frame drawn of the world (WorldView::render applies it to SceneWind):
+    // what is drawn in a frame of a world is drawn in the wind of that world.
+    SceneWindSettings wind;
 };
 
 } // namespace Panda

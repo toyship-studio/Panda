@@ -69,27 +69,27 @@ private:
     void performExit();
 
     Mcp::PendingResult status();
-    Mcp::PendingResult logs(const rapidjson::Value &arguments);
-    Mcp::PendingResult screenshot(const rapidjson::Value &arguments);
-    Mcp::PendingResult reload(const rapidjson::Value &arguments);
-    Mcp::PendingResult focus(const rapidjson::Value &arguments);
-    Mcp::PendingResult save(const rapidjson::Value &arguments);
+    Mcp::PendingResult logs(const Rain::Value &arguments);
+    Mcp::PendingResult screenshot(const Rain::Value &arguments);
+    Mcp::PendingResult reload(const Rain::Value &arguments);
+    Mcp::PendingResult focus(const Rain::Value &arguments);
+    Mcp::PendingResult save(const Rain::Value &arguments);
     Mcp::PendingResult play();
     Mcp::PendingResult stop();
-    Mcp::PendingResult camera(const rapidjson::Value &arguments);
-    Mcp::PendingResult openWorld(const rapidjson::Value &arguments);
-    Mcp::PendingResult openProject(const rapidjson::Value &arguments);
-    Mcp::PendingResult show(const rapidjson::Value &arguments);
-    Mcp::PendingResult ui(const rapidjson::Value &arguments);
-    Mcp::PendingResult pointer(const rapidjson::Value &arguments);
-    Mcp::PendingResult key(const rapidjson::Value &arguments);
-    Mcp::PendingResult gameInput(const rapidjson::Value &arguments);
-    Mcp::PendingResult command(const rapidjson::Value &arguments);
-    Mcp::PendingResult build(const rapidjson::Value &arguments);
-    Mcp::PendingResult exportGame(const rapidjson::Value &arguments);
+    Mcp::PendingResult camera(const Rain::Value &arguments);
+    Mcp::PendingResult openWorld(const Rain::Value &arguments);
+    Mcp::PendingResult openProject(const Rain::Value &arguments);
+    Mcp::PendingResult show(const Rain::Value &arguments);
+    Mcp::PendingResult ui(const Rain::Value &arguments);
+    Mcp::PendingResult pointer(const Rain::Value &arguments);
+    Mcp::PendingResult key(const Rain::Value &arguments);
+    Mcp::PendingResult gameInput(const Rain::Value &arguments);
+    Mcp::PendingResult command(const Rain::Value &arguments);
+    Mcp::PendingResult build(const Rain::Value &arguments);
+    Mcp::PendingResult exportGame(const Rain::Value &arguments);
     // Runs the built game as a check run and answers with its log and the picture of its last frame.
-    Mcp::PendingResult runBuiltGame(const rapidjson::Value &arguments);
-    Mcp::PendingResult exit(Exit kind, const rapidjson::Value &arguments);
+    Mcp::PendingResult runBuiltGame(const Rain::Value &arguments);
+    Mcp::PendingResult exit(Exit kind, const Rain::Value &arguments);
 
     // A frame of a screenshot in flight; a result — the shot is taken or has failed.
     std::optional<Mcp::ToolResult> stepScreenshot(Screenshot &shot);

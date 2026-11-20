@@ -26,33 +26,33 @@ struct BuiltinModule final {
 const std::vector<BuiltinModule> &builtinModules();
 
 // The module set of the project (context/plugins.md, decision 4): modules are part of the
-// distribution, enabling is per project. All are enabled by default, an entry
-// `{id, enabled=false}` of the "modules" section of project.json (ProjectModuleSettings) disables
-// one. A module needs its dependencies (module.json): with a dependency disabled or missing from
-// the distribution the module is disabled too, with a warning. The set is the truth both for
+// distribution, enabling is per project. Every module is on unless its id is in
+// "disabledModules" of project.json (ProjectSettings::disabledModules — `disabled` below). A
+// module needs its dependencies (module.json): with a dependency disabled or missing from the
+// distribution the module is disabled too, with a warning. The set is the truth both for
 // registering contributions in the editor and for export (the list in
 // .Panda/Cooked/Runtime/modules.txt; the game links only it).
 class ProjectModules final {
 public:
-    static bool isEnabled(const ProjectModuleSettings &settings, const std::string &id);
+    static bool isEnabled(const std::vector<std::string> &disabled, const std::string &id);
     // The enabled modules of the table with their dependencies satisfied, dependencies first.
-    static std::vector<const BuiltinModule *> resolve(const ProjectModuleSettings &settings);
+    static std::vector<const BuiltinModule *> resolve(const std::vector<std::string> &disabled);
     // Engine parts of the enabled modules on project open (before the asset registry and the world).
     // Returns the number of new contributions (the live world gets pools for the new types —
     // World::prepareComponentTypes on the caller's side). Contributions are not unloaded: a module
     // that is disabled in the opened project but already registered is flagged with a warning.
-    static int load(const ProjectModuleSettings &settings);
+    static int load(const std::vector<std::string> &disabled);
     // Editor parts of the same set — once there is a host for the parts (the editor coordinator).
-    static int loadEditorParts(const ProjectModuleSettings &settings);
+    static int loadEditorParts(const std::vector<std::string> &disabled);
     // Enabled modules in table order — for game export.
-    static std::vector<std::string> enabledIds(const ProjectModuleSettings &settings);
-    // True when the set of the settings differs from the set registered in this session: a module
+    static std::vector<std::string> enabledIds(const std::vector<std::string> &disabled);
+    // True when the set differs from the set registered in this session: a module
     // switched on that is not registered, or switched off but registered. Modules are linked
     // statically and contributions are never unloaded, so the change needs a restart of the editor.
-    static bool restartNeeded(const ProjectModuleSettings &settings);
-    // True when the settings enable a module this session has not registered yet: it loads when
+    static bool restartNeeded(const std::vector<std::string> &disabled);
+    // True when the set has a module this session has not registered yet: it loads when
     // the project opens, without a restart.
-    static bool loadNeeded(const ProjectModuleSettings &settings);
+    static bool loadNeeded(const std::vector<std::string> &disabled);
 };
 
 } // namespace Panda

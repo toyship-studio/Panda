@@ -422,7 +422,7 @@ resolves it.
 per application.
 
 - Settings (`SceneWindSettings`, Rain-Codable): `strength`, `speed`, `gustiness`,
-  `directionDegrees` (the default 0° is +X). In a world the owner is `World::getWindSettings()`
+  `directionDegrees` (the default 0° is +X). In a world the owner is `World::getSettings().wind`
   (the `wind` section of `.world`, the settings registry; editor: Settings → WIND). An
   application without a world keeps its own settings.
 - A world brings its wind into its frame: `WorldView::render` calls `SceneWind::apply` with the

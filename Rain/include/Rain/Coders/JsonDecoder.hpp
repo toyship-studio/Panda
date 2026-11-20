@@ -1,24 +1,27 @@
 #pragma once
 
 #include "Rain/Coder.hpp"
+#include "Rain/TypeRegistry.hpp"
+#include "Rain/Value.hpp"
 
 #include <cstdint>
 #include <vector>
-#include <rapidjson/document.h>
-#include <rapidjson/reader.h>
-#include <rapidjson/istreamwrapper.h>
 
 namespace Rain {
 
+// JSON → data: from a Value (decodeValue), or from its text (decode from a stream).
 class JsonDecoder final : public Decoder {
-    struct Object {
-        const rapidjson::Value *ref;
-        bool isPartOfArray;
-    };
-
 public:
     explicit JsonDecoder(DecoderSettings settings = {});
     ~JsonDecoder() override = default;
+
+    // The data from a JSON value; false — the value is not what the data reads from.
+    template<typename T>
+    bool decodeValue(const Value &value, T &data) {
+        TypeInfo info = getTypeRegistry()->findOrCreateType<T>();
+        return decodeValue(value, &data, info);
+    }
+    bool decodeValue(const Value &value, void *data, TypeInfo info);
 
     bool decode(std::istream &istream, void *data, TypeInfo info) override;
     bool hasMember(const char *key) override;
@@ -44,13 +47,24 @@ public:
     void endArray() override;
 
 private:
-    const rapidjson::Value &currentObject();
+    struct Object {
+        const Value *value;
+        bool isPartOfArray;
+    };
+    struct Array {
+        const Value *value;
+        size_t index; // the item being read
+        bool isPartOfArray;
+    };
+
+    const Value &currentObject() const;
+    // What is read next: the item of the array being read, or the member of the key.
+    const Value *current(const char *key) const;
+
     bool m_isArray;
-    rapidjson::Document m_document;
-    rapidjson::Document::AllocatorType &m_allocator;
+    const Value *m_root;
     std::vector<Object> m_objectStack;
-    std::vector<Object> m_arrayStack;
-    std::vector<rapidjson::Value::ConstValueIterator> m_arrayIteratorStack;
+    std::vector<Array> m_arrayStack;
 };
 
 } // namespace Rain

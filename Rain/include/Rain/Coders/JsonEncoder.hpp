@@ -1,24 +1,27 @@
 #pragma once
 
 #include "Rain/Coder.hpp"
-
-#include <rapidjson/document.h>
-#include <rapidjson/prettywriter.h>
-#include <rapidjson/ostreamwrapper.h>
+#include "Rain/TypeRegistry.hpp"
+#include "Rain/Value.hpp"
 
 #include <cstdint>
+#include <vector>
 
 namespace Rain {
 
+// Data → JSON: a Value (encodeValue), or its text (encode into a stream).
 class JsonEncoder final : public Encoder {
-    struct Object {
-        rapidjson::Value *ref;
-        bool isPartOfArray;
-    };
-
 public:
     explicit JsonEncoder(bool pretty = false, bool encodeOptionalAsNull = false);
     ~JsonEncoder() override = default;
+
+    // The data as a JSON value: what the text of `encode` is written from.
+    template<typename T>
+    Value encodeValue(const T &data) {
+        TypeInfo info = getTypeRegistry()->findOrCreateType<T>();
+        return encodeValue(const_cast<T *>(&data), info);
+    }
+    Value encodeValue(void *data, TypeInfo info);
 
     void encode(std::ostream &, void *data, TypeInfo info) override;
     void beginObject(const char *key) override;
@@ -42,16 +45,19 @@ public:
     void endArray() override;
 
 private:
+    // A container being filled: an object or an array, and whether it is an item of an array.
+    struct Level {
+        Value *value;
+        bool isPartOfArray;
+    };
+
+    Value &add(const char *key, Value value);
+
     bool m_pretty;
     bool m_isArray;
-    rapidjson::Document m_document;
-    rapidjson::Document::AllocatorType *m_allocator;
-
-    std::vector<Object> m_objectStack;
-    std::vector<Object> m_arrayStack;
-
-    rapidjson::Value &currentObject();
-    void addValue(const char *key, rapidjson::Value &value);
+    Value m_root;
+    std::vector<Level> m_objectStack;
+    std::vector<Level> m_arrayStack;
 };
 
 } // namespace Rain

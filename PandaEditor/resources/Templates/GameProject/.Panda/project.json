@@ -1,11 +1,7 @@
 {
     "name": "___PROJECTNAME___",
-    "world": {
-        "startWorld": "Assets/world.world"
-    },
-    "rendering": {
-        "features": ["lights", "lamps", "shadows", "environment"]
-    },
+    "startWorld": "Assets/world.world",
+    "shaderFeatures": ["lights", "lamps", "shadows", "environment"],
     "mcp": {
         "enabled": true,
         "port": 7717

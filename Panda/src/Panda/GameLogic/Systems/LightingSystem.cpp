@@ -20,7 +20,7 @@ namespace {
     // enabled sun and the lamps (point lights and spots), up to RENDERER_MAX_POINT_LIGHTS of those
     // nearest to the camera (the position and the direction come from the world transform).
     void collectLights(World &world, const glm::vec3 &cameraPosition, bool withLamps, WorldLightingData &lighting) {
-        const WorldLightingSettings &settings = world.getLightingSettings();
+        const WorldLightingSettings &settings = world.getSettings().lighting;
         lighting.ambientColor = settings.ambientColor;
         lighting.ambientIntensity = settings.ambientIntensity;
 
@@ -114,7 +114,7 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
         m_data.ambientIntensity = 1.f;
     }
     if (features.has(ShaderFeature::Environment)) {
-        const WorldLightingSettings &settings = world.getLightingSettings();
+        const WorldLightingSettings &settings = world.getSettings().lighting;
         m_data.environment.map = settings.environmentMap.as<TextureAsset>();
         m_data.environment.intensity = settings.environmentIntensity;
         // The light of the sky for the lit shaders, baked when the world gets another map. A world
@@ -128,7 +128,7 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     // A point at infinity: behind the camera or far outside the frame z = 0, the flares are
     // turned off.
     m_sunScreen = sun.intensity > 0.f ? projectSunToScreen(viewProj, sun.direction) : glm::vec4(0.f);
-    const WorldGraphicsSettings &graphics = world.getGraphicsSettings();
+    const WorldGraphicsSettings &graphics = world.getSettings().graphics;
     // The shadow cascades are fitted to the camera and the sun of the frame; the view of the world
     // draws the depth passes next, before the scene.
     CascadedShadowMap::Settings shadowSettings = graphics.shadows;

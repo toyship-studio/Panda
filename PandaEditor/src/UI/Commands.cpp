@@ -3,10 +3,7 @@
 #include <Foundation/Assert.hpp>
 #include <Foundation/Logger.hpp>
 #include <Foundation/PlatformDetection.hpp>
-#include <rapidjson/document.h>
-#include <rapidjson/istreamwrapper.h>
-#include <rapidjson/ostreamwrapper.h>
-#include <rapidjson/prettywriter.h>
+#include <Rain/Value.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -293,22 +290,21 @@ void Commands::loadKeymap(const std::filesystem::path &path) {
     m_user.clear();
     std::ifstream file(path);
     if (file.is_open()) {
-        rapidjson::IStreamWrapper stream(file);
-        rapidjson::Document document;
-        document.ParseStream<rapidjson::kParseCommentsFlag | rapidjson::kParseTrailingCommasFlag>(stream);
-        if (document.HasParseError() || !document.IsObject()) {
+        // A file of a person: comments and a comma after the last item are taken.
+        Rain::Value document;
+        if (!Rain::parseJson(file, document, Rain::JsonSyntax::Relaxed) || !document.isObject()) {
             LOG_ERROR_EDITOR("%s is not a JSON object: the default keys are used.", path.string().c_str());
         } else {
-            for (auto member = document.MemberBegin(); member != document.MemberEnd(); ++member) {
+            for (const Rain::Value::Member &member : document.members()) {
                 std::vector<std::string> names;
-                if (member->value.IsString()) {
-                    names.emplace_back(member->value.GetString());
-                } else if (member->value.IsArray()) {
-                    for (const auto &item : member->value.GetArray()) {
-                        if (item.IsString()) { names.emplace_back(item.GetString()); }
+                if (member.value.isString()) {
+                    names.emplace_back(member.value.getString());
+                } else if (member.value.isArray()) {
+                    for (const Rain::Value &item : member.value.items()) {
+                        if (item.isString()) { names.emplace_back(item.getString()); }
                     }
                 }
-                m_user[member->name.GetString()] = std::move(names);
+                m_user[member.key] = std::move(names);
             }
         }
     }
@@ -348,17 +344,12 @@ void Commands::writeKeymap() {
         LOG_ERROR_EDITOR("Cannot write the keymap: %s", m_keymapPath.string().c_str());
         return;
     }
-    rapidjson::OStreamWrapper stream(file);
-    rapidjson::PrettyWriter<rapidjson::OStreamWrapper> writer(stream);
-    writer.SetFormatOptions(rapidjson::kFormatSingleLineArray);
-    writer.StartObject();
+    Rain::Value document = Rain::Value::object();
     for (const auto &[id, names] : m_user) {
-        writer.Key(id.c_str());
-        writer.StartArray();
-        for (const std::string &name : names) { writer.String(name.c_str()); }
-        writer.EndArray();
+        Rain::Value &keys = document.add(id, Rain::Value::array());
+        for (const std::string &name : names) { keys.push(name); }
     }
-    writer.EndObject();
+    Rain::writeJson(file, document, Rain::JsonLayout::PrettyFlatArrays);
     file << "\n";
     file.close();
     m_keymapTime = timeOf(m_keymapPath); // the editor's own write is not a change on disk

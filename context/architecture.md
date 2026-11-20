@@ -12,7 +12,7 @@ and background jobs (`PandaAsync`).
 - `Foundation`: the bottom layer shared by Fern, Miren and Panda — logging, the editor log
   callback and the log history in memory, asserts, the allocator and the memory blob, the profiler, platform and graphics API
   detection, the command buffer, a semaphore, thread names, a file reader, SHA-256.
-- `Rain`: serialization (a text coder for JSON and a binary coder).
+- `Rain`: serialization (coders for JSON, YAML and binary; JSON values, `Rain::Value`).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
   context, native menu, the file watch (`Fern::FileWatcher`, below), and the network layer
@@ -119,17 +119,20 @@ and background jobs (`PandaAsync`).
 ### Project model and worlds
 
 - A project contains no absolute paths. `.Panda/project.json` is the project scope of the
-  settings model (`context/plugins.md`, the `settings` registry): sections by name. The
-  editor's own are the fields of one struct, `ProjectSettings` (read as fields:
+  settings model (`context/plugins.md`, the `settings` registry): one JSON object. Its keys
+  the editor owns are the fields of one struct, `ProjectSettings` (read as fields:
   `documents.projectSettings().name`; `settingsField` registers each under its key) — `name`
-  (a string, the name of the project; a folder whose file has none is not a project and is not
-  opened), `world` (`startWorld`: the world the game starts in), `modules`, `mcp` and
-  `rendering` (the shader features); the sections of modules after them, in the store of the
-  file (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The
-  editor scope is the same: `EditorSettings` (`viewport`, `appearance`, `updates`,
-  `externalTools`, `toolchain`). A form of the Settings window edits a copy of its field and
-  writes the field alone into the struct as the store has it then (`editSettings`), so one form
-  never writes back what another changed. The state
+  (the name of the project; a folder whose file has none is not a project and is not opened),
+  `startWorld` (the world the game starts in), `shaderFeatures`, `disabledModules` (the ids of
+  the modules the project switches off) and `mcp`; the sections of modules after them, in the
+  store of the file (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`,
+  `EditorSettingsTypes.cpp`). The editor scope is the same: `EditorSettings` (`viewport`,
+  `appearance`, `updates`, `externalTools`, `toolchain`), and so is the core's part of a world:
+  `WorldSettings` (`lighting`, `graphics`, `wind`; `World::getSettings`). A form of the
+  Settings window or of the world sidebar edits a copy of its part — a field, or a field of a
+  field (`graphics.fog`) — and writes that part alone into the struct as the store has it then
+  (`fieldCopy`, `writeField`, the Kit's `editSettings`), so one form never writes back what
+  another changed. The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
   of the editor camera in each, the one that was active, and what the Export window was last
   set to) is `.Panda/session.json`, outside version control. A project opens the worlds of its
@@ -1144,7 +1147,12 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   editor previews the face the same way from the asset bytes (`EditorHost::assetFont` →
   `EditorUI::fontFamilyForAsset`, cached by the hash of the bytes so a Reload shows the new face).
 - Rain is the serialization library. `Rain::UUID` must be written fully qualified (it conflicts
-  with the platform `UUID` on MSVC). The binary coder is for cooked runtime data.
+  with the platform `UUID` on MSVC). The binary coder is for cooked runtime data. Data worked on
+  without its type — the file form the prefabs diff and patch, a section of a module that is not
+  loaded, the messages of the MCP server, the keymap — is a JSON value of Rain (`Rain::Value`,
+  `parseJson`/`writeJson`; `JsonEncoder::encodeValue`, `JsonDecoder::decodeValue` and the value
+  entries of `WorldMapper` go between typed data and values without text). RapidJSON is private
+  to Rain: nothing else includes it.
 
 ## Multithreading (PandaAsync)
 

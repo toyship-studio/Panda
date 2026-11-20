@@ -36,7 +36,7 @@ whatever was last looked at. An edit that is not saved is not in the game: the c
 unsaved documents in a warning and goes on.
 
 **What the game uses.** The game starts in the start world of the project
-(`"world".startWorld` of `project.json`; the cook fails when it is not set or is not a world of
+(`startWorld` of `project.json`; the cook fails when it is not set or is not a world of
 the `Assets` folder). An asset is in the game when something in the game leads to it:
 
 1. the start world;

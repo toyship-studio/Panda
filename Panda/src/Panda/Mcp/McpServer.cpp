@@ -1,7 +1,5 @@
 #include "Panda/Mcp/McpServer.hpp"
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
 
 #include <algorithm>
 #include <chrono>
@@ -24,7 +22,6 @@ namespace {
     constexpr double PENDING_TIMEOUT_SECONDS = 120.0;
     constexpr double IDLE_TIMEOUT_SECONDS = 300.0;
 
-    using JsonWriter = rapidjson::Writer<rapidjson::StringBuffer>;
 
     double nowSeconds() {
         using namespace std::chrono;
@@ -85,17 +82,6 @@ namespace {
         return false;
     }
 
-    std::string toJson(const rapidjson::Value &value) {
-        rapidjson::StringBuffer buffer;
-        JsonWriter writer(buffer);
-        value.Accept(writer);
-        return std::string(buffer.GetString(), buffer.GetSize());
-    }
-
-    void writeString(JsonWriter &writer, const std::string &text) {
-        writer.String(text.data(), static_cast<rapidjson::SizeType>(text.size()));
-    }
-
     const char *reasonPhrase(int status) {
         switch (status) {
             case 100: return "Continue";
@@ -112,9 +98,15 @@ namespace {
         }
     }
 
-    const rapidjson::Value &emptyObject() {
-        static const rapidjson::Value EMPTY(rapidjson::kObjectType);
+    const Rain::Value &emptyObject() {
+        static const Rain::Value EMPTY = Rain::Value::object();
         return EMPTY;
+    }
+
+    // The member of the kind asked for; nullptr — absent or of another kind.
+    const Rain::Value *member(const Rain::Value &object, const char *name, bool (Rain::Value::*is)() const) {
+        const Rain::Value *value = object.find(name);
+        return value != nullptr && (value->*is)() ? value : nullptr;
     }
 
 } // namespace
@@ -123,28 +115,29 @@ PendingResult ready(ToolResult result) {
     return [result = std::move(result)]() -> std::optional<ToolResult> { return result; };
 }
 
-std::string stringArgument(const rapidjson::Value &arguments, const char *name, const std::string &fallback) {
-    if (!arguments.IsObject() || !arguments.HasMember(name) || !arguments[name].IsString()) { return fallback; }
-    return std::string(arguments[name].GetString(), arguments[name].GetStringLength());
+std::string stringArgument(const Rain::Value &arguments, const char *name, const std::string &fallback) {
+    const Rain::Value *value = member(arguments, name, &Rain::Value::isString);
+    return value != nullptr ? value->getString() : fallback;
 }
 
-bool boolArgument(const rapidjson::Value &arguments, const char *name, bool fallback) {
-    if (!arguments.IsObject() || !arguments.HasMember(name) || !arguments[name].IsBool()) { return fallback; }
-    return arguments[name].GetBool();
+bool boolArgument(const Rain::Value &arguments, const char *name, bool fallback) {
+    const Rain::Value *value = member(arguments, name, &Rain::Value::isBool);
+    return value != nullptr ? value->getBool() : fallback;
 }
 
-double numberArgument(const rapidjson::Value &arguments, const char *name, double fallback) {
-    if (!arguments.IsObject() || !arguments.HasMember(name) || !arguments[name].IsNumber()) { return fallback; }
-    return arguments[name].GetDouble();
+double numberArgument(const Rain::Value &arguments, const char *name, double fallback) {
+    const Rain::Value *value = member(arguments, name, &Rain::Value::isNumber);
+    return value != nullptr ? value->getDouble() : fallback;
 }
 
-bool numbersArgument(const rapidjson::Value &arguments, const char *name, double *values, size_t count) {
-    if (!arguments.IsObject() || !arguments.HasMember(name) || !arguments[name].IsArray()) { return false; }
-    const rapidjson::Value &array = arguments[name];
-    if (array.Size() != count) { return false; }
-    for (rapidjson::SizeType i = 0; i < array.Size(); ++i) {
-        if (!array[i].IsNumber()) { return false; }
-        values[i] = array[i].GetDouble();
+bool numbersArgument(const Rain::Value &arguments, const char *name, double *values, size_t count) {
+    const Rain::Value *found = member(arguments, name, &Rain::Value::isArray);
+    if (found == nullptr) { return false; }
+    const Rain::Value &array = *found;
+    if (array.size() != count) { return false; }
+    for (size_t i = 0; i < count; ++i) {
+        if (!array.items()[i].isNumber()) { return false; }
+        values[i] = array.items()[i].getDouble();
     }
     return true;
 }
@@ -399,27 +392,26 @@ void Server::handleRequest(Connection &connection, const Request &request) {
 }
 
 void Server::handleMessage(Connection &connection, const std::string &body) {
-    rapidjson::Document message;
-    message.Parse(body.data(), body.size());
-    if (message.HasParseError()) {
+    Rain::Value message;
+    if (!Rain::parseJson(body, message)) {
         respondError(connection, 400, "null", -32700, "Parse error");
         return;
     }
-    if (!message.IsObject()) { // a batch is not a part of the protocol any more
+    if (!message.isObject()) { // a batch is not a part of the protocol any more
         respondError(connection, 400, "null", -32600, "A single JSON-RPC message is expected");
         return;
     }
-    const bool hasMethod = message.HasMember("method") && message["method"].IsString();
-    const bool hasId = message.HasMember("id") && !message["id"].IsNull();
-    if (!hasMethod || !hasId) {
+    const Rain::Value *methodValue = member(message, "method", &Rain::Value::isString);
+    const Rain::Value *idValue = message.find("id");
+    if (methodValue == nullptr || idValue == nullptr || idValue->isNull()) {
         // A notification, or an answer of the client: taken, nothing to say back.
         connection.output += "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n";
         return;
     }
-    const std::string id = toJson(message["id"]);
-    const std::string method(message["method"].GetString(), message["method"].GetStringLength());
-    const rapidjson::Value &params =
-        message.HasMember("params") && message["params"].IsObject() ? message["params"] : emptyObject();
+    const std::string id = Rain::writeJson(*idValue);
+    const std::string &method = methodValue->getString();
+    const Rain::Value *paramsValue = member(message, "params", &Rain::Value::isObject);
+    const Rain::Value &params = paramsValue != nullptr ? *paramsValue : emptyObject();
 
     if (method == "initialize") {
         // The revision the client asked for when the server speaks it, else the server's own.
@@ -428,32 +420,15 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
         for (const char *known : PROTOCOLS) {
             if (requested == known) { protocol = known; }
         }
-        rapidjson::StringBuffer buffer;
-        JsonWriter writer(buffer);
-        writer.StartObject();
-        writer.Key("protocolVersion");
-        writer.String(protocol);
-        writer.Key("capabilities");
-        writer.StartObject();
-        writer.Key("tools");
-        writer.StartObject();
-        writer.EndObject();
-        writer.EndObject();
-        writer.Key("serverInfo");
-        writer.StartObject();
-        writer.Key("name");
-        writeString(writer, m_name);
-        writer.Key("title");
-        writeString(writer, m_title);
-        writer.Key("version");
-        writeString(writer, m_version);
-        writer.EndObject();
-        if (!m_instructions.empty()) {
-            writer.Key("instructions");
-            writeString(writer, m_instructions);
-        }
-        writer.EndObject();
-        respondResult(connection, id, std::string(buffer.GetString(), buffer.GetSize()));
+        Rain::Value result = Rain::Value::object();
+        result.add("protocolVersion", protocol);
+        result.add("capabilities", Rain::Value::object()).add("tools", Rain::Value::object());
+        Rain::Value &server = result.add("serverInfo", Rain::Value::object());
+        server.add("name", m_name);
+        server.add("title", m_title);
+        server.add("version", m_version);
+        if (!m_instructions.empty()) { result.add("instructions", m_instructions); }
+        respondResult(connection, id, Rain::writeJson(result));
         return;
     }
     if (method == "ping") {
@@ -473,8 +448,8 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
             respondError(connection, 200, id, -32602, "Unknown tool: " + name);
             return;
         }
-        const rapidjson::Value &arguments =
-            params.HasMember("arguments") && params["arguments"].IsObject() ? params["arguments"] : emptyObject();
+        const Rain::Value *argumentsValue = member(params, "arguments", &Rain::Value::isObject);
+        const Rain::Value &arguments = argumentsValue != nullptr ? *argumentsValue : emptyObject();
         PendingResult pending = tool->call(arguments);
         std::optional<ToolResult> result =
             pending ? pending() : std::optional<ToolResult>(ToolResult::error("The tool returned nothing"));
@@ -491,26 +466,20 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
 }
 
 std::string Server::toolListJson() const {
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
-    writer.StartObject();
-    writer.Key("tools");
-    writer.StartArray();
+    Rain::Value list = Rain::Value::object();
+    Rain::Value &tools = list.add("tools", Rain::Value::array());
     for (const Tool &tool : m_tools) {
         static const std::string NO_ARGUMENTS = R"({"type":"object","properties":{}})";
-        const std::string &schema = tool.inputSchema.empty() ? NO_ARGUMENTS : tool.inputSchema;
-        writer.StartObject();
-        writer.Key("name");
-        writeString(writer, tool.name);
-        writer.Key("description");
-        writeString(writer, tool.description);
-        writer.Key("inputSchema");
-        writer.RawValue(schema.data(), schema.size(), rapidjson::kObjectType);
-        writer.EndObject();
+        Rain::Value schema;
+        if (!Rain::parseJson(tool.inputSchema.empty() ? NO_ARGUMENTS : tool.inputSchema, schema)) {
+            Rain::parseJson(NO_ARGUMENTS, schema);
+        }
+        Rain::Value &item = tools.push(Rain::Value::object());
+        item.add("name", tool.name);
+        item.add("description", tool.description);
+        item.add("inputSchema", std::move(schema));
     }
-    writer.EndArray();
-    writer.EndObject();
-    return std::string(buffer.GetString(), buffer.GetSize());
+    return Rain::writeJson(list);
 }
 
 void Server::respond(Connection &connection, int status, const std::string &body, const char *contentType) {
@@ -528,45 +497,27 @@ void Server::respondResult(Connection &connection, const std::string &id, const 
 }
 
 void Server::respondError(Connection &connection, int status, const std::string &id, int code, const std::string &message) {
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
-    writer.StartObject();
-    writer.Key("code");
-    writer.Int(code);
-    writer.Key("message");
-    writeString(writer, message);
-    writer.EndObject();
-    const std::string error(buffer.GetString(), buffer.GetSize());
+    Rain::Value value = Rain::Value::object();
+    value.add("code", code);
+    value.add("message", message);
+    const std::string error = Rain::writeJson(value);
     respond(connection, status, R"({"jsonrpc":"2.0","id":)" + id + R"(,"error":)" + error + "}");
 }
 
 void Server::respondToolResult(Connection &connection, const std::string &id, const ToolResult &result) {
-    rapidjson::StringBuffer buffer;
-    JsonWriter writer(buffer);
-    writer.StartObject();
-    writer.Key("content");
-    writer.StartArray();
-    writer.StartObject();
-    writer.Key("type");
-    writer.String("text");
-    writer.Key("text");
-    writeString(writer, result.text);
-    writer.EndObject();
+    Rain::Value answer = Rain::Value::object();
+    Rain::Value &content = answer.add("content", Rain::Value::array());
+    Rain::Value &text = content.push(Rain::Value::object());
+    text.add("type", "text");
+    text.add("text", result.text);
     if (!result.png.empty()) {
-        writer.StartObject();
-        writer.Key("type");
-        writer.String("image");
-        writer.Key("data");
-        writeString(writer, base64(result.png));
-        writer.Key("mimeType");
-        writer.String("image/png");
-        writer.EndObject();
+        Rain::Value &image = content.push(Rain::Value::object());
+        image.add("type", "image");
+        image.add("data", base64(result.png));
+        image.add("mimeType", "image/png");
     }
-    writer.EndArray();
-    writer.Key("isError");
-    writer.Bool(result.isError);
-    writer.EndObject();
-    respondResult(connection, id, std::string(buffer.GetString(), buffer.GetSize()));
+    answer.add("isError", result.isError);
+    respondResult(connection, id, Rain::writeJson(answer));
 }
 
 } // namespace Panda::Mcp

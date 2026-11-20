@@ -47,9 +47,7 @@
 #include <Panda/Terrain/TerrainExtensions.hpp>
 #endif
 
-#include <rapidjson/document.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
+#include <Rain/Value.hpp>
 
 #include <fstream>
 #include <memory>
@@ -239,7 +237,7 @@ int main(int argc, const char **argv) {
         auto &light = sun.addComponent<Panda::DirectionalLightComponent>();
         light.intensity = 1.f;
     }
-    world->getLightingSettings().ambientIntensity = 0.1f;
+    world->getSettings().lighting.ambientIntensity = 0.1f;
 
     // The camera looks straight down from a height of 12 m: screen +x = world +x, the middle
     // row = z = 0.
@@ -519,7 +517,7 @@ int main(int argc, const char **argv) {
     }
 
     // World ↔ JSON through the mapper; the entities of the file by id — a compact JSON of each one
-    // (rapidjson, the same one that Rain uses) for comparing the round trip independently of the
+    // (a JSON value of Rain written out) for comparing the round trip independently of the
     // registry traversal order.
     const auto saveWorldJson = [](const Panda::World &world) {
         std::stringstream stream;
@@ -532,25 +530,20 @@ int main(int argc, const char **argv) {
         Rain::JsonDecoder json;
         return Panda::WorldMapper::load(world, json, stream);
     };
-    const auto compactJson = [](const rapidjson::Value &value) {
-        rapidjson::StringBuffer buffer;
-        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-        value.Accept(writer);
-        return std::string(buffer.GetString());
-    };
     const auto entitiesJson = [&](const std::string &text) {
         std::map<uint32_t, std::string> result;
-        rapidjson::Document document;
-        document.Parse(text.c_str());
-        for (const rapidjson::Value &entity : document["entities"].GetArray()) {
-            result[entity["id"].GetUint()] = compactJson(entity);
+        Rain::Value document;
+        Rain::parseJson(text, document);
+        if (const Rain::Value *entities = document.find("entities")) {
+            for (const Rain::Value &entity : entities->items()) { result[entity.find("id")->getUint()] = Rain::writeJson(entity); }
         }
         return result;
     };
     const auto memberJson = [&](const std::string &text, const char *key) {
-        rapidjson::Document document;
-        document.Parse(text.c_str());
-        return compactJson(document[key]);
+        Rain::Value document;
+        Rain::parseJson(text, document);
+        const Rain::Value *member = document.find(key);
+        return member != nullptr ? Rain::writeJson(*member) : std::string();
     };
 
     // Static tag (an empty entt component): an entity duplicate, a world copy (Play) and .world
@@ -676,19 +669,16 @@ int main(int argc, const char **argv) {
                 memberJson(first, "wind") == memberJson(second, "wind")
         );
         // Foreign component: plant an unknown key into the first entity of the file.
-        rapidjson::Document document;
-        document.Parse(first.c_str());
-        rapidjson::Value &entity = document["entities"][0];
-        const uint32_t foreignId = entity["id"].GetUint();
-        rapidjson::Value foreign(rapidjson::kObjectType);
-        foreign.AddMember("fuel", 3, document.GetAllocator());
-        foreign.AddMember("name", "rocket", document.GetAllocator());
-        entity.AddMember("org.example/rocketComponent", foreign, document.GetAllocator());
-        rapidjson::StringBuffer buffer;
-        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-        document.Accept(writer);
+        Rain::Value document;
+        Rain::parseJson(first, document);
+        Rain::Value &entity = document.find("entities")->items()[0];
+        const uint32_t foreignId = entity.find("id")->getUint();
+        Rain::Value foreign = Rain::Value::object();
+        foreign.add("fuel", 3);
+        foreign.add("name", "rocket");
+        entity.add("org.example/rocketComponent", std::move(foreign));
         auto *foreignWorld = new Panda::World();
-        const bool foreignLoaded = loadWorldJson(*foreignWorld, buffer.GetString());
+        const bool foreignLoaded = loadWorldJson(*foreignWorld, Rain::writeJson(document));
         const bool foreignKept = foreignLoaded && foreignWorld->getById(foreignId).hasComponent<Panda::ForeignComponents>();
         const std::string resaved = saveWorldJson(*foreignWorld);
         delete foreignWorld;
@@ -720,16 +710,13 @@ int main(int argc, const char **argv) {
         );
         delete floraWorld;
 #endif
-        rapidjson::Document settingsDocument;
-        settingsDocument.Parse(first.c_str());
-        rapidjson::Value weather(rapidjson::kObjectType);
-        weather.AddMember("rain", 0.5, settingsDocument.GetAllocator());
-        settingsDocument.AddMember("org.example/weather", weather, settingsDocument.GetAllocator());
-        rapidjson::StringBuffer settingsBuffer;
-        rapidjson::Writer<rapidjson::StringBuffer> settingsWriter(settingsBuffer);
-        settingsDocument.Accept(settingsWriter);
+        Rain::Value settingsDocument;
+        Rain::parseJson(first, settingsDocument);
+        Rain::Value weather = Rain::Value::object();
+        weather.add("rain", 0.5);
+        settingsDocument.add("org.example/weather", std::move(weather));
         auto *settingsWorld = new Panda::World();
-        const bool settingsLoaded = loadWorldJson(*settingsWorld, settingsBuffer.GetString());
+        const bool settingsLoaded = loadWorldJson(*settingsWorld, Rain::writeJson(settingsDocument));
         const std::string settingsResaved = settingsLoaded ? saveWorldJson(*settingsWorld) : std::string("{}");
         delete settingsWorld;
         report(
@@ -740,27 +727,24 @@ int main(int argc, const char **argv) {
         // A section missing from the file loads as the defaults (the registry resets every
         // section before reading), and clear() brings the settings back to the defaults and drops
         // the foreign sections: a new world does not inherit the previous one.
-        rapidjson::Document withoutWind;
-        withoutWind.Parse(first.c_str());
-        withoutWind.RemoveMember("wind");
-        rapidjson::StringBuffer withoutWindBuffer;
-        rapidjson::Writer<rapidjson::StringBuffer> withoutWindWriter(withoutWindBuffer);
-        withoutWind.Accept(withoutWindWriter);
+        Rain::Value withoutWind;
+        Rain::parseJson(first, withoutWind);
+        withoutWind.erase("wind");
         auto *defaultsWorld = new Panda::World();
-        defaultsWorld->getWindSettings().strength = 0.9f;
-        const bool defaultsLoaded = loadWorldJson(*defaultsWorld, withoutWindBuffer.GetString());
+        defaultsWorld->getSettings().wind.strength = 0.9f;
+        const bool defaultsLoaded = loadWorldJson(*defaultsWorld, Rain::writeJson(withoutWind));
         report(
             "a missing settings section loads as the defaults",
-            defaultsLoaded && defaultsWorld->getWindSettings().strength == Panda::SceneWindSettings().strength
+            defaultsLoaded && defaultsWorld->getSettings().wind.strength == Panda::SceneWindSettings().strength
         );
-        const bool foreignBeforeClear = loadWorldJson(*defaultsWorld, settingsBuffer.GetString()) &&
+        const bool foreignBeforeClear = loadWorldJson(*defaultsWorld, Rain::writeJson(settingsDocument)) &&
                                         defaultsWorld->findContext<Panda::ForeignSettings>() != nullptr;
-        defaultsWorld->getLightingSettings().ambientIntensity = 0.5f;
+        defaultsWorld->getSettings().lighting.ambientIntensity = 0.5f;
         defaultsWorld->clear();
         report(
             "clear resets the settings and drops foreign sections",
             foreignBeforeClear && defaultsWorld->findContext<Panda::ForeignSettings>() == nullptr &&
-                defaultsWorld->getLightingSettings().ambientIntensity == Panda::WorldLightingSettings().ambientIntensity
+                defaultsWorld->getSettings().lighting.ambientIntensity == Panda::WorldLightingSettings().ambientIntensity
         );
         delete defaultsWorld;
     }
@@ -1054,17 +1038,14 @@ int main(int argc, const char **argv) {
         delete loop;
 
         // The patch of an object: a list of named things is compared by name.
-        rapidjson::Document base, value, patch;
-        base.Parse("{\"scripts\":[{\"name\":\"A\",\"speed\":1,\"at\":{\"x\":1,\"y\":2}},{\"name\":\"B\",\"speed\":2}],\"list\":[1,2]}");
-        value.Parse("{\"scripts\":[{\"name\":\"A\",\"speed\":5,\"at\":{\"x\":1,\"y\":3}},{\"name\":\"C\",\"speed\":3}],\"list\":[1,2]}");
-        const bool differs = Panda::Prefabs::diff(base, value, patch, patch.GetAllocator());
-        rapidjson::StringBuffer patchText;
-        rapidjson::Writer<rapidjson::StringBuffer> patchWriter(patchText);
-        patch.Accept(patchWriter);
+        Rain::Value base, value, patch;
+        Rain::parseJson("{\"scripts\":[{\"name\":\"A\",\"speed\":1,\"at\":{\"x\":1,\"y\":2}},{\"name\":\"B\",\"speed\":2}],\"list\":[1,2]}", base);
+        Rain::parseJson("{\"scripts\":[{\"name\":\"A\",\"speed\":5,\"at\":{\"x\":1,\"y\":3}},{\"name\":\"C\",\"speed\":3}],\"list\":[1,2]}", value);
+        const bool differs = Panda::Prefabs::diff(base, value, patch);
         report("a list of named things is compared by name, a vector as one value",
-               differs && std::string(patchText.GetString()) ==
+               differs && Rain::writeJson(patch) ==
                               "{\"scripts\":{\"A\":{\"speed\":5,\"at\":{\"x\":1,\"y\":3}},\"C\":{\"speed\":3},\"B\":null}}");
-        Panda::Prefabs::merge(base, patch, base.GetAllocator());
+        Panda::Prefabs::merge(base, patch);
         report("a patch merged into its base gives the value", base == value);
 
         // A tree of a terrain is a copy of a prefab that no entity stands for: the colliders of
@@ -1141,7 +1122,7 @@ int main(int argc, const char **argv) {
     check("ground past the shadow is lit", far > lit * 0.85f, shadowed, lit, far);
 
     std::printf("shadows disabled\n");
-    world->getGraphicsSettings().shadows.enabled = false;
+    world->getSettings().graphics.shadows.enabled = false;
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
     lit = sampleGround(pixels, viewProj, 4.f);
@@ -1149,9 +1130,9 @@ int main(int argc, const char **argv) {
     check("no shadow without shadows", shadowed > lit * 0.85f && lit > 40.f, shadowed, lit, far);
 
     std::printf("shadows enabled, 1 cascade of 512\n");
-    world->getGraphicsSettings().shadows.enabled = true;
-    world->getGraphicsSettings().shadows.cascadeCount = 1;
-    world->getGraphicsSettings().shadows.tileSize = 512;
+    world->getSettings().graphics.shadows.enabled = true;
+    world->getSettings().graphics.shadows.cascadeCount = 1;
+    world->getSettings().graphics.shadows.tileSize = 512;
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
     lit = sampleGround(pixels, viewProj, 4.f);
@@ -1161,8 +1142,8 @@ int main(int argc, const char **argv) {
     // The caster has left all cascades (the depth passes are empty): the atlas must be cleared —
     // otherwise a ghost shadow remains from the previous frames.
     std::printf("caster moved away (atlas must clear)\n");
-    world->getGraphicsSettings().shadows.cascadeCount = 3;
-    world->getGraphicsSettings().shadows.tileSize = 1024;
+    world->getSettings().graphics.shadows.cascadeCount = 3;
+    world->getSettings().graphics.shadows.tileSize = 1024;
     cubeEntity.getTransform().setPosition({400.f, 1.5f, 0.f});
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
@@ -1190,7 +1171,7 @@ int main(int argc, const char **argv) {
     // makes a grid mismatch noticeable (~0.1 m per texel), the camera is low (a pixel is ~1.5 cm).
     // First a rotation of the view direction (the cascade slices travel after the camera).
     std::printf("camera look-around (shadow edge stability)\n");
-    world->getGraphicsSettings().shadows.tileSize = 256;
+    world->getSettings().graphics.shadows.tileSize = 256;
     const glm::mat4 lowProjection = perspectiveForBackend(glm::radians(60.f), 1.f, 0.1f, 100.f);
     const glm::vec3 lookCamera(2.f, 8.f, 6.f);
     cameraPosition = lookCamera;
@@ -1225,7 +1206,7 @@ int main(int argc, const char **argv) {
     // pauses (like a flight in the editor): the edge of the cube shadow on the ground must stand
     // still. The plane is removed. Only with the Terrain module (the build without modules skips it).
     std::printf("terrain receiver, continuous camera motion (shadow edge stability)\n");
-    world->getGraphicsSettings().shadows.tileSize = 512;
+    world->getSettings().graphics.shadows.tileSize = 512;
     Panda::Entity groundEntity = world->findByTag("Ground");
     if (groundEntity.isValid()) { world->destroy(groundEntity); }
     {
@@ -1337,7 +1318,7 @@ int main(int argc, const char **argv) {
         edgeMax,
         edgeMax - edgeMin
     );
-    world->getGraphicsSettings().shadows.tileSize = 1024;
+    world->getSettings().graphics.shadows.tileSize = 1024;
 #endif
 
     for (int frame = 0; frame < 2; frame++) {

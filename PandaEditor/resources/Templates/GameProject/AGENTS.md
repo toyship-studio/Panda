@@ -186,7 +186,7 @@ place:
 
 ## The exported game
 
-The game starts in the start world of the project (`"world".startWorld` of
+The game starts in the start world of the project (`startWorld` of
 `.Panda/project.json`) and carries only what that world reaches: its assets, the worlds its
 scripts hold in `WorldHandle` fields, and what those use. An asset nothing reaches is left out,
 and the cook names it in a warning. So:

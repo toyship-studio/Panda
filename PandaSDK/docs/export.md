@@ -8,7 +8,7 @@ Studio project made by cmake) and the **cooked data** it is built with
 
 1. Open **File → Export Game** (the export button of the toolbar opens the same window).
 2. Choose what is exported: the world the game starts in — the **Start World** row; it is the
-   same setting as **Settings → Project → World** (`"world".startWorld` of
+   same setting as **Settings → Project → World** (`startWorld` of
    `.Panda/project.json`) — the target, which is one of the platforms this machine can build,
    and Debug or Release. The target and the configuration are remembered with the project
    (`.Panda/session.json`).

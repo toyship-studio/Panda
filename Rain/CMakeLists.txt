@@ -26,8 +26,10 @@ add_library(Rain STATIC "${SOURCES}" "${INCLUDE}")
 target_include_directories(Rain PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(Rain PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
-target_link_libraries(Rain PUBLIC RapidJSON)
-target_include_directories(Rain SYSTEM PUBLIC Vendor/rapidjson/include)
+# JSON is Rain's: its values (Rain::Value) and text (parseJson, writeJson); rapidjson underneath is
+# its own business, nobody outside includes it.
+target_link_libraries(Rain PRIVATE RapidJSON)
+target_include_directories(Rain SYSTEM PRIVATE Vendor/rapidjson/include)
 
 target_link_libraries(Rain PUBLIC yaml-cpp)
 target_include_directories(Rain SYSTEM PUBLIC Vendor/yaml-cpp/include)

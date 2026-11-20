@@ -281,20 +281,34 @@ named "Missing Prefab" in its place, and the entry is written back unchanged.
 
 ## The project files
 
-`.Panda/project.json` is the project scope of the same settings model: one JSON object of
-sections by name, in version control. `name` is a string, the name of the project: the editor
-calls the project so, and the files that come from it are called so — the folder of the
-scripts `Scripts/<name>` and the library they build, the game the export builds, the folder the
-game keeps its saves in. No path is written: they follow from the name, and the folder of the
-project may be called anything. A folder whose `project.json` has no `name` is not opened as a
-project. The core sections are `world` (`startWorld` — the world
-the game starts in, relative to the project with forward slashes; see
-[Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
-features the project enables, see `shaders.md`; without the section every feature is on),
-`modules` (`entries: [{id, version, enabled}]` — the module set, an entry with `enabled: false`
-switches a module of the distribution off; an empty list enables all) and `mcp` (`enabled`,
-`port` — the MCP server of the editor for this project, see `zed-and-agents.md`). Modules may add sections
-of their own; a section whose module is absent is preserved.
+`.Panda/project.json` is the project scope of the same settings model: one JSON object, in
+version control:
+
+```json
+{
+    "name": "MyGame",
+    "startWorld": "Assets/world.world",
+    "shaderFeatures": ["lights", "lamps", "shadows", "environment"],
+    "disabledModules": ["dev.pandaengine.terrain"],
+    "mcp": { "enabled": true, "port": 7717 }
+}
+```
+
+- `name` — the name of the project: the editor calls the project so, and the files that come
+  from it are called so — the folder of the scripts `Scripts/<name>` and the library they
+  build, the game the export builds, the folder the game keeps its saves in. No path is
+  written: they follow from the name, and the folder of the project may be called anything. A
+  folder whose `project.json` has no `name` is not opened as a project.
+- `startWorld` — the world the game starts in, relative to the project with forward slashes
+  (see [Exporting a game](export.md)).
+- `shaderFeatures` — the shader features the project enables (see `shaders.md`); without the
+  key every feature is on.
+- `disabledModules` — the ids of the modules of the distribution the project switches off;
+  every other module is on.
+- `mcp` — `enabled`, `port`: the MCP server of the editor for this project (see
+  `zed-and-agents.md`).
+
+Modules may add sections of their own; a section whose module is absent is preserved.
 
 `.Panda/session.json` is the state of the last editor session (`worlds`: the world files that
 were open, in tab order, each with the pose of the editor camera; `activeWorld`: the one that

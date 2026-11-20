@@ -84,28 +84,14 @@ public:
     inline bool isRunning() {
         return m_isRunning;
     }
-    // The core settings of the world: sections of the world scope of the settings registry
-    // (Extensions::settings — "lighting", "graphics", "wind" in .world) in the context, like the
-    // settings of the modules. They exist from the world's birth; clear resets them.
-    WorldGraphicsSettings &getGraphicsSettings() {
-        return context<WorldGraphicsSettings>();
+    // The core settings of the world, as fields (WorldSettings: "lighting", "graphics", "wind"
+    // in .world), in the context like the settings of the modules. They exist from the world's
+    // birth; clear resets them.
+    WorldSettings &getSettings() {
+        return context<WorldSettings>();
     }
-    const WorldGraphicsSettings &getGraphicsSettings() const {
-        return settings<WorldGraphicsSettings>();
-    }
-    WorldLightingSettings &getLightingSettings() {
-        return context<WorldLightingSettings>();
-    }
-    const WorldLightingSettings &getLightingSettings() const {
-        return settings<WorldLightingSettings>();
-    }
-    // Scene wind of the world: the wind of every frame drawn of it (WorldView::render applies it
-    // to SceneWind), so what is drawn in a frame of a world is drawn in the wind of that world.
-    SceneWindSettings &getWindSettings() {
-        return context<SceneWindSettings>();
-    }
-    const SceneWindSettings &getWindSettings() const {
-        return settings<SceneWindSettings>();
+    const WorldSettings &getSettings() const {
+        return settings<WorldSettings>();
     }
     glm::mat4 getWorldSpaceTransformMatrix(Entity entity);
     void convertToWorldSpace(Entity entity);
