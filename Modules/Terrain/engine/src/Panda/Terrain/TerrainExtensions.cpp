@@ -16,7 +16,10 @@
 #include "Panda/Terrain/TerrainSerialization.hpp"
 #include "Panda/Terrain/TerrainSystem.hpp"
 
+#include <Fern/Files/AtomicWrite.hpp>
+
 #include <fstream>
+#include <sstream>
 
 namespace Panda {
 
@@ -105,10 +108,9 @@ namespace Terrain {
         }
         bool save2D(Asset &asset, const path_t &path) {
             auto &terrain = static_cast<Terrain2DAsset &>(asset);
-            std::ofstream file(path, std::ios::binary);
-            if (!file.is_open()) { return false; }
-            TerrainSerialization::write2D(file, terrain.getData(), terrain.getFloraSettings(), terrain.getTrees());
-            return true;
+            std::ostringstream bytes;
+            TerrainSerialization::write2D(bytes, terrain.getData(), terrain.getFloraSettings(), terrain.getTrees());
+            return Fern::writeFileAtomically(path, bytes.view());
         }
 
         Asset *load3D(Foundation::AllocatorI *allocator, const path_t &path) {
@@ -126,10 +128,9 @@ namespace Terrain {
         }
         bool save3D(Asset &asset, const path_t &path) {
             auto &terrain = static_cast<Terrain3DAsset &>(asset);
-            std::ofstream file(path, std::ios::binary);
-            if (!file.is_open()) { return false; }
-            TerrainSerialization::write3D(file, terrain.getData());
-            return true;
+            std::ostringstream bytes;
+            TerrainSerialization::write3D(bytes, terrain.getData());
+            return Fern::writeFileAtomically(path, bytes.view());
         }
 
         AssetKind terrainKind(

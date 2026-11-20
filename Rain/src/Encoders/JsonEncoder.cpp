@@ -116,13 +116,8 @@ void JsonEncoder::encode(const char *key, const UUID &data) {
     add(key, Value(static_cast<uint32_t>(id)));
 }
 
-void JsonEncoder::encodeRawJson(const char *key, const std::string &json) {
-    Value fragment;
-    if (!parseJson(json, fragment)) {
-        encodeNull(key);
-        return;
-    }
-    add(key, std::move(fragment));
+void JsonEncoder::encodeRaw(const char *key, const Value &value) {
+    add(key, value);
 }
 
 } // namespace Rain

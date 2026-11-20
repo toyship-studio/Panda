@@ -12,6 +12,8 @@ namespace Rain {
 // Data → JSON: a Value (encodeValue), or its text (encode into a stream).
 class JsonEncoder final : public Encoder {
 public:
+    using Encoder::encode;
+
     explicit JsonEncoder(bool pretty = false, bool encodeOptionalAsNull = false);
     ~JsonEncoder() override = default;
 
@@ -36,8 +38,8 @@ public:
     void encode(const char *key, const std::string &data) override;
     void encode(const char *key, const char *&data) override;
     void encode(const char *key, const UUID &data) override;
-    void encodeRawJson(const char *key, const std::string &json) override;
-    bool supportsRawJson() const override {
+    void encodeRaw(const char *key, const Value &value) override;
+    bool supportsRaw() const override {
         return true;
     }
     void endObject() override;

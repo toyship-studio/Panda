@@ -3,7 +3,7 @@
 #include <Panda/Serialization/WorldMapper.hpp>
 #include <Rain/Value.hpp>
 
-#include <cctype>
+#include <charconv>
 
 namespace Editor {
 
@@ -22,12 +22,11 @@ namespace {
         return keys;
     }
 
-    bool isIndex(const std::string &key) {
-        if (key.empty()) { return false; }
-        for (const char c : key) {
-            if (!std::isdigit(static_cast<unsigned char>(c))) { return false; }
-        }
-        return true;
+    // A key that is a number: the index of an item of a list.
+    bool indexOf(const std::string &key, size_t &index) {
+        const char *end = key.data() + key.size();
+        const auto [stop, failure] = std::from_chars(key.data(), end, index);
+        return !key.empty() && failure == std::errc() && stop == end;
     }
 
     // The value at a path; nullptr — there is nothing there.
@@ -36,8 +35,7 @@ namespace {
             if (value == nullptr) { return nullptr; }
             if (value->isObject()) {
                 value = value->find(key);
-            } else if (value->isArray() && isIndex(key)) {
-                const size_t index = std::stoul(key);
+            } else if (size_t index = 0; value->isArray() && indexOf(key, index)) {
                 value = index < value->size() ? &value->items()[index] : nullptr;
             } else if (value->isArray()) {
                 // A list of things with names: the one of this name.

@@ -270,9 +270,9 @@ const YAML::Node &YamlDecoder::currentObject() {
     return m_objectStack.empty() ? m_document : m_objectStack.back().node;
 }
 
-bool YamlDecoder::decodeRawJson(const char *key, std::string &json) {
-    (void)key; // opaque values are JSON-only (supportsRawJson)
-    (void)json;
+bool YamlDecoder::decodeRaw(const char *key, Value &value) {
+    (void)key; // raw values are JSON-only (supportsRaw)
+    (void)value;
     return false;
 }
 

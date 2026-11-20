@@ -161,8 +161,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
         MaterialDataDto dataDto;
         std::ifstream file(m_projectPath / relativePath);
         if (file.is_open()) {
-            Rain::Decoder *decoder = &m_jsonDecoder;
-            decoder->decode(file, dataDto);
+            m_jsonDecoder.decode(file, dataDto);
             file.close();
             // The shader reference is checked by type: a legacy id (for example, of the removed
             // builtin bloom building blocks) may resolve to a foreign asset — then the Lit fallback
@@ -254,8 +253,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
         PostprocessingDataDto dataDto;
         std::ifstream file(m_projectPath / relativePath);
         if (file.is_open()) {
-            Rain::Decoder *decoder = &m_jsonDecoder;
-            decoder->decode(file, dataDto);
+            m_jsonDecoder.decode(file, dataDto);
             file.close();
             std::vector<PostprocessingPass> passes;
             for (PostprocessingPassDto &passDto : dataDto.passes) {
@@ -623,8 +621,9 @@ void AssetHandlerEditor::savePmeta(AssetId id) {
     const path_t mainPath = assetPath(id);
     if (mainPath.empty()) { return; }
     const path_t sidecar = AssetPmeta::sidecarPathFor(m_projectPath / mainPath);
-    if (!AssetPmeta::write(sidecar, m_registry.at(id))) {
-        LOG_ERROR_EDITOR("The sidecar of %s could not be written.", mainPath.string().c_str());
+    std::string why;
+    if (!AssetPmeta::write(sidecar, m_registry.at(id), &why)) {
+        LOG_ERROR_EDITOR("The sidecar is not written: %s.", why.c_str());
         return;
     }
     std::error_code error;

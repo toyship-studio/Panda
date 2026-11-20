@@ -120,9 +120,9 @@ void YamlEncoder::endArray() {
     *out << YAML::EndSeq;
 }
 
-void YamlEncoder::encodeRawJson(const char *key, const std::string &json) {
-    (void)key; // opaque values are JSON-only (supportsRawJson)
-    (void)json;
+void YamlEncoder::encodeRaw(const char *key, const Value &value) {
+    (void)key; // raw values are JSON-only (supportsRaw)
+    (void)value;
 }
 
 } // namespace Rain

@@ -53,8 +53,7 @@ bool AssetHandlerRuntime::loadRegistry() {
         return false;
     }
     AssetRegistryDto registryDto;
-    Rain::Decoder *decoder = &m_binaryDecoder;
-    decoder->decode(*file, registryDto);
+    m_binaryDecoder.decode(*file, registryDto);
     for (auto &entry : registryDto.assets) {
         m_registry[entry.info.id] = entry.info;
         m_assetSources[entry.info.id] = entry.source;
@@ -164,8 +163,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         path_t materialPath = m_runtimeDataPath / entryPath;
         MaterialDataDto dataDto;
         if (const std::unique_ptr<std::istream> binFile = GameFiles::open(materialPath)) {
-            Rain::Decoder *decoder = &m_binaryDecoder;
-            decoder->decode(*binFile, dataDto);
+            m_binaryDecoder.decode(*binFile, dataDto);
             // Type guard: a legacy meta.shader may point to a non-shader — Lit fallback.
             AssetRef<ShaderAsset> shader;
             if (meta.shader) {
@@ -218,8 +216,7 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
         path_t postfxPath = m_runtimeDataPath / entryPath;
         PostprocessingDataDto dataDto;
         if (const std::unique_ptr<std::istream> binFile = GameFiles::open(postfxPath)) {
-            Rain::Decoder *decoder = &m_binaryDecoder;
-            decoder->decode(*binFile, dataDto);
+            m_binaryDecoder.decode(*binFile, dataDto);
             std::vector<PostprocessingPass> passes;
             for (PostprocessingPassDto &passDto : dataDto.passes) {
                 PostprocessingPass pass;

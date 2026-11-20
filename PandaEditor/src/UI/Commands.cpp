@@ -1,11 +1,13 @@
 #include "UI/Commands.hpp"
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Foundation/Assert.hpp>
 #include <Foundation/Logger.hpp>
 #include <Foundation/PlatformDetection.hpp>
 #include <Rain/Value.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <fstream>
 #include <utility>
 
@@ -76,9 +78,13 @@ namespace {
             if (c >= 'a' && c <= 'z') { return static_cast<Key>(c - 'a' + 'A'); }
             if (c >= '0' && c <= '9') { return static_cast<Key>(c); }
         }
-        if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), [](char c) { return c >= '0' && c <= '9'; })) {
-            const int number = std::stoi(name.substr(1));
-            if (number >= 1 && number <= 25) { return static_cast<Key>(static_cast<int>(Key::F1) + number - 1); }
+        if (name.size() >= 2 && name[0] == 'f') { // f1 … f25; "f99999999999" of a hand-written keymap is no key
+            const char *end = name.data() + name.size();
+            int number = 0;
+            const auto [stop, failure] = std::from_chars(name.data() + 1, end, number);
+            if (failure == std::errc() && stop == end && number >= 1 && number <= 25) {
+                return static_cast<Key>(static_cast<int>(Key::F1) + number - 1);
+            }
         }
         for (const NamedKey &named : NAMED_KEYS) {
             if (name == named.name) { return named.key; }
@@ -339,19 +345,16 @@ void Commands::resetBinding(const std::string &id) {
 // build does not know (a module that is off) are kept.
 void Commands::writeKeymap() {
     if (m_keymapPath.empty()) { return; }
-    std::ofstream file(m_keymapPath);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("Cannot write the keymap: %s", m_keymapPath.string().c_str());
-        return;
-    }
     Rain::Value document = Rain::Value::object();
     for (const auto &[id, names] : m_user) {
         Rain::Value &keys = document.add(id, Rain::Value::array());
         for (const std::string &name : names) { keys.push(name); }
     }
-    Rain::writeJson(file, document, Rain::JsonLayout::PrettyFlatArrays);
-    file << "\n";
-    file.close();
+    std::string error;
+    if (!Fern::writeFileAtomically(m_keymapPath, Rain::writeJson(document, Rain::JsonLayout::PrettyFlatArrays) + "\n", &error)) {
+        LOG_ERROR_EDITOR("The keymap is not saved: %s.", error.c_str());
+        return;
+    }
     m_keymapTime = timeOf(m_keymapPath); // the editor's own write is not a change on disk
 }
 

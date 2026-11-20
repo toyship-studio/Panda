@@ -5,7 +5,6 @@
 #include <Foundation/Foundation.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 
-#include <sstream>
 #include <string>
 
 namespace Panda {
@@ -67,7 +66,7 @@ void SettingsMapper::encode(SettingsScope scope, TypeContext &store, Rain::Encod
     }
     ForeignSettings *foreign = store.find<ForeignSettings>();
     if (foreign == nullptr || foreign->items.empty()) { return; }
-    if (!encoder.supportsRawJson()) {
+    if (!encoder.supportsRaw()) {
         LOG_WARN(
             "%zu %s settings section(s) of modules that are not loaded are not written: the format carries only "
             "registered data",
@@ -76,7 +75,7 @@ void SettingsMapper::encode(SettingsScope scope, TypeContext &store, Rain::Encod
         return;
     }
     for (const ForeignValue &item : foreign->items) {
-        encoder.encodeRawJson(item.name.c_str(), item.json);
+        encoder.encodeRaw(item.name.c_str(), item.value);
     }
 }
 
@@ -95,12 +94,12 @@ void SettingsMapper::decode(
             type->decode(name.c_str(), decoder, store);
             continue;
         }
-        std::string json; // a section of a module that is not loaded — as is
-        if (decoder.decodeRawJson(name.c_str(), json)) {
+        Rain::Value value; // a section of a module that is not loaded — as is
+        if (decoder.decodeRaw(name.c_str(), value)) {
             // Nothing is lost and nothing is wrong: the editor reads its settings before a
             // project brings its modules, and a project may have a module switched off.
             LOG_TRACE("%s settings \"%s\": no module provides them, kept as they are", scopeName(scope), name.c_str());
-            store.get<ForeignSettings>().items.push_back({name, std::move(json)});
+            store.get<ForeignSettings>().items.push_back({name, std::move(value)});
         } else {
             LOG_WARN("%s settings \"%s\": no module provides them, dropped", scopeName(scope), name.c_str());
         }
@@ -124,14 +123,13 @@ void SettingsMapper::adoptForeign(SettingsScope scope, TypeContext &store) {
             ++it;
             continue;
         }
-        // The section is one JSON value: read as a document of its key alone.
-        Rain::JsonDecoder jsonDecoder;
-        Rain::Decoder &decoder = jsonDecoder; // the stream entry is the base template
-        std::istringstream stream("{\"" + it->name + "\":" + it->json + "}");
+        // The section is read as a document of its key alone.
+        Rain::Value document = Rain::Value::object();
+        document.add(it->name, std::move(it->value));
         ForeignSection section;
         section.type = type;
         section.store = &store;
-        if (!decoder.decode(stream, section)) {
+        if (!Rain::JsonDecoder().decodeValue(document, section)) {
             LOG_WARN("%s settings \"%s\": the kept section is not readable, dropped", scopeName(scope), it->name.c_str());
         }
         it = foreign->items.erase(it);

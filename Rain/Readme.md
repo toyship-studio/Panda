@@ -54,6 +54,11 @@ decoder.decodeValue(save, player);                 // value → typed
 std::string text = Rain::writeJson(save, Rain::JsonLayout::Pretty);
 ```
 
+Inside a typed document a coder can carry a value as it is: `Encoder::encodeRaw(key, value)` and
+`Decoder::decodeRaw(key, value)` — the JSON coders do, `supportsRaw()` says whether a coder can
+(the YAML and binary ones cannot). A host keeps with them the data it has no type for, such as
+the part of a file that belongs to a plugin which is not loaded, and writes it back unchanged.
+
 RapidJSON is what reads and writes the text underneath; it stays inside Rain.
 
 ## Building

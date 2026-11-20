@@ -1,5 +1,7 @@
 #include "Panda/Mcp/McpServer.hpp"
 
+#include <Foundation/Foundation.hpp>
+
 
 #include <algorithm>
 #include <chrono>
@@ -166,7 +168,7 @@ struct Server::Connection {
     double lastActivity = 0.0;
     // A tool call that needs more frames: the connection answers one request at a time.
     PendingResult pending;
-    std::string pendingId;
+    Rain::Value pendingId;
     double pendingSince = 0.0;
 };
 
@@ -180,7 +182,26 @@ Server::~Server() {
     stop();
 }
 
+namespace {
+
+    Rain::Value noArguments() {
+        Rain::Value schema = Rain::Value::object();
+        schema.add("type", "object");
+        schema.add("properties", Rain::Value::object());
+        return schema;
+    }
+
+} // namespace
+
 void Server::addTool(Tool tool) {
+    // The schema is read once, here: one that is not JSON is said at the start, not by a client
+    // that gets a broken list of tools.
+    Rain::Value schema = noArguments();
+    if (!tool.inputSchema.empty() && (!Rain::parseJson(tool.inputSchema, schema) || !schema.isObject())) {
+        LOG_ERROR("MCP tool %s: its input schema is not a JSON object, it is listed without arguments", tool.name.c_str());
+        schema = noArguments();
+    }
+    m_schemas.push_back(std::move(schema));
     m_tools.push_back(std::move(tool));
 }
 
@@ -288,14 +309,14 @@ bool Server::takeRequest(Connection &connection) {
         if (connection.input.size() > MAX_HEADER_BYTES) {
             connection.closeWhenSent = true;
             connection.input.clear();
-            respond(connection, 431, R"({"error":"The request headers are too long"})");
+            respondFailure(connection, 431, "The request headers are too long");
         }
         return false;
     }
     const auto refuse = [&](int status, const char *message) {
         connection.closeWhenSent = true;
         connection.input.clear();
-        respond(connection, status, std::string(R"({"error":")") + message + "\"}");
+        respondFailure(connection, status, message);
         return false;
     };
 
@@ -366,11 +387,11 @@ void Server::handleRequest(Connection &connection, const Request &request) {
     const std::string *host = request.header("host");
     const std::string *origin = request.header("origin");
     if (host == nullptr || !isLocalHost(*host) || (origin != nullptr && !isLocalOrigin(*origin))) {
-        respond(connection, 403, R"({"error":"The MCP server answers local requests only"})");
+        respondFailure(connection, 403, "The MCP server answers local requests only");
         return;
     }
     if (request.path != ENDPOINT) {
-        respond(connection, 404, R"({"error":"The MCP endpoint is /mcp"})");
+        respondFailure(connection, 404, "The MCP endpoint is /mcp");
         return;
     }
     if (request.method != "POST") {
@@ -384,7 +405,7 @@ void Server::handleRequest(Connection &connection, const Request &request) {
             return *version == protocol;
         });
         if (!known) {
-            respondError(connection, 400, "null", -32600, "Unsupported MCP-Protocol-Version: " + *version);
+            respondError(connection, 400, Rain::Value(), -32600, "Unsupported MCP-Protocol-Version: " + *version);
             return;
         }
     }
@@ -394,11 +415,11 @@ void Server::handleRequest(Connection &connection, const Request &request) {
 void Server::handleMessage(Connection &connection, const std::string &body) {
     Rain::Value message;
     if (!Rain::parseJson(body, message)) {
-        respondError(connection, 400, "null", -32700, "Parse error");
+        respondError(connection, 400, Rain::Value(), -32700, "Parse error");
         return;
     }
     if (!message.isObject()) { // a batch is not a part of the protocol any more
-        respondError(connection, 400, "null", -32600, "A single JSON-RPC message is expected");
+        respondError(connection, 400, Rain::Value(), -32600, "A single JSON-RPC message is expected");
         return;
     }
     const Rain::Value *methodValue = member(message, "method", &Rain::Value::isString);
@@ -408,7 +429,7 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
         connection.output += "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n";
         return;
     }
-    const std::string id = Rain::writeJson(*idValue);
+    const Rain::Value &id = *idValue;
     const std::string &method = methodValue->getString();
     const Rain::Value *paramsValue = member(message, "params", &Rain::Value::isObject);
     const Rain::Value &params = paramsValue != nullptr ? *paramsValue : emptyObject();
@@ -420,23 +441,26 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
         for (const char *known : PROTOCOLS) {
             if (requested == known) { protocol = known; }
         }
-        Rain::Value result = Rain::Value::object();
-        result.add("protocolVersion", protocol);
-        result.add("capabilities", Rain::Value::object()).add("tools", Rain::Value::object());
-        Rain::Value &server = result.add("serverInfo", Rain::Value::object());
+        Rain::Value capabilities = Rain::Value::object();
+        capabilities.add("tools", Rain::Value::object());
+        Rain::Value server = Rain::Value::object();
         server.add("name", m_name);
         server.add("title", m_title);
         server.add("version", m_version);
+        Rain::Value result = Rain::Value::object();
+        result.add("protocolVersion", protocol);
+        result.add("capabilities", std::move(capabilities));
+        result.add("serverInfo", std::move(server));
         if (!m_instructions.empty()) { result.add("instructions", m_instructions); }
-        respondResult(connection, id, Rain::writeJson(result));
+        respondResult(connection, id, std::move(result));
         return;
     }
     if (method == "ping") {
-        respondResult(connection, id, "{}");
+        respondResult(connection, id, Rain::Value::object());
         return;
     }
     if (method == "tools/list") {
-        respondResult(connection, id, toolListJson());
+        respondResult(connection, id, toolList());
         return;
     }
     if (method == "tools/call") {
@@ -465,21 +489,18 @@ void Server::handleMessage(Connection &connection, const std::string &body) {
     respondError(connection, 200, id, -32601, "Method not found: " + method);
 }
 
-std::string Server::toolListJson() const {
+Rain::Value Server::toolList() const {
     Rain::Value list = Rain::Value::object();
-    Rain::Value &tools = list.add("tools", Rain::Value::array());
-    for (const Tool &tool : m_tools) {
-        static const std::string NO_ARGUMENTS = R"({"type":"object","properties":{}})";
-        Rain::Value schema;
-        if (!Rain::parseJson(tool.inputSchema.empty() ? NO_ARGUMENTS : tool.inputSchema, schema)) {
-            Rain::parseJson(NO_ARGUMENTS, schema);
-        }
-        Rain::Value &item = tools.push(Rain::Value::object());
-        item.add("name", tool.name);
-        item.add("description", tool.description);
-        item.add("inputSchema", std::move(schema));
+    Rain::Value tools = Rain::Value::array();
+    for (size_t i = 0; i < m_tools.size(); ++i) {
+        Rain::Value item = Rain::Value::object();
+        item.add("name", m_tools[i].name);
+        item.add("description", m_tools[i].description);
+        item.add("inputSchema", m_schemas[i]);
+        tools.push(std::move(item));
     }
-    return Rain::writeJson(list);
+    list.add("tools", std::move(tools));
+    return list;
 }
 
 void Server::respond(Connection &connection, int status, const std::string &body, const char *contentType) {
@@ -492,32 +513,48 @@ void Server::respond(Connection &connection, int status, const std::string &body
     out += body;
 }
 
-void Server::respondResult(Connection &connection, const std::string &id, const std::string &resultJson) {
-    respond(connection, 200, R"({"jsonrpc":"2.0","id":)" + id + R"(,"result":)" + resultJson + "}");
+void Server::respondFailure(Connection &connection, int status, const std::string &message) {
+    Rain::Value body = Rain::Value::object();
+    body.add("error", message);
+    respond(connection, status, Rain::writeJson(body));
 }
 
-void Server::respondError(Connection &connection, int status, const std::string &id, int code, const std::string &message) {
-    Rain::Value value = Rain::Value::object();
-    value.add("code", code);
-    value.add("message", message);
-    const std::string error = Rain::writeJson(value);
-    respond(connection, status, R"({"jsonrpc":"2.0","id":)" + id + R"(,"error":)" + error + "}");
+void Server::respondResult(Connection &connection, const Rain::Value &id, Rain::Value result) {
+    Rain::Value message = Rain::Value::object();
+    message.add("jsonrpc", "2.0");
+    message.add("id", id);
+    message.add("result", std::move(result));
+    respond(connection, 200, Rain::writeJson(message));
 }
 
-void Server::respondToolResult(Connection &connection, const std::string &id, const ToolResult &result) {
+void Server::respondError(Connection &connection, int status, const Rain::Value &id, int code, const std::string &message) {
+    Rain::Value error = Rain::Value::object();
+    error.add("code", code);
+    error.add("message", message);
     Rain::Value answer = Rain::Value::object();
-    Rain::Value &content = answer.add("content", Rain::Value::array());
-    Rain::Value &text = content.push(Rain::Value::object());
+    answer.add("jsonrpc", "2.0");
+    answer.add("id", id);
+    answer.add("error", std::move(error));
+    respond(connection, status, Rain::writeJson(answer));
+}
+
+void Server::respondToolResult(Connection &connection, const Rain::Value &id, const ToolResult &result) {
+    Rain::Value text = Rain::Value::object();
     text.add("type", "text");
     text.add("text", result.text);
+    Rain::Value content = Rain::Value::array();
+    content.push(std::move(text));
     if (!result.png.empty()) {
-        Rain::Value &image = content.push(Rain::Value::object());
+        Rain::Value image = Rain::Value::object();
         image.add("type", "image");
         image.add("data", base64(result.png));
         image.add("mimeType", "image/png");
+        content.push(std::move(image));
     }
+    Rain::Value answer = Rain::Value::object();
+    answer.add("content", std::move(content));
     answer.add("isError", result.isError);
-    respondResult(connection, id, Rain::writeJson(answer));
+    respondResult(connection, id, std::move(answer));
 }
 
 } // namespace Panda::Mcp

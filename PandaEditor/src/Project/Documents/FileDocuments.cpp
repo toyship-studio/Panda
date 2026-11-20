@@ -3,6 +3,7 @@
 #include "Project/Settings/EditorSettingsTypes.hpp"
 #include "Project/System/SystemTools.hpp"
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Prefabs/Prefabs.hpp>
@@ -255,13 +256,10 @@ bool FileDocuments::applyToPrefab(Entity root, const Prefabs::Scope &scope, bool
         if (!applied.refused) { LOG_INFO_EDITOR("Nothing to apply: the instance differs from %s in nothing there.", name.c_str()); }
         return false;
     }
-    {
-        std::ofstream output(path);
-        if (!output.is_open()) {
-            LOG_ERROR_EDITOR("%s could not be written: nothing was applied.", name.c_str());
-            return false;
-        }
-        output << applied.file;
+    std::string error;
+    if (!Fern::writeFileAtomically(path, applied.file, &error)) {
+        LOG_ERROR_EDITOR("Nothing was applied: %s.", error.c_str());
+        return false;
     }
     // Apply Forced: the worlds and prefabs that are not open lose the same places on disk — before
     // the prefabs are read again, so that a prefab that nests this one is read as it is now.
@@ -274,7 +272,10 @@ bool FileDocuments::applyToPrefab(Entity root, const Prefabs::Scope &scope, bool
             std::string stripped;
             if (file.empty() || findWorld(file) != nullptr || !readText(file, content)) { continue; }
             if (!Prefabs::stripApplied(applied, content, stripped)) { continue; }
-            std::ofstream(file) << stripped;
+            if (!Fern::writeFileAtomically(file, stripped, &error)) {
+                LOG_ERROR_EDITOR("Apply Forced left a file as it was: %s.", error.c_str());
+                continue;
+            }
             rewritten++;
         }
     }

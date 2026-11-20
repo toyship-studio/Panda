@@ -2,8 +2,7 @@
 #include "PandaSdkLocator.hpp"
 
 #include "Project/Settings/ProjectSettings.hpp"
-
-#include <Rain/Coders/JsonEncoder.hpp>
+#include "Project/System/JsonFiles.hpp"
 
 #include <Fern/Fern.hpp>
 #include <filesystem>
@@ -12,6 +11,8 @@
 #include <vector>
 
 namespace Panda {
+
+namespace {
 
 std::string replaceAll(std::string str, const std::string &from, const std::string &to) {
     size_t start_pos = 0;
@@ -24,12 +25,27 @@ std::string replaceAll(std::string str, const std::string &from, const std::stri
 
 using TextReplacements = std::vector<std::pair<std::string, std::string>>;
 
-struct ZedTaskDefinition {
+// A task of Zed — an item of `.zed/tasks.json`; the fields are named by the keys of Zed.
+struct ZedTask final : public Rain::Codable {
     std::string label;
     std::string command;
     std::vector<std::string> args;
-    std::string cwd;
-    bool useNewTerminal = false;
+    std::string cwd = "$ZED_WORKTREE_ROOT";
+    bool use_new_terminal = false;
+    bool allow_concurrent_runs = false;
+    std::string reveal = "always";
+    std::string hide = "never";
+
+    RAIN_FIELDS_BEGIN(ZedTask)
+    RAIN_FIELD(label)
+    RAIN_FIELD(command)
+    RAIN_FIELD(args)
+    RAIN_FIELD(cwd)
+    RAIN_FIELD(use_new_terminal)
+    RAIN_FIELD(allow_concurrent_runs)
+    RAIN_FIELD(reveal)
+    RAIN_FIELD(hide)
+    RAIN_FIELDS_END
 };
 
 std::string applyReplacements(std::string value, const TextReplacements &replacements) {
@@ -73,131 +89,38 @@ void copyAndReplace(const path_t &src, const path_t &dest, const TextReplacement
     }
 }
 
-std::string escapeJsonString(std::string value) {
-    value = replaceAll(value, "\\", "\\\\");
-    value = replaceAll(value, "\"", "\\\"");
-    return value;
-}
-
-void writeJsonString(std::ostream &file, const std::string &value) {
-    file << "\"" << escapeJsonString(value) << "\"";
-}
-
-void writeJsonStringArray(std::ostream &file, const std::vector<std::string> &values, int indent) {
-    const std::string indentation(indent, ' ');
-    const std::string itemIndentation(indent + 2, ' ');
-    file << "[\n";
-    for (size_t i = 0; i < values.size(); ++i) {
-        file << itemIndentation;
-        writeJsonString(file, values[i]);
-        if (i + 1 < values.size()) { file << ","; }
-        file << "\n";
-    }
-    file << indentation << "]";
-}
-
-void writeZedTask(std::ostream &file, const ZedTaskDefinition &task, bool isLast) {
-    file << "  {\n";
-    file << "    \"label\": ";
-    writeJsonString(file, task.label);
-    file << ",\n";
-    file << "    \"command\": ";
-    writeJsonString(file, task.command);
-    file << ",\n";
-    file << "    \"args\": ";
-    writeJsonStringArray(file, task.args, 4);
-    file << ",\n";
-    file << "    \"cwd\": ";
-    writeJsonString(file, task.cwd);
-    file << ",\n";
-    file << "    \"use_new_terminal\": " << (task.useNewTerminal ? "true" : "false") << ",\n";
-    file << "    \"allow_concurrent_runs\": false,\n";
-    file << "    \"reveal\": \"always\",\n";
-    file << "    \"hide\": \"never\"\n";
-    file << "  }";
-    if (!isLast) { file << ","; }
-    file << "\n";
-}
-
 // CMake presets are NOT generated: they carried the machine-specific PandaSDK_DIR path and broke the
 // project build on another computer. The editor builds cmake commands from conventions (ProjectBuilder),
 // the external scripts of the template take the SDK from the environment (PANDA_SDK_DIR).
 
 void createZedTasks(const std::string &projectName, const path_t &projectPath) {
-    const std::string rootCwd = "$ZED_WORKTREE_ROOT";
-    const std::string scriptsPath = "./Scripts/" + projectName + "/scripts/";
-
-    std::vector<ZedTaskDefinition> tasks = {
-        {
-            "Configure " + projectName + " Debug",
-            scriptsPath + "configure_scripts.sh",
-            {"debug"},
-            rootCwd,
-        },
-        {
-            "Build " + projectName + " Debug",
-            scriptsPath + "build_scripts.sh",
-            {"debug"},
-            rootCwd,
-        },
-        {
-            "Configure " + projectName + " Release",
-            scriptsPath + "configure_scripts.sh",
-            {"release"},
-            rootCwd,
-        },
-        {
-            "Build " + projectName + " Release",
-            scriptsPath + "build_scripts.sh",
-            {"release"},
-            rootCwd,
-        },
+    const std::string scripts = "./Scripts/" + projectName + "/scripts/";
+    const auto task = [&](std::string label, const char *script, std::string argument, bool newTerminal = false) {
+        ZedTask result;
+        result.label = std::move(label);
+        result.command = scripts + script;
+        if (!argument.empty()) { result.args.push_back(std::move(argument)); }
+        result.use_new_terminal = newTerminal;
+        return result;
     };
-
-    struct ExportOpenTaskDefinition {
-        std::string label;
-        std::string scriptName;
-        std::string target; // name of the build target/directory (macos-debug, ios-debug, …)
+    // The export tasks open the project of a build target (macos-debug, ios-debug, …) in its IDE.
+    const std::vector<ZedTask> tasks = {
+        task("Configure " + projectName + " Debug", "configure_scripts.sh", "debug"),
+        task("Build " + projectName + " Debug", "build_scripts.sh", "debug"),
+        task("Configure " + projectName + " Release", "configure_scripts.sh", "release"),
+        task("Build " + projectName + " Release", "build_scripts.sh", "release"),
+        task("Open Export Xcode macOS", "open_export_xcode.sh", "macos-debug", true),
+        task("Open Export Xcode iOS Simulator", "open_export_xcode.sh", "ios-debug", true),
+        task("Open Export Xcode iOS Device", "open_export_xcode.sh", "ios-device-debug", true),
+        task("Open Export Visual Studio Windows", "open_export_visual_studio.sh", "windows-debug", true),
+        task("Format Code", "format_code.sh", ""),
     };
-
-    const std::vector<ExportOpenTaskDefinition> exportOpenTasks = {
-        {"Open Export Xcode macOS", "open_export_xcode.sh", "macos-debug"},
-        {"Open Export Xcode iOS Simulator", "open_export_xcode.sh", "ios-debug"},
-        {"Open Export Xcode iOS Device", "open_export_xcode.sh", "ios-device-debug"},
-        {"Open Export Visual Studio Windows", "open_export_visual_studio.sh", "windows-debug"},
-    };
-
-    for (const auto &exportOpenTask : exportOpenTasks) {
-        tasks.push_back({
-            exportOpenTask.label,
-            scriptsPath + exportOpenTask.scriptName,
-            {exportOpenTask.target},
-            rootCwd,
-            true,
-        });
-    }
-
-    tasks.push_back({
-        "Format Code",
-        scriptsPath + "format_code.sh",
-        {},
-        rootCwd,
-    });
 
     const path_t zedDirectory = projectPath / ".zed";
-    std::filesystem::create_directories(zedDirectory);
-
-    std::ofstream file(zedDirectory / "tasks.json");
-    if (!file.is_open()) {
-        LOG_ERROR("The file .zed/tasks.json of the project %s could not be created.", projectName.c_str());
-        return;
-    }
-
-    file << "[\n";
-    for (size_t i = 0; i < tasks.size(); ++i) {
-        writeZedTask(file, tasks[i], i + 1 == tasks.size());
-    }
-    file << "]\n";
+    std::error_code created;
+    std::filesystem::create_directories(zedDirectory, created);
+    std::string error;
+    if (!writeJsonFile(zedDirectory / "tasks.json", tasks, &error)) { LOG_ERROR("The tasks of Zed are not made: %s.", error.c_str()); }
 }
 
 void createRuntimeCookedDirectories(const path_t &projectPath) {
@@ -219,12 +142,10 @@ void createSession(const path_t &projectPath) {
     session.worlds.push_back({});
     session.worlds.back().path = world;
     session.activeWorld = world;
-    std::ofstream file(projectPath / ".Panda" / "session.json", std::ios::trunc);
-    if (!file.is_open()) { return; } // the project opens with no world
-    Rain::JsonEncoder jsonEncoder(true);
-    Rain::Encoder *encoder = &jsonEncoder;
-    encoder->encode(file, session);
+    writeJsonFile(projectPath / ".Panda" / "session.json", session); // without it the project opens with no world
 }
+
+} // namespace
 
 void ProjectCreator::createProject(const std::string &name, const Panda::path_t &path) {
     std::filesystem::create_directories(path);

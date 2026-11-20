@@ -98,96 +98,15 @@ namespace {
         return text;
     }
 
-    // An answer the way it is written — an object, a key, a value… — collected into a JSON value
-    // of Rain and written out at the end (text): the tools build their answers in this order.
-    class JsonWriter final {
-    public:
-        void StartObject() {
-            open(Rain::Value::object());
-        }
-        void EndObject() {
-            m_stack.pop_back();
-        }
-        void StartArray() {
-            open(Rain::Value::array());
-        }
-        void EndArray() {
-            m_stack.pop_back();
-        }
-        void Key(const char *key) {
-            m_key = key;
-        }
-        void String(const char *text) {
-            put(Rain::Value(text));
-        }
-        void String(const char *text, size_t length) {
-            put(Rain::Value(std::string_view(text, length)));
-        }
-        void Bool(bool value) {
-            put(Rain::Value(value));
-        }
-        void Int(int value) {
-            put(Rain::Value(value));
-        }
-        void Uint(unsigned value) {
-            put(Rain::Value(value));
-        }
-        void Uint64(uint64_t value) {
-            put(Rain::Value(value));
-        }
-        void Null() {
-            put(Rain::Value());
-        }
-        // The decimals beyond `places` go (cut, not rounded): numbers read by a person or an agent.
-        void SetMaxDecimalPlaces(int places) {
-            m_scale = std::pow(10.0, places);
-        }
-        void Double(double value) {
-            put(Rain::Value(m_scale > 0.0 && std::abs(value) < 1e15 ? std::trunc(value * m_scale) / m_scale : value));
-        }
-        // JSON text put in as the value it holds.
-        void RawValue(const std::string &json) {
-            Rain::Value value;
-            Rain::parseJson(json, value);
-            put(std::move(value));
-        }
-        std::string text() const {
-            return Rain::writeJson(m_root);
-        }
-
-    private:
-        Rain::Value &put(Rain::Value value) {
-            if (m_stack.empty()) {
-                m_root = std::move(value);
-                return m_root;
-            }
-            Rain::Value &container = *m_stack.back();
-            return container.isArray() ? container.push(std::move(value)) : container.add(m_key, std::move(value));
-        }
-        void open(Rain::Value container) {
-            m_stack.push_back(&put(std::move(container)));
-        }
-
-        Rain::Value m_root;
-        std::vector<Rain::Value *> m_stack;
-        std::string m_key;
-        double m_scale = 0.0;
-    };
-
-    void writeText(JsonWriter &writer, const std::string &text) {
-        writer.String(text.data(), text.size());
+    // A number an agent reads: the decimals beyond the third go (cut, not rounded).
+    double cut(double value) {
+        return std::abs(value) < 1e15 ? std::trunc(value * 1000.0) / 1000.0 : value;
     }
 
-    void writeVector(JsonWriter &writer, glm::vec3 value) {
-        writer.StartArray();
-        writer.Double(value.x);
-        writer.Double(value.y);
-        writer.Double(value.z);
-        writer.EndArray();
-    }
-
-    std::string takeText(const JsonWriter &writer) {
-        return writer.text();
+    Rain::Value vectorValue(glm::vec3 value) {
+        Rain::Value array = Rain::Value::array();
+        for (float component : {value.x, value.y, value.z}) { array.push(cut(component)); }
+        return array;
     }
 
     Mcp::ToolResult textResult(std::string text) {
@@ -349,17 +268,12 @@ std::vector<std::string> EditorMcp::dirtyDocuments() const {
     return titles;
 }
 
-std::string EditorMcp::cameraJson() const {
+Rain::Value EditorMcp::cameraValue() const {
     CameraController &camera = m_editor.viewports().cameraController();
-    JsonWriter writer;
-    writer.SetMaxDecimalPlaces(3);
-    writer.StartObject();
-    writer.Key("position");
-    writeVector(writer, camera.getPosition());
-    writer.Key("forward");
-    writeVector(writer, camera.getForward());
-    writer.EndObject();
-    return takeText(writer);
+    Rain::Value answer = Rain::Value::object();
+    answer.add("position", vectorValue(camera.getPosition()));
+    answer.add("forward", vectorValue(camera.getForward()));
+    return answer;
 }
 
 void EditorMcp::registerTools() {
@@ -621,7 +535,7 @@ void EditorMcp::registerTools() {
         "export",
         "The data of the game as it will ship. `action`: `cook` (the default) — cooks it from the files of the "
         "project (an unsaved edit is not in it: `save` first): the start world of the project settings "
-        "(\"world\".startWorld of project.json) and everything it reaches — its assets, the worlds its scripts "
+        "(startWorld of project.json) and everything it reaches — its assets, the worlds its scripts "
         "are given, what those name — in one pack (.Panda/Cooked/Runtime/Assets.pak); answers with what the pack "
         "holds by kind, its largest files, the warnings, and the assets of the project the game does not reach — "
         "those are left out (an asset the game needs is named by a world of the game: a field of a component "
@@ -660,140 +574,88 @@ void EditorMcp::registerTools() {
 /* ------------------------------ status, logs ------------------------------ */
 
 Mcp::PendingResult EditorMcp::status() {
-    JsonWriter writer;
-    writer.SetMaxDecimalPlaces(3);
-    writer.StartObject();
-
-    writer.Key("editor");
-    writer.StartObject();
-    writer.Key("version");
-    writer.String(ENGINE_VERSION);
-    if (ENGINE_BUILD_COMMIT[0] != '\0') {
-        writer.Key("commit");
-        writer.String(ENGINE_BUILD_COMMIT);
-    }
-    writer.Key("pid");
-    writer.Uint(SystemTools::currentProcessId());
-    writer.EndObject();
-
+    Rain::Value editor = Rain::Value::object();
+    editor.add("version", ENGINE_VERSION);
+    if (ENGINE_BUILD_COMMIT[0] != '\0') { editor.add("commit", ENGINE_BUILD_COMMIT); }
+    editor.add("pid", SystemTools::currentProcessId());
+    Rain::Value answer = Rain::Value::object();
+    answer.add("editor", std::move(editor));
     if (!hasProject()) {
-        writer.Key("project");
-        writer.Null();
-        writer.EndObject();
-        return Mcp::ready(textResult(takeText(writer)));
+        answer.add("project", nullptr);
+        return Mcp::ready(textResult(Rain::writeJson(answer)));
     }
     const path_t &projectPath = m_editor.project().getOpenedProjectPath();
-    writer.Key("project");
-    writer.StartObject();
-    writer.Key("name");
-    writeText(writer, m_editor.project().projectName());
-    writer.Key("path");
-    writeText(writer, projectPath.string());
-    writer.EndObject();
+    Rain::Value project = Rain::Value::object();
+    project.add("name", m_editor.project().projectName());
+    project.add("path", projectPath.string());
+    answer.add("project", std::move(project));
+    answer.add("state", m_editor.isPlaying() ? "play" : "edit");
 
-    writer.Key("state");
-    writer.String(m_editor.isPlaying() ? "play" : "edit");
-
-    writer.Key("worlds");
-    writer.StartArray();
+    Rain::Value worlds = Rain::Value::array();
     for (const std::unique_ptr<WorldFile> &world : m_editor.documents().worlds()) {
-        writer.StartObject();
-        writer.Key("file"); // relative to the project; empty — a new world that has no file yet
+        Rain::Value item = Rain::Value::object();
+        // Relative to the project; empty — a new world that has no file yet.
         std::error_code error;
         const path_t relative = world->path().empty() ? path_t() : std::filesystem::relative(world->path(), projectPath, error);
-        writeText(writer, error ? world->path().string() : relative.generic_string());
-        writer.Key("active");
-        writer.Bool(world.get() == m_editor.documents().activeWorld());
-        if (world->isPrefab()) { // a prefab open in a tab: edited like a world, never played
-            writer.Key("prefab");
-            writer.Bool(true);
-        }
-        writer.Key("unsaved");
-        writer.Bool(world->isDirty());
-        writer.Key("changedOnDisk");
-        writer.Bool(world->isChangedOnDisk());
-        writer.EndObject();
+        item.add("file", error ? world->path().string() : relative.generic_string());
+        item.add("active", world.get() == m_editor.documents().activeWorld());
+        if (world->isPrefab()) { item.add("prefab", true); } // a prefab open in a tab: edited like a world, never played
+        item.add("unsaved", world->isDirty());
+        item.add("changedOnDisk", world->isChangedOnDisk());
+        worlds.push(std::move(item));
     }
-    writer.EndArray();
+    answer.add("worlds", std::move(worlds));
 
-    writer.Key("unsaved"); // every document with edits the files do not have: `save` writes them
-    writer.StartArray();
-    for (const std::string &title : dirtyDocuments()) { writeText(writer, title); }
-    writer.EndArray();
+    Rain::Value unsaved = Rain::Value::array(); // every document with edits the files do not have: `save` writes them
+    for (const std::string &title : dirtyDocuments()) { unsaved.push(title); }
+    answer.add("unsaved", std::move(unsaved));
 
     const EditorViewports &viewports = m_editor.viewports();
-    writer.Key("viewports");
-    writer.StartObject();
-    writer.Key("rendering"); // one viewport renders per frame: the one whose tab is in front
-    writer.String(viewName(viewports.live()));
+    Rain::Value views = Rain::Value::object();
+    views.add("rendering", viewName(viewports.live())); // one viewport renders per frame: the one whose tab is in front
     for (ViewportKind view : {ViewportKind::Scene, ViewportKind::Game}) {
         const ViewportSurface &surface = viewports.surface(view);
-        writer.Key(viewName(view));
-        writer.StartObject();
-        writer.Key("width");
-        writer.Uint(surface.pixelWidth());
-        writer.Key("height");
-        writer.Uint(surface.pixelHeight());
-        writer.EndObject();
+        Rain::Value size = Rain::Value::object();
+        size.add("width", surface.pixelWidth());
+        size.add("height", surface.pixelHeight());
+        views.add(viewName(view), std::move(size));
     }
-    writer.EndObject();
-
-    writer.Key("camera");
-    const std::string camera = cameraJson();
-    writer.RawValue(camera);
+    answer.add("viewports", std::move(views));
+    answer.add("camera", cameraValue());
 
     const Renderer3D::Statistics stats3d = m_editor.viewports().worldView().renderer3D().getStats();
     const Renderer2D::Statistics stats2d = m_editor.viewports().worldView().renderer2D().getStats();
     const Miren::GpuStats gpu = Miren::getGpuStats();
     const Editor::SystemStats system = Editor::sampleSystemStats();
     const double megabyte = 1024.0 * 1024.0;
-    writer.Key("frame");
-    writer.StartObject();
-    writer.Key("fps");
-    writer.Int(Application::get()->fps);
-    writer.Key("gpuMs");
-    writer.Double(gpu.frameMs);
-    writer.Key("drawCalls");
-    writer.Uint(stats3d.drawCalls);
-    writer.Key("shadowDrawCalls");
-    writer.Uint(stats3d.shadowDrawCalls);
-    writer.Key("drawCalls2d");
-    writer.Uint(stats2d.drawCalls);
-    writer.Key("memoryMb");
-    writer.Double(std::round(static_cast<double>(system.residentBytes) / megabyte));
-    writer.Key("videoMemoryMb");
-    writer.Double(std::round(static_cast<double>(gpu.allocatedBytes) / megabyte));
-    writer.EndObject();
+    Rain::Value frame = Rain::Value::object();
+    frame.add("fps", Application::get()->fps);
+    frame.add("gpuMs", cut(gpu.frameMs));
+    frame.add("drawCalls", stats3d.drawCalls);
+    frame.add("shadowDrawCalls", stats3d.shadowDrawCalls);
+    frame.add("drawCalls2d", stats2d.drawCalls);
+    frame.add("memoryMb", std::round(static_cast<double>(system.residentBytes) / megabyte));
+    frame.add("videoMemoryMb", std::round(static_cast<double>(gpu.allocatedBytes) / megabyte));
+    answer.add("frame", std::move(frame));
 
     // The disk of the project, followed: whether the editor is in front (it takes what changes on
     // disk by itself then) and whether a change waits to be taken.
-    writer.Key("disk");
-    writer.StartObject();
-    writer.Key("inFront");
-    writer.Bool(m_editor.diskWatch().isInFront());
-    writer.Key("waiting");
-    writer.Bool(m_editor.diskWatch().isWaiting());
-    writer.EndObject();
+    Rain::Value disk = Rain::Value::object();
+    disk.add("inFront", m_editor.diskWatch().isInFront());
+    disk.add("waiting", m_editor.diskWatch().isWaiting());
+    answer.add("disk", std::move(disk));
 
-    writer.Key("shaderFeatures");
-    writer.StartArray();
-    for (const std::string &feature : m_editor.documents().projectSettings().shaderFeatures) {
-        writeText(writer, feature);
-    }
-    writer.EndArray();
+    Rain::Value features = Rain::Value::array();
+    for (const std::string &feature : m_editor.documents().projectSettings().shaderFeatures) { features.push(feature); }
+    answer.add("shaderFeatures", std::move(features));
 
     size_t errors = 0;
     LogHistory::read(0, LogLevel::_ERROR, 0, &errors);
-    writer.Key("log");
-    writer.StartObject();
-    writer.Key("next");
-    writer.Uint64(LogHistory::nextSequence());
-    writer.Key("errors");
-    writer.Uint64(errors);
-    writer.EndObject();
-
-    writer.EndObject();
-    return Mcp::ready(textResult(takeText(writer)));
+    Rain::Value log = Rain::Value::object();
+    log.add("next", LogHistory::nextSequence());
+    log.add("errors", errors);
+    answer.add("log", std::move(log));
+    return Mcp::ready(textResult(Rain::writeJson(answer)));
 }
 
 Mcp::PendingResult EditorMcp::logs(const Rain::Value &arguments) {
@@ -1043,20 +905,12 @@ Mcp::ToolResult EditorMcp::finishScreenshot(Screenshot &shot) {
         if (!output) { return Mcp::ToolResult::error("The picture could not be written to " + shot.file.string()); }
     }
 
-    JsonWriter writer;
-    writer.StartObject();
-    writer.Key("view");
-    writer.String(shot.settings ? "settings" : shot.window ? "window" : viewName(shot.view));
-    writer.Key("width");
-    writer.Uint64(outWidth);
-    writer.Key("height");
-    writer.Uint64(outHeight);
-    if (!shot.file.empty()) {
-        writer.Key("file");
-        writeText(writer, shot.file.string());
-    }
-    writer.EndObject();
-    result.text = takeText(writer);
+    Rain::Value answer = Rain::Value::object();
+    answer.add("view", shot.settings ? "settings" : shot.window ? "window" : viewName(shot.view));
+    answer.add("width", outWidth);
+    answer.add("height", outHeight);
+    if (!shot.file.empty()) { answer.add("file", shot.file.string()); }
+    result.text = Rain::writeJson(answer);
     if (!shot.returnImage) { result.png.clear(); }
     return result;
 }
@@ -1091,13 +945,16 @@ Mcp::PendingResult EditorMcp::save(const Rain::Value &arguments) {
     SystemTools::Unattended unattended(overwrite ? SaveChangesChoice::Save : SaveChangesChoice::Cancel);
     const bool saved = m_editor.documentActions().saveAll();
     Mcp::ToolResult result;
-    if (!saved) {
+    if (!saved && unattended.questions().empty()) {
+        // Nothing was asked: a file could not be written (a full disk, a read-only file).
         result.isError = true;
-        result.text = "Not everything was saved";
-        if (!unattended.questions().empty()) { result.text += ": " + unattended.questions().front(); }
-        result.text += ". A file changed on disk needs `save` with overwrite=true (the version of the editor wins) "
-                       "or `reload` with discard=true (the disk wins); a new world that has no file yet is named "
-                       "by the user in the editor.\n";
+        result.text = "Not everything was saved: a file could not be written, the log below says why.\n";
+    } else if (!saved) {
+        result.isError = true;
+        result.text = "Not everything was saved: " + unattended.questions().front() +
+                      ". A file changed on disk needs `save` with overwrite=true (the version of the editor wins) "
+                      "or `reload` with discard=true (the disk wins); a new world that has no file yet is named "
+                      "by the user in the editor.\n";
     } else if (dirtyDocuments().empty()) {
         result.text = "Saved.\n";
     }
@@ -1150,7 +1007,7 @@ Mcp::PendingResult EditorMcp::camera(const Rain::Value &arguments) {
         }
         controller.lookAt(glm::vec3(values[0], values[1], values[2]));
     }
-    return Mcp::ready(textResult(cameraJson()));
+    return Mcp::ready(textResult(Rain::writeJson(cameraValue())));
 }
 
 Mcp::PendingResult EditorMcp::openWorld(const Rain::Value &arguments) {
@@ -1285,56 +1142,31 @@ namespace {
     }
 
     // `depth` — how many levels of what is inside the element are written; negative — all of them.
-    void writeElement(JsonWriter &writer, const AccessibilityElement &element, double scale, int depth) {
-        writer.StartObject();
-        writer.Key("role");
-        writeText(writer, element.role);
-        if (!element.id.empty()) {
-            writer.Key("id");
-            writeText(writer, element.id);
-        }
-        if (!element.label.empty()) {
-            writer.Key("label");
-            writeText(writer, element.label);
-        }
-        if (!element.value.empty()) {
-            writer.Key("value");
-            writeText(writer, element.value);
-        }
-        writer.Key("frame");
-        writer.StartArray();
+    Rain::Value elementValue(const AccessibilityElement &element, double scale, int depth) {
+        Rain::Value value = Rain::Value::object();
+        value.add("role", element.role);
+        if (!element.id.empty()) { value.add("id", element.id); }
+        if (!element.label.empty()) { value.add("label", element.label); }
+        if (!element.value.empty()) { value.add("value", element.value); }
+        Rain::Value frame = Rain::Value::array();
         for (float side : {element.frame.origin.x, element.frame.origin.y, element.frame.size.width, element.frame.size.height}) {
-            writer.Int(static_cast<int>(std::lround(side / scale)));
+            frame.push(static_cast<int>(std::lround(side / scale)));
         }
-        writer.EndArray();
-        if (!element.enabled) {
-            writer.Key("disabled");
-            writer.Bool(true);
-        }
-        if (element.selected) {
-            writer.Key("selected");
-            writer.Bool(true);
-        }
-        if (element.focused) {
-            writer.Key("focused");
-            writer.Bool(true);
-        }
-        if (!element.inSight()) {
-            writer.Key("outOfSight");
-            writer.Bool(true);
-        }
+        value.add("frame", std::move(frame));
+        if (!element.enabled) { value.add("disabled", true); }
+        if (element.selected) { value.add("selected", true); }
+        if (element.focused) { value.add("focused", true); }
+        if (!element.inSight()) { value.add("outOfSight", true); }
         if (!element.children.empty()) {
             if (depth == 0) {
-                writer.Key("more");
-                writer.Uint(static_cast<unsigned>(element.children.size()));
+                value.add("more", static_cast<unsigned>(element.children.size()));
             } else {
-                writer.Key("children");
-                writer.StartArray();
-                for (const AccessibilityElement &child : element.children) { writeElement(writer, child, scale, depth - 1); }
-                writer.EndArray();
+                Rain::Value children = Rain::Value::array();
+                for (const AccessibilityElement &child : element.children) { children.push(elementValue(child, scale, depth - 1)); }
+                value.add("children", std::move(children));
             }
         }
-        writer.EndObject();
+        return value;
     }
 
     const char *cursorName(PandaUI::Cursor cursor) {
@@ -1417,26 +1249,17 @@ Fern::Window *EditorMcp::inputWindow() const {
     return settings != nullptr ? settings : m_editor.window();
 }
 
-std::string EditorMcp::pointerJson() const {
+Rain::Value EditorMcp::pointerValue() const {
     PandaUI::Context &context = inputContext();
-    JsonWriter writer;
-    writer.StartObject();
     // The elements under the pointer, from the innermost out: what a click there reaches.
-    writer.Key("under");
-    writer.StartArray();
-    for (const std::string &name : elementsAround(context.getHoveredView(), 6)) { writeText(writer, name); }
-    writer.EndArray();
-    writer.Key("cursor");
-    writer.String(cursorName(context.getCurrentCursor()));
-    writer.Key("focus");
+    Rain::Value under = Rain::Value::array();
+    for (const std::string &name : elementsAround(context.getHoveredView(), 6)) { under.push(name); }
     const std::vector<std::string> focused = elementsAround(context.getFocusedView(), 1);
-    if (!focused.empty()) {
-        writeText(writer, focused.front());
-    } else {
-        writer.Null();
-    }
-    writer.EndObject();
-    return takeText(writer);
+    Rain::Value answer = Rain::Value::object();
+    answer.add("under", std::move(under));
+    answer.add("cursor", cursorName(context.getCurrentCursor()));
+    answer.add("focus", focused.empty() ? Rain::Value() : Rain::Value(focused.front()));
+    return answer;
 }
 
 Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
@@ -1452,7 +1275,7 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
         if (*next >= queue->size()) {
             m_editor.ui().setPointerOverridden(false);
             Mcp::ToolResult result;
-            result.text = pointerJson();
+            result.text = Rain::writeJson(pointerValue());
             return result;
         }
         const InputStep &step = (*queue)[(*next)++];
@@ -1938,14 +1761,11 @@ Mcp::PendingResult EditorMcp::ui(const Rain::Value &arguments) {
             return Mcp::ToolResult::error(why);
         }
         const double scale = pointsPerScreenshotPixel(*window, query->of);
-        JsonWriter writer;
-        writer.StartObject();
-        writer.Key("elements");
-        writer.StartArray();
-        for (const AccessibilityElement *element : answer) { writeElement(writer, *element, scale, query->depth); }
-        writer.EndArray();
-        writer.EndObject();
-        return textResult(takeText(writer));
+        Rain::Value elements = Rain::Value::array();
+        for (const AccessibilityElement *element : answer) { elements.push(elementValue(*element, scale, query->depth)); }
+        Rain::Value result = Rain::Value::object();
+        result.add("elements", std::move(elements));
+        return textResult(Rain::writeJson(result));
     };
 }
 
@@ -1988,30 +1808,19 @@ Mcp::PendingResult EditorMcp::command(const Rain::Value &arguments) {
     Editor::Commands &commands = m_editor.commands();
     const std::string id = Mcp::stringArgument(arguments, "id");
     if (id.empty()) {
-        JsonWriter writer;
-        writer.StartArray();
+        Rain::Value list = Rain::Value::array();
         for (const Editor::Commands::Command &entry : commands.all()) {
-            writer.StartObject();
-            writer.Key("id");
-            writeText(writer, entry.id);
-            writer.Key("name");
-            writeText(writer, entry.group + ": " + entry.label);
-            writer.Key("keys");
-            writer.StartArray();
-            for (const Editor::KeyChord &chord : entry.chords) { writeText(writer, chord.name()); }
-            writer.EndArray();
-            if (entry.scope == Editor::CommandScope::World) {
-                writer.Key("where");
-                writeText(writer, "scene, hierarchy");
-            }
-            if (entry.customized) {
-                writer.Key("user");
-                writer.Bool(true);
-            }
-            writer.EndObject();
+            Rain::Value keys = Rain::Value::array();
+            for (const Editor::KeyChord &chord : entry.chords) { keys.push(chord.name()); }
+            Rain::Value item = Rain::Value::object();
+            item.add("id", entry.id);
+            item.add("name", entry.group + ": " + entry.label);
+            item.add("keys", std::move(keys));
+            if (entry.scope == Editor::CommandScope::World) { item.add("where", "scene, hierarchy"); }
+            if (entry.customized) { item.add("user", true); }
+            list.push(std::move(item));
         }
-        writer.EndArray();
-        return Mcp::ready(textResult(takeText(writer)));
+        return Mcp::ready(textResult(Rain::writeJson(list)));
     }
     if (commands.find(id) == nullptr) { return Mcp::ready(Mcp::ToolResult::error("No such command: " + id)); }
     if (Mcp::boolArgument(arguments, "reset", false)) {

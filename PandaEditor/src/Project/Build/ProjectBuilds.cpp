@@ -734,8 +734,7 @@ bool ProjectBuilds::readCookReport(CookReport &report) const {
     std::ifstream file(cookReportFile());
     if (!file.is_open()) { return false; }
     Rain::JsonDecoder jsonDecoder;
-    Rain::Decoder *decoder = &jsonDecoder;
-    return decoder->decode(file, report);
+    return jsonDecoder.decode(file, report);
 }
 
 void ProjectBuilds::showFolder(BuildTargetKind kind) {

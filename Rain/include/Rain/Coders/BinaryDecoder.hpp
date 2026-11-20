@@ -39,7 +39,7 @@ public:
     bool decode(const char *key, double &data) override;
     bool decode(const char *key, std::string &data) override;
     bool decode(const char *key, UUID &data) override;
-    bool decodeRawJson(const char *key, std::string &json) override;
+    bool decodeRaw(const char *key, Value &value) override;
     void endObject() override;
     bool beginArray(const char *key) override;
     bool arrayHasElement() override;

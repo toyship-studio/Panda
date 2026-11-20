@@ -156,11 +156,11 @@ bool JsonDecoder::decode(const char *key, UUID &data) {
     return true;
 }
 
-bool JsonDecoder::decodeRawJson(const char *key, std::string &json) {
+bool JsonDecoder::decodeRaw(const char *key, Value &value) {
     if (m_isArray || !key) { return false; }
-    const Value *value = currentObject().find(key);
-    if (value == nullptr) { return false; }
-    json = writeJson(*value);
+    const Value *found = currentObject().find(key);
+    if (found == nullptr) { return false; }
+    value = *found;
     return true;
 }
 

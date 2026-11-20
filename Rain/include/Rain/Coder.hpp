@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Rain/Value.hpp"
 #include "TypeInfo.hpp"
 #include "UUID.hpp"
 
@@ -69,12 +70,12 @@ public:
     virtual void encode(const char *key, const char *&data) = 0;
     /// Encode uuid
     virtual void encode(const char *key, const UUID &data) = 0;
-    /// Opaque value — JSON text under a key (data whose type is unknown to the host: components
-    /// and settings of modules that are not loaded). Only the JSON coders carry it (the fragment
-    /// becomes a value of the document); the others drop it — the caller checks supportsRawJson
-    /// and decides what to say about the loss.
-    virtual void encodeRawJson(const char *key, const std::string &json) = 0;
-    virtual bool supportsRawJson() const {
+    /// A raw value under a key — data whose type is unknown to the host (the components and the
+    /// settings of modules that are not loaded), kept as the value it was read as. Only the JSON
+    /// coders carry it; the others drop it — the caller checks supportsRaw and decides what to
+    /// say about the loss.
+    virtual void encodeRaw(const char *key, const Value &value) = 0;
+    virtual bool supportsRaw() const {
         return false;
     }
     /// End encoding object
@@ -133,10 +134,10 @@ public:
     virtual bool decode(const char *key, std::string &data) = 0;
     /// Decode uuid
     virtual bool decode(const char *key, UUID &data) = 0;
-    /// Opaque value under a key as JSON text (the counterpart of Encoder::encodeRawJson); false
-    /// where the format cannot carry one (supportsRawJson).
-    virtual bool decodeRawJson(const char *key, std::string &json) = 0;
-    virtual bool supportsRawJson() const {
+    /// The value under a key as it is (the counterpart of Encoder::encodeRaw); false where the
+    /// format cannot carry one (supportsRaw).
+    virtual bool decodeRaw(const char *key, Value &value) = 0;
+    virtual bool supportsRaw() const {
         return false;
     }
     /// End decoding object

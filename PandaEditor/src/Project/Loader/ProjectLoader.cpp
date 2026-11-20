@@ -4,6 +4,7 @@
 #include "Panda/Assets/StaticResources.hpp"
 #include "Project/Assets/ShaderCook.hpp"
 #include "Project/Modules/ProjectModules.hpp"
+#include "Project/System/JsonFiles.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "AssetHandlerEditor.hpp"
 
@@ -36,30 +37,11 @@ namespace {
         return directory;
     }
 
-    template<typename T>
-    bool readJson(const path_t &path, Rain::JsonDecoder &decoder, T &data) {
-        std::ifstream file(path);
-        if (!file.is_open()) { return false; }
-        Rain::Decoder *decoderPtr = &decoder;
-        return decoderPtr->decode(file, data);
-    }
-
-    template<typename T>
-    bool writeJson(const path_t &path, Rain::JsonEncoder &encoder, const T &data) {
-        std::ofstream file(path);
-        if (!file.is_open()) { return false; }
-        Rain::Encoder *encoderPtr = &encoder;
-        encoderPtr->encode(file, data);
-        return true;
-    }
-
 } // namespace
 
 ProjectLoader::ProjectLoader(FileDocuments &documents, ProjectLoaderOutput *output)
     : m_documents(documents)
     , m_output(output)
-    , m_jsonEncoder(true)
-    , m_jsonDecoder()
     , m_session()
     , m_assetHandler(nullptr) {
     GameContext::setScriptEngine(&m_scriptEngine);
@@ -80,7 +62,7 @@ std::string ProjectLoader::loadInitialData(bool openLastProject, const path_t &p
     const path_t directory = editorDataDirectory();
     if (directory.empty()) { LOG_WARN("There is no user data directory: the settings of the editor are not kept."); }
     m_documents.editorSettingsFile().open(directory.empty() ? path_t() : directory / "settings.json");
-    if (!directory.empty() && !readJson(directory / "session.json", m_jsonDecoder, m_session)) {
+    if (!directory.empty() && !readJsonFile(directory / "session.json", m_session)) {
         m_session = EditorSession();
     }
     std::string problem;
@@ -105,7 +87,7 @@ void ProjectLoader::saveSession() {
     // Several instances share the file (one project per window): the recent projects another
     // instance has written since this one read the session are kept, after this instance's own.
     EditorSession onDisk;
-    if (readJson(directory / "session.json", m_jsonDecoder, onDisk)) {
+    if (readJsonFile(directory / "session.json", onDisk)) {
         for (const RecentProject &project : onDisk.recentProjects) {
             auto &recent = m_session.recentProjects;
             const bool forgotten =
@@ -113,8 +95,9 @@ void ProjectLoader::saveSession() {
             if (!forgotten && std::find(recent.begin(), recent.end(), project) == recent.end()) { recent.push_back(project); }
         }
     }
-    if (!writeJson(directory / "session.json", m_jsonEncoder, m_session)) {
-        LOG_ERROR("The session of the editor could not be written to %s.", (directory / "session.json").string().c_str());
+    std::string error;
+    if (!writeJsonFile(directory / "session.json", m_session, &error)) {
+        LOG_ERROR("The session of the editor is not saved: %s.", error.c_str());
     }
 }
 
@@ -175,7 +158,7 @@ bool ProjectLoader::openProject(const path_t &path, std::string *problem) {
     }
     // project.json of the project (a document: its "name" is projectName()) and its session.
     m_documents.openProject(path);
-    if (!readJson(projectDataDirectory(path) / "session.json", m_jsonDecoder, m_projectSession)) {
+    if (!readJsonFile(projectDataDirectory(path) / "session.json", m_projectSession)) {
         m_projectSession = ProjectSession();
     }
     // The module set of the project (ProjectModules): the contributions are needed before the asset
@@ -273,9 +256,7 @@ namespace {
         return "unknown";
     }
 
-    void writeScriptsManifest(
-        const path_t &path, const Panda::ScriptBundleManifest &manifest, Rain::JsonEncoder &encoder
-    ) {
+    void writeScriptsManifest(const path_t &path, const Panda::ScriptBundleManifest &manifest) {
         ScriptsManifestDto dto;
         dto.scripts.reserve(manifest.classes.size());
         for (const auto &scriptClass : manifest.classes) {
@@ -287,13 +268,8 @@ namespace {
                 );
             }
         }
-        std::ofstream file(path);
-        if (!file.is_open()) {
-            LOG_ERROR("The scripts manifest could not be written to %s.", path.string().c_str());
-            return;
-        }
-        Rain::Encoder *encoderPtr = &encoder;
-        encoderPtr->encode(file, dto);
+        std::string error;
+        if (!writeJsonFile(path, dto, &error)) { LOG_ERROR("The scripts manifest is not written: %s.", error.c_str()); }
     }
 
 } // namespace
@@ -407,10 +383,7 @@ void ProjectLoader::reloadScriptsDll() {
     }
     if (m_scriptEngine.isLoaded()) {
         m_documents.updateScriptFields();
-        writeScriptsManifest(
-            projectPath() / ".Panda" / "scripts-manifest.json", m_scriptEngine.getManifest(),
-            m_jsonEncoder
-        );
+        writeScriptsManifest(projectPath() / ".Panda" / "scripts-manifest.json", m_scriptEngine.getManifest());
         LOG_INFO_EDITOR("Scripts loaded.");
     } else {
         LOG_ERROR_EDITOR("The scripts could not be loaded: build them in the CMake panel and reload.");
@@ -498,8 +471,9 @@ void ProjectLoader::saveProject() {
     session.exportConfiguration = m_projectSession.exportConfiguration;
     m_projectSession = std::move(session);
     const path_t sessionPath = projectDataDirectory(projectPath()) / "session.json";
-    if (!writeJson(sessionPath, m_jsonEncoder, m_projectSession)) {
-        LOG_ERROR("The session of the project could not be written to %s.", sessionPath.string().c_str());
+    std::string error;
+    if (!writeJsonFile(sessionPath, m_projectSession, &error)) {
+        LOG_ERROR("The session of the project is not saved: %s.", error.c_str());
     }
 }
 

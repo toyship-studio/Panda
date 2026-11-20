@@ -440,8 +440,7 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
         if (existingMaterialFile.is_open()) {
             MaterialDataDto existingMaterialDataDto;
             Rain::JsonDecoder jsonDecoder;
-        Rain::Decoder *decoder = &jsonDecoder;
-            decoder->decode(existingMaterialFile, existingMaterialDataDto);
+            jsonDecoder.decode(existingMaterialFile, existingMaterialDataDto);
             existingMaterialFile.close();
             MaterialData existingMaterialData;
             AssetsMapper::toData(existingMaterialData, existingMaterialDataDto);

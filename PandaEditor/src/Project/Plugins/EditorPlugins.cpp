@@ -16,8 +16,7 @@ namespace {
         std::ifstream stream(file);
         if (!stream.is_open()) { return false; }
         Rain::JsonDecoder json;
-        Rain::Decoder &decoder = json;
-        decoder.decode(stream, out);
+        json.decode(stream, out);
         return true;
     }
 

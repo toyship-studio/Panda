@@ -32,7 +32,7 @@ public:
     // It takes the values a format of registered data cannot carry (the components of a module
     // that is not loaded) and looks into none of them: what such a module names, the game does
     // not use.
-    bool supportsRawJson() const override {
+    bool supportsRaw() const override {
         return true;
     }
     void encode(const char *, const Rain::UUID &data) override {
@@ -49,7 +49,7 @@ public:
     void encode(const char *, const double &) override {}
     void encode(const char *, const std::string &) override {}
     void encode(const char *, const char *&) override {}
-    void encodeRawJson(const char *, const std::string &) override {}
+    void encodeRaw(const char *, const Rain::Value &) override {}
     void endObject() override {}
     void beginArray(const char *) override {}
     void endArray() override {}

@@ -45,8 +45,8 @@ jobs:
         run: sh scripts/fern_net_run_smoke.sh
         env:
           PANDA_BUILD_PARALLEL: 4
-      - name: File watch smoke test
-        # FSEvents and the scan, over a folder of its own in the temporary one.
+      - name: Files smoke test
+        # The atomic write; the watch by FSEvents and by the scan. A folder of its own in the temporary one.
         run: sh scripts/fern_files_run_smoke.sh
         env:
           PANDA_BUILD_PARALLEL: 4
@@ -94,8 +94,8 @@ jobs:
       - name: Build
         shell: pwsh
         run: scripts/build_panda_release.ps1 -Parallel 4
-      - name: File watch smoke test
-        # ReadDirectoryChangesW and the scan, over a folder of its own in the temporary one.
+      - name: Files smoke test
+        # The atomic write; the watch by ReadDirectoryChangesW and by the scan. A folder of its own in the temporary one.
         shell: pwsh
         run: scripts/fern_files_run_smoke.ps1 -Configuration Release -Parallel 4
       # No smoke test of the engine here yet: the Windows runners have no GPU for a D3D11 device.
@@ -125,8 +125,8 @@ jobs:
       - name: Build the editor, the smoke test and the SDK core package
         # -k 0: keep going after a failure, so one run shows every error.
         run: cmake --build cmake-build-debug --parallel 4 --target PandaEditor PandaSmoke FernNetSmoke FernFilesSmoke PandaSDKCorePackage -- -k 0
-      - name: File watch smoke test
-        # inotify and the scan, over a folder of its own in the temporary one.
+      - name: Files smoke test
+        # The atomic write; the watch by inotify and by the scan. A folder of its own in the temporary one.
         run: sh scripts/fern_files_run_smoke.sh
         env:
           PANDA_BUILD_PARALLEL: 4

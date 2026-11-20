@@ -17,8 +17,8 @@ namespace Panda {
 namespace {
 
     // An entity as the `entities` of a world file hold it: the id, then the components by the
-    // names of their types. Returns the number of foreign components a coder without opaque
-    // values left out.
+    // names of their types. Returns the number of foreign components a coder without raw values
+    // left out.
     size_t encodeEntity(Rain::Encoder &encoder, Entity entity, const ComponentTypeRegistry &types) {
         size_t droppedForeign = 0;
         encoder.encode("id", entity.getId());
@@ -28,10 +28,10 @@ namespace {
         }
         if (entity.hasComponent<ForeignComponents>()) {
             const ForeignComponents &foreign = entity.getComponent<ForeignComponents>();
-            if (!encoder.supportsRawJson()) {
+            if (!encoder.supportsRaw()) {
                 droppedForeign += foreign.items.size();
             } else {
-                for (const ForeignValue &item : foreign.items) { encoder.encodeRawJson(item.name.c_str(), item.json); }
+                for (const ForeignValue &item : foreign.items) { encoder.encodeRaw(item.name.c_str(), item.value); }
             }
         }
         return droppedForeign;
@@ -74,8 +74,8 @@ namespace {
                 continue;
             }
             // A key without a contribution — the module is not loaded: keep it as is.
-            std::string json;
-            if (!decoder.decodeRawJson(name.c_str(), json)) {
+            Rain::Value value;
+            if (!decoder.decodeRaw(name.c_str(), value)) {
                 issues.foreignDropped.insert(name);
                 continue;
             }
@@ -83,7 +83,7 @@ namespace {
             ForeignComponents &foreign = entity.hasComponent<ForeignComponents>()
                                              ? entity.getComponent<ForeignComponents>()
                                              : entity.addComponent<ForeignComponents>();
-            foreign.items.push_back({name, std::move(json)});
+            foreign.items.push_back({name, std::move(value)});
         }
     }
 
@@ -100,7 +100,7 @@ namespace {
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             encoder->beginObject(key);
             if (document.settings) { SettingsMapper::encode(SettingsScope::World, world.context(), *encoder); }
-            size_t droppedForeign = 0; // foreign components a coder without opaque values leaves out
+            size_t droppedForeign = 0; // foreign components a coder without raw values leaves out
             encoder->beginArray("entities");
             // The file lists the entities the way the Hierarchy shows them (World::orderedChildren):
             // an entity, then everything under it. The order depends on the world alone — not on

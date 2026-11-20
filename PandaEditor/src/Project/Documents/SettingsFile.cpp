@@ -1,11 +1,13 @@
 #include "Project/Documents/SettingsFile.hpp"
 #include "Project/Documents/FileDocuments.hpp"
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Panda/Serialization/SettingsMapper.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 
 #include <fstream>
+#include <sstream>
 
 namespace Panda {
 
@@ -35,14 +37,14 @@ bool SettingsFile::write() {
     if (m_path.empty()) { return false; }
     std::error_code errorCode;
     std::filesystem::create_directories(m_path.parent_path(), errorCode); // .Panda of a new project
-    std::ofstream file(m_path);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("Cannot write the settings file: %s", m_path.string().c_str());
+    std::ostringstream text;
+    Rain::JsonEncoder encoder(true);
+    SettingsMapper::save(m_scope, m_settings, encoder, text);
+    std::string error;
+    if (!Fern::writeFileAtomically(m_path, text.str(), &error)) {
+        LOG_ERROR_EDITOR("Not saved: %s.", error.c_str());
         return false;
     }
-    Rain::JsonEncoder encoder(true);
-    SettingsMapper::save(m_scope, m_settings, encoder, file);
-    file.close();
     m_stamp.sync(m_path);
     m_dirty = false;
     return true;

@@ -10,6 +10,7 @@
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Foundation/Foundation.hpp>
 #include <Miren/Miren.hpp>
 #include <Panda/Assets/MaterialAsset.hpp>
@@ -26,7 +27,7 @@
 #include <Panda/Terrain/TerrainTrees.hpp>
 #include <Panda/Terrain/TerrainVertex.hpp>
 
-#include <fstream>
+#include <sstream>
 #include <memory>
 #include <unordered_set>
 
@@ -144,27 +145,29 @@ namespace {
 
     Panda::path_t createTerrain2D(const Panda::path_t &directory) {
         const Panda::path_t path = uniqueAssetPath(directory, "Terrain", ".terrain");
-        std::ofstream file(path, std::ios::binary);
-        if (!file.is_open()) {
-            LOG_ERROR_EDITOR("The terrain file %s could not be created.", path.string().c_str());
-            return {};
-        }
         // cellSize 2: a height detail of 1 m is excessive for the relief, while memory grows
         // quadratically — the same meters with a grid four times smaller.
+        std::ostringstream bytes;
         Panda::TerrainSerialization::write2D(
-            file, Panda::TerrainData2D::makeFlat(128, 128, 2.f), Panda::FloraSettings{}, Panda::TerrainTrees{}
+            bytes, Panda::TerrainData2D::makeFlat(128, 128, 2.f), Panda::FloraSettings{}, Panda::TerrainTrees{}
         );
+        std::string error;
+        if (!Fern::writeFileAtomically(path, bytes.view(), &error)) {
+            LOG_ERROR_EDITOR("The terrain is not made: %s.", error.c_str());
+            return {};
+        }
         return path;
     }
 
     Panda::path_t createTerrain3D(const Panda::path_t &directory) {
         const Panda::path_t path = uniqueAssetPath(directory, "Terrain3D", ".terrain");
-        std::ofstream file(path, std::ios::binary);
-        if (!file.is_open()) {
-            LOG_ERROR_EDITOR("The terrain file %s could not be created.", path.string().c_str());
+        std::ostringstream bytes;
+        Panda::TerrainSerialization::write3D(bytes, Panda::TerrainData3D::makeFlat(128, 48, 128, 1.f, 8));
+        std::string error;
+        if (!Fern::writeFileAtomically(path, bytes.view(), &error)) {
+            LOG_ERROR_EDITOR("The terrain is not made: %s.", error.c_str());
             return {};
         }
-        Panda::TerrainSerialization::write3D(file, Panda::TerrainData3D::makeFlat(128, 48, 128, 1.f, 8));
         return path;
     }
 

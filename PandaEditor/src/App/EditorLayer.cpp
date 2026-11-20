@@ -21,6 +21,7 @@
 #include <Foundation/PlatformDetection.hpp>
 #include <Fern/Fonts/FontCatalog.hpp>
 #include <Fern/Fern.hpp>
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Fern/Events/WindowEvents.hpp>
 #include <PandaUI/PandaUI.hpp>
 
@@ -31,7 +32,6 @@
 #include <PandaEditorKit/Selection.hpp>
 
 #include <filesystem>
-#include <fstream>
 
 namespace Panda {
 
@@ -1123,9 +1123,10 @@ void EditorLayer::showKeymapFile() {
         LOG_ERROR_EDITOR("No user data directory: the keymap is not persisted");
         return;
     }
-    if (!std::filesystem::exists(path)) {
-        std::ofstream file(path);
-        file << "{\n}\n";
+    std::string error;
+    if (!std::filesystem::exists(path) && !Fern::writeFileAtomically(path, "{\n}\n", &error)) {
+        LOG_ERROR_EDITOR("The keymap is not made: %s.", error.c_str());
+        return;
     }
     openInExternalEditor(path);
 }

@@ -109,12 +109,12 @@ private:
     Mcp::PendingResult playAtTargets(
         std::vector<Target> targets, double wait, std::function<std::vector<InputStep>(const std::vector<PandaUI::Point> &)> steps
     );
-    std::string pointerJson() const;
+    Rain::Value pointerValue() const;
     PandaUI::Context &inputContext() const;
     Fern::Window *inputWindow() const;
 
     bool hasProject() const;
-    std::string cameraJson() const;
+    Rain::Value cameraValue() const;
     std::vector<std::string> dirtyDocuments() const;
 
     EditorLayer &m_editor;

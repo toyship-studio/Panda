@@ -49,7 +49,9 @@ PendingResult ready(ToolResult result);
 struct Tool final {
     std::string name;        // "screenshot"
     std::string description; // what it does and when to call it: the model chooses by this text
-    // The JSON Schema of the arguments, as text: {"type":"object","properties":{...}}. Empty — no arguments.
+    // The JSON Schema of the arguments, as text: {"type":"object","properties":{...}}. Empty — no
+    // arguments. Read once by addTool: a schema that is not JSON is an error in the log, and the
+    // tool is listed without arguments.
     std::string inputSchema;
     // Runs on the main thread inside the frame. `arguments` is the "arguments" object of the call
     // (an object, maybe without members).
@@ -100,16 +102,19 @@ private:
     void handleRequest(Connection &connection, const Request &request);
     void handleMessage(Connection &connection, const std::string &body);
     void respond(Connection &connection, int status, const std::string &body, const char *contentType = "application/json");
-    void respondResult(Connection &connection, const std::string &id, const std::string &resultJson);
-    void respondError(Connection &connection, int status, const std::string &id, int code, const std::string &message);
-    void respondToolResult(Connection &connection, const std::string &id, const ToolResult &result);
-    std::string toolListJson() const;
+    // An answer outside JSON-RPC: the HTTP error of a request the server does not take.
+    void respondFailure(Connection &connection, int status, const std::string &message);
+    void respondResult(Connection &connection, const Rain::Value &id, Rain::Value result);
+    void respondError(Connection &connection, int status, const Rain::Value &id, int code, const std::string &message);
+    void respondToolResult(Connection &connection, const Rain::Value &id, const ToolResult &result);
+    Rain::Value toolList() const;
 
     std::string m_name;
     std::string m_title;
     std::string m_version;
     std::string m_instructions;
     std::vector<Tool> m_tools;
+    std::vector<Rain::Value> m_schemas; // the input schema of each tool, read once (addTool)
     Fern::Net::TcpListener m_listener;
     uint16_t m_port = 0;
     std::vector<std::unique_ptr<Connection>> m_connections;

@@ -203,8 +203,7 @@ namespace TerrainSerialization {
             TerrainFloraDto dto;
             Rain::JsonDecoder decoder;
             std::istringstream jsonStream(json);
-            Rain::Decoder *decoderPtr = &decoder;
-            if (!decoderPtr->decode(jsonStream, dto)) { return false; }
+            if (!decoder.decode(jsonStream, dto)) { return false; }
             flora = floraFromDto(dto);
         }
         uint32_t treeCount = 0;
@@ -266,8 +265,7 @@ namespace TerrainSerialization {
         TerrainFloraDto dto = floraToDto(flora);
         std::ostringstream jsonStream;
         Rain::JsonEncoder encoder;
-        Rain::Encoder *encoderPtr = &encoder;
-        encoderPtr->encode(jsonStream, dto);
+        encoder.encode(jsonStream, dto);
         const std::string json = jsonStream.str();
         writeValue(stream, static_cast<uint32_t>(json.size()));
         stream.write(json.data(), json.size());

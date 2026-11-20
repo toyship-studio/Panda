@@ -1,10 +1,18 @@
-// Smoke test of Fern::FileWatcher, for both backends — the system's and the scan: in a folder of
-// its own in the temporary one a file written, made in a new folder, renamed and removed is told;
+// Smoke test of Fern/Files, in a folder of its own in the temporary one.
+//
+// Fern::writeFileAtomically: a new file holds the bytes as they are; an old one is replaced whole
+// (no tail of a longer text stays); its permissions stay, a link stays a link (not on Windows); a
+// read-only file, a folder in the place of the file and a folder that is not there are refused
+// and nothing changes; no temporary file is left behind.
+//
+// Fern::FileWatcher, for both backends — the system's and the scan: a file written, made in a new
+// folder, renamed and removed is told;
 // a folder is told when it is made, renamed, moved in and moved away, and a file is told by the
 // path its folder has now; a file beside what is watched is not told, nor one in a folder that
 // was moved away; a watched file that is not there yet is told when it appears; nothing is told
 // when nothing changed. Returns non-zero on failure.
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Fern/Files/FileWatcher.hpp>
 
 #include <algorithm>
@@ -12,6 +20,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <set>
 #include <string>
 #include <system_error>
@@ -174,6 +183,73 @@ void run(Fern::FileWatcher::Backend backend, const char *name, const path_t &bas
     expectQuiet(watcher, limit / 2, "nothing more is told when nothing changes");
 }
 
+std::string readAll(const path_t &file) {
+    std::ifstream in(file, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+void atomicWrite(const path_t &base) {
+    using perms = std::filesystem::perms;
+    std::printf("the atomic write\n");
+    std::error_code error;
+    std::filesystem::create_directories(base, error);
+    std::set<std::string> made; // what the test leaves in the folder on purpose
+    std::string why;
+
+    const path_t file = base / "world.world";
+    made.insert(file.filename().string());
+    check(Fern::writeFileAtomically(file, "the first version, the longer one", &why), "a new file is written: " + why);
+    check(readAll(file) == "the first version, the longer one", "a new file holds the bytes");
+    check(Fern::writeFileAtomically(file, "second", &why), "a file is written again: " + why);
+    check(readAll(file) == "second", "the new bytes replace the old ones whole: \"" + readAll(file) + "\"");
+    const std::string binary("a\0b\r\n\xff", 6);
+    check(Fern::writeFileAtomically(file, binary, &why) && readAll(file) == binary, "the bytes are written as they are");
+    check(Fern::writeFileAtomically(file, "", &why) && std::filesystem::file_size(file, error) == 0, "no bytes make an empty file");
+
+#ifndef _WIN32
+    const perms mode = perms::owner_read | perms::owner_write | perms::group_read;
+    std::filesystem::permissions(file, mode, error);
+    check(Fern::writeFileAtomically(file, "third", &why), "a file with permissions of its own is written: " + why);
+    check((std::filesystem::status(file, error).permissions() & perms::mask) == mode, "the permissions of the old file stay");
+
+    const path_t link = base / "link.world";
+    std::filesystem::create_symlink(file.filename(), link, error);
+    if (!error) {
+        made.insert(link.filename().string());
+        check(Fern::writeFileAtomically(link, "through the link", &why), "a file is written through a link: " + why);
+        check(std::filesystem::is_symlink(std::filesystem::symlink_status(link, error)), "a link stays a link");
+        check(readAll(file) == "through the link", "the file a link points to gets the bytes");
+    } else {
+        check(false, "the test makes a link: " + error.message());
+    }
+#endif
+
+    const path_t locked = base / "locked.world";
+    made.insert(locked.filename().string());
+    check(Fern::writeFileAtomically(locked, "kept", &why), "the file to lock is written: " + why);
+    std::filesystem::permissions(locked, perms::owner_write | perms::group_write | perms::others_write, std::filesystem::perm_options::remove, error);
+    why.clear();
+    check(!Fern::writeFileAtomically(locked, "changed", &why) && !why.empty(), "a read-only file is refused, and the error says why");
+    check(readAll(locked) == "kept", "a read-only file stays as it was: \"" + readAll(locked) + "\"");
+    std::filesystem::permissions(locked, perms::owner_write, std::filesystem::perm_options::add, error); // to be removed
+
+    const path_t folder = base / "folder.world";
+    made.insert(folder.filename().string());
+    std::filesystem::create_directories(folder / "inside", error);
+    check(!Fern::writeFileAtomically(folder, "x", &why), "a folder in the place of the file is not written over");
+    check(std::filesystem::is_directory(folder / "inside", error), "the folder stays as it was");
+
+    why.clear();
+    check(!Fern::writeFileAtomically(base / "missing" / "file.world", "x", &why) && !why.empty(), "a file in a folder that is not there is refused");
+    check(!std::filesystem::exists(base / "missing", error), "a folder that is not there is not made");
+
+    std::string strays;
+    for (const auto &entry : std::filesystem::directory_iterator(base, error)) {
+        if (made.count(entry.path().filename().string()) == 0) { strays += " " + entry.path().filename().string(); }
+    }
+    check(strays.empty(), "no temporary file is left:" + strays);
+}
+
 } // namespace
 
 int main() {
@@ -181,6 +257,7 @@ int main() {
     const path_t base = std::filesystem::temp_directory_path() /
                         ("fern-files-smoke-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::remove_all(base, error);
+    atomicWrite(base / "atomic");
     run(Fern::FileWatcher::Backend::System, "the backend of the system", base / "system", 3000ms);
     run(Fern::FileWatcher::Backend::Scan, "the scan", base / "scan", 4000ms);
     std::filesystem::remove_all(base, error);

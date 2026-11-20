@@ -4,11 +4,11 @@
 
 #include "AudioClipProbe.hpp"
 
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Foundation/Foundation.hpp>
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 
 namespace Panda::Audio::AudioClipKind {
 
@@ -51,11 +51,8 @@ bool save(Asset &asset, const path_t &absolutePath) {
     // writer, and the bytes go back as they came.
     const AudioClipAsset &clip = static_cast<const AudioClipAsset &>(asset);
     if (clip.isEmpty()) { return false; }
-    std::ofstream file(absolutePath, std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) { return false; }
     const AudioClipAsset::Bytes &bytes = *clip.bytes();
-    file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    return static_cast<bool>(file);
+    return Fern::writeFileAtomically(absolutePath, std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
 }
 
 AssetKind kind() {

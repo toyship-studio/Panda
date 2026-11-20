@@ -1,5 +1,6 @@
 #include "AssetDocuments.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
+#include "Project/System/JsonFiles.hpp"
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <Panda/Assets/MaterialAsset.hpp>
@@ -7,7 +8,6 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Serialization/AssetsMapper.hpp>
 
-#include <fstream>
 
 namespace Panda {
 
@@ -83,17 +83,13 @@ bool AssetDocuments::saveMaterial(const AssetInfo &info, const MaterialData &mat
     const path_t materialPath = m_handler.assetPath(info.id);
     MaterialDataDto dataDto;
     AssetsMapper::toDto(materialData, dataDto);
-    std::ofstream file(m_handler.m_projectPath / materialPath);
-    if (file.is_open()) {
-        Rain::Encoder *encoder = &m_jsonEncoder;
-        encoder->encode(file, dataDto);
-        file.close();
-        m_handler.noteAssetDiskSync(info.id);
-        return true;
-    } else {
-        LOG_ERROR_EDITOR("%s could not be saved: the file cannot be written.", materialPath.string().c_str());
+    std::string error;
+    if (!writeJsonFile(m_handler.m_projectPath / materialPath, dataDto, &error)) {
+        LOG_ERROR_EDITOR("Not saved: %s.", error.c_str());
         return false;
     }
+    m_handler.noteAssetDiskSync(info.id);
+    return true;
 }
 
 bool AssetDocuments::savePostprocessing(const AssetInfo &info, PostprocessingAsset &asset) {
@@ -107,14 +103,11 @@ bool AssetDocuments::savePostprocessing(const AssetInfo &info, PostprocessingAss
         passDto.downsample = pass.downsample;
         dataDto.passes.push_back(passDto);
     }
-    std::ofstream file(m_handler.m_projectPath / dataPath);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("%s could not be saved: the file cannot be written.", dataPath.string().c_str());
+    std::string error;
+    if (!writeJsonFile(m_handler.m_projectPath / dataPath, dataDto, &error)) {
+        LOG_ERROR_EDITOR("Not saved: %s.", error.c_str());
         return false;
     }
-    Rain::Encoder *encoder = &m_jsonEncoder;
-    encoder->encode(file, dataDto);
-    file.close();
     m_handler.noteAssetDiskSync(info.id);
     return true;
 }
@@ -124,15 +117,10 @@ AssetId AssetDocuments::createMaterialAsset(const path_t &directory, AssetId sha
     for (int counter = 2; std::filesystem::exists(path); ++counter) {
         path = directory / ("Material " + std::to_string(counter) + ".mat");
     }
-    {
-        MaterialDataDto dataDto;
-        std::ofstream file(path);
-        if (!file.is_open()) {
-            LOG_ERROR_EDITOR("The material file %s could not be created.", path.string().c_str());
-            return 0;
-        }
-        Rain::Encoder *encoder = &m_jsonEncoder;
-        encoder->encode(file, dataDto);
+    std::string error;
+    if (!writeJsonFile(path, MaterialDataDto(), &error)) {
+        LOG_ERROR_EDITOR("The material is not created: %s.", error.c_str());
+        return 0;
     }
     m_handler.registerAsset(path);
     AssetId id = m_handler.getAssetId(path);
@@ -159,15 +147,10 @@ AssetId AssetDocuments::createPostprocessingAsset(const path_t &directory) {
     for (int counter = 2; std::filesystem::exists(path); ++counter) {
         path = directory / ("Postprocessing " + std::to_string(counter) + ".postfx");
     }
-    {
-        PostprocessingDataDto dataDto;
-        std::ofstream file(path);
-        if (!file.is_open()) {
-            LOG_ERROR_EDITOR("The postprocessing file %s could not be created.", path.string().c_str());
-            return 0;
-        }
-        Rain::Encoder *encoder = &m_jsonEncoder;
-        encoder->encode(file, dataDto);
+    std::string error;
+    if (!writeJsonFile(path, PostprocessingDataDto(), &error)) {
+        LOG_ERROR_EDITOR("The postprocessing is not created: %s.", error.c_str());
+        return 0;
     }
     m_handler.registerAsset(path);
     const AssetId id = m_handler.getAssetId(path);
@@ -197,13 +180,14 @@ bool AssetDocuments::createPostprocessShader(const path_t &directory) {
     };
     for (const auto &[templatePath, destination] : files) {
         FileData data = AssetImporterBase::loadTextData(templatePath);
-        std::ofstream file(destination);
-        if (!file.is_open() || data.size == 0) {
-            LOG_ERROR_EDITOR("The shader file %s could not be created.", destination.string().c_str());
+        std::string error = "the template " + std::string(templatePath) + " is empty";
+        const bool written =
+            data.size != 0 && Fern::writeFileAtomically(destination, std::string_view((const char *)data.memory.data, data.size), &error);
+        data.memory.release();
+        if (!written) {
+            LOG_ERROR_EDITOR("The shader is not created: %s.", error.c_str());
             return false;
         }
-        file.write((const char *)data.memory.data, data.size);
-        data.memory.release();
     }
     m_handler.registerAsset(vertPath(base)); // registers the pair by the NAME.vert/frag.hlsl convention
     LOG_INFO_EDITOR("Created the postprocessing shader %s.", base.c_str());

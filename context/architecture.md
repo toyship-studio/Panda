@@ -15,8 +15,9 @@ and background jobs (`PandaAsync`).
 - `Rain`: serialization (coders for JSON, YAML and binary; JSON values, `Rain::Value`).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
-  context, native menu, the file watch (`Fern::FileWatcher`, below), and the network layer
-  `Fern::Net` on the stacks of the systems
+  context, native menu, the file watch (`Fern::FileWatcher`, below), the writing of a file whole
+  or not at all (`Fern::writeFileAtomically`, below), and the network layer `Fern::Net` on the
+  stacks of the systems
   (`context/networking.md`); it links PandaAsync for the completions of requests. Every input
   event carries the modifiers of its moment (`Fern::Modifiers`, read from the OS by the
   platform), so no consumer tracks the modifier state: the PandaUI hosts copy it into their
@@ -42,9 +43,17 @@ and background jobs (`PandaAsync`).
   that compares times and sizes) looks at the few of them four times a second on every
   platform. The same scan reads whole folders once a second where the system's watch would
   not start (Linux: a tree of more folders than the user has inotify watches) and where
-  `Backend::Scan` asks for it (a network drive). The smoke test `FernFilesSmoke`
-  (`scripts/fern_files_run_smoke.*`) runs the system's backend and the scan over a folder of
-  its own; CI runs it on the three systems.
+  `Backend::Scan` asks for it (a network drive).
+  `Fern::writeFileAtomically` (`Fern/Files/AtomicWrite.hpp`) writes the bytes into a new file
+  next to the target (`.<name>.<process>-<n>~`: a dot and a tilde, scrap to a watcher), flushes
+  it (`fsync`; `FlushFileBuffers` on Windows) and renames it over the target (`rename`;
+  `MoveFileExW`, tried again for a second while a scanner of the system holds the new file):
+  the old file is never left cut. A link is written through, the permissions of the old file
+  stay, a read-only file is refused as a write in place would be. Every file the editor writes
+  for the user goes through it (`PandaEditor/src/Project/System/JsonFiles.hpp` for the JSON
+  ones). The smoke test `FernFilesSmoke` (`scripts/fern_files_run_smoke.*`) checks the write
+  and runs the system's backend of the watch and the scan over a folder of its own; CI runs it
+  on the three systems.
 - `Miren`: the renderer abstraction with Metal, Direct3D 11 and OpenGL/GLES backends. The backend
   is fixed at build time by the CMake option `PANDA_SHADER_BACKEND` (`cmake/shader_bake.cmake`):
   Metal is the default on macOS, D3D11 on Windows, OpenGL elsewhere (GLES on mobile targets). The
@@ -366,7 +375,12 @@ Three operations are written once over them, in `DocumentActions`, whatever the 
 - **Save** (Cmd+S) writes the document of the tab with the focus; **Save All** (Cmd+Alt+S, the
   toolbar button) writes every dirty one (`saveAll`). A file changed on disk since the editor
   read it is never overwritten in silence: the save asks which version stays
-  (`resolveConflict`: Save / Discard / Cancel).
+  (`resolveConflict`: Save / Discard / Cancel). A file is written whole or not at all
+  (`Fern::writeFileAtomically`: a new file next to it, flushed, renamed over it — the same for
+  every file the editor writes for the user: sidecars, the keymap, the sessions, a prefab
+  applied, the files of a new asset): a full disk, a read-only file or a crash on the way
+  leave the old file as it was, the document stays unsaved and the log says why. The scrap
+  of such a write (`.<name>.<process>-<n>~`) is what the disk watch leaves alone.
 - **The reload from disk** rereads what changed there. The user has no command for it: the
   editor does it by itself when the files change under it, and leaves a document whose memory
   has edits too as it is (`takeDiskChanges`, the disk watch below). An agent asks for it with
@@ -1422,8 +1436,10 @@ second way to do what a text file already does. The user-facing page is
   thread accepts, reads, runs the tools and writes without blocking, and a tool touches the
   engine like any other code of the frame. A tool that needs several frames returns a
   `PendingResult` the server asks every frame. The server binds the loopback address and refuses
-  a request whose `Host` or `Origin` is not local (DNS rebinding). The class knows nothing of
-  the editor: a game runtime can host one the same way.
+  a request whose `Host` or `Origin` is not local (DNS rebinding). Every message — the request,
+  the arguments a tool gets, the answer — is a `Rain::Value`; the input schema of a tool is JSON
+  Schema text, read once when the tool is added. The class knows nothing of the editor: a game
+  runtime can host one the same way.
 - `EditorMcp` (`PandaEditor/src/App/EditorMcp`): the tools of the editor — `status`, `logs`,
   `screenshot`, `reload`, `focus`, `save`, `play`, `stop`, `build`, `export`, `camera`, `open_world`,
   `open_project`, `show`, `command`, `ui`, `pointer`, `key`, `game_input`, `restart`, `quit`.

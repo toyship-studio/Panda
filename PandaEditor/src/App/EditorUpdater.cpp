@@ -1,5 +1,6 @@
 #include "App/EditorUpdater.hpp"
 
+#include "Project/System/JsonFiles.hpp"
 #include "Project/System/Portal.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "Project/System/ZipArchive.hpp"
@@ -10,8 +11,6 @@
 #include <Foundation/PlatformDetection.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Base/Version.hpp>
-#include <Rain/Coders/JsonDecoder.hpp>
-#include <Rain/Coders/JsonEncoder.hpp>
 #include <Rain/Rain.hpp>
 
 #include <algorithm>
@@ -145,24 +144,6 @@ namespace {
         return directory.empty() ? path_t() : directory / "pending.json";
     }
 
-    template<typename T>
-    bool readJson(const path_t &path, T &data) {
-        std::ifstream file(path);
-        if (!file.is_open()) { return false; }
-        Rain::JsonDecoder decoder;
-        Rain::Decoder *decoderPtr = &decoder;
-        return decoderPtr->decode(file, data);
-    }
-
-    template<typename T>
-    bool writeJson(const path_t &path, const T &data) {
-        std::ofstream file(path);
-        if (!file.is_open()) { return false; }
-        Rain::JsonEncoder encoder;
-        Rain::Encoder *encoderPtr = &encoder;
-        encoderPtr->encode(file, data);
-        return true;
-    }
 
     std::string storageOf(const std::string &url) {
         return url.find("github") != std::string::npos ? "github" : "s3";
@@ -299,7 +280,7 @@ void EditorUpdater::start(bool autoUpdate) {
 
     const path_t pending = pendingPath();
     PendingUpdate update;
-    if (!pending.empty() && readJson(pending, update)) {
+    if (!pending.empty() && readJsonFile(pending, update)) {
         std::error_code error;
         const path_t updates = updatesDirectory();
         if (update.build == ENGINE_BUILD_NUMBER) {
@@ -406,9 +387,7 @@ void EditorUpdater::onManifest(const std::string &json) {
     Manifest manifest;
     {
         std::istringstream stream(json);
-        Rain::JsonDecoder decoder;
-        Rain::Decoder *decoderPtr = &decoder;
-        if (!decoderPtr->decode(stream, manifest) || manifest.build == 0 || manifest.version.empty()) {
+        if (!Rain::JsonDecoder().decode(stream, manifest) || manifest.build == 0 || manifest.version.empty()) {
             fail("The update manifest could not be read");
             return;
         }
@@ -582,7 +561,8 @@ void EditorUpdater::install() {
             pending.version = m_version;
             pending.notes = m_notes;
             pending.staged = result.staged;
-            if (!writeJson(pendingPath(), pending)) { LOG_WARN("Updater: the pending update could not be recorded"); }
+            std::string error;
+            if (!writeJsonFile(pendingPath(), pending, &error)) { LOG_WARN("Updater: the pending update is not recorded: %s", error.c_str()); }
             m_busy = false;
             m_request = Fern::Net::RequestHandle();
             LOG_INFO("Updater: %s (build %u) is installed; it runs after a restart", m_version.c_str(), m_build);
@@ -594,7 +574,7 @@ void EditorUpdater::install() {
 bool EditorUpdater::finishOnExit(bool relaunch) {
     const path_t pending = pendingPath();
     PendingUpdate update;
-    if (pending.empty() || !readJson(pending, update)) { return false; }
+    if (pending.empty() || !readJsonFile(pending, update)) { return false; }
     if (update.staged.empty() || update.build <= ENGINE_BUILD_NUMBER) { return false; }
     std::error_code error;
     const path_t staged = update.staged;

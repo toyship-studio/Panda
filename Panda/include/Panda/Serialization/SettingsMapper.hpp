@@ -17,7 +17,7 @@ namespace Panda {
 class SettingsMapper {
 public:
     // The sections of the scope in registration order, then the foreign ones. A coder without
-    // opaque values (the binary one) drops the foreign sections — logged once per call.
+    // raw values (the binary one) drops the foreign sections — logged once per call.
     static void encode(SettingsScope scope, TypeContext &store, Rain::Encoder &encoder);
     // Every registered type of the scope goes to its defaults and the foreign sections of the
     // previous content are dropped; then the keys of the object are read: a registered key — into

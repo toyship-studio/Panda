@@ -2,7 +2,7 @@
 
 #include "Panda/Runtime/GameFiles.hpp"
 
-#include <fstream>
+#include <Fern/Files/AtomicWrite.hpp>
 
 namespace Panda::FontAssetKind {
 
@@ -28,10 +28,9 @@ bool save(Asset &asset, const path_t &absolutePath) {
     // writer, and the bytes go back as they came.
     const FontAsset &font = static_cast<const FontAsset &>(asset);
     if (font.isEmpty()) { return false; }
-    std::ofstream file(absolutePath, std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) { return false; }
-    file.write(reinterpret_cast<const char *>(font.data().data()), static_cast<std::streamsize>(font.data().size()));
-    return static_cast<bool>(file);
+    return Fern::writeFileAtomically(
+        absolutePath, std::string_view(reinterpret_cast<const char *>(font.data().data()), font.data().size())
+    );
 }
 
 } // namespace Panda::FontAssetKind

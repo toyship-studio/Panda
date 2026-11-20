@@ -268,10 +268,9 @@ BinaryNode *BinaryEncoder::addNode(const char *key, std::unique_ptr<BinaryNode> 
     return raw;
 }
 
-void BinaryEncoder::encodeRawJson(const char *key, const std::string &json) {
-    (void)
-        key; // opaque values are JSON-only (supportsRawJson): the binary format carries typed data
-    (void)json;
+void BinaryEncoder::encodeRaw(const char *key, const Value &value) {
+    (void)key; // raw values are JSON-only (supportsRaw): the binary format carries typed data
+    (void)value;
 }
 
 } // namespace Rain

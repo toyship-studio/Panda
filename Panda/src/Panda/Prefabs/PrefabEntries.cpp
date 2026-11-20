@@ -23,7 +23,7 @@ void applyObject(Entity entity, const Json &target, const Json &current) {
         if (std::strcmp(key, ID) == 0 || std::strcmp(key, RELATIONSHIP) == 0) { continue; }
         const ComponentType *type = types.find(key);
         if (type == nullptr) {
-            foreign.push_back({key, Rain::writeJson(member->value)});
+            foreign.push_back({member->key, member->value});
             continue;
         }
         const Json *now = current.find(key);
@@ -37,7 +37,7 @@ void applyObject(Entity entity, const Json &target, const Json &current) {
         if (!type.serialized || type.builtin || type.remove == nullptr) { continue; }
         if (entity.hasComponent(type.typeId) && target.find(type.name.c_str()) == nullptr) { type.remove(entity); }
     }
-    // The components of modules that are not loaded are carried as text.
+    // The components of modules that are not loaded are carried as they are.
     if (foreign.empty()) {
         if (entity.hasComponent<ForeignComponents>()) { entity.removeComponent<ForeignComponents>(); }
     } else {

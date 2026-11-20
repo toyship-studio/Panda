@@ -3,6 +3,8 @@
 #include <Panda/Assets/Base/AssetInfo.hpp>
 #include <Panda/Assets/Base/Path.hpp>
 
+#include <string>
+
 namespace Panda {
 
 // The format of the X.<ext>.pmeta sidecar (context/asset-files.md): a serialized AssetInfo —
@@ -18,7 +20,8 @@ namespace AssetPmeta {
 
     // false — the file could not be opened or the type is unknown (a broken sidecar).
     bool read(const path_t &sidecarAbsPath, AssetInfo &out);
-    bool write(const path_t &sidecarAbsPath, const AssetInfo &info);
+    // Whole or not at all (Fern::writeFileAtomically); false — the file is as it was, `error` says why.
+    bool write(const path_t &sidecarAbsPath, const AssetInfo &info, std::string *error = nullptr);
 
 } // namespace AssetPmeta
 

@@ -12,6 +12,8 @@ namespace Rain {
 
 class YamlEncoder final : public Encoder {
 public:
+    using Encoder::encode;
+
     YamlEncoder(bool encodeOptionalAsNull = false);
     ~YamlEncoder() override = default;
 
@@ -28,7 +30,7 @@ public:
     void encode(const char *key, const std::string &data) override;
     void encode(const char *key, const char *&data) override;
     void encode(const char *key, const UUID &data) override;
-    void encodeRawJson(const char *key, const std::string &json) override;
+    void encodeRaw(const char *key, const Value &value) override;
     void endObject() override;
     void beginArray(const char *key) override;
     void endArray() override;

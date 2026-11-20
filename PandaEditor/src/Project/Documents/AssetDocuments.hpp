@@ -5,8 +5,6 @@
 #include <Panda/Assets/PostprocessingAsset.hpp>
 #include <Panda/Renderer/MaterialData.hpp>
 #include <Panda/WorldCommands/CommandHistory.hpp>
-#include <Rain/Coders/JsonDecoder.hpp>
-#include <Rain/Coders/JsonEncoder.hpp>
 
 #include <unordered_map>
 #include <vector>
@@ -22,8 +20,7 @@ class AssetHandlerEditor;
 class AssetDocuments final {
 public:
     explicit AssetDocuments(AssetHandlerEditor &handler)
-        : m_handler(handler)
-        , m_jsonEncoder(true) {}
+        : m_handler(handler) {}
 
     // --- Dirty state and saving (editor tabs, Cmd+S, close gates) ---
     bool isAssetChanged(AssetId id);
@@ -61,8 +58,6 @@ public:
 
 private:
     AssetHandlerEditor &m_handler;
-    Rain::JsonEncoder m_jsonEncoder;
-    Rain::JsonDecoder m_jsonDecoder;
     std::unordered_map<AssetId, CommandHistory> m_undoStacks;
 };
 

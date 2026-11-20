@@ -42,9 +42,10 @@ lives in the `.pmeta` next to the file, so references survive), scripts are copi
 3. **User data survives a missing module.** Components and settings sections of a module are
    named JSON values in `.world` and in the settings files. When the module is not registered the
    value is kept as is and written back (`ForeignComponents`, `ForeignSettings`), with a warning
-   in the log. Only the JSON coders carry such values (`Rain::Encoder::supportsRawJson`); the
-   binary files of the export hold registered data only, and the export writes with the module
-   set it reads with. This is the only compatibility case in the project.
+   in the log (`ForeignValue`: the key and the `Rain::Value` that was read). Only the JSON coders
+   carry such values (`Rain::Encoder::supportsRaw`); the binary files of the export hold
+   registered data only, and the export writes with the module set it reads with. This is the
+   only compatibility case in the project.
 4. **Modules belong to the project, plugins to the user.** The truth about the module set is
    `disabledModules` of `.Panda/project.json` (`ProjectSettings::disabledModules`, the ids of the
    modules the project switches off); every other module of the distribution is on. The set is

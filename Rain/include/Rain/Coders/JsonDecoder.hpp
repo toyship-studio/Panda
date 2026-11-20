@@ -12,6 +12,8 @@ namespace Rain {
 // JSON → data: from a Value (decodeValue), or from its text (decode from a stream).
 class JsonDecoder final : public Decoder {
 public:
+    using Decoder::decode;
+
     explicit JsonDecoder(DecoderSettings settings = {});
     ~JsonDecoder() override = default;
 
@@ -36,8 +38,8 @@ public:
     bool decode(const char *key, double &data) override;
     bool decode(const char *key, std::string &data) override;
     bool decode(const char *key, UUID &data) override;
-    bool decodeRawJson(const char *key, std::string &json) override;
-    bool supportsRawJson() const override {
+    bool decodeRaw(const char *key, Value &value) override;
+    bool supportsRaw() const override {
         return true;
     }
     void endObject() override;

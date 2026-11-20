@@ -25,8 +25,9 @@ elseif (PLATFORM_MACOS OR PLATFORM_IOS)
 endif ()
 list(APPEND SOURCES ${NET_PLATFORM_SOURCES})
 
-# The file watch (Fern/Files/FileWatcher.hpp): the shared part with the portable scan, and the
-# backend of the platform — ReadDirectoryChangesW, inotify, FSEvents. A phone has none.
+# Files: the writing of a file whole or not at all (Fern/Files/AtomicWrite.hpp, every platform),
+# and the file watch (Fern/Files/FileWatcher.hpp) — the shared part with the portable scan, and
+# the backend of the platform: ReadDirectoryChangesW, inotify, FSEvents. A phone has no watch.
 file(GLOB FILES_SOURCES src/Files/*.cpp)
 file(GLOB FILES_INCLUDE src/Files/*.hpp)
 list(APPEND SOURCES ${FILES_SOURCES})
@@ -129,7 +130,8 @@ endif ()
 # Fern does not depend on Miren: Miren builds on Fern (the graphics context), not the other way
 # round, and a mirror of Fern must not fetch Miren. Anything that renders links Miren itself.
 
-# The smoke test of the file watch: a folder of its own in the temporary one, both backends.
+# The smoke test of Files: a folder of its own in the temporary one — the atomic write, and the
+# watch with both backends.
 if (DESKTOP)
     add_executable(FernFilesSmoke Smoke/FilesSmoke.cpp)
     target_link_libraries(FernFilesSmoke PRIVATE Fern Foundation)

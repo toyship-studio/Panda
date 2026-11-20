@@ -2,6 +2,7 @@
 #include "Project/Documents/FileDocuments.hpp"
 
 #include <Panda/GameLogic/GameContext.hpp>
+#include <Fern/Files/AtomicWrite.hpp>
 #include <Panda/Prefabs/Prefabs.hpp>
 
 #include <fstream>
@@ -102,13 +103,11 @@ bool WorldFile::write(const path_t &path) {
     } else {
         text = Prefabs::save(m_world);
     }
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("Cannot write the file: %s", path.string().c_str());
+    std::string error;
+    if (!Fern::writeFileAtomically(path, text, &error)) {
+        LOG_ERROR_EDITOR("Not saved: %s.", error.c_str());
         return false;
     }
-    file << text;
-    file.close();
     m_world.setChanged(false);
     m_path = path;
     m_stamp.sync(path);

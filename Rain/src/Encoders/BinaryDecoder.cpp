@@ -384,9 +384,9 @@ BinaryNode *BinaryDecoder::nodeForKey(const char *key) {
     return findMember(currentObject(), key);
 }
 
-bool BinaryDecoder::decodeRawJson(const char *key, std::string &json) {
-    (void)key; // opaque values are JSON-only (supportsRawJson)
-    (void)json;
+bool BinaryDecoder::decodeRaw(const char *key, Value &value) {
+    (void)key; // raw values are JSON-only (supportsRaw)
+    (void)value;
     return false;
 }
 

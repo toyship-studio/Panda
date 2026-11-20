@@ -7,11 +7,8 @@
 #include "Project/Settings/ProjectSettings.hpp"
 #include "Project/System/ProjectCreator.hpp"
 
-#include <Rain/Coders/JsonEncoder.hpp>
-
 #include <string>
 #include <unordered_map>
-#include <Rain/Coders/JsonDecoder.hpp>
 
 namespace Panda {
 
@@ -117,8 +114,6 @@ private:
 
     FileDocuments &m_documents;
     ProjectLoaderOutput *m_output;
-    Rain::JsonEncoder m_jsonEncoder;
-    Rain::JsonDecoder m_jsonDecoder;
     std::filesystem::file_time_type m_scriptsDllTime{};
     // Script class → the source file that registers it (scriptSource); read on the first question.
     std::unordered_map<std::string, path_t> m_scriptSources;

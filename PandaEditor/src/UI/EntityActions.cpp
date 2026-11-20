@@ -25,11 +25,11 @@
 #include <PandaEditorKit/ComponentCommands.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/Selection.hpp>
+#include <Fern/Files/AtomicWrite.hpp>
 #include <PandaUI/Core/Clipboard.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
 
-#include <fstream>
 #include <sstream>
 #include <unordered_set>
 
@@ -389,13 +389,11 @@ void EntityActions::createPrefab(Panda::UUID id) {
         if (c == '/' || c == '\\' || c == ':') { c = ' '; }
     }
     const Panda::path_t path = uniqueAssetPath(directory, name.empty() ? "Prefab" : name, ".prefab");
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        LOG_ERROR_EDITOR("The prefab %s could not be written.", path.string().c_str());
+    std::string error;
+    if (!Fern::writeFileAtomically(path, Panda::Prefabs::createFrom(entity), &error)) {
+        LOG_ERROR_EDITOR("The prefab is not made: %s.", error.c_str());
         return;
     }
-    file << Panda::Prefabs::createFrom(entity);
-    file.close();
     const Panda::AssetId prefab = handler->documents().registerCreatedAsset(path);
     if (!prefab) { return; }
     // The entities stand in the world as an instance of the new prefab from now on. Their ids

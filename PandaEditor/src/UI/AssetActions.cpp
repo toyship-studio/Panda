@@ -11,12 +11,12 @@
 
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/Selection.hpp>
+#include <Fern/Files/AtomicWrite.hpp>
 #include <PandaUI/Core/Clipboard.hpp>
 
 #include <Panda/Prefabs/Prefabs.hpp>
 
 #include <filesystem>
-#include <fstream>
 
 namespace Editor {
 
@@ -82,9 +82,11 @@ CreateActions AssetActions::contentCreateActions(const Panda::path_t &directory)
                            Panda::World scratch;
                            Panda::Entity root = scratch.instantiateEntity();
                            root.setName(path.stem().string());
-                           std::ofstream file(path);
-                           file << Panda::Prefabs::save(scratch, root);
-                           file.close();
+                           std::string error;
+                           if (!Fern::writeFileAtomically(path, Panda::Prefabs::save(scratch, root), &error)) {
+                               LOG_ERROR_EDITOR("The prefab is not made: %s.", error.c_str());
+                               return;
+                           }
                            const Panda::AssetId prefab = handler->documents().registerCreatedAsset(path);
                            created(prefab, "prefab");
                            if (prefab) { m_workspace.worldTabs().open(prefab, /*preview*/ false); }

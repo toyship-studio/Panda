@@ -130,8 +130,7 @@ bool readJsonFile(const Panda::path_t &path, T &data) {
     std::ifstream file(path);
     if (!file.is_open()) { return false; }
     Rain::JsonDecoder jsonDecoder;
-    Rain::Decoder *decoder = &jsonDecoder;
-    return decoder->decode(file, data);
+    return jsonDecoder.decode(file, data);
 }
 
 } // namespace
@@ -170,10 +169,10 @@ GameExporter::validate(const path_t &projectPath, const std::string &startWorld,
     if (startWorld.empty()) {
         errors.emplace_back(
             "The project has no start world, so the game has nowhere to start. Choose it in Settings → Project → "
-            "World (\"world\".startWorld of project.json)."
+            "World (startWorld of project.json)."
         );
     } else if (!std::filesystem::exists(projectPath / startWorld)) {
-        errors.push_back("The start world of the project is not found: " + startWorld + " (\"world\".startWorld of project.json)");
+        errors.push_back("The start world of the project is not found: " + startWorld + " (startWorld of project.json)");
     } else {
         const AssetId id = assetHandler.getAssetId(projectPath / startWorld);
         if (!id || !registry.contains(id) || registry.at(id).type != AssetType::WORLD) {
@@ -263,8 +262,7 @@ GameExporter::exportGame(const ExportSettings &settings, const path_t &projectPa
         std::ofstream reportStream(settings.reportFile, std::ios::trunc);
         if (reportStream.is_open()) {
             Rain::JsonEncoder jsonEncoder(true);
-            Rain::Encoder *encoder = &jsonEncoder;
-            encoder->encode(reportStream, result.report);
+            jsonEncoder.encode(reportStream, result.report);
         } else {
             LOG_WARN_EDITOR("The report of the cook could not be written: %s", settings.reportFile.string().c_str());
         }
@@ -302,8 +300,7 @@ bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const Exp
         LOG_ERROR_EDITOR("Failed to create %s", binPath.string().c_str());
         return false;
     }
-    Rain::Encoder *encoder = &m_binaryEncoder;
-    encoder->encode(file, runtimeManifest);
+    m_binaryEncoder.encode(file, runtimeManifest);
     file.close();
     LOG_INFO_EDITOR("Exported runtime manifest");
     return true;
@@ -467,8 +464,7 @@ void GameExporter::exportAssetRegistry(AssetHandlerEditor &assetHandler) {
         registryDto.assets.push_back(std::move(entry));
     }
     std::ostringstream stream(std::ios::binary);
-    Rain::Encoder *encoder = &m_binaryEncoder;
-    encoder->encode(stream, registryDto);
+    m_binaryEncoder.encode(stream, registryDto);
     addBytes("assets.bin", stream.str(), ENGINE_KIND);
 }
 
@@ -511,8 +507,7 @@ void GameExporter::exportMaterials(AssetHandlerEditor &assetHandler) {
         }
 
         std::ostringstream stream(std::ios::binary);
-        Rain::Encoder *encoder = &m_binaryEncoder;
-        encoder->encode(stream, dataDto);
+        m_binaryEncoder.encode(stream, dataDto);
         addBytes(getRuntimeMaterialPath(materialPath).generic_string(), stream.str(), kindName(info.type));
         cooked++;
     }
@@ -530,8 +525,7 @@ void GameExporter::exportPostprocessing(AssetHandlerEditor &assetHandler) {
             continue;
         }
         std::ostringstream stream(std::ios::binary);
-        Rain::Encoder *encoder = &m_binaryEncoder;
-        encoder->encode(stream, dataDto);
+        m_binaryEncoder.encode(stream, dataDto);
         addBytes(getRuntimePostfxPath(dataPath).generic_string(), stream.str(), kindName(info.type));
     }
 }

@@ -232,7 +232,7 @@ namespace ShaderCook {
             return false;
         }
         Rain::JsonDecoder decoder;
-        static_cast<Rain::Decoder &>(decoder).decode(file, *reflection);
+        decoder.decode(file, *reflection);
         reflection->color_fields = scanColorFieldAnnotations(fragmentExpanded);
         return true;
     }

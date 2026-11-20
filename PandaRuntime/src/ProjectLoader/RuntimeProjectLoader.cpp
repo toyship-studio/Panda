@@ -70,8 +70,7 @@ bool RuntimeProjectLoader::loadManifest(const path_t &runtimeDataPath, RuntimeMa
     path_t binPath = runtimeDataPath / "project.bin";
     std::ifstream binFile(binPath, std::ios::binary);
     if (binFile.is_open()) {
-        Rain::Decoder *decoder = &binaryDecoder;
-        if (decoder->decode(binFile, manifest)) {
+        if (binaryDecoder.decode(binFile, manifest)) {
             binFile.close();
             LOG_INFO("RUNTIME: Loaded manifest from %s", binPath.string().c_str());
             return true;

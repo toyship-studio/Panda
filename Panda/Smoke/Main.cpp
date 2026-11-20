@@ -621,23 +621,23 @@ int main(int argc, const char **argv) {
 
         std::stringstream text;
         Rain::JsonEncoder jsonEncoder(true);
-        static_cast<Rain::Encoder &>(jsonEncoder).encode(text, written);
+        jsonEncoder.encode(text, written);
         Panda::ScriptListComponentDto fromText;
         Rain::JsonDecoder jsonDecoder;
-        const bool textRead = static_cast<Rain::Decoder &>(jsonDecoder).decode(text, fromText);
+        const bool textRead = jsonDecoder.decode(text, fromText);
         report("a list field survives the world file", textRead && same(fromText));
 
         std::stringstream binary(std::ios::in | std::ios::out | std::ios::binary);
         Rain::BinaryEncoder binaryEncoder;
-        static_cast<Rain::Encoder &>(binaryEncoder).encode(binary, written);
+        binaryEncoder.encode(binary, written);
         Panda::ScriptListComponentDto fromBinary;
         Rain::BinaryDecoder binaryDecoder;
-        const bool binaryRead = static_cast<Rain::Decoder &>(binaryDecoder).decode(binary, fromBinary);
+        const bool binaryRead = binaryDecoder.decode(binary, fromBinary);
         report("a list field survives the binary world of a game", binaryRead && same(fromBinary));
 
         Panda::ReferenceCollector references;
         std::ostringstream sink;
-        static_cast<Rain::Encoder &>(references).encode(sink, written);
+        references.encode(sink, written);
         report(
             "every id of a list is a reference the cook sees",
             references.ids().count(Panda::UUID(101)) == 1 && references.ids().count(Panda::UUID(102)) == 1 &&

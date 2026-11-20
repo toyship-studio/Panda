@@ -1,6 +1,7 @@
 #include "Project/Plugins/PluginStore.hpp"
 
 #include "Project/Plugins/Semver.hpp"
+#include "Project/System/JsonFiles.hpp"
 #include "Project/System/Portal.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "Project/System/ZipArchive.hpp"
@@ -10,8 +11,6 @@
 #include <Foundation/PlatformDetection.hpp>
 #include <Panda/Application/Application.hpp>
 #include <Panda/Base/Version.hpp>
-#include <Rain/Coders/JsonDecoder.hpp>
-#include <Rain/Coders/JsonEncoder.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -37,9 +36,7 @@ namespace {
     template<typename T>
     bool decodeJson(const std::string &json, T &out) {
         std::istringstream stream(json);
-        Rain::JsonDecoder decoder;
-        Rain::Decoder *decoderPtr = &decoder;
-        return decoderPtr->decode(stream, out);
+        return Rain::JsonDecoder().decode(stream, out);
     }
 
     std::string urlEncode(std::string_view text) {
@@ -264,12 +261,8 @@ void PluginStore::onCatalogPage(uint64_t generation, int page, Fern::Net::Respon
 
 bool PluginStore::loadCachedCatalog() {
     if (m_userDirectory.empty()) { return false; }
-    std::ifstream file(registryDirectory() / "index.json");
-    if (!file.is_open()) { return false; }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
     CatalogPage data;
-    if (!decodeJson(buffer.str(), data)) { return false; }
+    if (!readJsonFile(registryDirectory() / "index.json", data)) { return false; }
     m_catalog.items = std::move(data.items);
     m_catalog.total = m_catalog.items.size();
     m_catalog.nextPage = 2;
@@ -281,11 +274,7 @@ void PluginStore::saveCachedCatalog(const CatalogPage &page) {
     // The raw answer of the portal is kept as it came: it is read back through the same type.
     std::error_code error;
     std::filesystem::create_directories(registryDirectory(), error);
-    if (error) { return; }
-    Rain::JsonEncoder encoder;
-    Rain::Encoder *encoderPtr = &encoder;
-    std::ofstream file(registryDirectory() / "index.json");
-    if (file.is_open()) { encoderPtr->encode(file, page); }
+    if (!error) { writeJsonFile(registryDirectory() / "index.json", page); } // a cache: lost, it comes again
 }
 
 /* ------------------------------ Updates ------------------------------ */
@@ -681,8 +670,7 @@ void PluginStore::installDev(const path_t &folder) {
 #endif
     }
     // The marker names the source and tells a junction from a folder on Windows.
-    std::ofstream markerFile(marker);
-    if (markerFile.is_open()) { markerFile << source.generic_string(); }
+    Fern::writeFileAtomically(marker, source.generic_string());
     LOG_INFO_EDITOR("Plugins: dev plugin %s linked to %s", manifest.id.c_str(), source.string().c_str());
     rescan();
 }
