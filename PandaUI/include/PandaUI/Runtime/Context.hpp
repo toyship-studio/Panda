@@ -182,8 +182,13 @@ public:
 
 private:
     struct PointerState {
-        View *target = nullptr;
+        View *target = nullptr; // gets the moves and the release: what took the press, or a scroll view that took the finger
         Point position;
+        // A finger: what it came down on and where, and whether the scroll views have had their
+        // offer (View::takesTouch) — once it moved past the slop, or at the down when one took it.
+        View *hit = nullptr;
+        Point downPosition;
+        bool offered = false;
     };
 
     // Registered popup focus scope (see addFocusScope).
@@ -219,6 +224,9 @@ private:
     View *focusTargetFor(View *target) const;
     void collectFocusableViews(View *view, std::vector<View *> &views) const;
     void cancelInteractionInSubtree(View *view);
+    // Offers a finger to the views from what it came down on up to the root (View::takesTouch,
+    // View::keepsTouch); the one that takes it becomes its target. Returns it, or null.
+    View *offerTouch(int pointerId, const PointerEvent &event, Point moved);
     void updateHoveredView(Point position, PointerEvent &event);
     void dispatchPointerDown(View *target, PointerEvent &event);
     void dispatchPointerUp(View *target, PointerEvent &event);

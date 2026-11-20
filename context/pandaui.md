@@ -48,6 +48,23 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   delta is zero then). A swipe belongs to the view that took its first event
   (`Context::handleScroll`): what moves under the pointer while it lasts — a form scrolling a
   viewport under the fingers — does not take the rest of it.
+  A finger scrolls a list from anywhere in it: the press goes to what is under the finger at
+  once (a button highlights), and once the finger moved 10 points (`TOUCH_SLOP`) the views from
+  it up to the root are offered the finger, nearest first (`View::takesTouch`) — a `ScrollView`
+  that can go the way the finger went takes it, and what had the press gets
+  `interactionCancelled` (a button lets go without its action). So a row that only goes sideways
+  leaves an up-and-down drag to the list around it. The list wins over a button on purpose: a
+  plain `UIScrollView` leaves the finger to a control that already has it
+  (`delaysContentTouches`, `touchesShouldCancel(in:)`), and a list of buttons scrolls there only
+  from a quick swipe. A view that works with the moving finger keeps it (`View::keepsTouch`: a
+  slider, a text field selecting, the color picker, a split divider) whichever way the finger
+  goes, so a slider or a text field in a list on a touch screen holds an up-and-down drag too
+  (UIKit hands the view the gesture, `gestureRecognizerShouldBegin(_:)`, and its slider refuses
+  only a swipe along it from the thumb); when such a list comes, `keepsTouch` gets the movement
+  as `takesTouch` does. A finger that comes down on a list
+  still moving (a point a frame or faster) stops it and presses nothing. A mouse drags a list
+  only from its background, at once, as before. `PandaSmoke` ("a finger in a scroll view")
+  holds these rules.
 - TabView: `setEmptyView` is what the content area shows while there is no tab (a hint, a way
   to open something). A tab is dragged within its bar, to any bar of its drag group, or not at
   all (`TabDrag`). Choosing a tab gives the keyboard focus to its content

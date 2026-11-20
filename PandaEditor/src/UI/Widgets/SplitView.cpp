@@ -71,6 +71,9 @@ protected:
         m_dragging = false;
         applyStyle();
     }
+    bool keepsTouch() const override {
+        return m_dragging; // the finger moves the divider: no scroll view takes it
+    }
     void hoverChanged(bool hovered) override {
         m_hovered = hovered;
         applyStyle();

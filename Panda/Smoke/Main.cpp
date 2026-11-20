@@ -48,6 +48,10 @@
 #endif
 
 #include <Rain/Value.hpp>
+#include <PandaUI/Elements/Slider.hpp>
+#include <PandaUI/Elements/Control.hpp>
+#include <PandaUI/Elements/ScrollView.hpp>
+#include <PandaUI/Runtime/Context.hpp>
 
 #include <fstream>
 #include <memory>
@@ -545,6 +549,112 @@ int main(int argc, const char **argv) {
         const Rain::Value *member = document.find(key);
         return member != nullptr ? Rain::writeJson(*member) : std::string();
     };
+
+    // A finger in a scroll view (PandaUI::Context, View::takesTouch), as on iOS: a drag that begins
+    // on a button scrolls the list and the button lets go without its action; a tap is the button's;
+    // an up-and-down drag on a row that goes sideways moves the list around it, a sideways one the
+    // row; a slider keeps its finger; a finger coming down on a list still moving stops it and
+    // presses nothing.
+    std::printf("a finger in a scroll view\n");
+    {
+        using namespace PandaUI;
+        Context context;
+        auto root = std::make_shared<View>();
+        root->layout().setSize(Size(300.f, 200.f));
+        auto list = std::make_shared<ScrollView>();
+        list->layout().setSize(Size(300.f, 200.f));
+        list->setAutomaticallyAdjustsContentSize(true);
+        auto column = std::make_shared<View>();
+        column->layout().setFlexDirection(FlexDirection::Column);
+        column->layout().setWidth(Length::points(300.f));
+        list->addContentSubview(column);
+        // The content, 460 high in a list 200 high: a row of five buttons that goes sideways
+        // (y 0..60), a slider (60..100), six buttons (100..460).
+        int rowPressed = -1, pressed = -1;
+        auto row = std::make_shared<ScrollView>();
+        row->setScrollDirection(ScrollDirection::Horizontal);
+        row->layout().setSize(Size(300.f, 60.f));
+        row->setAutomaticallyAdjustsContentSize(true);
+        auto strip = std::make_shared<View>();
+        strip->layout().setFlexDirection(FlexDirection::Row);
+        row->addContentSubview(strip);
+        for (int i = 0; i < 5; i++) {
+            auto button = std::make_shared<Control>();
+            button->layout().setSize(Size(120.f, 60.f));
+            button->setPrimaryAction([&rowPressed, i](Control &) { rowPressed = i; });
+            strip->addSubview(button);
+        }
+        column->addSubview(row);
+        auto slider = std::make_shared<Slider>();
+        slider->layout().setSize(Size(300.f, 40.f));
+        column->addSubview(slider);
+        for (int i = 0; i < 6; i++) {
+            auto button = std::make_shared<Control>();
+            button->layout().setSize(Size(300.f, 60.f));
+            button->setPrimaryAction([&pressed, i](Control &) { pressed = i; });
+            column->addSubview(button);
+        }
+        root->addSubview(list);
+        context.setRootView(root);
+        context.updateViewportSize(Size(300.f, 200.f));
+        context.layoutIfNeeded();
+
+        int finger = 0;
+        const auto drag = [&](Point from, Point to, int steps) {
+            PointerEvent event;
+            event.type = PointerType::Touch;
+            event.pointerId = ++finger;
+            event.position = from;
+            context.handlePointerDown(event);
+            for (int step = 1; step <= steps; step++) {
+                const float t = static_cast<float>(step) / static_cast<float>(steps);
+                event.position = Point(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+                context.handlePointerMove(event);
+            }
+            context.handlePointerUp(event);
+        };
+        // Back to the top, standing still: what a drag left of its fling is spent.
+        const auto settle = [&] {
+            for (int frame = 0; frame < 240; frame++) {
+                list->update(1.0 / 60.0);
+                row->update(1.0 / 60.0);
+            }
+            list->setContentOffset(Point(0.f, 0.f));
+            row->setContentOffset(Point(0.f, 0.f));
+            pressed = rowPressed = -1;
+        };
+
+        drag(Point(150.f, 150.f), Point(150.f, 70.f), 8); // up from the first button
+        report("a drag from a button scrolls the list", list->getContentOffset().y > 40.f);
+        report("the button lets go without its action", pressed == -1);
+        settle();
+
+        drag(Point(150.f, 150.f), Point(150.f, 150.f), 0);
+        report("a tap is the button's", pressed == 0 && list->getContentOffset().y == 0.f);
+        settle();
+
+        drag(Point(150.f, 50.f), Point(150.f, 5.f), 6); // up on the row
+        report("up and down on a row: the list around it moves",
+               list->getContentOffset().y > 20.f && row->getContentOffset().x == 0.f && rowPressed == -1);
+        settle();
+
+        drag(Point(200.f, 30.f), Point(60.f, 30.f), 8); // sideways on the row
+        report("sideways on the row: the row moves",
+               row->getContentOffset().x > 60.f && list->getContentOffset().y == 0.f && rowPressed == -1);
+        settle();
+
+        drag(Point(30.f, 80.f), Point(200.f, -120.f), 8); // over the slider, more up than to the right
+        report("a slider keeps its finger", slider->getValue() > 0.6f && list->getContentOffset().y == 0.f);
+        settle();
+
+        drag(Point(150.f, 190.f), Point(150.f, 110.f), 2); // a flick: the list goes on by itself
+        const float flung = list->getContentOffset().y;
+        drag(Point(150.f, 150.f), Point(150.f, 150.f), 0); // a finger on it while it moves
+        const float caught = list->getContentOffset().y;
+        for (int frame = 0; frame < 30; frame++) { list->update(1.0 / 60.0); }
+        report("a finger on a moving list stops it and presses nothing",
+               flung > 0.f && pressed == -1 && list->getContentOffset().y == caught);
+    }
 
     // Static tag (an empty entt component): an entity duplicate, a world copy (Play) and .world
     // carry it over; removing it takes it away.

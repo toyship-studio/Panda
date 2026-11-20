@@ -17,6 +17,9 @@ namespace {
 
     constexpr double TOOLTIP_DELAY = 0.5; // seconds of hovering before the tooltip is shown
     constexpr float DRAG_THRESHOLD = 5.f; // movement (px) from the press to the start of a drag
+    // How far a finger moves before it is a drag (the hysteresis of UIKit's pan): a scroll view may
+    // take it then. Less, and a tap that wobbles would scroll.
+    constexpr float TOUCH_SLOP = 10.f;
 
     bool isViewOrDescendantOf(View *target, View *root) {
         if (!target || !root) { return false; }
@@ -281,8 +284,12 @@ bool Context::handlePointerDown(PointerEvent event) {
 
     event.isPrimary = m_touchPointers.empty();
     View *target = hitTest(event.position);
+    // Before the dispatch, as the mouse capture: a handler may destroy the view (forgetView clears it).
+    m_touchPointers[event.pointerId] = {target, event.position, target, event.position, false};
+    // A scroll view still moving under the finger takes it at once: the touch stops it and presses
+    // nothing (UIKit). Otherwise the press goes to what is under the finger, as a click does.
+    if (offerTouch(event.pointerId, event, Point()) != nullptr) { return true; }
     setFocusedView(focusTargetFor(target));
-    m_touchPointers[event.pointerId] = {target, event.position}; // before the dispatch, as the mouse capture
     dispatchPointerDown(target, event);
     if (!event.isHandled) { m_touchPointers[event.pointerId].target = nullptr; }
     return event.isHandled;
@@ -351,10 +358,17 @@ bool Context::handlePointerMove(PointerEvent event) {
     if (it != m_touchPointers.end()) {
         event.delta = Point(event.position.x - it->second.position.x, event.position.y - it->second.position.y);
         it->second.position = event.position;
-        target = it->second.target ? it->second.target : hitTest(event.position);
+        // Past the slop the finger is a drag: a scroll view it came down in may take it now, from
+        // a button as well as from its background — what had the press lets go.
+        const Point moved(event.position.x - it->second.downPosition.x, event.position.y - it->second.downPosition.y);
+        if (!it->second.offered && moved.x * moved.x + moved.y * moved.y >= TOUCH_SLOP * TOUCH_SLOP) {
+            offerTouch(event.pointerId, event, moved);
+            it = m_touchPointers.find(event.pointerId); // what was cancelled may have changed the views
+        }
+        target = it != m_touchPointers.end() && it->second.target ? it->second.target : hitTest(event.position);
     } else {
         target = hitTest(event.position);
-        m_touchPointers[event.pointerId] = {target, event.position};
+        m_touchPointers[event.pointerId] = {target, event.position, target, event.position, true};
     }
 
     event.isPrimary = m_touchPointers.begin()->first == event.pointerId;
@@ -591,6 +605,7 @@ void Context::forgetView(View *view) {
     }
     for (auto &entry : m_touchPointers) {
         if (isViewOrDescendantOf(entry.second.target, view)) { entry.second.target = nullptr; }
+        if (isViewOrDescendantOf(entry.second.hit, view)) { entry.second.hit = nullptr; }
     }
     for (OverlayFocusRestore &entry : m_overlayFocusRestore) {
         if (isViewOrDescendantOf(entry.previousFocus, view)) { entry.previousFocus = nullptr; }
@@ -855,6 +870,33 @@ void Context::cancelInteractionInSubtree(View *view) {
     for (const std::shared_ptr<View> &subview : view->getSubviews()) {
         cancelInteractionInSubtree(subview.get());
     }
+}
+
+View *Context::offerTouch(int pointerId, const PointerEvent &event, Point moved) {
+    auto it = m_touchPointers.find(pointerId);
+    if (it == m_touchPointers.end()) { return nullptr; }
+    View *hit = it->second.hit;
+    const bool atDown = moved.x == 0.f && moved.y == 0.f;
+    if (!atDown) { it->second.offered = true; }
+    // Nearest first: an inner scroll view that can go the way the finger went takes it before an
+    // outer one; a row that only goes sideways leaves an up-and-down drag to the list around it.
+    for (View *view = hit; view != nullptr; view = view->getSuperview()) {
+        if (view->keepsTouch()) { return nullptr; }
+        if (!view->takesTouch(event, moved)) { continue; }
+        // The views under the finger that had the press let go of it: no action on the release.
+        if (!atDown) {
+            for (View *below = hit; below != nullptr && below != view; below = below->getSuperview()) {
+                below->interactionCancelled();
+            }
+        }
+        it = m_touchPointers.find(pointerId);
+        if (it != m_touchPointers.end()) {
+            it->second.target = view;
+            it->second.offered = true;
+        }
+        return view;
+    }
+    return nullptr;
 }
 
 void Context::updateHoveredView(Point position, PointerEvent &event) {

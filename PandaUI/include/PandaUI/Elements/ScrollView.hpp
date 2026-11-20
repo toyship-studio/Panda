@@ -58,6 +58,8 @@ public:
     bool pointerDown(PointerEvent &event) override;
     bool pointerMove(PointerEvent &event) override;
     bool pointerUp(PointerEvent &event) override;
+    bool takesTouch(const PointerEvent &event, Point moved) override;
+    void interactionCancelled() override;
     bool scroll(ScrollEvent &event) override;
     void update(double deltaTime) override;
 

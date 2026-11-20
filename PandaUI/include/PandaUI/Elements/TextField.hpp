@@ -98,6 +98,9 @@ public:
     bool pointerDown(PointerEvent &event) override;
     bool pointerUp(PointerEvent &event) override;
     bool pointerMove(PointerEvent &event) override;
+    bool keepsTouch() const override {
+        return m_isSelectingWithPointer; // the finger selects text: no scroll view takes it
+    }
     bool keyDown(KeyEvent &event) override;
     bool textInput(TextInputEvent &event) override;
     void interactionCancelled() override;

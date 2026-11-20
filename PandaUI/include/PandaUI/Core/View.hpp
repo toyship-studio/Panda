@@ -204,6 +204,21 @@ public:
     virtual bool scroll(ScrollEvent &event) {
         return false;
     }
+    // A finger that came down on this view or on what it holds is offered to it, nearest view
+    // first (Context): at the down with `moved` zero, and once the finger moved past a few points
+    // with how far it went. A view that scrolls with a finger takes it (true) — as a UIScrollView
+    // takes a pan that began on a button: it gets the moves and the release of that finger from then
+    // on, and the views under the finger that had the press get interactionCancelled (a button lets
+    // go without its action). A scroll view still moving takes it at the down: the touch stops it and
+    // presses nothing.
+    virtual bool takesTouch(const PointerEvent &event, Point moved) {
+        return false;
+    }
+    // A view that works with the moving finger it was pressed with — a slider, text being selected
+    // — keeps it: no scroll view around it is offered the finger.
+    virtual bool keepsTouch() const {
+        return false;
+    }
     virtual bool keyDown(KeyEvent &event) {
         return false;
     }

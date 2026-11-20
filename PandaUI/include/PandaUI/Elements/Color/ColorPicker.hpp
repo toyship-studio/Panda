@@ -44,6 +44,9 @@ private:
 
     bool pointerDown(PointerEvent &event) override;
     bool pointerMove(PointerEvent &event) override;
+    bool keepsTouch() const override {
+        return m_dragTarget != DragTarget::None; // the finger picks a color: no scroll view takes it
+    }
     bool pointerUp(PointerEvent &event) override;
     void draw(float offsetX, float offsetY) override;
     void themeChanged() override;

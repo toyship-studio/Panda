@@ -16,6 +16,7 @@ namespace {
     constexpr float DRAG_INERTIA_VELOCITY = 40.f;     // Converts pointer drag delta into post-release scroll velocity.
     constexpr float SCROLL_DECELERATION = 4.5f;       // Exponential slowdown for drag inertia.
     constexpr float SCROLL_STOP_VELOCITY = 2.5f;      // Velocity threshold where inertial scrolling snaps to stop.
+    constexpr float CATCH_VELOCITY = 60.f;            // Faster (a point a frame) a finger coming down stops it and presses nothing.
     constexpr float BOUNCE_STIFFNESS = 180.f;         // Spring strength pulling overscroll back to zero.
     constexpr float BOUNCE_DAMPING = 24.f;            // Spring damping; higher values reduce oscillation.
     constexpr float BOUNCE_SNAP_DISTANCE = 0.25f;     // Distance threshold where bounce snaps exactly to zero.
@@ -135,7 +136,9 @@ void ScrollView::setBounces(bool bounces) {
 
 bool ScrollView::pointerDown(PointerEvent &event) {
     if (!m_scrollEnabled) { return false; }
-    if (event.type == PointerType::Mouse && event.button != PointerButton::Left) { return false; }
+    // A finger is the context's to decide (takesTouch): it may begin on a button of the content and
+    // still scroll. The left button of a mouse drags the content at once.
+    if (event.type != PointerType::Mouse || event.button != PointerButton::Left) { return false; }
     m_isDragging = true;
     m_isScrollGestureActive = false;
     m_ignoreMomentumUntilNextGesture = false;
@@ -162,6 +165,34 @@ bool ScrollView::pointerUp(PointerEvent &event) {
     if (!m_isDragging || event.pointerId != m_dragPointerId) { return false; }
     m_isDragging = false;
     return true;
+}
+
+bool ScrollView::takesTouch(const PointerEvent &event, Point moved) {
+    if (!m_scrollEnabled || m_isDragging) { return false; }
+    if (moved.x == 0.f && moved.y == 0.f) {
+        // At the down: only a scroll view still moving to the eye — the finger stops it. What is left
+        // of a slow drag does not swallow the tap of a button.
+        const float speed = std::sqrt(m_scrollVelocity.x * m_scrollVelocity.x + m_scrollVelocity.y * m_scrollVelocity.y);
+        if (speed < CATCH_VELOCITY && !hasOverscroll()) { return false; }
+    } else {
+        // Past the slop: the way the finger went, if the content can go along it.
+        const bool across = std::abs(moved.x) > std::abs(moved.y);
+        const bool can = across ? allowsHorizontalScroll() && maxContentOffsetX() > 0.f
+                                : allowsVerticalScroll() && maxContentOffsetY() > 0.f;
+        if (!can) { return false; }
+    }
+    m_isDragging = true;
+    m_isScrollGestureActive = false;
+    m_ignoreMomentumUntilNextGesture = false;
+    m_scrollVelocity = Point();
+    m_overscrollVelocity = Point();
+    m_dragPointerId = event.pointerId;
+    m_lastDragPosition = event.position; // the slop is not a jump: the content goes from here
+    return true;
+}
+
+void ScrollView::interactionCancelled() {
+    m_isDragging = false; // another took the finger, or the view left the tree
 }
 
 bool ScrollView::scroll(ScrollEvent &event) {

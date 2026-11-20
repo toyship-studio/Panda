@@ -62,6 +62,9 @@ public:
 private:
     bool pointerDown(PointerEvent &event) override;
     bool pointerMove(PointerEvent &event) override;
+    bool keepsTouch() const override {
+        return m_dragging; // the knob follows the finger: no scroll view takes it
+    }
     bool pointerUp(PointerEvent &event) override;
     bool keyDown(KeyEvent &event) override;
     void controlStateChanged(ControlState previous, ControlState current) override;
