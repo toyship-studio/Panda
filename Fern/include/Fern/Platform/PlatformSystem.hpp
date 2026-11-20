@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Fern/Events/EventQueue.hpp"
+#include "Fern/Haptic.hpp"
 #include "Fern/Window/Window.hpp"
 
 #include <Foundation/IO/StreamReaderI.hpp>
@@ -24,6 +25,8 @@ public:
     virtual void setApplicationIconLabel(const char *label) {}
     // Fern::showAlert. Nothing where the platform has no message of its own to show.
     virtual void showAlert(const char *title, const char *message) {}
+    // Fern::playHaptic. Nothing where the device has no motor in the hand (the desktops).
+    virtual void playHaptic(Haptic haptic) {}
     virtual Vec2 getCursorPosition() const = 0;
     virtual const char *getClipboardText() = 0;
     virtual void setClipboardText(const char *text) = 0;

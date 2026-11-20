@@ -4,6 +4,9 @@
 #import "UIKitWindow/WonderController.h"
 
 #import <Foundation/IO/FileStreamReader.hpp>
+#import <UIKit/UIKit.h>
+
+#include <algorithm>
 
 extern std::filesystem::path g_ios_resources_path;
 
@@ -27,9 +30,13 @@ void IOS_System::disposeWindow(Window *window) {
 
 void IOS_System::pollEvents() {}
 
-Vec2 IOS_System::getCursorPosition() const {}
+Vec2 IOS_System::getCursorPosition() const {
+    return Vec2(); // fingers, no cursor
+}
 
-const char* IOS_System::getClipboardText() {}
+const char* IOS_System::getClipboardText() {
+    return ""; // not read from the system yet
+}
 
 void IOS_System::setClipboardText(const char *text) {}
 
@@ -40,6 +47,28 @@ bool IOS_System::isCursorLocked() {
 }
 
 void IOS_System::setCursor(Cursor cursor) {}
+
+void IOS_System::playHaptic(Haptic haptic) {
+    // A generator per strength, kept and prepared again after each tap: a prepared one taps
+    // at once. They live as long as the application.
+    static UIImpactFeedbackGenerator *generators[3] = {nil, nil, nil};
+    const int index = std::clamp(static_cast<int>(haptic), 0, 2);
+    void (^tap)(void) = ^{
+        if (generators[index] == nil) {
+            const UIImpactFeedbackStyle styles[3] = {
+                UIImpactFeedbackStyleLight, UIImpactFeedbackStyleMedium, UIImpactFeedbackStyleHeavy};
+            generators[index] = [[UIImpactFeedbackGenerator alloc] initWithStyle:styles[index]];
+        }
+        [generators[index] impactOccurred];
+        [generators[index] prepare];
+    };
+    // UIKit belongs to the main thread.
+    if ([NSThread isMainThread]) {
+        tap();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), tap);
+    }
+}
 
 uint64_t IOS_System::getMilliSeconds() const {
     return (uint64_t)([[NSProcessInfo processInfo] systemUptime] * 1000);

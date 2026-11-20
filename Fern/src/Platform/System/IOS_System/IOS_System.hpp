@@ -24,6 +24,7 @@ public:
     void setCursorLocked(bool locked) override;
     bool isCursorLocked() override;
     void setCursor(Cursor cursor) override;
+    void playHaptic(Haptic haptic) override;
     uint64_t getMilliSeconds() const override;
     const std::filesystem::path &getStaticResourcesPath() override;
     std::filesystem::path getPersistentDataPath(const char *appName) override;

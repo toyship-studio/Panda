@@ -91,6 +91,7 @@ namespace ExternalCalls {
     Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
     Scripting::MeshReadFn mesh_Read = nullptr;
     Scripting::WorldInstantiateFn world_Instantiate = nullptr;
+    Scripting::HapticsPlayFn haptics_Play = nullptr;
     Console_Log console_Log = nullptr;
     UI_GetMainWindow ui_GetMainWindow = nullptr;
     UI_CreateWindow ui_CreateWindow = nullptr;
@@ -319,6 +320,7 @@ namespace {
         worldLighting_SetEnvironmentMap = hostApi.worldLighting_SetEnvironmentMap;
         mesh_Read = hostApi.mesh_Read;
         world_Instantiate = hostApi.world_Instantiate;
+        haptics_Play = hostApi.haptics_Play;
         console_Log = hostApi.console_Log;
         ui_GetMainWindow = hostApi.ui_GetMainWindow;
         ui_CreateWindow = hostApi.ui_CreateWindow;

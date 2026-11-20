@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 38;
+constexpr uint32_t SCRIPT_ABI_VERSION = 39;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -169,6 +169,8 @@ using MeshReadFn = bool (*)(
 // them. The scripts of the copy are created and started before the call returns. 0 — nothing
 // was made: the handle names neither.
 using WorldInstantiateFn = Handle (*)(Handle original, Handle parent, const float *position, const float *rotation);
+// v39: a short tap felt in the hand (Fern::playHaptic): 0 light, 1 medium, 2 heavy.
+using HapticsPlayFn = void (*)(uint32_t haptic);
 
 using ConsoleLogFn = void (*)(int type, const char *);
 
@@ -317,6 +319,8 @@ struct ScriptHostApi final {
     MeshReadFn mesh_Read = nullptr;
     // v38
     WorldInstantiateFn world_Instantiate = nullptr;
+    // v39
+    HapticsPlayFn haptics_Play = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

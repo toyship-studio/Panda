@@ -24,7 +24,9 @@ public:
         return m_dpi;
     }
     Fern::EdgeInsets getSafeAreaInsets() override;
-    Fern::Vec2 getCursorPosition() override {}
+    Fern::Vec2 getCursorPosition() override {
+        return Fern::Vec2(); // fingers, no cursor
+    }
     bool isFocused() override {
         return true;
     }

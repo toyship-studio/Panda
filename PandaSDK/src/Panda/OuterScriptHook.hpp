@@ -159,6 +159,7 @@ namespace ExternalCalls {
     extern Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap;
     extern Scripting::MeshReadFn mesh_Read;
     extern Scripting::WorldInstantiateFn world_Instantiate;
+    extern Scripting::HapticsPlayFn haptics_Play;
 
     using Console_Log = Scripting::ConsoleLogFn;
     extern Console_Log console_Log;

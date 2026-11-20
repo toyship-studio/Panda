@@ -463,9 +463,10 @@ LastOpenedProjectWindowState ProjectLoader::getLastWindowState() {
 
 void ProjectLoader::saveProject() {
     if (!hasOpenedProject()) { return; }
-    // project.json is written only when it is not newer than what the editor read: an edit made on
-    // disk and not taken by Reload yet stays.
-    m_documents.projectSettingsFile().saveUnasked();
+    // project.json is not written here: the file is the user's, and the editor writes it on Save
+    // only — an edit of the settings has asked about itself before a project closes. A write
+    // nobody asked for would put into the file what the editor holds and the file does not: the
+    // defaults of a key the file lacks, the sections of modules in the order the editor knows.
     ProjectSession session = m_documents.session(); // the open worlds
     session.exportTarget = m_projectSession.exportTarget;
     session.exportConfiguration = m_projectSession.exportConfiguration;

@@ -16,8 +16,9 @@ and background jobs (`PandaAsync`).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
   context, native menu, the file watch (`Fern::FileWatcher`, below), the writing of a file whole
-  or not at all (`Fern::writeFileAtomically`, below), and the network layer `Fern::Net` on the
-  stacks of the systems
+  or not at all (`Fern::writeFileAtomically`, below), a haptic tap (`Fern::playHaptic`: iOS plays
+  it, the desktops have no motor in the hand and do nothing), and the network layer `Fern::Net`
+  on the stacks of the systems
   (`context/networking.md`); it links PandaAsync for the completions of requests. Every input
   event carries the modifiers of its moment (`Fern::Modifiers`, read from the OS by the
   platform), so no consumer tracks the modifier state: the PandaUI hosts copy it into their
@@ -330,7 +331,9 @@ itself. Everything of the model is in one place, `PandaEditor/src/Project/Docume
   entities and back (`context/prefabs.md`);
 - `SettingsFile` — a settings scope and its JSON file: `settings.json` of the user (the editor
   scope, written on every change) and `.Panda/project.json` (the project scope, edits wait for
-  Save);
+  Save, and the file is written on Save only — never at the close of a project or the exit, so
+  a file the user did not ask to change keeps its keys, its order and what the editor has no
+  type for);
 - `AssetFile` — a loaded asset and its file. The asset database owns the asset (a texture the
   renderer uses exists without a document), so this document is a view made when needed;
 - `FileDocuments` — the one owner: the two settings files and the open worlds, the asset
@@ -1047,7 +1050,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (38 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (39 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
@@ -1063,7 +1066,8 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the window being minimized (`Fern` `WindowMinimized` / `WindowRestored`) and later from the
   background of a mobile platform. v38 appended `world_Instantiate` to `ScriptHostApi`
   (`WorldAPI::instantiate`): a copy of what a handle names — a duplicate of an entity of the
-  world, or a new instance of the prefab whose asset id the handle is.
+  world, or a new instance of the prefab whose asset id the handle is. v39 appended
+  `haptics_Play` (`Bamboo::Haptics::play`, through `Fern::playHaptic`).
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity

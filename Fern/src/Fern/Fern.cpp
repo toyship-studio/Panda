@@ -59,6 +59,11 @@ void showAlert(const char *title, const char *message) {
     s_system->showAlert(title != nullptr ? title : "", message != nullptr ? message : "");
 }
 
+void playHaptic(Haptic haptic) {
+    // A game may tap before Fern is up or after it is down (a headless check): nothing is felt then.
+    if (s_system != nullptr) { s_system->playHaptic(haptic); }
+}
+
 void pollEvents() {
     PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
     s_system->pollEvents();

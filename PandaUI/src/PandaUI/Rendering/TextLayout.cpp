@@ -61,6 +61,16 @@ namespace {
         return codepoint == ' ' || codepoint == '\t';
     }
 
+    // A mark a line may end after, staying on it: the joints of a name or a path —
+    // blocks_ | albedo.png, Assets/ | Models, nightstand. | gltf — and a hyphen; not a minus before
+    // a number, not the point of a number.
+    bool breaksAfter(uint32_t codepoint, uint32_t next) {
+        if (codepoint == '_' || codepoint == '/' || codepoint == '\\') { return true; }
+        const bool letterNext = (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z');
+        if (codepoint == '.') { return letterNext; }
+        return codepoint == '-' && !(next >= '0' && next <= '9');
+    }
+
     // A glyph the face lacks comes from its fallback chain, scaled by that atlas: the advance asks the
     // atlas itself.
     float advanceForCodepoint(const FontAtlas &font, uint32_t codepoint, float fontSize) {
@@ -124,8 +134,10 @@ namespace {
         std::vector<LineSlice> slices;
         const bool hasWidthLimit = std::isfinite(maxWidth);
 
+        constexpr size_t NONE = std::numeric_limits<size_t>::max();
         size_t lineStart = 0;
-        size_t lastBreak = std::numeric_limits<size_t>::max();
+        // The last place the line may end at: where it ends, and where the next one begins.
+        size_t breakEnd = NONE, breakNext = NONE;
         float lineWidth = 0.f;
 
         for (size_t index = 0; index < runs.size();) {
@@ -134,7 +146,7 @@ namespace {
                 slices.push_back({lineStart, index});
                 ++index;
                 lineStart = index;
-                lastBreak = std::numeric_limits<size_t>::max();
+                breakEnd = breakNext = NONE;
                 lineWidth = 0.f;
                 continue;
             }
@@ -144,21 +156,26 @@ namespace {
                 size_t lineEnd = index;
                 size_t nextLineStart = index;
 
-                if (lastBreak != std::numeric_limits<size_t>::max() && lastBreak > lineStart) {
-                    lineEnd = lastBreak;
-                    nextLineStart = skipLeadingWhitespace(runs, lastBreak + 1);
+                if (breakEnd != NONE && breakEnd > lineStart) {
+                    lineEnd = breakEnd;
+                    nextLineStart = skipLeadingWhitespace(runs, breakNext);
                 }
 
                 slices.push_back({lineStart, lineEnd});
                 lineStart = nextLineStart;
                 index = nextLineStart;
-                lastBreak = std::numeric_limits<size_t>::max();
+                breakEnd = breakNext = NONE;
                 lineWidth = 0.f;
                 continue;
             }
 
             lineWidth = nextLineWidth;
-            if (isWrappingWhitespace(run.codepoint)) { lastBreak = index; }
+            if (isWrappingWhitespace(run.codepoint)) {
+                breakEnd = index; // the space is not on either line
+                breakNext = index + 1;
+            } else if (index + 1 < runs.size() && breaksAfter(run.codepoint, runs[index + 1].codepoint)) {
+                breakEnd = breakNext = index + 1;
+            }
             ++index;
         }
 

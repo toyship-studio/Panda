@@ -96,6 +96,11 @@ namespace InternalCalls {
         return length;
     }
 
+    void haptics_Play(uint32_t haptic) {
+        // The platform decides: a phone plays it on its motor, a desktop has none in the hand.
+        Fern::playHaptic(static_cast<Fern::Haptic>(std::min<uint32_t>(haptic, 2)));
+    }
+
     /// INPUT
 
     bool input_IsKeyPressed(int key) {
@@ -971,6 +976,7 @@ namespace {
         s_hostApi.worldLighting_SetEnvironmentMap = InternalCalls::worldLighting_SetEnvironmentMap;
         s_hostApi.mesh_Read = InternalCalls::mesh_Read;
         s_hostApi.world_Instantiate = InternalCalls::world_Instantiate;
+        s_hostApi.haptics_Play = InternalCalls::haptics_Play;
         s_hostApi.console_Log = InternalCalls::console_Log;
         GameUI::bindHostApi(s_hostApi);
 

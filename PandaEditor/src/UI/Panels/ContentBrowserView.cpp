@@ -221,7 +221,11 @@ void ContentBrowserView::addSubviews() {
 
     // --- Grid: subfolders + files of the current folder (data/thumbnails from ContentBrowserDataSource) ---
     // A cell holds the preview and two lines of the name: a file name is rarely one short word.
-    m_grid = std::make_shared<CollectionView>(std::make_shared<GridCollectionLayout>(Size(100.f, 108.f), 10.f, 6.f));
+    // The cell is little wider than the preview — a name of some thirteen letters takes one line, a
+    // longer one goes on in the second — so the previews stand close, as the tiles of one grid.
+    m_grid = std::make_shared<CollectionView>(
+        std::make_shared<GridCollectionLayout>(Size(PREVIEW_SIDE + 22.f, 108.f), 4.f, 6.f)
+    );
     m_grid->setAccessibilityId("files");
     m_grid->setSelectionMode(CollectionSelectionMode::Multiple);
     m_grid->layout().setFlexGrow(1.f);

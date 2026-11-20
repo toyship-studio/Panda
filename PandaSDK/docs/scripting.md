@@ -61,6 +61,10 @@ REGISTER_SCRIPT(MoveScript)
   the Game tab counts for pointer input): typing into the inspector or clicking the Hierarchy
   during Play does not reach the scripts. The keys of the window are released when it loses the
   focus.
+- Haptics. `Haptics::play(Haptic::Light)` (`Bamboo/Haptics.hpp`) — a short tap felt in the hand,
+  the answer of a phone to what a finger did; `Light`, `Medium`, `Heavy` say how firm. iOS plays
+  it on its motor and keeps to the switch of the system haptics; the editor and the desktops have
+  no motor in the hand, and the call does nothing there — a game calls it wherever it runs.
 - The world. A game runs one world at a time, and a script never names it: `WorldAPI` and
   `WorldLightingAPI` act in the world the script runs in, an `EntityHandle` is an entity of that
   world. `WorldAPI::load` replaces the world with another world file at the end of the frame.

@@ -3,6 +3,7 @@
 #include <Foundation/IO/StreamReaderI.hpp>
 #include <filesystem>
 
+#include "Fern/Haptic.hpp"
 #include "Fern/Window/Window.hpp"
 #include "Fern/Window/Menu.hpp"
 #include "Fern/Events/EventQueue.hpp"
@@ -29,6 +30,10 @@ bool startsInBackground();
 /// has to say when it cannot say it in a window of its own (a game whose data did not load).
 /// Returns when the message is closed. macOS and Windows show it; elsewhere nothing happens.
 void showAlert(const char *title, const char *message);
+/// A short tap felt in the hand: the answer of a phone to what a finger did — a thing broken, a
+/// choice made. iOS plays it on its motor (UIImpactFeedbackGenerator) and keeps to the switch of
+/// the system haptics; a desktop has no motor in the hand, and nothing happens there.
+void playHaptic(Haptic haptic);
 /// The window is created with a context of the build's active graphics API
 /// (Foundation::ACTIVE_GRAPHICS_API; selected by the PANDA_SHADER_BACKEND CMake option).
 /// Never explicitly delete the window, use disposeWindow() instead.

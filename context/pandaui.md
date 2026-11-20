@@ -37,7 +37,10 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   its texture, a ScrollView takes contentSize from its content view. Hard-coded sizes are a design
   decision only.
 - Text: one `TextLayout` serves Label (`numberOfLines`) and TextField (0 means multiline). Text is
-  one of the most important and complex parts of the library.
+  one of the most important and complex parts of the library. A line ends at a space, or after a
+  joint of a name or a path (`_`, `/`, `\`, a hyphen not before a digit, a point before a letter:
+  `blocks_ | albedo.png`, `nightstand. | gltf`), the mark staying on the line; a word with no
+  such place is cut where the line is full.
 - Input: pointer events that know their type (mouse, touch, pen), hover, scroll, key, text input,
   focus, pointer capture. Hit testing is in the core; the focus owner is in `Context`, with a Tab
   chain; modifiers travel in `PointerEvent`. A `ScrollEvent` is a wheel, a two-finger swipe of a
