@@ -10,7 +10,9 @@
 #include <Miren/Miren.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace Panda {
@@ -71,6 +73,10 @@ public:
     std::vector<Entity> findAllByTag(const char *tag);
     Entity getById(UUID id);
     std::unordered_set<Entity> getById(std::unordered_set<UUID> ids);
+    // The entity and everything under it: a parent before its children, the children in their
+    // order. A deleted entity is not in it (nor is what stands under it), and neither is one
+    // that `skip` says yes to. An invalid entity — nothing.
+    std::vector<Entity> subtree(Entity entity, const std::function<bool(Entity)> &skip = {});
     // Entity by registry handle (the handle comes from a view of this world: getAllEntitiesWith).
     Entity entity(entt::entity handle) {
         return Entity(handle, this);
@@ -196,9 +202,15 @@ public:
     // an entity outside the copied ones keeps its id. In a running world the copy lives at once:
     // the systems get its entities, its scripts are created and started.
     Entity duplicateEntity(Entity entity, const EntityPlacement &placement = {});
-    // A copy of an entity of ANOTHER world with everything under it, as a root of this world, with
-    // new ids. What a paste is made of.
-    Entity importEntity(World &source, Entity entity);
+    // A copy of an entity of ANOTHER world with everything under it, with new ids: a root of this
+    // world, or under the parent of the placement with its transform as it was under its own.
+    // What a paste is made of, and what Apply puts into a prefab. `ids` — the id of every copy by
+    // the id of its original; `skip` — an entity under it that is not copied, with everything
+    // under it.
+    Entity importEntity(
+        World &source, Entity entity, const EntityPlacement &placement = {}, std::unordered_map<UUID, UUID> *ids = nullptr,
+        const std::function<bool(Entity)> &skip = {}
+    );
     // A new instance of a prefab as a root of this world: copies of the entities of the prefab,
     // each marked with where it came from (PrefabComponent). `rootId` — the id of the root of the
     // instance, 0 for a new one; the ids of the entities under it are derived from it
@@ -240,7 +252,10 @@ private:
     // world for a duplicate, another one for an import, the world of a prefab for an instance —
     // then `prefab` is its asset and every copy is marked as a part of the instance. `copies`
     // gets the copied entities, the root first.
-    Entity copySubtree(World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies);
+    Entity copySubtree(
+        World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies,
+        std::unordered_map<UUID, UUID> *idsOut = nullptr, const std::function<bool(Entity)> &skip = {}
+    );
     // The copy takes its place — under `parent`, at the pose of the placement — and, in a running
     // world, comes to life: the systems hear of its entities, which have just appeared with all
     // their components, and their scripts are created and started where they stand.

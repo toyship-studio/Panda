@@ -2,7 +2,9 @@
 
 A project is a folder with `Assets/` (the assets), `Scripts/<ProjectName>/` (C++ scripts),
 `Export/` (the build setup of the game) and `.Panda/` (service data: project settings, cooked
-data, caches). **The assets of a project are the files of `Assets/`**: a file elsewhere in the
+data, caches). The name of the project is `name` of `.Panda/project.json` — its scripts folder,
+the script library and the game are called so — and the folder of the project may be called
+anything: a clone or a copy in a folder of another name builds and plays the same. **The assets of a project are the files of `Assets/`**: a file elsewhere in the
 project — a picture of the README, something the Export project built — is not an asset and
 gets no sidecar.
 

@@ -113,7 +113,8 @@ void EditorLayer::onAttach() {
     m_viewports.init();
     m_viewports.scene().setWorld(shownWorld());
     m_viewports.cameraController().setPosition({0.f, 0.f, 4.f});
-    m_loader.loadInitialData(m_launch.openLastProject, m_launch.project);
+    // A project of the launch that is not one: the start screen says why (it is built below).
+    const std::string notOpened = m_loader.loadInitialData(m_launch.openLastProject, m_launch.project);
     // A world applies its wind itself when its frame begins. Here the wind of the loaded world
     // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
     // tabs build their forms in applyDockLayout and must show the world value of the system
@@ -176,17 +177,18 @@ void EditorLayer::onAttach() {
     });
     loadEditorParts(); // parts host: the coordinator itself (since its creation) // project open at startup: module parts before layout (tab forms wait for them)
     m_editorController->applyDockLayout(m_loader.getDockLayout()); // saved dock layout (if any)
-    m_viewportSettings = m_documents.editorSettings().get<EditorViewportSettings>();
+    m_viewportSettings = m_documents.editorSettings().viewport;
     m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
     if (m_loader.hasOpenedProject()) {
         showEditorChrome();
     } else {
+        if (!notOpened.empty()) { m_startScreenController->setStatus(notOpened); }
         showStartScreen();
     }
     // After the settings and the chrome: the first check runs at once when automatic updates are on.
     // Nobody is at the screen: the run is the same whatever was published since.
-    if (!m_launch.unattended) { m_updater.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); }
-    m_pluginStore.start(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate); // plugin updates follow the same switch
+    if (!m_launch.unattended) { m_updater.start(m_documents.editorSettings().updates.autoUpdate); }
+    m_pluginStore.start(m_documents.editorSettings().updates.autoUpdate); // plugin updates follow the same switch
     m_mcp = std::make_unique<EditorMcp>(*this); // listens once a project with the "mcp" section on is open
 }
 
@@ -642,16 +644,11 @@ void EditorLayer::documentsLookAtWorld() {
         Entity root = m_documents.activeWorld()->prefabRoot();
         glm::vec3 low(0.f), high(0.f);
         bool any = false;
-        std::vector<Entity> pending{root};
-        while (!pending.empty()) {
-            Entity entity = pending.back();
-            pending.pop_back();
-            if (!entity.isValid()) { continue; }
+        for (Entity entity : world.subtree(root)) {
             const glm::vec3 position = glm::vec3(world.getWorldSpaceTransformMatrix(entity)[3]);
             low = any ? glm::min(low, position) : position;
             high = any ? glm::max(high, position) : position;
             any = true;
-            for (UUID child : entity.getChildEntities()) { pending.push_back(world.getById(child)); }
         }
         if (any) {
             const float radius = std::max(glm::length(high - low) * 0.5f + 1.f, 1.f);
@@ -737,8 +734,8 @@ void EditorLayer::focusSelection() {
 
 TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
     switch (scope) {
-        case SettingsScope::Project: return m_documents.projectSettings();
-        case SettingsScope::Editor: return m_documents.editorSettings();
+        case SettingsScope::Project: return m_documents.projectSettingsFile().settings();
+        case SettingsScope::Editor: return m_documents.editorSettingsFile().settings();
         case SettingsScope::World: break;
     }
     return editingWorld().context(); // the world scope is the coordinator's (the panels' world)
@@ -755,10 +752,10 @@ std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) 
 }
 
 void EditorLayer::applyEditorSettings() {
-    m_viewportSettings = m_documents.editorSettings().get<EditorViewportSettings>();
+    m_viewportSettings = m_documents.editorSettings().viewport;
     m_viewports.cameraController().setMoveSpeed(m_viewportSettings.cameraSpeed);
-    m_updater.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
-    m_pluginStore.setAutoUpdate(m_documents.editorSettings().get<EditorUpdateSettings>().autoUpdate);
+    m_updater.setAutoUpdate(m_documents.editorSettings().updates.autoUpdate);
+    m_pluginStore.setAutoUpdate(m_documents.editorSettings().updates.autoUpdate);
     m_editorUI.applyFonts(m_appearance.fonts()); // a changed font or size: the atlases reload and the texts re-measure
 }
 
@@ -835,10 +832,10 @@ void EditorLayer::loaderDidLoadCloseProject() {
 void EditorLayer::loadEditorParts() {
     if (!m_loader.hasOpenedProject() || !m_editorController) { return; }
     const size_t iconFolders = Editor::editorExtensions().iconFolders.size();
-    if (ProjectModules::loadEditorParts(m_documents.projectSettings().get<ProjectModuleSettings>()) > 0) {
+    if (ProjectModules::loadEditorParts(m_documents.projectSettings().modules) > 0) {
         // The editor parts register their editor-scope sections after settings.json was read: the
         // sections kept as foreign values get their types now.
-        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettings());
+        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettingsFile().settings());
     }
     const std::vector<path_t> &folders = Editor::editorExtensions().iconFolders;
     if (folders.size() > iconFolders) {
@@ -868,11 +865,11 @@ bool EditorLayer::isModalOpen() {
 }
 
 bool EditorLayer::isReopenNeededForModules() {
-    return m_loader.hasOpenedProject() && ProjectModules::loadNeeded(m_documents.projectSettings().get<ProjectModuleSettings>());
+    return m_loader.hasOpenedProject() && ProjectModules::loadNeeded(m_documents.projectSettings().modules);
 }
 
 bool EditorLayer::reopenProjectForModules() {
-    const ProjectModuleSettings &modules = m_documents.projectSettings().get<ProjectModuleSettings>();
+    const ProjectModuleSettings &modules = m_documents.projectSettings().modules;
     if (ProjectModules::loadNeeded(modules)) {
         // A module switched on in the file: its contributions are needed before the asset registry
         // and the world, so the project opens again — that reads everything fresh.
@@ -890,25 +887,26 @@ bool EditorLayer::reopenProjectForModules() {
 
 void EditorLayer::warnOfModulesSwitchedOff() {
     if (!m_loader.hasOpenedProject()) { return; }
-    if (ProjectModules::restartNeeded(m_documents.projectSettings().get<ProjectModuleSettings>())) {
+    if (ProjectModules::restartNeeded(m_documents.projectSettings().modules)) {
         LOG_WARN_EDITOR("A module was switched off in project.json: restart the editor to drop it.");
     }
 }
 
 void EditorLayer::openProjectRequest() {
-    m_documentActions.runAfterUnsavedQuestion([this]() { openProjectFolderDialog(); });
-}
-
-void EditorLayer::openProjectFolderDialog() {
-    std::optional<path_t> optionalPath = SystemTools::openFolderDialog();
-    if (!optionalPath.has_value()) { return; }
-    path_t path = optionalPath.value();
-    saveOpenedProjectWindowState();
-    m_loader.openProject(path);
+    // The folder first: the question about unsaved edits is for a project that will open.
+    std::optional<path_t> folder = SystemTools::openFolderDialog();
+    if (folder.has_value()) { openProject(*folder); }
 }
 
 void EditorLayer::openProject(const path_t &path) {
     if (path == m_loader.getOpenedProjectPath()) { return; }
+    // A folder that is not a project is said so before the question: the open project stays as
+    // it is, with its edits.
+    std::string problem;
+    if (ProjectLoader::readName(path, &problem).empty()) {
+        LOG_ERROR_EDITOR("%s", problem.c_str());
+        return;
+    }
     m_documentActions.runAfterUnsavedQuestion([this, path]() {
         saveOpenedProjectWindowState();
         m_loader.openProject(path);
@@ -1032,7 +1030,7 @@ void EditorLayer::syncWindowIdentity() {
     std::string project;
     std::string title = "Welcome";
     if (m_loader.hasOpenedProject()) {
-        project = m_loader.getOpenedProjectPath().filename().string();
+        project = m_loader.projectName();
         // The project and the world in front; the project alone while no world is open.
         title = hasWorld() ? project + " \xE2\x80\x94 " + m_documents.activeWorld()->name() : project; // an em dash, UTF-8
     }
@@ -1149,7 +1147,7 @@ void EditorLayer::showAbout() {
 
 void EditorLayer::openInExternalEditor(const std::filesystem::path &path, int line, int column) {
     if (path.empty()) { return; }
-    const std::string &command = m_documents.editorSettings().get<EditorExternalToolsSettings>().editor;
+    const std::string &command = m_documents.editorSettings().externalTools.editor;
     // The text form of the file: a text document opens as it is; a binary asset (a texture, a
     // model) is described by its sidecar. A shader is a pair of files: both open.
     static const char *TEXT_EXTENSIONS[] = {".world", ".mat",  ".json", ".hlsl", ".hlsli", ".txt",

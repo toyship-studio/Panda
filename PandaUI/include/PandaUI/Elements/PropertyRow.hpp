@@ -82,6 +82,17 @@ public:
     void setDescription(std::string description);
     // What the field is, shown as a tooltip over the label.
     void setHelp(std::string help);
+    // What the row edits, named the way the document of its form names it — in the form of a
+    // component, the path of the field in the text of the component: `intensity`,
+    // `camera/fieldOfView`, `gravity/1`. A form that compares the value with others (the other
+    // selected objects, the prefab of an instance) finds the row of a field by it. Empty — the row
+    // names no field.
+    void setField(std::string field) {
+        m_field = std::move(field);
+    }
+    const std::string &field() const {
+        return m_field;
+    }
     // Mark that the value differs between the selected objects (multi-selection): a "* " marker
     // is added to the label. The "mixed" state of the editor itself is set on it separately.
     void setMixed(bool mixed);
@@ -130,6 +141,7 @@ private:
     std::shared_ptr<View> m_editor;
     NumberField *m_scrubField = nullptr; // the editor, when it is a number field
     std::string m_title;
+    std::string m_field;
     PropertyRowPlacement m_placement = PropertyRowPlacement::Fill;
     float m_scrubX = 0.f;
     bool m_scrubbing = false;

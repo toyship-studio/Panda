@@ -37,7 +37,7 @@ namespace {
         };
 
         addToggleRow(section, "Primary", data->isPrimary, [data, emit](bool on) { data->isPrimary = on; emit(); },
-                     form.mixed([](Cam &c) { return c.isPrimary; }))
+                     "isPrimary")
             ->setHelp("The camera the game looks through");
         addComboRow(
             section, "Projection", {"Perspective", "Orthographic"}, static_cast<int>(data->camera.getProjectionType()),
@@ -45,48 +45,48 @@ namespace {
                 data->camera.setProjectionType(static_cast<Projection>(index));
                 changed();
             },
-            form.mixed([](Cam &c) { return static_cast<int>(c.camera.getProjectionType()); })
+            "camera/projectionType"
         );
         PropertyRow *fieldOfView = addNumberRow(
             section, "Field of View", 1.f, 179.f, data->camera.getFieldOfView(),
             [data, emit](float v) { data->camera.setFieldOfView(v); emit(); },
-            form.mixed([](Cam &c) { return c.camera.getFieldOfView(); })
+            "camera/fieldOfView"
         ).get();
         fieldOfView->setHelp("The vertical angle of the view, degrees");
         PropertyRow *orthoSize = addNumberRow(
             section, "Size", 0.f, 1000.f, data->camera.getOrthoSize(),
             [data, emit](float v) { data->camera.setOrthoSize(v); emit(); },
-            form.mixed([](Cam &c) { return c.camera.getOrthoSize(); })
+            "camera/orthoSize"
         ).get();
         orthoSize->setHelp("The height of the view, world units");
 
         // How the frame reaches the display: the exposure, the curve, the glow, the smoothing.
         addNumberRow(section, "Exposure", -8.f, 8.f, data->exposure, [data, emit](float v) { data->exposure = v; emit(); },
-                     form.mixed([](Cam &c) { return c.exposure; }))
+                     "exposure")
             ->setHelp("Exposure compensation in stops: +1 is twice as bright. With auto exposure — a correction on top of it");
         addToggleRow(section, "Auto Exposure", data->autoExposureEnabled,
                      [data, changed](bool on) { data->autoExposureEnabled = on; changed(); },
-                     form.mixed([](Cam &c) { return c.autoExposureEnabled; }))
+                     "autoExposureEnabled")
             ->setHelp("The exposure follows the brightness of the frame, as an eye adapts");
         PropertyRow *exposureKey = addNumberRow(
             section, "Key", 0.01f, 1.f, data->autoExposureKey, [data, emit](float v) { data->autoExposureKey = v; emit(); },
-            form.mixed([](Cam &c) { return c.autoExposureKey; })
+            "autoExposureKey"
         ).get();
         exposureKey->setHelp("The average brightness the frame is brought to (0.18 — a gray card)");
         PropertyRow *exposureSpeed = addNumberRow(
             section, "Speed", 0.1f, 20.f, data->autoExposureSpeed,
             [data, emit](float v) { data->autoExposureSpeed = v; emit(); },
-            form.mixed([](Cam &c) { return c.autoExposureSpeed; })
+            "autoExposureSpeed"
         ).get();
         exposureSpeed->setHelp("How fast the exposure adapts, 1/s");
         PropertyRow *exposureMin = addNumberRow(
             section, "Min", 0.01f, 4.f, data->autoExposureMin, [data, emit](float v) { data->autoExposureMin = v; emit(); },
-            form.mixed([](Cam &c) { return c.autoExposureMin; })
+            "autoExposureMin"
         ).get();
         exposureMin->setHelp("The lowest exposure the adaptation may reach");
         PropertyRow *exposureMax = addNumberRow(
             section, "Max", 0.25f, 16.f, data->autoExposureMax, [data, emit](float v) { data->autoExposureMax = v; emit(); },
-            form.mixed([](Cam &c) { return c.autoExposureMax; })
+            "autoExposureMax"
         ).get();
         exposureMax->setHelp("The highest exposure the adaptation may reach");
         addComboRow(
@@ -95,31 +95,31 @@ namespace {
                 data->tonemap = static_cast<Panda::Tonemap>(index);
                 emit();
             },
-            form.mixed([](Cam &c) { return static_cast<int>(c.tonemap); })
+            "tonemap"
         )->setHelp("The curve that brings the light of the frame into the range of a display");
         // Built-in camera bloom (a pyramid in the engine; the glow source is the emissive of materials).
         addToggleRow(section, "Bloom", data->bloomEnabled, [data, changed](bool on) { data->bloomEnabled = on; changed(); },
-                     form.mixed([](Cam &c) { return c.bloomEnabled; }))
+                     "bloomEnabled")
             ->setHelp("The glow around what emits light (the emissive of materials)");
         PropertyRow *bloomIntensity = addNumberRow(
             section, "Intensity", 0.f, 100.f, data->bloomIntensity, [data, emit](float v) { data->bloomIntensity = v; emit(); },
-            form.mixed([](Cam &c) { return c.bloomIntensity; })
+            "bloomIntensity"
         ).get();
         PropertyRow *bloomRadius = addNumberRow(
             section, "Radius", 0.f, 4.f, data->bloomRadius, [data, emit](float v) { data->bloomRadius = v; emit(); },
-            form.mixed([](Cam &c) { return c.bloomRadius; })
+            "bloomRadius"
         ).get();
         bloomRadius->setHelp("How far the glow spreads (0.5..2)");
         addToggleRow(section, "Antialiasing", data->antialiasing, [data, emit](bool on) { data->antialiasing = on; emit(); },
-                     form.mixed([](Cam &c) { return c.antialiasing; }))
+                     "antialiasing")
             ->setHelp("Smooths the edges of the finished frame (FXAA)");
 
         addAssetRow(section, "Postprocessing", "postfx", static_cast<uint32_t>(data->postprocessing.getId()),
-                    [data, changed](uint32_t id) { data->postprocessing = assetRefOf(id); changed(); });
+                    [data, changed](uint32_t id) { data->postprocessing = assetRefOf(id); changed(); }, "postprocessing");
         PropertyRow *postfxEnabled = addToggleRow(
             section, "Postprocessing Enabled", data->postprocessingEnabled,
             [data, emit](bool on) { data->postprocessingEnabled = on; emit(); },
-            form.mixed([](Cam &c) { return c.postprocessingEnabled; })
+            "postprocessingEnabled"
         ).get();
         postfxEnabled->setHelp("The passes of the postprocessing asset run; a script turns them on and off");
 
@@ -147,15 +147,15 @@ namespace {
         const auto emit = form.commit;
 
         addColorRow(section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
-                    form.mixed([](DL &c) { return c.color; }));
+                    "color");
         addNumberRow(section, "Intensity", 0.f, 100.f, data->intensity, [data, emit](float v) { data->intensity = v; emit(); },
-                     form.mixed([](DL &c) { return c.intensity; }))
+                     "intensity")
             ->setHelp("What a white matte surface facing the sun sends back");
         addToggleRow(section, "Cast Shadows", data->castShadows, [data, emit](bool on) { data->castShadows = on; emit(); },
-                     form.mixed([](DL &c) { return c.castShadows; }))
+                     "castShadows")
             ->setHelp("The first enabled sun of a world casts the cascaded shadows (World Settings → Shadows)");
         addToggleRow(section, "Enabled", data->isEnabled, [data, emit](bool on) { data->isEnabled = on; emit(); },
-                     form.mixed([](DL &c) { return c.isEnabled; }));
+                     "isEnabled");
     }
 
     void buildPointLight(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -166,12 +166,12 @@ namespace {
         auto refresh = std::make_shared<std::function<void()>>();
 
         addColorRow(section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
-                    form.mixed([](PL &c) { return c.color; }));
+                    "color");
         addNumberRow(section, "Intensity", 0.f, 100.f, data->intensity, [data, emit](float v) { data->intensity = v; emit(); },
-                     form.mixed([](PL &c) { return c.intensity; }))
+                     "intensity")
             ->setHelp("What a white matte surface 1 m away, facing the lamp, sends back");
         addNumberRow(section, "Radius", 0.f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
-                     form.mixed([](PL &c) { return c.radius; }))
+                     "radius")
             ->setHelp("Where the light ends, m: it falls with the square of the distance and reaches zero here");
         // A cone makes the lamp a spot that shines along the -Z of the entity; 0 — all around.
         addNumberRow(section, "Cone Angle", 0.f, 179.f, data->coneAngle,
@@ -180,19 +180,19 @@ namespace {
                          emit();
                          if (*refresh) { (*refresh)(); }
                      },
-                     form.mixed([](PL &c) { return c.coneAngle; }))
+                     "coneAngle")
             ->setHelp("0 — the lamp shines all around. Above — a spot along the -Z of the entity; the full angle of its cone, degrees");
         PropertyRow *softness = addNumberRow(
             section, "Softness", 0.f, 1.f, data->coneSoftness, [data, emit](float v) { data->coneSoftness = v; emit(); },
-            form.mixed([](PL &c) { return c.coneSoftness; })
+            "coneSoftness"
         ).get();
         softness->setHelp("The share of the cone over which the light fades to its edge");
         softness->setIndent(FORM_INDENT);
         addToggleRow(section, "Cast Shadows", data->castShadows, [data, emit](bool on) { data->castShadows = on; emit(); },
-                     form.mixed([](PL &c) { return c.castShadows; }))
+                     "castShadows")
             ->setHelp("A spot costs one more pass over the world every frame, a lamp that shines all around — six");
         addToggleRow(section, "Enabled", data->isEnabled, [data, emit](bool on) { data->isEnabled = on; emit(); },
-                     form.mixed([](PL &c) { return c.isEnabled; }));
+                     "isEnabled");
 
         *refresh = [data, softness] { softness->setVisible(data->coneAngle > 0.f); };
         (*refresh)();
@@ -205,21 +205,21 @@ namespace {
         const auto emit = form.commit;
 
         addColorRow(section, "Color", data->color, [data, emit](const Panda::Color &color) { data->color = color; emit(); },
-                    form.mixed([](SR &c) { return c.color; }), /*alpha*/ true);
+                    "color", /*alpha*/ true);
         addAssetRow(section, "Texture", "texture", static_cast<uint32_t>(data->texture.getId()),
-                    [data, emit](uint32_t id) { data->texture = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->texture = assetRefOf(id); emit(); }, "texture");
         // A sprite sheet: the texture is a grid of frames and the sprite shows one of them.
         addIntegerRow(section, "Columns", 1, 30, data->cols, [data, emit](int v) { data->cols = v; emit(); },
-                      form.mixed([](SR &c) { return c.cols; }))
+                      "cols")
             ->setHelp("The frames of the sprite sheet in a row of the texture");
         addIntegerRow(section, "Rows", 1, 30, data->rows, [data, emit](int v) { data->rows = v; emit(); },
-                      form.mixed([](SR &c) { return c.rows; }))
+                      "rows")
             ->setHelp("The rows of frames in the texture");
         addIntegerRow(section, "Index", 0, 900, data->index, [data, emit](int v) { data->index = v; emit(); },
-                      form.mixed([](SR &c) { return c.index; }))
+                      "index")
             ->setHelp("The frame shown, counted from 0 along the rows");
         addAssetRow(section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
-                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); }, "material");
     }
 
     void buildRuntimeMesh(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -243,11 +243,11 @@ namespace {
                 data->kind = static_cast<Panda::PrimitiveMeshKind>(index);
                 emit();
             },
-            form.mixed([](PM &c) { return static_cast<int>(c.kind); })
+            "kind"
         );
         // An empty material = the built-in checker (the sky pattern: empty means the engine material).
         addAssetRow(section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
-                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); }, "material");
     }
 
     void buildImportedSubmesh(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -255,9 +255,9 @@ namespace {
         const auto data = form.data;
         const auto emit = form.commit;
         addAssetRow(section, "Mesh", "mesh", static_cast<uint32_t>(data->importedMesh.getId()),
-                    [data, emit](uint32_t id) { data->importedMesh = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->importedMesh = assetRefOf(id); emit(); }, "importedMesh");
         addAssetRow(section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
-                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); }, "overrideMaterial");
         section.addContent(makeFormHint("Empty — the material the model was imported with."));
     }
 
@@ -266,7 +266,7 @@ namespace {
         const auto data = form.data;
         const auto emit = form.commit;
         addAssetRow(section, "Material", "material", static_cast<uint32_t>(data->material.getId()),
-                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); });
+                    [data, emit](uint32_t id) { data->material = assetRefOf(id); emit(); }, "material");
         section.addContent(
             makeFormHint("Empty — the default sky: the environment map of the world, or the built-in gradient.")
         );

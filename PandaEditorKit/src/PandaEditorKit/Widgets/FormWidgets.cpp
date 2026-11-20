@@ -96,64 +96,68 @@ std::shared_ptr<View> makeAssetWell(const char *kind, uint32_t value, std::funct
     );
 }
 
+namespace {
+
+    std::shared_ptr<PropertyRow> named(std::shared_ptr<PropertyRow> row, const char *field) {
+        if (field != nullptr) { row->setField(field); }
+        return row;
+    }
+
+} // namespace
+
 std::shared_ptr<PropertyRow> addAssetRow(
     CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
-    std::function<void(uint32_t)> set
+    std::function<void(uint32_t)> set, const char *field
 ) {
-    auto row = std::make_shared<PropertyRow>(title, makeAssetWell(kind, value, std::move(set)));
+    auto row = named(std::make_shared<PropertyRow>(title, makeAssetWell(kind, value, std::move(set))), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addNumberRow(
     CollapsibleSection &section, const char *title, float min, float max, float value, std::function<void(float)> onChange,
-    bool mixed
+    const char *field
 ) {
-    auto field = std::make_shared<NumberField>();
-    field->setFont(Typo::Value);
-    field->setRange(min, max);
-    field->setValue(value);
-    field->setMixed(mixed);
-    field->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) { onChange(f.getValue()); });
-    auto row = std::make_shared<PropertyRow>(title, field);
-    row->setMixed(mixed);
+    auto number = std::make_shared<NumberField>();
+    number->setFont(Typo::Value);
+    number->setRange(min, max);
+    number->setValue(value);
+    number->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) { onChange(f.getValue()); });
+    auto row = named(std::make_shared<PropertyRow>(title, number), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addIntegerRow(
     CollapsibleSection &section, const char *title, int min, int max, int value, std::function<void(int)> onChange,
-    bool mixed
+    const char *field
 ) {
-    auto field = std::make_shared<NumberField>();
-    field->setFont(Typo::Value);
-    field->setStep(1.f);
-    field->setRange(static_cast<float>(min), static_cast<float>(max));
-    field->setValue(static_cast<float>(value));
-    field->setMixed(mixed);
-    field->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) {
+    auto number = std::make_shared<NumberField>();
+    number->setFont(Typo::Value);
+    number->setStep(1.f);
+    number->setRange(static_cast<float>(min), static_cast<float>(max));
+    number->setValue(static_cast<float>(value));
+    number->setOnValueChanged([onChange = std::move(onChange)](NumberField &f) {
         onChange(static_cast<int>(std::lround(f.getValue())));
     });
-    auto row = std::make_shared<PropertyRow>(title, field);
-    row->setMixed(mixed);
+    auto row = named(std::make_shared<PropertyRow>(title, number), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow>
-addToggleRow(CollapsibleSection &section, const char *title, bool value, std::function<void(bool)> onChange, bool mixed) {
+addToggleRow(CollapsibleSection &section, const char *title, bool value, std::function<void(bool)> onChange, const char *field) {
     auto toggle = std::make_shared<Toggle>();
     toggle->setOn(value);
     toggle->setOnValueChanged([onChange = std::move(onChange)](Toggle &t) { onChange(t.isOn()); });
-    auto row = std::make_shared<PropertyRow>(title, toggle, false);
-    row->setMixed(mixed);
+    auto row = named(std::make_shared<PropertyRow>(title, toggle, false), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addColorRow(
     CollapsibleSection &section, const char *title, const Panda::Color &value,
-    std::function<void(const Panda::Color &)> onChange, bool mixed, bool alpha
+    std::function<void(const Panda::Color &)> onChange, const char *field, bool alpha
 ) {
     auto well = std::make_shared<ColorWell>(Color(value.r, value.g, value.b, value.a));
     well->setAlphaEditable(alpha);
@@ -161,49 +165,53 @@ std::shared_ptr<PropertyRow> addColorRow(
         const Color c = w.getColor();
         onChange(Panda::Color(c.r, c.g, c.b, c.a));
     });
-    auto row = std::make_shared<PropertyRow>(title, well, false);
-    row->setMixed(mixed);
+    auto row = named(std::make_shared<PropertyRow>(title, well, false), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addComboRow(
     CollapsibleSection &section, const char *title, std::vector<std::string> items, int selected,
-    std::function<void(int)> onChange, bool mixed
+    std::function<void(int)> onChange, const char *field
 ) {
     auto combobox = std::make_shared<Combobox>();
     combobox->setItems(std::move(items));
     combobox->setSelectedIndex(selected);
     combobox->setOnSelectionChanged([onChange = std::move(onChange)](Combobox &c) { onChange(c.selectedIndex()); });
-    auto row = std::make_shared<PropertyRow>(title, combobox);
-    row->setMixed(mixed);
+    auto row = named(std::make_shared<PropertyRow>(title, combobox), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addVector3Row(
     CollapsibleSection &section, const char *title, glm::vec3 value, std::function<void(glm::vec3)> onChange,
-    glm::bvec3 mixed
+    const char *field
 ) {
-    auto field = std::make_shared<Vector3Field>();
-    field->setValue(value.x, value.y, value.z);
-    field->setMixed(mixed.x, mixed.y, mixed.z);
-    field->setOnValueChanged([onChange = std::move(onChange)](Vector3Field &f) { onChange({f.x(), f.y(), f.z()}); });
-    auto row = std::make_shared<PropertyRow>(title, field);
-    row->setMixed(mixed.x || mixed.y || mixed.z);
+    auto vector = std::make_shared<Vector3Field>();
+    vector->setValue(value.x, value.y, value.z);
+    vector->setOnValueChanged([onChange = std::move(onChange)](Vector3Field &f) { onChange({f.x(), f.y(), f.z()}); });
+    auto row = named(std::make_shared<PropertyRow>(title, vector), field);
     section.addContent(row);
     return row;
 }
 
 std::shared_ptr<PropertyRow> addEntityRow(
     CollapsibleSection &section, const char *title, Panda::World &world, Panda::UUID value,
-    std::function<void(Panda::UUID)> onChange, bool mixed
+    std::function<void(Panda::UUID)> onChange, const char *field
 ) {
     auto well = std::make_shared<EntityWell>(world, value, std::move(onChange));
-    auto row = std::make_shared<PropertyRow>(title, well);
-    row->setMixed(mixed);
+    auto row = named(std::make_shared<PropertyRow>(title, well), field);
     section.addContent(row);
     return row;
+}
+
+void showMixed(PropertyRow &row, bool mixed, glm::bvec3 axes) {
+    row.setMixed(mixed);
+    if (auto *number = dynamic_cast<NumberField *>(row.editor().get())) {
+        number->setMixed(mixed);
+    } else if (auto *vector = dynamic_cast<Vector3Field *>(row.editor().get())) {
+        vector->setMixed(axes.x, axes.y, axes.z);
+    }
 }
 
 } // namespace Editor

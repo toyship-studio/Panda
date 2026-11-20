@@ -5,8 +5,8 @@
 namespace Panda {
 
 // The settings sections of the core, registered through the same registry as the sections of
-// the modules (context/plugins.md, decision 2): the world scope — lighting, graphics, wind; the
-// project scope — rendering (the shader features, ShaderFeatures.hpp).
+// the modules (context/plugins.md, decision 2): the world scope — lighting, graphics, wind. The
+// project and the editor scopes are the editor's files: it registers their sections itself.
 void registerCoreSettings(SettingsRegistry &registry);
 
 } // namespace Panda

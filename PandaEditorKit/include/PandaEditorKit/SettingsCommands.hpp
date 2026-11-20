@@ -63,4 +63,13 @@ void commitSettings(Panda::SettingsScope scope, const T &value) {
     editorHost().commitSettings(scope, Foundation::makeShared<SettingsUpdate<T>>(store, store.get<T>(), value));
 }
 
+// The same, made on T as the store has it now: what one form changes of a struct that several
+// forms edit (the editor's ProjectSettings, EditorSettings), the others keep.
+template<typename T, typename Change>
+void editSettings(Panda::SettingsScope scope, Change &&change) {
+    T value = editorHost().settings(scope).get<T>();
+    change(value);
+    commitSettings<T>(scope, value);
+}
+
 } // namespace Editor

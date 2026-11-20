@@ -145,6 +145,17 @@ public:
         TargetGuard g(m_host, targets());
         out().entityDidOpenPrefab();
     }
+    void entityDidSelectEntity(Panda::UUID id) override {
+        out().entityDidSelectEntity(id);
+    }
+    void entityDidRevertAddition(Panda::UUID top) override {
+        TargetGuard g(m_host, targets());
+        out().entityDidRevertAddition(top);
+    }
+    void entityDidApplyAddition(Panda::UUID top) override {
+        TargetGuard g(m_host, targets());
+        out().entityDidApplyAddition(top);
+    }
     void entityDidSelectPrefabRoot() override {
         TargetGuard g(m_host, targets());
         out().entityDidSelectPrefabRoot();
@@ -665,7 +676,11 @@ void EditorTabs::refreshTransforms() {
 
 void EditorTabs::refreshEntityForms() {
     for (TabEntry &entry : m_entries) {
-        if (dynamic_cast<EntityDocument *>(entry.document.get()) != nullptr) { bindEntry(entry); }
+        if (dynamic_cast<EntityDocument *>(entry.document.get()) == nullptr) { continue; }
+        bindEntry(entry);
+        // The tab is titled by its targets: a rename (in the form, in the Hierarchy, an undo) or
+        // an instance made of the entity shows on it at once.
+        m_docks->updateTransientPanel(entry.id, titleFor(entry), iconFor(entry), entry.document->view());
     }
 }
 

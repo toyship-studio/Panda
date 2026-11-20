@@ -43,6 +43,35 @@ SettingsType settingsType(SettingsScope scope, const char *name) {
     return type;
 }
 
+namespace Detail {
+    template<typename>
+    struct FieldOf;
+    template<typename Owner, typename T>
+    struct FieldOf<T Owner::*> {
+        using Type = Owner;
+    };
+} // namespace Detail
+
+// The struct a settings field (settingsField) is a field of.
+template<auto Field>
+using SettingsOwner = typename Detail::FieldOf<decltype(Field)>::Type;
+
+// A key that is a field of one struct in the store: the settings an owner keeps together, read
+// as fields of a single value (the editor's own: settingsField<&ProjectSettings::name>). The
+// field is any value Rain codes — a string, a Codable section; its default is the struct's.
+template<auto Field>
+SettingsType settingsField(SettingsScope scope, const char *name) {
+    using Owner = SettingsOwner<Field>;
+    SettingsType type;
+    type.scope = scope;
+    type.name = name;
+    type.encode = [](const char *key, Rain::Encoder &encoder, TypeContext &store) { encoder.encode(key, store.get<Owner>().*Field); };
+    type.decode = [](const char *key, Rain::Decoder &decoder, TypeContext &store) { decoder.decode(key, store.get<Owner>().*Field); };
+    type.copy = [](TypeContext &from, TypeContext &to) { to.get<Owner>().*Field = from.get<Owner>().*Field; };
+    type.reset = [](TypeContext &store) { store.get<Owner>().*Field = Owner{}.*Field; };
+    return type;
+}
+
 // Sections of a file whose type is not registered (the module is not loaded): kept in the store
 // of the scope and written back as is.
 struct ForeignSettings final {

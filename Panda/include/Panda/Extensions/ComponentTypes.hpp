@@ -78,6 +78,11 @@ public:
     }
     const ComponentType *find(std::string_view name) const;
     const ComponentType *find(entt::id_type typeId) const;
+    // Every reference to an entity the components of `entity` hold (entityRefs of their types),
+    // to read or to change in place; `except` — the type whose references are left out (0 —
+    // none): the authoring side of prefabs goes through the references between the entities of
+    // an instance without the link of a part to its root (PrefabComponent).
+    void forEachReference(Entity entity, const EntityRefVisitor &visit, entt::id_type except = 0) const;
     // Create the pools of all types in the world registry (World::World).
     void prepare(entt::registry &registry) const;
 

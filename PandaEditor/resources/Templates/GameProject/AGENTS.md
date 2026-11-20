@@ -15,7 +15,10 @@ once when an agent asks (`reload`), and shows an agent the result through its MC
   loads.
 - `Scripts/___PROJECTNAME___/scripts/` — shell scripts for the builds (see "Building scripts").
 - `.Panda/` — `project.json` (the project settings: text, edit it like any other file) and
-  service data the editor writes (`scripts-manifest.json`, the caches, cooked data).
+  service data the editor writes (`scripts-manifest.json`, the caches, cooked data). Its
+  `"name"` is the name of the project: the folder `Scripts/___PROJECTNAME___`, the script library
+  and the game are called by it, so a new name is given to all of them at once. The folder of
+  the project may be called anything.
 - `.mcp.json` — where an MCP client finds the editor of this project (see "The running editor").
 - `Export/` — the build setup of the standalone game.
 - `.zed/tasks.json` — tasks for the Zed editor (configure, build, open the export projects,
@@ -120,7 +123,9 @@ its root has `"parent": 0`. A world (or another prefab) places it with one entry
   `"scriptListComponent": {"scripts": {"<Class>": {"scriptFields": {"<field>": {"value": …}}}}}`.
 - Always write the name (`tagComponent`), the `position` and the `rotation` of the instance:
   they are its own and never follow the prefab.
-- To change every instance, edit the prefab file; to change one, edit its entry.
+- To change every instance, edit the prefab file; to change one, edit its entry. An entity of
+  the world file whose `parent` is an entity of an instance is an addition to that instance
+  alone — to give it to every instance, put it into the prefab file.
 - The other entities of an instance have no ids in the file: they are derived from the id of
   the instance and the id in the prefab (the formula and the rest of the format:
   `world-format.md`, "Prefabs and instances"; the workflow: `prefabs.md`).

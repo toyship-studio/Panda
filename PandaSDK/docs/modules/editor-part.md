@@ -58,13 +58,14 @@ void buildEmitterSection(CollapsibleSection &section, const ComponentInspectorCo
     auto data = form.data;   // a copy of the component of the primary target: the rows change it
     auto emit = form.commit; // writes the copy to every target that has the component, as one undoable edit
 
-    addToggleRow(section, "Playing", data->playing, [data, emit](bool v) { data->playing = v; emit(); });
-    addNumberRow(section, "Rate (1/s)", 0.f, 5000.f, data->rate, [data, emit](float v) { data->rate = v; emit(); });
-    addColorRow(section, "Start Color", data->startColor, [data, emit](const Panda::Color &c) { data->startColor = c; emit(); });
+    addToggleRow(section, "Playing", data->playing, [data, emit](bool v) { data->playing = v; emit(); }, "playing");
+    addNumberRow(section, "Rate (1/s)", 0.f, 5000.f, data->rate, [data, emit](float v) { data->rate = v; emit(); }, "rate");
+    addColorRow(section, "Start Color", data->startColor, [data, emit](const Panda::Color &c) { data->startColor = c; emit(); },
+                "startColor");
     addAssetRow(section, "Texture", "texture", static_cast<uint32_t>(data->texture.getId()), [data, emit](uint32_t id) {
         data->texture = assetRefOf(id);
         emit();
-    });
+    }, "texture");
 }
 
 void ParticlesEditor::registerExtensions(EditorExtensions &extensions) {
@@ -91,20 +92,32 @@ An entity shows the icon of its most telling component: a component that says wh
 is keeps `characteristic = true` (the default) and gives its icon first; set it to `false` for
 a component many kinds of entities carry, as the core does for its meshes and the sprite.
 
-A form with several targets shows the primary values and marks the fields that differ:
-every `add…Row` takes a `mixed` flag, and `form.mixed(get)` / `form.vectorMixed(get)`
-(`componentFieldMixed<T>(entities, get)` / `componentVectorMixed<T>`) compute it:
+**Every row names the field it edits** — the last argument of each `add…Row`, the key of the
+field in the file (the component object your encoder writes), a path for a nested one:
+`"radius"`, `"camera/fieldOfView"`, `"gravity/1"` for the second item of a list. That is all a
+section does for what the form shows of the field; the form of the entity finds the rest from
+the text of the component (`ComponentFields`), for every section alike:
+
+- **several targets** — the field differs among them: the row says so and its editor shows "—"
+  in place of the primary value (per axis in a vector row);
+- **an instance of a prefab** — the field is the instance's own: the row takes the accent
+  color and a bar, and its right-click menu offers Revert to Prefab, Apply to Prefab and Apply
+  Forced.
 
 ```cpp
-addNumberRow(section, "Radius", 0.001f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
-             form.mixed([](T &c) { return c.radius; }));
-addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); },
-              form.vectorMixed([](T &c) { return c.offset; }));
-addEntityRow(section, "Connected", context.world, data->connectedEntity, [data, emit](Panda::UUID id) { data->connectedEntity = id; emit(); });
+addNumberRow(section, "Radius", 0.001f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); }, "radius");
+addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); }, "offset");
+addEntityRow(section, "Connected", context.world, data->connectedEntity,
+             [data, emit](Panda::UUID id) { data->connectedEntity = id; emit(); }, "connectedEntity");
 ```
 
+A row that names a field the component does not have is told once in the log of the editor
+when the form first shows it. A row of a form that is not of a component — the settings, an
+asset tab — names none. A row made by hand (`std::make_shared<PropertyRow>`) gets its field
+with `setField`.
+
 The rows: `addNumberRow`, `addToggleRow`, `addColorRow`, `addComboRow`, `addVector3Row`
-(X/Y/Z with per-axis mixed), `addEntityRow` (`EntityWell`: a drop from the Hierarchy, a click
+(X/Y/Z, mixed per axis), `addEntityRow` (`EntityWell`: a drop from the Hierarchy, a click
 clears), `addAssetRow` (`AssetWell`: a drop, the picker, the thumbnail, a click selects the
 asset). Each returns its `PropertyRow`. `makeFormSection`, `makeFormButton`,
 `makeFormButtonRow`, `makeFormHint` build the rest; `Typography.hpp` has the font tokens,

@@ -64,19 +64,16 @@ namespace {
         addAssetRow(section, "Terrain", terrainKind, static_cast<uint32_t>(data->terrain.getId()), [data, emit](uint32_t id) {
             data->terrain = assetRefOf(id);
             emit();
-        });
+        }, "terrain");
         // An empty material = the module's built-in terrain material (the sky pattern).
         addAssetRow(section, "Material", "material", static_cast<uint32_t>(data->material.getId()), [data, emit](uint32_t id) {
             data->material = assetRefOf(id);
             emit();
-        });
-        auto physicsToggle = std::make_shared<Toggle>();
-        physicsToggle->setOn(data->physicsEnabled);
-        physicsToggle->setOnValueChanged([data, emit](Toggle &t) {
-            data->physicsEnabled = t.isOn();
+        }, "material");
+        addToggleRow(section, "Physics", data->physicsEnabled, [data, emit](bool on) {
+            data->physicsEnabled = on;
             emit();
-        });
-        section.addContent(std::make_shared<PropertyRow>("Physics", physicsToggle, false));
+        }, "physicsEnabled");
     }
 
     // ---- Settings sections: the module's world settings (the "terrain" and "flora" sections of

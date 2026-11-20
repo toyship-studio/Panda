@@ -211,13 +211,9 @@ bool World::changeEntityId(Entity entity, UUID id) {
     // Whoever names it in a component.
     const ComponentTypeRegistry &types = GameContext::getExtensions().components;
     for (auto handle : m_registry.view<IdComponent>()) {
-        Entity other(handle, this);
-        for (const ComponentType &type : types.types()) {
-            if (type.entityRefs == nullptr || !other.hasComponent(type.typeId)) { continue; }
-            type.entityRefs(other, [old, id](UUID &reference) {
-                if (reference == old) { reference = id; }
-            });
-        }
+        types.forEachReference(Entity(handle, this), [old, id](UUID &reference) {
+            if (reference == old) { reference = id; }
+        });
     }
     bumpStructureVersion();
     m_changed = true;
@@ -460,6 +456,23 @@ Entity World::getById(UUID id) {
     return it != m_entityIdMap.end() ? it->second : Entity();
 }
 
+std::vector<Entity> World::subtree(Entity entity, const std::function<bool(Entity)> &skip) {
+    std::vector<Entity> entities;
+    if (!entity.isValid()) { return entities; }
+    std::vector<Entity> pending{entity};
+    while (!pending.empty()) {
+        Entity at = pending.back();
+        pending.pop_back();
+        entities.push_back(at);
+        const std::vector<UUID> &children = at.getChildEntities();
+        for (auto child = children.rbegin(); child != children.rend(); ++child) {
+            Entity below = getById(*child);
+            if (below.isValid() && (!skip || !skip(below))) { pending.push_back(below); }
+        }
+    }
+    return entities;
+}
+
 std::unordered_set<Entity> World::getById(std::unordered_set<UUID> ids) {
     std::unordered_set<Entity> result;
     for (UUID id : ids) {
@@ -518,11 +531,14 @@ Entity World::duplicateEntity(Entity entity, const EntityPlacement &placement) {
     return duplicate;
 }
 
-Entity World::importEntity(World &source, Entity entity) {
+Entity World::importEntity(
+    World &source, Entity entity, const EntityPlacement &placement, std::unordered_map<UUID, UUID> *ids,
+    const std::function<bool(Entity)> &skip
+) {
     if (!entity) { return {}; }
     std::vector<Entity> copies;
-    Entity imported = copySubtree(source, entity, AssetId(0), UUID(0), copies);
-    settle(imported, copies, Entity(), {});
+    Entity imported = copySubtree(source, entity, AssetId(0), UUID(0), copies, ids, skip);
+    settle(imported, copies, placement.parent, placement);
     return imported;
 }
 
@@ -560,21 +576,14 @@ void World::restoreSubtree(Entity entity) {
     }
 }
 
-Entity World::copySubtree(World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies) {
+Entity World::copySubtree(
+    World &source, Entity entity, AssetId prefab, UUID rootId, std::vector<Entity> &copies, std::unordered_map<UUID, UUID> *idsOut,
+    const std::function<bool(Entity)> &skip
+) {
     const ComponentTypeRegistry &types = GameContext::getExtensions().components;
     // What is copied: the entity and everything under it, a parent before its children; a
     // deleted child is not copied.
-    std::vector<Entity> originals;
-    std::vector<Entity> pending{entity};
-    while (!pending.empty()) {
-        Entity original = pending.back();
-        pending.pop_back();
-        originals.push_back(original);
-        const std::vector<UUID> &children = original.getChildEntities();
-        for (auto child = children.rbegin(); child != children.rend(); ++child) {
-            if (source.isValid(*child)) { pending.push_back(source.getById(*child)); }
-        }
-    }
+    std::vector<Entity> originals = source.subtree(entity, skip);
 
     // The ids of the copies. An entity of an instance of a prefab — of the one being made, or of
     // one that is copied whole — has the id derived from the root of its instance; everything
@@ -658,16 +667,14 @@ Entity World::copySubtree(World &source, Entity entity, AssetId prefab, UUID roo
             if (!ids.contains(link.instance)) { m_registry.remove<PrefabComponent>(copy.m_handle); }
         }
         // A reference between two copied entities names the copies.
-        for (const ComponentType &type : types.types()) {
-            if (type.entityRefs == nullptr || !copy.hasComponent(type.typeId)) { continue; }
-            type.entityRefs(copy, [&ids](UUID &reference) {
-                const auto mapped = ids.find(reference);
-                if (mapped != ids.end()) { reference = mapped->second; }
-            });
-        }
+        types.forEachReference(copy, [&ids](UUID &reference) {
+            const auto mapped = ids.find(reference);
+            if (mapped != ids.end()) { reference = mapped->second; }
+        });
         // The script instances of the original are its own: the copy gets none until it runs.
         for (ExternalScript &script : copy.getComponent<ScriptListComponent>().scripts) { script.unbind(); }
     }
+    if (idsOut != nullptr) { *idsOut = std::move(ids); }
     return copies.front();
 }
 

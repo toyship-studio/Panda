@@ -33,6 +33,16 @@ namespace {
     // Every section edits a copy of its struct and commits it as a whole (Kit: commitSettings<T>):
     // one undo step per gesture, the same path as the module sections.
 
+    // The editor's own settings of a scope are one struct (Panda::ProjectSettings,
+    // Panda::EditorSettings), a section of it a field: the form edits a copy of its field and
+    // writes the field alone into the struct as the store has it then — what the other forms
+    // edit stays theirs.
+    template<auto Field, typename T>
+    std::function<void()> writeField(SettingsScope scope, std::shared_ptr<T> data) {
+        using Owner = Panda::SettingsOwner<Field>;
+        return [scope, data] { editSettings<Owner>(scope, [&data](Owner &owner) { owner.*Field = *data; }); };
+    }
+
     /* ------------------------------ World scope ------------------------------ */
 
     void buildLighting(CollapsibleSection &section, Panda::TypeContext &store) {
@@ -345,8 +355,8 @@ namespace {
 
     // The viewport display options: applied at once, saved on every change.
     void buildViewport(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::EditorViewportSettings>(store.get<Panda::EditorViewportSettings>());
-        auto emit = [data] { commitSettings<Panda::EditorViewportSettings>(SettingsScope::Editor, *data); };
+        auto data = std::make_shared<Panda::EditorViewportSettings>(store.get<Panda::EditorSettings>().viewport);
+        auto emit = writeField<&Panda::EditorSettings::viewport>(SettingsScope::Editor, data);
         addToggleRow(section, "Grid", data->showGrid, [data, emit](bool on) {
             data->showGrid = on;
             emit();
@@ -379,8 +389,8 @@ namespace {
     // command; any other command is written into settings.json, as a command line when the
     // editor is to be told the line its own way (SystemTools::openInEditor).
     void buildExternalTools(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::EditorExternalToolsSettings>(store.get<Panda::EditorExternalToolsSettings>());
-        auto emit = [data] { commitSettings<Panda::EditorExternalToolsSettings>(SettingsScope::Editor, *data); };
+        auto data = std::make_shared<Panda::EditorExternalToolsSettings>(store.get<Panda::EditorSettings>().externalTools);
+        auto emit = writeField<&Panda::EditorSettings::externalTools>(SettingsScope::Editor, data);
         static const std::pair<const char *, const char *> EDITORS[] = {
             {"System Default", ""}, {"Zed", "zed"}, {"Visual Studio Code", "code"},
             {"Cursor", "cursor"},   {"Sublime Text", "subl"},
@@ -481,8 +491,8 @@ namespace {
 
     // The toolchain of this machine: what the CMake panel builds the C++ of a project with.
     void buildToolchain(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::EditorToolchainSettings>(store.get<Panda::EditorToolchainSettings>());
-        auto emit = [data] { commitSettings<Panda::EditorToolchainSettings>(SettingsScope::Editor, *data); };
+        auto data = std::make_shared<Panda::EditorToolchainSettings>(store.get<Panda::EditorSettings>().toolchain);
+        auto emit = writeField<&Panda::EditorSettings::toolchain>(SettingsScope::Editor, data);
 
         const std::optional<Panda::path_t> bundled = Panda::SystemTools::findCMakeExecutable();
         addProgramRow(
@@ -545,8 +555,8 @@ namespace {
     // The editor updater (context/infrastructure.md, section 5): the one switch of Zed's
     // `auto_update`; the channel belongs to the build.
     void buildUpdates(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::EditorUpdateSettings>(store.get<Panda::EditorUpdateSettings>());
-        auto emit = [data] { commitSettings<Panda::EditorUpdateSettings>(SettingsScope::Editor, *data); };
+        auto data = std::make_shared<Panda::EditorUpdateSettings>(store.get<Panda::EditorSettings>().updates);
+        auto emit = writeField<&Panda::EditorSettings::updates>(SettingsScope::Editor, data);
         addToggleRow(section, "Automatic Updates", data->autoUpdate, [data, emit](bool on) {
             data->autoUpdate = on;
             emit();
@@ -579,7 +589,7 @@ namespace {
             section.addContent(makeFormHint("No themes are available."));
         }
 
-        const Panda::EditorAppearanceSettings appearance = store.get<Panda::EditorAppearanceSettings>();
+        const Panda::EditorAppearanceSettings appearance = store.get<Panda::EditorSettings>().appearance;
         const std::vector<std::string> installed = Fern::Fonts::families();
         // A font row: the bundled face first, then every installed family; the choice is written into the
         // appearance settings as the family name (empty — bundled), read anew at commit time so that a
@@ -596,9 +606,9 @@ namespace {
                 if (installed[i] == chosen) { selected = static_cast<int>(i) + 1; }
             }
             addComboRow(section, title, items, selected, [installed, assign](int index) {
-                auto data = editorHost().settings(SettingsScope::Editor).get<Panda::EditorAppearanceSettings>();
-                assign(data, index <= 0 ? std::string() : installed[static_cast<size_t>(index) - 1]);
-                commitSettings<Panda::EditorAppearanceSettings>(SettingsScope::Editor, data);
+                editSettings<Panda::EditorSettings>(SettingsScope::Editor, [&](Panda::EditorSettings &settings) {
+                    assign(settings.appearance, index <= 0 ? std::string() : installed[static_cast<size_t>(index) - 1]);
+                });
             });
         };
         fontRow("UI Font", "Inter Display", appearance.uiFont, [](Panda::EditorAppearanceSettings &data, const std::string &family) {
@@ -608,9 +618,9 @@ namespace {
             data.monoFont = family;
         });
         addIntegerRow(section, "UI Font Size", 12, 20, static_cast<int>(std::lround(appearance.uiFontSize)), [](int value) {
-            auto data = editorHost().settings(SettingsScope::Editor).get<Panda::EditorAppearanceSettings>();
-            data.uiFontSize = static_cast<float>(value);
-            commitSettings<Panda::EditorAppearanceSettings>(SettingsScope::Editor, data);
+            editSettings<Panda::EditorSettings>(SettingsScope::Editor, [value](Panda::EditorSettings &settings) {
+                settings.appearance.uiFontSize = static_cast<float>(value);
+            });
         })->setHelp("The size of the text of the editor; it is designed at 16");
         section.addContent(makeFormHint("Any font installed on this computer. A character the font lacks is drawn with the bundled one."));
     }
@@ -621,8 +631,8 @@ namespace {
     // The main world of the project: a world asset of the project (the path is kept relative, with
     // forward slashes).
     void buildProjectWorld(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::ProjectWorldSettings>(store.get<Panda::ProjectWorldSettings>());
-        auto emit = [data] { commitSettings<Panda::ProjectWorldSettings>(SettingsScope::Project, *data); };
+        auto data = std::make_shared<Panda::ProjectWorldSettings>(store.get<Panda::ProjectSettings>().world);
+        auto emit = writeField<&Panda::ProjectSettings::world>(SettingsScope::Project, data);
         uint32_t current = 0;
         if (Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current(); handler && !data->startWorld.empty()) {
             current = static_cast<uint32_t>(handler->getAssetId(handler->getProjectPath() / data->startWorld));
@@ -641,8 +651,8 @@ namespace {
     // editor: the section says so and offers the restart as soon as the set differs from what
     // this session registered.
     void buildProjectModules(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::ProjectModuleSettings>(store.get<Panda::ProjectModuleSettings>());
-        auto emit = [data] { commitSettings<Panda::ProjectModuleSettings>(SettingsScope::Project, *data); };
+        auto data = std::make_shared<Panda::ProjectModuleSettings>(store.get<Panda::ProjectSettings>().modules);
+        auto emit = writeField<&Panda::ProjectSettings::modules>(SettingsScope::Project, data);
         auto restartHint = makeFormHint(
             "The module set has changed. Restart the editor to apply it: nothing is loaded or unloaded while the editor runs."
         );
@@ -688,8 +698,8 @@ namespace {
     // shaders. The set applies when the project settings are saved: the scene shaders of the engine
     // and the project shaders recompile for it.
     void buildProjectRendering(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::ProjectRenderingSettings>(store.get<Panda::ProjectRenderingSettings>());
-        auto emit = [data] { commitSettings<Panda::ProjectRenderingSettings>(SettingsScope::Project, *data); };
+        auto data = std::make_shared<Panda::ProjectRenderingSettings>(store.get<Panda::ProjectSettings>().rendering);
+        auto emit = writeField<&Panda::ProjectSettings::rendering>(SettingsScope::Project, data);
         const Panda::ShaderFeatureSet current = Panda::ShaderFeatureSet::fromNames(data->features);
         for (const Panda::ShaderFeatureInfo &info : Panda::ShaderFeatures::catalog()) {
             const Panda::ShaderFeature feature = info.feature;
@@ -710,8 +720,8 @@ namespace {
     // The MCP server of the editor for this project: an AI agent in the project folder looks at
     // the editor and drives it through it (App/EditorMcp). Follows the section at once.
     void buildProjectMcp(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = std::make_shared<Panda::ProjectMcpSettings>(store.get<Panda::ProjectMcpSettings>());
-        auto emit = [data] { commitSettings<Panda::ProjectMcpSettings>(SettingsScope::Project, *data); };
+        auto data = std::make_shared<Panda::ProjectMcpSettings>(store.get<Panda::ProjectSettings>().mcp);
+        auto emit = writeField<&Panda::ProjectSettings::mcp>(SettingsScope::Project, data);
         addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
             data->enabled = on;
             emit();

@@ -210,7 +210,7 @@ void ProjectBuilds::cancel() {
 
 path_t ProjectBuilds::folder(BuildTargetKind kind) {
     const path_t &projectPath = m_project.getOpenedProjectPath();
-    return kind == BuildTargetKind::Export ? projectPath / "Export" : projectPath / "Scripts" / projectPath.filename();
+    return kind == BuildTargetKind::Export ? projectPath / "Export" : projectPath / "Scripts" / m_project.projectName();
 }
 
 path_t ProjectBuilds::buildFolder(BuildTargetKind kind) {
@@ -322,7 +322,7 @@ void ProjectBuilds::fail(const std::string &reason) {
 }
 
 std::optional<ProjectBuilds::Toolchain> ProjectBuilds::findToolchain() {
-    const EditorToolchainSettings &settings = m_documents.editorSettings().get<EditorToolchainSettings>();
+    const EditorToolchainSettings &settings = m_documents.editorSettings().toolchain;
     const char *where = " (Settings, Editor, Toolchain)";
     Toolchain toolchain;
 
@@ -394,6 +394,29 @@ void ProjectBuilds::start(BuildTargetKind kind, BuildAction action, bool openWhe
     launch(openWhenConfigured);
 }
 
+namespace {
+
+    // A value of the cache of a cmake tree (CMakeCache.txt: `NAME:TYPE=value`); empty — none.
+    std::string cacheValue(const path_t &buildDirectory, const std::string &name) {
+        std::ifstream cache(buildDirectory / "CMakeCache.txt");
+        std::string line;
+        while (std::getline(cache, line)) {
+            if (line.rfind(name + ":", 0) != 0) { continue; }
+            const size_t equals = line.find('=');
+            if (equals != std::string::npos) { return line.substr(equals + 1); }
+        }
+        return {};
+    }
+
+    // Two names of one folder (a link, a trailing slash, /tmp and /private/tmp).
+    bool sameFolder(const path_t &left, const path_t &right) {
+        std::error_code error;
+        const bool same = std::filesystem::equivalent(left, right, error);
+        return !error && same;
+    }
+
+} // namespace
+
 void ProjectBuilds::launch(bool openWhenConfigured) {
     const BuildTargetKind kind = m_kind;
     const BuildAction action = m_action;
@@ -431,19 +454,30 @@ void ProjectBuilds::launch(bool openWhenConfigured) {
     if (!toolchain) { return; }
 
     // A tree made with another generator or compiler is not one cmake goes on with: it is made
-    // again. The Export project is an IDE project and takes neither from the toolchain.
+    // again. The Export project is an IDE project and takes neither from the toolchain. Nor is a
+    // tree that cmake made for another folder — the project was copied or moved there — or, for
+    // the scripts, against another PandaSDK: the build of another editor would link its headers
+    // with the libraries of this one.
     const bool configured =
         std::filesystem::exists(buildDirectory / "CMakeCache.txt") && std::filesystem::exists(buildDirectory / CONFIGURED_STAMP);
     const std::string signature = scripts ? toolchain->scriptsSignature : std::string();
-    bool stale = false;
-    if (scripts && configured) {
+    std::string staleReason;
+    if (std::filesystem::exists(buildDirectory / "CMakeCache.txt")) {
+        const std::string home = cacheValue(buildDirectory, "CMAKE_HOME_DIRECTORY");
+        const std::string sdk = cacheValue(buildDirectory, "PandaSDK_DIR");
+        if (!home.empty() && !sameFolder(home, projectDirectory)) {
+            staleReason = "The build folder was made for " + home + ": it is made again here.";
+        } else if (scripts && !sdk.empty() && !sameFolder(sdk, toolchain->sdkConfigDirectory)) {
+            staleReason = "The build folder was made with another PandaSDK (" + sdk + "): it is made again with the one of this editor.";
+        }
+    }
+    if (staleReason.empty() && scripts && configured) {
         std::ifstream stamp(buildDirectory / TOOLCHAIN_STAMP);
         const std::string made((std::istreambuf_iterator<char>(stamp)), std::istreambuf_iterator<char>());
-        stale = made != signature;
+        if (made != signature) { staleReason = "The toolchain changed: the build folder is made again."; }
     }
-    if (stale) {
-        steps.push_back(removeStep(buildDirectory, "The toolchain changed: the build folder is made again."));
-    }
+    const bool stale = !staleReason.empty();
+    if (stale) { steps.push_back(removeStep(buildDirectory, staleReason)); }
     // Build configures a tree that is not configured yet: a fresh checkout is built with one button.
     // The Export project is configured before every build. It is an IDE project: Xcode and Visual
     // Studio take the list of the sources from the project as it was generated, and a project that
@@ -574,7 +608,7 @@ bool ProjectBuilds::cook() {
     // The cook is a function of the files of the project: the game starts in the start world of
     // the project settings, whatever world the editor shows now, and carries what that world
     // reaches. An edit that is not saved is not in the game — the cook says which.
-    const std::string startWorld = m_documents.projectSettings().get<ProjectWorldSettings>().startWorld;
+    const std::string startWorld = m_documents.projectSettings().world.startWorld;
     const std::vector<std::string> errors = GameExporter::validate(projectPath, startWorld, *assetHandler);
     if (!errors.empty()) {
         for (const std::string &text : errors) { error(text); }
@@ -602,8 +636,8 @@ bool ProjectBuilds::cook() {
     settings.runtimeDataDirectory = projectPath / ".Panda" / "Cooked" / "Runtime";
     settings.reportFile = cookReportFile();
     settings.startWorld = startWorld;
-    settings.appName = projectPath.filename().string();
-    settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().get<ProjectModuleSettings>());
+    settings.appName = m_project.projectName();
+    settings.modules = ProjectModules::enabledIds(m_documents.projectSettings().modules);
     LOG_INFO_EDITOR("Cooking the runtime data to %s", settings.runtimeDataDirectory.string().c_str());
 
     GameExporter exporter;
@@ -658,7 +692,7 @@ bool ProjectBuilds::cook() {
 ProjectBuilds::BuiltGame ProjectBuilds::builtGame() {
     BuiltGame game;
     if (!m_project.hasOpenedProject()) { return game; }
-    const std::string name = m_project.getOpenedProjectPath().filename().string();
+    const std::string name = m_project.projectName(); // the executable of the Export project is named so
     const path_t tree = buildFolder(BuildTargetKind::Export);
     const std::string config = exportConfigName(exportConfig());
     // Where Xcode and Visual Studio put what they build: <tree>/<configuration>[-<sdk>]/.

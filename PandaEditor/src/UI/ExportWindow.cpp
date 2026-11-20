@@ -462,7 +462,7 @@ void ExportWindowView::update(double deltaTime) {
 
 void ExportWindowView::syncChoices() {
     const std::string startWorld =
-        m_app.project().hasOpenedProject() ? m_app.documents().projectSettings().get<Panda::ProjectWorldSettings>().startWorld
+        m_app.project().hasOpenedProject() ? m_app.documents().projectSettings().world.startWorld
                                             : std::string();
     if (!m_choicesShown || startWorld != m_shownStartWorld) {
         m_shownStartWorld = startWorld;
@@ -474,9 +474,10 @@ void ExportWindowView::syncChoices() {
             handler && !startWorld.empty() ? static_cast<uint32_t>(handler->getAssetId(handler->getProjectPath() / startWorld)) : 0;
         auto well = makeAssetWell("world", current, [this](uint32_t id) {
             Panda::AssetHandlerEditor *assets = Panda::AssetHandlerEditor::current();
-            Panda::ProjectWorldSettings settings = m_app.documents().projectSettings().get<Panda::ProjectWorldSettings>();
-            settings.startWorld = assets && id ? assets->assetPath(Panda::AssetId(id)).generic_string() : std::string();
-            commitSettings<Panda::ProjectWorldSettings>(Panda::SettingsScope::Project, settings);
+            const std::string world = assets && id ? assets->assetPath(Panda::AssetId(id)).generic_string() : std::string();
+            editSettings<Panda::ProjectSettings>(Panda::SettingsScope::Project, [&world](Panda::ProjectSettings &settings) {
+                settings.world.startWorld = world;
+            });
         });
         well->setAccessibilityId("startWorld");
         m_startWorld->removeAllSubviews();

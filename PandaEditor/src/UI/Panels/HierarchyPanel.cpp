@@ -43,12 +43,29 @@ namespace {
             layout().setFlexDirection(FlexDirection::Row);
             layout().setAlignItems(Align::Center);
             layout().setGap(6.f);
+            // The icon of the entity, with the sign of an addition over its lower right corner.
+            m_iconBox = std::make_shared<Panel>();
+            m_iconBox->setBackgroundColor(Color(0x00000000));
+            m_iconBox->setUserInteractionEnabled(false);
+            m_iconBox->layout().setSize({Ic::RowSize, Ic::RowSize});
+            m_iconBox->layout().setFlexShrink(0.f);
             m_icon = std::make_shared<ImageView>();
             m_icon->setContentMode(ImageContentMode::Fit);
             m_icon->setUserInteractionEnabled(false);
             m_icon->layout().setSize({Ic::RowSize, Ic::RowSize});
-            m_icon->layout().setFlexShrink(0.f);
-            addSubview(m_icon);
+            m_iconBox->addSubview(m_icon);
+            m_added = std::make_shared<ImageView>();
+            m_added->setContentMode(ImageContentMode::Fit);
+            m_added->setUserInteractionEnabled(false);
+            m_added->setTexture(icons().get(Ic::Plus));
+            m_added->setTintColor(ThemeColor::accentText);
+            m_added->layout().setPositionType(PositionType::Absolute);
+            m_added->layout().setPosition(Edge::Right, Length::points(-4.f));
+            m_added->layout().setPosition(Edge::Bottom, Length::points(-3.f));
+            m_added->layout().setSize({9.f, 9.f});
+            m_added->setHidden(true);
+            m_iconBox->addSubview(m_added);
+            addSubview(m_iconBox);
             m_label = std::make_shared<Label>("");
             m_label->setFont(Typo::Body);
             addSubview(m_label);
@@ -62,7 +79,7 @@ namespace {
         void setIcon(const char *name, bool prefab = false) {
             const bool hidden = name == nullptr;
             m_icon->setHidden(hidden);
-            m_icon->layout().setDisplay(hidden ? Display::None : Display::Flex);
+            m_iconBox->layout().setDisplay(hidden ? Display::None : Display::Flex);
             if (!hidden) {
                 m_icon->setTexture(icons().get(name));
                 m_icon->setTintColor(prefab ? ThemeColor::accentText : ThemeColor::textMuted);
@@ -74,8 +91,16 @@ namespace {
             }
         }
 
+        // added — the entity was added to an instance in the world (Prefabs::Addition): the
+        // instance differs from its prefab by it, everything under it included.
+        void setAdded(bool added) {
+            m_added->setHidden(!added);
+        }
+
     private:
+        std::shared_ptr<Panel> m_iconBox;
         std::shared_ptr<ImageView> m_icon;
+        std::shared_ptr<ImageView> m_added;
         std::shared_ptr<Label> m_label;
     };
 
@@ -157,6 +182,7 @@ void HierarchyPanelView::configureTree() {
         if (uuid == 0 || !m_world) {
             entityCell.setText(m_rootTitle);
             entityCell.setIcon(nullptr); // the world root — no type icon
+            entityCell.setAdded(false);
             return;
         }
         Panda::Entity entity = m_world->getById(Panda::UUID(uuid));
@@ -166,6 +192,7 @@ void HierarchyPanelView::configureTree() {
         const bool part = Panda::Prefabs::instanceRoot(entity).isValid();
         const bool prefabRoot = part && entity.getComponent<Panda::PrefabComponent>().prefab != Panda::AssetId(0);
         entityCell.setIcon(entity.isValid() ? (prefabRoot ? Ic::Prefab : entityIconName(entity)) : nullptr, part);
+        entityCell.setAdded(entity.isValid() && Panda::Prefabs::additionOf(entity).top == entity);
     };
     dataSource.titleForItem = [this](TreeItem item) -> std::string {
         const std::uint32_t uuid = toUuid(item);

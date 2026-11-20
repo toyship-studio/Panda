@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Rain/Rain.hpp>
-
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -79,18 +77,5 @@ namespace ShaderFeatures {
     bool isFeatureTexture(std::string_view name);
 
 } // namespace ShaderFeatures
-
-// The "rendering" section of the project scope (`.Panda/project.json`): the features of the
-// project. The default is every feature of the catalog, so a project without the section keeps
-// its look; the project template of the editor writes the lean set. The editor applies a change
-// on save of the project settings (the shaders of the project recompile); the export writes the
-// set into the game's manifest.
-struct ProjectRenderingSettings final : public Rain::Codable {
-    std::vector<std::string> features = ShaderFeatureSet::all().names();
-
-    RAIN_FIELDS_BEGIN(ProjectRenderingSettings)
-    RAIN_FIELD(features)
-    RAIN_FIELDS_END
-};
 
 } // namespace Panda

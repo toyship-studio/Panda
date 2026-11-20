@@ -67,8 +67,10 @@ expanded, as plain entities.
   does not give them back, the editor does not mark them. The scale of the root follows the
   prefab like any other value. An entry written by hand may leave them out: the instance has
   what the prefab has until the editor saves the file.
-- An entity ADDED under an instance is an ordinary entity of the file whose `parent` names an
-  entity of the instance.
+- **An addition**: an entity of the file whose `parent` names an entity of an instance — a
+  plain entity, or the entry of an instance of another prefab — is something the instance was
+  given in the world (`Prefabs::additionOf`). The instance differs from its prefab by it, with
+  everything under it, as by an override: it is counted, marked, applied and reverted like one.
 - A file lists its entries the way a world lists its entities (the order of the Hierarchy), so
   the same world is the same text.
 
@@ -130,10 +132,21 @@ makes a duplicate and a paste point at their own copies.
   again when an entry has it back. Everything that changes an instance as a whole goes through
   this pair: **Revert** at any grain (`entryWithout(root, scope)` — the whole instance, an
   entity, a component, a field by its path; `entryRestoring` for a removed entity) is the
-  command `InstanceEntryCommand` holding the two texts, so it is an undo step like any edit.
+  command `InstanceEntryCommand` holding the two texts, so it is an undo step like any edit. The
+  Revert of a whole instance takes its additions out in the same step (a `CompositeCommand` with
+  the deletion); an addition alone is reverted by deleting it.
+- **One operation takes a difference back** (`strip` in `Prefabs.cpp`): places — an entity of
+  a prefab by its path, and a mask of what of it (`{"pointLightComponent": {"intensity":
+  true}}`, `{"*": true}`, `{"removed": true}`, `{"parent": true}`) — are taken out of an entry.
+  Revert, Restore and Put Back are places of their scope in the entry of their instance; Apply
+  Forced is the places Apply wrote (`Applied::places`) taken out of every other entry of the
+  project — the same Revert, at the same places, in each instance. An entry of a prefab that
+  nests the applied one, or is a variant of it, has the place by a longer path
+  (`correspondsTo` follows the nested instances and the roots that are instances of a base).
+  The name and the place of a root are never taken.
 - **What differs, for the editor**: `differenceOf(entity)` — components added, removed and
   changed, the changed ones with the paths of the fields; on the root also the entities the
-  instance removed; `differenceCount(root)`.
+  instance removed and its additions; `differenceCount(root)`.
 - A prefab that changed — saved in the editor, changed on disk, written by an Apply — reaches
   the open documents at once (`Prefabs::prefabChanged`): for every instance of it (and of the
   prefabs that nest it) the entry is read against the old template, the templates are read
@@ -142,11 +155,20 @@ makes a duplicate and a paste point at their own copies.
 - **Apply** (`Prefabs::apply(root, scope, fileText)`) writes the part of the difference the
   scope names into the prefab: the file is loaded into a world of its own, the patches are put
   into its entities, and it is written the way a prefab is saved. With the whole instance the
-  entities it removed leave the prefab and the plain entities added under it become entities of
-  the prefab (and parts of the instance). **Apply Forced** also takes the applied keys out of
-  every other instance of the prefab — in the open documents in memory
-  (`prefabChanged(…, &applied)`), in the files of the project that are not open as text
-  (`Prefabs::stripApplied`). Apply writes files: it is not an undo step.
+  moves are made there, then the entities it removed leave the prefab, and its additions become
+  entities of the prefab: copied under the entity they stand under (`World::importEntity` —
+  an instance of another prefab stays one and is nested from now on; a part of the instance
+  moved under an addition is moved, not copied), what they name of the instance named by the
+  ids of the prefab. In the world the additions become parts of the instance with the ids of
+  parts (`Applied::reidentified`: the editor starts the undo history of the world again). A scope
+  that names an addition applies it alone. An addition that is — or holds — an instance of a
+  prefab that holds this one is refused (`Applied::refused`): the prefab would hold itself.
+  **Apply Forced** also takes the written places out of every other instance of the prefab —
+  in the open documents in memory (`prefabChanged(…, &applied)`), in the files of the project
+  that are not open as text (`Prefabs::stripApplied`). Apply writes files: it is not an undo
+  step. The editor side is one call, `FileDocuments::applyToPrefab`: it reads and writes the
+  prefab file, rewrites the closed files for Apply Forced before the templates are read again,
+  lets the open documents follow, and shows the new file in the tab of the prefab.
 - `createFrom` + `convertToInstance` (Create Prefab: the entities keep their ids in the new
   file, the root keeps its id in the world, the entities under it get derived ids and what
   named them names them still); `unpack` (the mark goes; an instance nested in it becomes an
@@ -162,18 +184,25 @@ makes a duplicate and a paste point at their own copies.
   (`DockPanel::caption`); for a prefab the tree starts at the root entity of the prefab, and
   that root cannot be deleted, duplicated or moved out.
 - In the Hierarchy the entities of an instance are drawn in the accent color, its root with
-  the sign of a prefab; an entity added under an instance is not.
+  the sign of a prefab; an addition keeps the look of a plain entity with a `+` over the lower
+  corner of its icon (the topmost entity of the addition).
 - The form of an entity of an instance has a strip under the name: the prefab (a click opens
   it), for a part — the instance it is in, how much differs, Revert and Apply (on the root —
   for the whole instance, on a part — for that entity), and a line for what has no row: a
   component or an entity the instance took off (Restore), a part that was moved — under
   another entity of the instance, of the world or of another instance (Put Back: its parent and
-  its transform of the prefab again). A
+  its transform of the prefab again), an addition (Remove). The strip of an addition says what
+  it was added to, with Revert (out of the instance) and Apply (into the prefab). A
   row whose field differs is marked (`PropertyRow::setOverridden`: the accent color and a bar;
   `"overridden"` as its accessibility value), a section whose component differs by its title.
   Revert, Apply and Apply Forced are in the menu of a section (the component) and in the
-  right-click menu of a marked row (the field). Rows are matched to fields by the name the
-  form shows.
+  right-click menu of a marked row (the field).
+- **A row is found by the field it names** (`PropertyRow::field`, the key of the field in the
+  file: every `add…Row` of the form kit takes it). One pass over the rows of a section
+  (`EntityEditorView::markSection`) gives both states a row has against other values of its
+  field: mixed — the targets differ in it (`ComponentFields` reads the text of the component
+  of every target) — and overridden — the instance has it of its own (`Difference::differs`).
+  It runs when the form is built and at every step of the history of the world.
 - The commands: `prefab.create`, `prefab.unpack`, `prefab.open`, `prefab.revert`,
   `prefab.apply`, `prefab.applyForced`, `prefab.addToWorld` — the palette, the keymap and the
   `command` tool of the MCP server run them. A prefab is placed by a drop into the viewport,
@@ -231,21 +260,26 @@ tree, expanded, in binary — and the runtime's asset handler loads it into a `P
 
 The smoke test of the engine (`Panda/Smoke/Main.cpp`, "prefabs") holds what no scene shows:
 the two forms round-trip to the same text, derived ids, patches by path, a missing prefab kept
-as it was, a changed prefab reaching its instances, Revert, Apply, copies with their own
-references, the refusal of a prefab that holds itself. The UI tests hold one scenario across
-the editor: an instance that follows its prefab except in what is its own. The colliders of
+as it was, a changed prefab reaching its instances, Revert, Put Back, Apply, Apply Forced in a
+file and in an open world through a nested prefab, additions — counted, applied whole and one
+by one, an added instance nested by Apply, the refusal of an addition that would make a prefab
+hold itself — copies with their own references, the refusal of a prefab that holds itself. The
+UI tests hold two scenarios across the editor: an instance that follows its prefab except in
+what is its own, and an addition that Apply gives to every instance. The colliders of
 the trees of a prefab layer are a smoke check too: a ray stops on the trunk where a tree stands.
 
 ## Open items
 
-- The marks of the form are found by the name of a row, so a row a module titles differently
-  from its field is not marked (its section still is). The name and the Static toggle of a part
-  are not marked; the strip counts them.
+- The name and the Static toggle of a part are not marked; the strip counts them. The rows of
+  the transform keep their own typed mixed state (the rotation is shown as angles, the file
+  holds a quaternion).
 - A prefab dropped into the viewport stands where the root of the prefab says, not under the
   pointer (a dropped model does the same). The Hierarchy takes no drop of a prefab.
 - The Content Browser shows a prefab by the sign of its kind, not by a picture of it.
-- Create Prefab and Unpack clear the undo history of the document (they change ids). Apply is
-  not undone: the file is written.
+- Create Prefab, Unpack and an Apply that makes additions parts clear the undo history of the
+  document (they change ids). Apply is not undone: the file is written. Apply Forced rewrites
+  the closed files at once and leaves the open ones dirty: a document closed without saving
+  keeps its overrides.
 - A part of an instanced model whose material is blended is drawn with the opaque meshes,
   unsorted. A material on a shader of the project without an instanced variant cannot be drawn
   as instances (the same holds for the mesh layers of the flora).
@@ -254,6 +288,3 @@ the trees of a prefab layer are a smoke check too: a ray stops on the trunk wher
   copy of the triangles per tree: a tree wants a capsule, a box or a convex mesh.
 - A light in a particle prefab does not light: a system takes the meshes, and the terrain the
   colliders. Per-copy animation (a butterfly that beats its wings) is not there.
-- The editor does not see a script build tree that was configured against another SDK
-  (a project copied from another machine): the scripts fail to load until the build folder is
-  removed.

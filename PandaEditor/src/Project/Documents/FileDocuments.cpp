@@ -8,6 +8,8 @@
 #include <Panda/Prefabs/Prefabs.hpp>
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace Panda {
 
@@ -221,6 +223,77 @@ void FileDocuments::closeWorld(WorldFile &world) {
     m_worlds.erase(m_worlds.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
+bool FileDocuments::applyToPrefab(Entity root, const Prefabs::Scope &scope, bool forced) {
+    AssetHandlerEditor *handler = AssetHandlerEditor::current();
+    World *world = root.isValid() ? root.getWorld() : nullptr;
+    const AssetId prefab = Prefabs::prefabOf(root);
+    if (handler == nullptr || world == nullptr || prefab == AssetId(0)) { return false; }
+    const path_t path = handler->documentFilePath(prefab);
+    const std::string name = handler->getAssetName(prefab);
+    // The prefab is written as its file has it: edits of it that are not saved yet would be lost
+    // under the new file, or written with it unasked.
+    WorldFile *document = findWorld(path);
+    if (document != nullptr && document->isDirty()) {
+        LOG_WARN_EDITOR("%s has unsaved edits: save it (or close it without saving), then apply.", name.c_str());
+        return false;
+    }
+    const auto readText = [](const path_t &file, std::string &text) {
+        std::ifstream input(file);
+        if (!input.is_open()) { return false; }
+        std::stringstream content;
+        content << input.rdbuf();
+        text = content.str();
+        return true;
+    };
+    std::string text;
+    if (!readText(path, text)) {
+        LOG_ERROR_EDITOR("%s could not be read: nothing was applied.", name.c_str());
+        return false;
+    }
+    const Prefabs::Applied applied = Prefabs::apply(root, scope, text);
+    if (!applied.any()) {
+        if (!applied.refused) { LOG_INFO_EDITOR("Nothing to apply: the instance differs from %s in nothing there.", name.c_str()); }
+        return false;
+    }
+    {
+        std::ofstream output(path);
+        if (!output.is_open()) {
+            LOG_ERROR_EDITOR("%s could not be written: nothing was applied.", name.c_str());
+            return false;
+        }
+        output << applied.file;
+    }
+    // Apply Forced: the worlds and prefabs that are not open lose the same places on disk — before
+    // the prefabs are read again, so that a prefab that nests this one is read as it is now.
+    int rewritten = 0;
+    if (forced) {
+        for (const auto &[id, info] : handler->getRegistry()) {
+            if ((info.type != AssetType::WORLD && info.type != AssetType::PREFAB) || id == prefab) { continue; }
+            const path_t file = handler->documentFilePath(id);
+            std::string content;
+            std::string stripped;
+            if (file.empty() || findWorld(file) != nullptr || !readText(file, content)) { continue; }
+            if (!Prefabs::stripApplied(applied, content, stripped)) { continue; }
+            std::ofstream(file) << stripped;
+            rewritten++;
+        }
+    }
+    // The open documents follow the prefab (and lose the places, when forced) in memory.
+    handler->prefabChanged(prefab, forced ? &applied : nullptr);
+    if (document != nullptr) { reloadWorld(*document); }
+    world->setChanged(); // its file holds the difference the instance has no more
+    if (applied.reidentified) { world->getCommandHistory().clear(); }
+    if (rewritten > 0) {
+        LOG_INFO_EDITOR(
+            "Applied to %s; %d other file%s of the project lost the overrides of the same places.", name.c_str(), rewritten,
+            rewritten == 1 ? "" : "s"
+        );
+    } else {
+        LOG_INFO_EDITOR("Applied to %s.", name.c_str());
+    }
+    return true;
+}
+
 bool FileDocuments::saveWorld(WorldFile &world) {
     if (world.path().empty()) { return saveWorldAs(world); }
     if (!world.write(world.path())) { return false; }
@@ -262,8 +335,8 @@ bool FileDocuments::saveWorldAs(WorldFile &world) {
 
 void FileDocuments::syncStartWorld(const WorldFile &world) {
     if (world.isPrefab()) { return; } // a game starts in a world
-    ProjectWorldSettings &settings = m_projectSettings.settings().get<ProjectWorldSettings>();
-    if (settings.startWorld.empty()) { settings.startWorld = projectRelative(world.path()); }
+    std::string &startWorld = projectSettings().world.startWorld;
+    if (startWorld.empty()) { startWorld = projectRelative(world.path()); }
 }
 
 void FileDocuments::registerWorldAsset(const path_t &path) {

@@ -3,7 +3,10 @@
 #include "Project/Documents/AssetFile.hpp"
 #include "Project/Documents/SettingsFile.hpp"
 #include "Project/Documents/WorldFile.hpp"
+#include "Project/Settings/EditorSettings.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
+
+#include <Panda/Prefabs/Prefabs.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -70,13 +73,13 @@ public:
     SettingsFile &projectSettingsFile() {
         return m_projectSettings;
     }
-    // The sections of the two scopes by type (EditorViewportSettings, ProjectModuleSettings, the
-    // sections of the modules).
-    TypeContext &editorSettings() {
-        return m_editorSettings.settings();
+    // The editor's own settings of the two scopes, as fields (the sections of the modules are in
+    // the store of the file: SettingsFile::settings).
+    EditorSettings &editorSettings() {
+        return m_editorSettings.settings().get<EditorSettings>();
     }
-    TypeContext &projectSettings() {
-        return m_projectSettings.settings();
+    ProjectSettings &projectSettings() {
+        return m_projectSettings.settings().get<ProjectSettings>();
     }
 
     // ---- The open worlds ----
@@ -102,6 +105,16 @@ public:
     // Drops the world from memory (the unsaved-changes question is the caller's). Its neighbor
     // becomes the active one; after the last world none is.
     void closeWorld(WorldFile &world);
+
+    // ---- Prefabs ----
+
+    // Apply (context/prefabs.md): the part of what the instance at `root` differs in that the
+    // scope names goes into its prefab file. Apply Forced takes the same places out of the other
+    // instances too — on disk in the files of the project that are not open, in memory in the
+    // open documents, which wait for Save. A document of the prefab, if open, shows the new file;
+    // a world whose entities got other ids (its additions became parts) starts its undo history
+    // again. false — nothing was applied, the log says why.
+    bool applyToPrefab(Entity root, const Prefabs::Scope &scope, bool forced);
 
     // ---- The asset documents ----
     std::unique_ptr<AssetFile> assetFile(AssetId id); // a loaded asset of the project; null — not loaded

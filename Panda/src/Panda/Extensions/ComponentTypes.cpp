@@ -25,6 +25,12 @@ const ComponentType *ComponentTypeRegistry::find(entt::id_type typeId) const {
     return nullptr;
 }
 
+void ComponentTypeRegistry::forEachReference(Entity entity, const EntityRefVisitor &visit, entt::id_type except) const {
+    for (const ComponentType &type : m_types) {
+        if (type.entityRefs != nullptr && type.typeId != except && entity.hasComponent(type.typeId)) { type.entityRefs(entity, visit); }
+    }
+}
+
 void ComponentTypeRegistry::prepare(entt::registry &registry) const {
     for (const ComponentType &type : m_types) {
         type.prepare(registry);

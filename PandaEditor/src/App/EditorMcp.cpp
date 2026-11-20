@@ -224,7 +224,7 @@ void EditorMcp::syncServer() {
         // too) — work on the editor itself.
         port = m_editor.launch().mcpPort;
     } else if (hasProject()) {
-        const ProjectMcpSettings &settings = m_editor.documents().projectSettings().get<ProjectMcpSettings>();
+        const ProjectMcpSettings &settings = m_editor.documents().projectSettings().mcp;
         if (settings.enabled && settings.port > 0 && settings.port < 65536) { port = settings.port; }
     }
     // Decided once per change: a port that could not be taken is not tried again every frame.
@@ -614,7 +614,7 @@ Mcp::PendingResult EditorMcp::status() {
     writer.Key("project");
     writer.StartObject();
     writer.Key("name");
-    writeText(writer, projectPath.filename().string());
+    writeText(writer, m_editor.project().projectName());
     writer.Key("path");
     writeText(writer, projectPath.string());
     writer.EndObject();
@@ -705,7 +705,7 @@ Mcp::PendingResult EditorMcp::status() {
 
     writer.Key("shaderFeatures");
     writer.StartArray();
-    for (const std::string &feature : m_editor.documents().projectSettings().get<ProjectRenderingSettings>().features) {
+    for (const std::string &feature : m_editor.documents().projectSettings().rendering.features) {
         writeText(writer, feature);
     }
     writer.EndArray();
@@ -2388,9 +2388,9 @@ Mcp::PendingResult EditorMcp::openProject(const rapidjson::Value &arguments) {
     if (folder.empty() || !folder.is_absolute() || !std::filesystem::is_directory(folder, error)) {
         return Mcp::ready(Mcp::ToolResult::error("path is the folder of a project, absolute: " + folder.string()));
     }
-    if (!std::filesystem::is_regular_file(folder / ".Panda" / "project.json", error)) {
-        return Mcp::ready(Mcp::ToolResult::error("Not a project (no .Panda/project.json): " + folder.string()));
-    }
+    std::string problem;
+    const std::string name = ProjectLoader::readName(folder, &problem);
+    if (name.empty()) { return Mcp::ready(Mcp::ToolResult::error(problem)); }
     if (hasProject() && folder == m_editor.project().getOpenedProjectPath()) {
         return Mcp::ready(textResult("This project is open already."));
     }
@@ -2405,7 +2405,7 @@ Mcp::PendingResult EditorMcp::openProject(const rapidjson::Value &arguments) {
     m_projectToOpen = folder;
     m_exit = Exit::OpenProject;
     m_exitFrames = 0;
-    return Mcp::ready(textResult("The editor opens " + folder.filename().string() + ": poll `status`."));
+    return Mcp::ready(textResult("The editor opens " + name + ": poll `status`."));
 }
 
 Mcp::PendingResult EditorMcp::exit(Exit kind, const rapidjson::Value &arguments) {

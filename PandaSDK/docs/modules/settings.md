@@ -36,7 +36,9 @@ GameContext::getExtensions().settings.add(settingsType<PhysicsEditorSettings>(Se
 
 `settingsType<T>(scope, key)` fills `encode`, `decode`, `copy` and `reset` for a Codable value;
 the defaults of the struct are the defaults of the section. The key is persisted like a
-component key and never changes.
+component key and never changes. A part that keeps several keys in one struct registers each
+with `settingsField<&Owner::field>(scope, key)` and reads them as fields of one value (the editor
+does so with its own sections).
 
 ## The world scope
 

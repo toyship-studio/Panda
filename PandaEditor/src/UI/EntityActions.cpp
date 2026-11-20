@@ -16,6 +16,7 @@
 #include <Panda/Serialization/WorldMapper.hpp>
 #include <Panda/WorldCommands/CommandHistory.hpp>
 #include <Panda/WorldCommands/Impl/AddRemoveEntitiesCommand.hpp>
+#include <Panda/WorldCommands/Impl/CompositeCommand.hpp>
 #include <Panda/WorldCommands/Impl/EditScriptFieldCommand.hpp>
 #include <Panda/WorldCommands/Impl/EntityTransformCommand.hpp>
 #include <Panda/WorldCommands/Impl/HierarchyCommand.hpp>
@@ -439,9 +440,19 @@ void EntityActions::revertPrefab(Panda::UUID rootId, const Panda::Prefabs::Scope
     Panda::Entity root = shown != nullptr ? shown->getById(rootId) : Panda::Entity();
     const std::string before = Panda::Prefabs::entryOf(root);
     const std::string after = Panda::Prefabs::entryWithout(root, scope);
-    if (before.empty() || after.empty() || before == after) { return; }
-    Panda::InstanceEntryCommand command(*shown, rootId, before, after);
+    if (before.empty() || after.empty()) { return; }
+    // The whole instance: what was added to it goes too — one step with the entities it brings
+    // back to the prefab.
+    std::unordered_set<Panda::Entity> additions;
+    if (!scope.entity.isValid()) {
+        for (const Panda::Prefabs::AddedEntity &added : Panda::Prefabs::differenceOf(root).added) { additions.insert(shown->getById(added.id)); }
+    }
+    if (before == after && additions.empty()) { return; }
+    Panda::CompositeCommand command;
+    if (!additions.empty()) { command.add(Panda::AddRemoveEntitiesCommand(additions)); }
+    if (before != after) { command.add(Panda::InstanceEntryCommand(*shown, rootId, before, after)); }
     shown->getCommandHistory().execute(command);
+    shown->setChanged();
     m_workspace.refreshFromWorld();
 }
 
@@ -458,69 +469,26 @@ void EntityActions::restoreRemoved(Panda::UUID rootId, Panda::UUID source) {
 }
 
 void EntityActions::applyPrefab(Panda::UUID rootId, const Panda::Prefabs::Scope &scope, bool forced) {
-    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (refusePrefabEditInPlay()) { return; }
     Panda::World *shown = world();
     Panda::Entity root = shown != nullptr ? shown->getById(rootId) : Panda::Entity();
-    const Panda::AssetId prefab = Panda::Prefabs::prefabOf(root);
-    if (handler == nullptr || !prefab || refusePrefabEditInPlay()) { return; }
-    const Panda::path_t path = handler->documentFilePath(prefab);
-    const std::string name = handler->getAssetName(prefab);
-    // The prefab is written as its file has it: edits of it that are not saved yet would be lost
-    // under the new file, or written with it unasked.
-    Panda::WorldFile *document = m_app.documents().findWorld(path);
-    if (document != nullptr && document->isDirty()) {
-        LOG_WARN_EDITOR("%s has unsaved edits: save it (or close it without saving), then apply.", name.c_str());
-        return;
-    }
-    std::ifstream source(path);
-    std::stringstream text;
-    text << source.rdbuf();
-    if (!source.is_open()) {
-        LOG_ERROR_EDITOR("%s could not be read: nothing was applied.", name.c_str());
-        return;
-    }
-    source.close();
-    const Panda::Prefabs::Applied applied = Panda::Prefabs::apply(root, scope, text.str());
-    if (!applied.any()) {
-        LOG_INFO_EDITOR("Nothing to apply: the instance differs from %s in nothing there.", name.c_str());
-        return;
-    }
-    std::ofstream target(path);
-    if (!target.is_open()) {
-        LOG_ERROR_EDITOR("%s could not be written: nothing was applied.", name.c_str());
-        return;
-    }
-    target << applied.file;
-    target.close();
-    // Apply Forced: the files of the project that are not open lose what they have of their own
-    // in the applied places; the open documents lose it in memory (prefabChanged) and wait for Save.
-    int rewritten = 0;
-    if (forced) {
-        for (const auto &[id, info] : handler->getRegistry()) {
-            if ((info.type != Panda::AssetType::WORLD && info.type != Panda::AssetType::PREFAB) || id == prefab) { continue; }
-            const Panda::path_t file = handler->documentFilePath(id);
-            if (file.empty() || m_app.documents().findWorld(file) != nullptr) { continue; }
-            std::ifstream input(file);
-            std::stringstream content;
-            content << input.rdbuf();
-            input.close();
-            std::string stripped;
-            if (!Panda::Prefabs::stripApplied(applied, content.str(), stripped)) { continue; }
-            std::ofstream output(file);
-            output << stripped;
-            rewritten++;
-        }
-    }
-    handler->prefabChanged(prefab, forced ? &applied : nullptr);
-    m_app.documentActions().reloadWorldAsset(prefab); // its open tab shows the new file
-    shown->setChanged(); // its file holds the difference that the instance has no more
-    if (forced && rewritten > 0) {
-        LOG_INFO_EDITOR("Applied to %s; %d other file%s of the project lost the overrides of the same places.", name.c_str(), rewritten, rewritten == 1 ? "" : "s");
-    } else {
-        LOG_INFO_EDITOR("Applied to %s.", name.c_str());
-    }
+    if (!m_app.documents().applyToPrefab(root, scope, forced)) { return; }
     m_workspace.refreshAssetPanels();
     m_workspace.refreshFromWorld();
+}
+
+void EntityActions::revertAddition(Panda::UUID top) {
+    if (refusePrefabEditInPlay()) { return; }
+    // Out of the instance: deleted, as Delete does it — an undo step.
+    hierarchyDidRequestDelete({top});
+}
+
+void EntityActions::applyAddition(Panda::UUID top) {
+    Panda::World *shown = world();
+    Panda::Entity entity = shown != nullptr ? shown->getById(top) : Panda::Entity();
+    const Panda::Prefabs::Addition addition = Panda::Prefabs::additionOf(entity);
+    if (!addition.instance.isValid()) { return; }
+    applyPrefab(addition.instance.getId(), Panda::Prefabs::Scope{addition.top, {}, {}}, /*forced*/ false);
 }
 
 /* ------------------------------ The entity tabs ------------------------------ */
@@ -722,6 +690,19 @@ void EntityActions::entityDidOpenPrefab() {
 void EntityActions::entityDidSelectPrefabRoot() {
     Panda::Entity root = Panda::Prefabs::instanceRoot(primaryTarget());
     if (root.isValid()) { m_workspace.selectEntities({root.getId()}); }
+}
+
+void EntityActions::entityDidSelectEntity(Panda::UUID id) {
+    Panda::World *shown = world();
+    if (shown != nullptr && shown->getById(id).isValid()) { m_workspace.selectEntities({id}); }
+}
+
+void EntityActions::entityDidRevertAddition(Panda::UUID top) {
+    revertAddition(top);
+}
+
+void EntityActions::entityDidApplyAddition(Panda::UUID top) {
+    applyAddition(top);
 }
 
 } // namespace Editor

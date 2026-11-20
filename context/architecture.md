@@ -119,11 +119,17 @@ and background jobs (`PandaAsync`).
 ### Project model and worlds
 
 - A project contains no absolute paths. `.Panda/project.json` is the project scope of the
-  settings model (`context/plugins.md`, the `settings` registry): sections by name, the core's
-  `world` (`ProjectWorldSettings.startWorld`: the world the game starts in) and `modules`
-  (`ProjectModuleSettings`),
-  the sections of modules after them
-  (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The state
+  settings model (`context/plugins.md`, the `settings` registry): sections by name. The
+  editor's own are the fields of one struct, `ProjectSettings` (read as fields:
+  `documents.projectSettings().name`; `settingsField` registers each under its key) — `name`
+  (a string, the name of the project; a folder whose file has none is not a project and is not
+  opened), `world` (`startWorld`: the world the game starts in), `modules`, `mcp` and
+  `rendering` (the shader features); the sections of modules after them, in the store of the
+  file (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`, `EditorSettingsTypes.cpp`). The
+  editor scope is the same: `EditorSettings` (`viewport`, `appearance`, `updates`,
+  `externalTools`, `toolchain`). A form of the Settings window edits a copy of its field and
+  writes the field alone into the struct as the store has it then (`editSettings`), so one form
+  never writes back what another changed. The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
   of the editor camera in each, the one that was active, and what the Export window was last
   set to) is `.Panda/session.json`, outside version control. A project opens the worlds of its
@@ -1226,7 +1232,14 @@ dropping of the queue on `waitAll`.
 
 `Project/Build/ProjectBuilds` is everything the editor builds for the open project: its two cmake
 projects — the scripts (`Scripts/<Name>`) and the game (`Export/`) — and the runtime data the
-second one is built from. The two have two faces, because they are two different tasks. The
+second one is built from. `<Name>` is the name of the project, `name` of its `project.json`
+(`ProjectSettings::name`, `ProjectLoader::projectName`), never the folder of the project; no path is
+stored, the folder of the scripts, the library, the game and its save folder follow from the
+name (the template names the CMake projects and targets the same). A folder whose
+`project.json` names no project is not opened (`ProjectLoader::readName`, the one gate of the
+loader, the File menu, the start screen and the `open_project` tool). A build tree cmake made for another folder (the project was copied or moved) or, for
+the scripts, against another PandaSDK (another editor) is removed and made again before the
+build: its cache would build the headers of one SDK against the libraries of another. The two have two faces, because they are two different tasks. The
 scripts are the inner loop — edit a script, press Build, the library is loaded, play — and live
 in a tab of the bottom dock, `UI/Panels/CMakePanel`. The export of the game is a task of its own,
 done now and then, with choices before it and a result after it: it has a window of its own,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Panda/Base/Base.hpp>
+#include <Panda/Renderer/ShaderFeatures.hpp>
 #include <Rain/Rain.hpp>
 
 #include <string>
@@ -39,9 +40,9 @@ struct ModuleRef final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-// The sections of the project scope — `.Panda/project.json`, in version control (one JSON object
-// of sections by name, the settings registry; the modules add their own sections the same way,
-// EditorSettingsTypes registers these). Paths are relative to the project, with forward slashes.
+// The sections of `.Panda/project.json` (in version control) that are the editor's own: one
+// struct, ProjectSettings, a field for each key; the modules add their sections to the same file
+// through the settings registry. Paths are relative to the project, with forward slashes.
 
 // "world": the start world of the project. A game starts in it and carries what it reaches
 // (context/export.md); the editor opens it when the session has no worlds.
@@ -76,6 +77,33 @@ struct ProjectMcpSettings final : public Rain::Codable {
     RAIN_FIELD(enabled)
     RAIN_FIELD(port)
     RAIN_FIELDS_END
+};
+
+// "rendering": the shader features of the project (ShaderFeatures.hpp). The default is every
+// feature of the catalog, so a project without the section keeps its look; the project template
+// writes the lean set. A change applies on save (the shaders of the project recompile); the
+// export writes the set into the game's manifest.
+struct ProjectRenderingSettings final : public Rain::Codable {
+    std::vector<std::string> features = ShaderFeatureSet::all().names();
+
+    RAIN_FIELDS_BEGIN(ProjectRenderingSettings)
+    RAIN_FIELD(features)
+    RAIN_FIELDS_END
+};
+
+// The settings of the project the editor owns, as fields: `projectSettings().name`.
+struct ProjectSettings final {
+    // "name": the name of the project. What the editor calls the project (the window, the recent
+    // projects, `status`), and what names the files that come from it: the folder of its scripts
+    // (Scripts/<name>) and the library they build, the game the export builds (<name>.app,
+    // <name>.exe) and the folder that game keeps its saves in. None of those paths is written
+    // anywhere: they follow from the name, the folder of the project may be called anything. A
+    // folder whose project.json does not name it is not opened (ProjectLoader::readName).
+    std::string name;
+    ProjectWorldSettings world;
+    ProjectModuleSettings modules;
+    ProjectMcpSettings mcp;
+    ProjectRenderingSettings rendering;
 };
 
 // A world the session had open: its file (relative to the project) and where the editor camera

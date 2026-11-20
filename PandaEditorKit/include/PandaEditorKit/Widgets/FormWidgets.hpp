@@ -52,80 +52,61 @@ std::shared_ptr<PandaUI::Label> makeFormHint(const std::string &text);
 std::shared_ptr<PandaUI::View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set);
 std::shared_ptr<PandaUI::PropertyRow> addAssetRow(
     PandaUI::CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
-    std::function<void(uint32_t)> set
+    std::function<void(uint32_t)> set, const char *field = nullptr
 );
 
 // Typical section rows: a number in a range, a toggle, a color, a choice from a list, a vector,
 // a reference to an entity of the world. The callback fires on every change (module sections
-// write a copy of the component and commit it with a command). mixed — the targets of the form
-// differ in this field: the row says so and the widget shows "—" instead of the value (the
-// primary target's) until the user sets one. The row comes back for further tuning: setHelp (a
-// tooltip over the label), setDescription (a line under it), setVisible (a field that does not
-// apply now leaves the form).
+// write a copy of the component and commit it with a command). The row comes back for further
+// tuning: setHelp (a tooltip over the label), setDescription (a line under it), setVisible (a
+// field that does not apply now leaves the form).
+//
+// `field` — the field of the component the row edits, as the file names it
+// (PropertyRow::setField: `intensity`, `camera/fieldOfView`). The form of an entity compares
+// the field across what it shows, from the text of the component: the targets differ in it —
+// the row says so and the editor shows "—" (showMixed); an instance of a prefab has it of its
+// own — the row is marked, its menu offers Revert and Apply. A row of a component names its
+// field; a row of a form of something else (the settings, an asset) has none.
 //
 // A number is typed into its field or scrubbed by dragging the label of the row (PropertyRow).
 // A toggle sits at the right edge of the row and its label takes the rest of the width.
 std::shared_ptr<PandaUI::PropertyRow> addNumberRow(
     PandaUI::CollapsibleSection &section, const char *title, float min, float max, float value,
-    std::function<void(float)> onChange, bool mixed = false
+    std::function<void(float)> onChange, const char *field = nullptr
 );
 // A whole number: counts, sizes in texels, ports.
 std::shared_ptr<PandaUI::PropertyRow> addIntegerRow(
     PandaUI::CollapsibleSection &section, const char *title, int min, int max, int value,
-    std::function<void(int)> onChange, bool mixed = false
+    std::function<void(int)> onChange, const char *field = nullptr
 );
 std::shared_ptr<PandaUI::PropertyRow> addToggleRow(
     PandaUI::CollapsibleSection &section, const char *title, bool value, std::function<void(bool)> onChange,
-    bool mixed = false
+    const char *field = nullptr
 );
 // alpha — the opacity of the color means something (a sprite, the base color of a material): the
 // picker gets a slider for it. Without it the alpha is carried through unchanged.
 std::shared_ptr<PandaUI::PropertyRow> addColorRow(
     PandaUI::CollapsibleSection &section, const char *title, const Panda::Color &value,
-    std::function<void(const Panda::Color &)> onChange, bool mixed = false, bool alpha = false
+    std::function<void(const Panda::Color &)> onChange, const char *field = nullptr, bool alpha = false
 );
 std::shared_ptr<PandaUI::PropertyRow> addComboRow(
     PandaUI::CollapsibleSection &section, const char *title, std::vector<std::string> items, int selected,
-    std::function<void(int)> onChange, bool mixed = false
+    std::function<void(int)> onChange, const char *field = nullptr
 );
-// X / Y / Z fields (Vector3Field); mixed — per axis.
+// X / Y / Z fields (Vector3Field); mixed per axis.
 std::shared_ptr<PandaUI::PropertyRow> addVector3Row(
     PandaUI::CollapsibleSection &section, const char *title, glm::vec3 value, std::function<void(glm::vec3)> onChange,
-    glm::bvec3 mixed = glm::bvec3(false)
+    const char *field = nullptr
 );
 // A reference to an entity of the world (EntityWell: a picker, a drop from the Hierarchy, a
 // clear button).
 std::shared_ptr<PandaUI::PropertyRow> addEntityRow(
     PandaUI::CollapsibleSection &section, const char *title, Panda::World &world, Panda::UUID value,
-    std::function<void(Panda::UUID)> onChange, bool mixed = false
+    std::function<void(Panda::UUID)> onChange, const char *field = nullptr
 );
 
-// Whether a field of component T differs among the targets of a form that have T — the mixed
-// flag of its row. get(T &) → the field value (anything comparable with ==).
-template<typename T, typename Get>
-bool componentFieldMixed(const std::vector<Panda::Entity> &entities, Get get) {
-    bool found = false;
-    decltype(get(std::declval<T &>())) first{};
-    for (Panda::Entity entity : entities) {
-        if (!entity.hasComponent<T>()) { continue; }
-        auto value = get(entity.getComponent<T>());
-        if (!found) {
-            first = value;
-            found = true;
-        } else if (!(value == first)) {
-            return true;
-        }
-    }
-    return false;
-}
-// The same for a vector field, per axis.
-template<typename T, typename Get>
-glm::bvec3 componentVectorMixed(const std::vector<Panda::Entity> &entities, Get get) {
-    return glm::bvec3(
-        componentFieldMixed<T>(entities, [&get](T &c) { return get(c).x; }),
-        componentFieldMixed<T>(entities, [&get](T &c) { return get(c).y; }),
-        componentFieldMixed<T>(entities, [&get](T &c) { return get(c).z; })
-    );
-}
+// The targets of a form differ in the field of the row: the row says so, and its editor shows
+// "—" in place of the value of the primary target (`axes` — per axis, for a vector).
+void showMixed(PandaUI::PropertyRow &row, bool mixed, glm::bvec3 axes = glm::bvec3(false));
 
 } // namespace Editor

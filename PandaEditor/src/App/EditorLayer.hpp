@@ -166,8 +166,10 @@ public:
     // ---- The application and the project.
     void closeAppRequest(); // asks about the unsaved edits first
     void restartEditor();   // the same, then a new instance with the same project
-    // Another project in this window (File → Open Recent, an agent): asks about the unsaved edits,
-    // then the open project is saved and closed and this one takes its place.
+    // Another project in this window (File → Open Project, Open Recent, an agent): a folder that
+    // is not a project (ProjectLoader::readName) is said so in the log and nothing changes; else
+    // asks about the unsaved edits, then the open project is saved and closed and this one takes
+    // its place.
     void openProject(const path_t &path);
     // After project.json was reread: a module switched on in it opens the project again (true).
     bool reopenProjectForModules();
@@ -246,8 +248,7 @@ private:
     void scriptsWereBuilt();
 
     // ---- The project and the window.
-    void openProjectRequest();  // asks about the unsaved edits, then which folder
-    void openProjectFolderDialog();
+    void openProjectRequest();  // asks which folder, then — a project — about the unsaved edits
     void closeProjectRequest(); // asks about the unsaved edits first
     void closeProject();
     void closeApp();

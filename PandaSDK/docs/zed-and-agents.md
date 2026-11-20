@@ -12,7 +12,7 @@ of the editor.
 | `Assets/**.world` | a world: the settings sections and the entities with their components, JSON ([the format](world-format.md)) |
 | `Assets/**.mat` | a material: the inputs of a shader, JSON ([assets](assets.md)) |
 | `Assets/**.pmeta` | the sidecar of an asset: its id and import settings; written by the editor |
-| `.Panda/project.json` | the project settings |
+| `.Panda/project.json` | the name of the project (`name`: the folder of the scripts, the library and the game are called by it) and its settings |
 | `.mcp.json` | where an MCP client finds the editor of the project ([the editor for an agent](#the-editor-for-an-agent)) |
 | `.Panda/scripts-manifest.json` | the classes and fields of the loaded script bundle; written by the editor on every script load ([scripting](scripting.md)) |
 | `Scripts/<Project>/src/` | the gameplay: C++ against the Bamboo SDK |

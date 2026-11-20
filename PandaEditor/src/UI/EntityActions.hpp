@@ -67,6 +67,10 @@ public:
     // Revert, Restore and Apply change an instance as a whole: while the game plays they say
     // so and do nothing (true).
     bool refusePrefabEditInPlay();
+    // An addition to an instance (Prefabs::Addition::top) goes out of it — deleted, an undo step —
+    // or into its prefab.
+    void revertAddition(Panda::UUID top);
+    void applyAddition(Panda::UUID top);
     // The root of the prefab the panels show — everything in a prefab stands under it. Invalid —
     // the panels show a world.
     Panda::Entity prefabRoot();
@@ -110,6 +114,9 @@ public:
     void entityDidRestoreRemoved(Panda::UUID source) override;
     void entityDidOpenPrefab() override;
     void entityDidSelectPrefabRoot() override;
+    void entityDidSelectEntity(Panda::UUID id) override;
+    void entityDidRevertAddition(Panda::UUID top) override;
+    void entityDidApplyAddition(Panda::UUID top) override;
 
 private:
     Panda::World *world(); // the world the panels show; nullptr — none is open

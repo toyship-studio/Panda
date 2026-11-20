@@ -82,10 +82,7 @@ void EditorMenuBar::rebuild() {
         for (size_t i = 0; i < recentProjects.size(); ++i) {
             const path_t projectPath = recentProjects[i].path;
             if (projectPath.empty()) { continue; }
-
-            std::string projectName = projectPath.filename().string();
-            if (projectName.empty()) { projectName = projectPath.string(); }
-            recentProjectsMenu.addItem(projectName, OPEN_RECENT_PROJECT_BASE + static_cast<Fern::MenuCommandId>(i))
+            recentProjectsMenu.addItem(recentProjects[i].name, OPEN_RECENT_PROJECT_BASE + static_cast<Fern::MenuCommandId>(i))
                 .setChecked(projectPath == openedProjectPath);
         }
     }

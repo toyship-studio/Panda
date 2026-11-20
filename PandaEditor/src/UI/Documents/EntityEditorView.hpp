@@ -60,6 +60,10 @@ public:
     virtual void entityDidRestoreRemoved(Panda::UUID source) = 0; // an entity of the prefab the instance removed
     virtual void entityDidOpenPrefab() = 0;                       // the prefab, in its tab
     virtual void entityDidSelectPrefabRoot() = 0;                 // the root of the instance
+    virtual void entityDidSelectEntity(Panda::UUID id) = 0;        // a link of the form that names another entity
+    // An addition to an instance (Prefabs::Addition::top): out of the instance, or into its prefab.
+    virtual void entityDidRevertAddition(Panda::UUID top) = 0;
+    virtual void entityDidApplyAddition(Panda::UUID top) = 0;
 };
 
 // VIEW: the form of an entity tab (the document model: an entity tab is a view of the world
@@ -116,11 +120,14 @@ private:
     // The strip under the name: the prefab, how much differs, Revert and Apply, and what no row
     // of the form can show (a component or an entity the instance took off).
     void rebuildPrefabStrip();
+    void readDifference(); // m_difference and m_addedTo of the primary target
     // The marks of the rows and of the sections, from m_difference; the strip with them.
     void showDifference();
     // The rows of a section whose fields differ are marked; a field that has no row of its name
     // is named in a line of the section.
-    void markSection(PandaUI::CollapsibleSection &section, const std::string &component, const std::string &prefix);
+    // The rows of a section by the fields they name: mixed among the targets, the instance's own.
+    struct MarkedSection;
+    void markSection(MarkedSection &marked);
     void showDifferenceMenu(PandaUI::Point at, const std::string &component, const std::string &field);
     // Runs at the start of the next tick, if the form is still there: what a button of the form
     // asks for rebuilds the form, and a control is not destroyed from its own callback.
@@ -148,7 +155,11 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // the lifetime token of `later`
     std::shared_ptr<PandaUI::Panel> m_prefabStrip; // under the name; collapsed for a plain entity
     Panda::Prefabs::Difference m_difference;       // of the primary target
-    uint64_t m_differenceRevision = 0;             // the revision of the world's history it was read at
+    // The primary target is the topmost entity of an addition to an instance
+    // (Prefabs::Addition): the root of that instance; 0 — it is not.
+    Panda::UUID m_addedTo = 0;
+    uint64_t m_differenceRevision = 0; // the revision of the world's history they were read at
+    double m_sinceRead = 0.0;          // seconds since they were read
     // The sections that show a component: its type, the path of its place in the difference
     // (a script: `scripts/<Class>/scriptFields`), the section, and the line that names what
     // differs without a row.

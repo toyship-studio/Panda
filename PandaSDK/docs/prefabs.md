@@ -27,14 +27,16 @@ root, and everything in it stands under that root.
 
 **What you see.** In the Hierarchy the entities of an instance are drawn in the accent color,
 its root with the sign of a prefab: that part of the tree is kept in another file. An entity
-you add under an instance is an ordinary entity of the world and looks like one.
+you put under an instance — a new one, one dragged there, an instance of another prefab — is
+an **addition**: it is kept in the world file and looks like an entity of the world, with a `+`
+over its icon, and the instance differs from its prefab by it, with everything under it.
 
 **Giving an instance something of its own.** Edit it like anything else: move a part, change a
-field, add or remove a component, delete an entity of it, put an entity under it. The form of
-an entity of an instance says which prefab it belongs to, and marks what differs from the
-prefab — a bar and the accent color on the row of a field, the accent color on the title of a
-section, a line in the strip under the name for what has no row (a component or an entity the
-instance took off). What is not marked comes from the prefab and will follow it.
+field, add or remove a component, delete an entity of it, put an entity under it (an addition).
+The form of an entity of an instance says which prefab it belongs to, and marks what differs
+from the prefab — a bar and the accent color on the row of a field, the accent color on the
+title of a section, a line in the strip under the name for what has no row (a component or an
+entity the instance took off). What is not marked comes from the prefab and will follow it.
 
 What an instance is called and where it stands — the name, the position and the rotation of
 its root — are always its own: they are not marked, Apply does not take them into the prefab and
@@ -45,16 +47,23 @@ instance has **Revert** and **Apply**; on the root they act on the whole instanc
 under it on that entity. The same two are in the menu of a component section (for that
 component) and in the right-click menu of a marked row (for that field).
 
-- **Revert** — the values of the prefab again. An undo step.
+- **Revert** — the values of the prefab again; on the root also without its additions. An undo
+  step.
 - **Apply to Prefab** — what the instance has of its own is written into the prefab file: every
   instance gets it, and this one differs in nothing there any more. With the whole instance,
-  the entities it removed leave the prefab and the plain entities added under it become
-  entities of the prefab.
+  the entities it removed leave the prefab and its additions become entities of the prefab —
+  an instance of another prefab among them is nested in this one from now on.
 - **Apply Forced** — the same, and the other instances lose what they have of their own in the
   same places: all of them show the applied value. The files of the project that are not open
   are rewritten for it; the open ones change in memory and wait for Save.
 
-Apply writes a file, so it is not an undo step; a prefab with unsaved edits is saved first.
+An addition has a strip of its own: what it was added to, **Revert** (it goes out of the
+instance) and **Apply** (it alone goes into the prefab). The strip of the root lists the
+additions, each with **Remove**.
+
+Apply writes a file, so it is not an undo step; a prefab with unsaved edits is saved first. An
+Apply that makes additions parts of the instance starts the undo history of the world again. An
+addition that holds the prefab it would go into is refused: a prefab cannot hold itself.
 
 **Unpack Prefab** (the Hierarchy menu) cuts the tie: the entities of the instance become plain
 entities of the world.

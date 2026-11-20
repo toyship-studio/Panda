@@ -35,7 +35,7 @@ void EditorAppearance::load() {
 }
 
 EditorUI::FontSettings EditorAppearance::fonts() const {
-    const EditorAppearanceSettings &appearance = m_documents.editorSettings().get<EditorAppearanceSettings>();
+    const EditorAppearanceSettings &appearance = m_documents.editorSettings().appearance;
     EditorUI::FontSettings settings;
     settings.uiFamily = appearance.uiFont;
     settings.monoFamily = appearance.monoFont;
@@ -64,12 +64,12 @@ void EditorAppearance::applyIcons() {
 }
 
 std::string EditorAppearance::currentThemeId() const {
-    return m_documents.editorSettings().get<EditorAppearanceSettings>().theme;
+    return m_documents.editorSettings().appearance.theme;
 }
 
 void EditorAppearance::selectTheme(const std::string &themeId) {
     if (!m_plugins.findTheme(themeId)) { return; }
-    m_documents.editorSettings().get<EditorAppearanceSettings>().theme = themeId;
+    m_documents.editorSettings().appearance.theme = themeId;
     m_documents.editorSettingsFile().save();
     applyTheme();
 }

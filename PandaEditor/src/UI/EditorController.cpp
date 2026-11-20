@@ -1166,20 +1166,26 @@ void EditorController::registerCommands() {
         m_entityActions->openPrefabOf(entity.getId());
         return true;
     });
-    command("prefab.revert", "Prefab", "Revert Instance to Prefab", [this] {
-        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+    // The instance of the selection: the one it is a part of, or the one it was added to.
+    const auto selectedInstance = [this] {
+        Panda::Entity primary = m_entityActions->primaryTarget();
+        Panda::Entity root = Panda::Prefabs::instanceRoot(primary);
+        return root.isValid() ? root : Panda::Prefabs::additionOf(primary).instance;
+    };
+    command("prefab.revert", "Prefab", "Revert Instance to Prefab", [this, selectedInstance] {
+        Panda::Entity root = selectedInstance();
         if (!root.isValid()) { return false; }
         m_entityActions->revertPrefab(root.getId(), {});
         return true;
     });
-    command("prefab.apply", "Prefab", "Apply Instance to Prefab", [this] {
-        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+    command("prefab.apply", "Prefab", "Apply Instance to Prefab", [this, selectedInstance] {
+        Panda::Entity root = selectedInstance();
         if (!root.isValid()) { return false; }
         m_entityActions->applyPrefab(root.getId(), {}, /*forced*/ false);
         return true;
     });
-    command("prefab.applyForced", "Prefab", "Apply Instance to Prefab, Forced", [this] {
-        Panda::Entity root = Panda::Prefabs::instanceRoot(m_entityActions->primaryTarget());
+    command("prefab.applyForced", "Prefab", "Apply Instance to Prefab, Forced", [this, selectedInstance] {
+        Panda::Entity root = selectedInstance();
         if (!root.isValid()) { return false; }
         m_entityActions->applyPrefab(root.getId(), {}, /*forced*/ true);
         return true;
@@ -1327,16 +1333,7 @@ int EditorController::liveEntityCount() const {
     int total = 0;
     // A prefab is the tree under its root: what else its world holds is not a part of it.
     if (Panda::Entity root = m_entityActions->prefabRoot(); root.isValid() && m_panelsWorld == root.getWorld()) {
-        std::vector<Panda::Entity> pending{root};
-        while (!pending.empty()) {
-            Panda::Entity entity = pending.back();
-            pending.pop_back();
-            total++;
-            for (Panda::UUID child : entity.getChildEntities()) {
-                if (m_panelsWorld->isValid(child)) { pending.push_back(m_panelsWorld->getById(child)); }
-            }
-        }
-        return total;
+        return static_cast<int>(m_panelsWorld->subtree(root).size());
     }
     if (m_panelsWorld) {
         for (auto handle : m_panelsWorld->getAllEntitiesWith<Panda::IdComponent>()) {

@@ -78,7 +78,7 @@ namespace {
                 data->type = static_cast<typename T::BodyType>(index);
                 emit();
             },
-            form.mixed([](T &c) { return static_cast<int>(c.type); })
+            "type"
         );
         addToggleRow(
             section, "Fixed Rotation", data->fixedRotation,
@@ -86,7 +86,7 @@ namespace {
                 data->fixedRotation = on;
                 emit();
             },
-            form.mixed([](T &c) { return c.fixedRotation; })
+            "fixedRotation"
         );
     }
 
@@ -101,7 +101,7 @@ namespace {
                 data->density = v;
                 emit();
             },
-            form.mixed([](T &c) { return c.density; })
+            "density"
         );
         addNumberRow(
             form.section, "Friction", 0.f, 1.f, data->friction,
@@ -109,7 +109,7 @@ namespace {
                 data->friction = v;
                 emit();
             },
-            form.mixed([](T &c) { return c.friction; })
+            "friction"
         );
         addNumberRow(
             form.section, "Restitution", 0.f, 1.f, data->restitution,
@@ -117,7 +117,7 @@ namespace {
                 data->restitution = v;
                 emit();
             },
-            form.mixed([](T &c) { return c.restitution; })
+            "restitution"
         );
     }
 
@@ -130,7 +130,7 @@ namespace {
                 data->isSensor = on;
                 emit();
             },
-            form.mixed([](T &c) { return c.isSensor; })
+            "isSensor"
         );
     }
 
@@ -141,13 +141,13 @@ namespace {
         auto emit = form.emitter(Rebuild::Body);
         addSensorRow(form, emit);
         addNumberRow(section, "Offset X", -1000.f, 1000.f, data->offset.x, [data, emit](float v) { data->offset.x = v; emit(); },
-                     form.mixed([](T &c) { return c.offset.x; }));
+                     "offset/x");
         addNumberRow(section, "Offset Y", -1000.f, 1000.f, data->offset.y, [data, emit](float v) { data->offset.y = v; emit(); },
-                     form.mixed([](T &c) { return c.offset.y; }));
+                     "offset/y");
         addNumberRow(section, "Size X", 0.f, 1000.f, data->size.x, [data, emit](float v) { data->size.x = v; emit(); },
-                     form.mixed([](T &c) { return c.size.x; }));
+                     "size/x");
         addNumberRow(section, "Size Y", 0.f, 1000.f, data->size.y, [data, emit](float v) { data->size.y = v; emit(); },
-                     form.mixed([](T &c) { return c.size.y; }));
+                     "size/y");
         addColliderMaterialRows(form, emit, 1.f);
     }
 
@@ -158,9 +158,9 @@ namespace {
         auto emit = form.emitter(Rebuild::Body);
         addSensorRow(form, emit);
         addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.offset; }));
+                      "offset");
         addVector3Row(section, "Size", data->size, [data, emit](glm::vec3 v) { data->size = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.size; }));
+                      "size");
         addColliderMaterialRows(form, emit, 1000.f);
     }
 
@@ -171,9 +171,9 @@ namespace {
         auto emit = form.emitter(Rebuild::Body);
         addSensorRow(form, emit);
         addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.offset; }));
+                      "offset");
         addNumberRow(section, "Radius", 0.001f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
-                     form.mixed([](T &c) { return c.radius; }));
+                     "radius");
         addColliderMaterialRows(form, emit, 1000.f);
     }
 
@@ -184,11 +184,11 @@ namespace {
         auto emit = form.emitter(Rebuild::Body);
         addSensorRow(form, emit);
         addVector3Row(section, "Offset", data->offset, [data, emit](glm::vec3 v) { data->offset = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.offset; }));
+                      "offset");
         addNumberRow(section, "Radius", 0.001f, 1000.f, data->radius, [data, emit](float v) { data->radius = v; emit(); },
-                     form.mixed([](T &c) { return c.radius; }));
+                     "radius");
         addNumberRow(section, "Half Height", 0.f, 1000.f, data->halfHeight, [data, emit](float v) { data->halfHeight = v; emit(); },
-                     form.mixed([](T &c) { return c.halfHeight; }));
+                     "halfHeight");
         addColliderMaterialRows(form, emit, 1000.f);
     }
 
@@ -201,14 +201,14 @@ namespace {
         addAssetRow(section, "Mesh", "mesh", static_cast<uint32_t>(data->mesh.getId()), [data, emit](uint32_t id) {
             data->mesh = Panda::AssetRef<Panda::Asset>(Panda::AssetId(id));
             emit();
-        });
+        }, "mesh");
         addToggleRow(
             section, "Convex", data->convex,
             [data, emit](bool on) {
                 data->convex = on;
                 emit();
             },
-            form.mixed([](T &c) { return c.convex; })
+            "convex"
         );
         section.addContent(makeFormHint(
             "Empty mesh: the one the entity renders. Convex: the hull of the mesh, for dynamic and kinematic "
@@ -229,7 +229,7 @@ namespace {
                 data->connectedEntity = id;
                 emit();
             },
-            form.mixed([](T &c) { return c.connectedEntity; })
+            "connectedEntity"
         );
     }
 
@@ -243,7 +243,7 @@ namespace {
                 data->collideConnected = v;
                 emit();
             },
-            form.mixed([](T &c) { return c.collideConnected; })
+            "collideConnected"
         );
     }
 
@@ -251,23 +251,23 @@ namespace {
     void addMotorRows(Section<T> &form, std::function<void()> emit, float maxSpeed, float maxTorque) {
         auto data = form.data;
         addToggleRow(form.section, "Enable Motor", data->enableMotor, [data, emit](bool v) { data->enableMotor = v; emit(); },
-                     form.mixed([](T &c) { return c.enableMotor; }));
+                     "enableMotor");
         addNumberRow(form.section, "Motor Speed", -maxSpeed, maxSpeed, data->motorSpeed,
-                     [data, emit](float v) { data->motorSpeed = v; emit(); }, form.mixed([](T &c) { return c.motorSpeed; }));
+                     [data, emit](float v) { data->motorSpeed = v; emit(); }, "motorSpeed");
         addNumberRow(form.section, "Max Torque", 0.f, maxTorque, data->maxMotorTorque,
                      [data, emit](float v) { data->maxMotorTorque = v; emit(); },
-                     form.mixed([](T &c) { return c.maxMotorTorque; }));
+                     "maxMotorTorque");
     }
 
     template<typename T>
     void addAngleLimitRows(Section<T> &form, std::function<void()> emit) {
         auto data = form.data;
         addToggleRow(form.section, "Enable Limit", data->enableLimit, [data, emit](bool v) { data->enableLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableLimit; }));
+                     "enableLimit");
         addNumberRow(form.section, "Lower Angle", -178.f, 178.f, data->lowerAngle,
-                     [data, emit](float v) { data->lowerAngle = v; emit(); }, form.mixed([](T &c) { return c.lowerAngle; }));
+                     [data, emit](float v) { data->lowerAngle = v; emit(); }, "lowerAngle");
         addNumberRow(form.section, "Upper Angle", -178.f, 178.f, data->upperAngle,
-                     [data, emit](float v) { data->upperAngle = v; emit(); }, form.mixed([](T &c) { return c.upperAngle; }));
+                     [data, emit](float v) { data->upperAngle = v; emit(); }, "upperAngle");
     }
 
     void buildRevoluteJoint2DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -278,9 +278,9 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addNumberRow(section, "Anchor X", -1000.f, 1000.f, data->anchor.x, [data, emit](float v) { data->anchor.x = v; emit(); },
-                     form.mixed([](T &c) { return c.anchor.x; }));
+                     "anchor/x");
         addNumberRow(section, "Anchor Y", -1000.f, 1000.f, data->anchor.y, [data, emit](float v) { data->anchor.y = v; emit(); },
-                     form.mixed([](T &c) { return c.anchor.y; }));
+                     "anchor/y");
         addAngleLimitRows(form, emit);
         addMotorRows(form, emit, 3600.f, 100000.f);
     }
@@ -293,23 +293,23 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addNumberRow(section, "Anchor X", -1000.f, 1000.f, data->anchor.x, [data, emit](float v) { data->anchor.x = v; emit(); },
-                     form.mixed([](T &c) { return c.anchor.x; }));
+                     "anchor/x");
         addNumberRow(section, "Anchor Y", -1000.f, 1000.f, data->anchor.y, [data, emit](float v) { data->anchor.y = v; emit(); },
-                     form.mixed([](T &c) { return c.anchor.y; }));
+                     "anchor/y");
         addNumberRow(section, "Connected Anchor X", -1000.f, 1000.f, data->connectedAnchor.x,
                      [data, emit](float v) { data->connectedAnchor.x = v; emit(); },
-                     form.mixed([](T &c) { return c.connectedAnchor.x; }));
+                     "connectedAnchor/x");
         addNumberRow(section, "Connected Anchor Y", -1000.f, 1000.f, data->connectedAnchor.y,
                      [data, emit](float v) { data->connectedAnchor.y = v; emit(); },
-                     form.mixed([](T &c) { return c.connectedAnchor.y; }));
+                     "connectedAnchor/y");
         addNumberRow(section, "Length (0 = auto)", 0.f, 10000.f, data->length, [data, emit](float v) { data->length = v; emit(); },
-                     form.mixed([](T &c) { return c.length; }));
+                     "length");
         addToggleRow(section, "Enable Spring", data->enableSpring, [data, emit](bool v) { data->enableSpring = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSpring; }));
+                     "enableSpring");
         addNumberRow(section, "Hertz", 0.f, 60.f, data->hertz, [data, emit](float v) { data->hertz = v; emit(); },
-                     form.mixed([](T &c) { return c.hertz; }));
+                     "hertz");
         addNumberRow(section, "Damping", 0.f, 10.f, data->dampingRatio, [data, emit](float v) { data->dampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.dampingRatio; }));
+                     "dampingRatio");
     }
 
     void buildRevoluteJoint3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -320,9 +320,9 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         addVector3Row(section, "Axis", data->axis, [data, emit](glm::vec3 v) { data->axis = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.axis; }));
+                      "axis");
         addAngleLimitRows(form, emit);
         addMotorRows(form, emit, 3600.f, 100000.f);
     }
@@ -335,23 +335,23 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         addVector3Row(section, "Axis", data->axis, [data, emit](glm::vec3 v) { data->axis = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.axis; }));
+                      "axis");
         addToggleRow(section, "Enable Cone Limit", data->enableConeLimit,
                      [data, emit](bool v) { data->enableConeLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableConeLimit; }));
+                     "enableConeLimit");
         addNumberRow(section, "Cone Angle", 0.f, 180.f, data->coneAngle, [data, emit](float v) { data->coneAngle = v; emit(); },
-                     form.mixed([](T &c) { return c.coneAngle; }));
+                     "coneAngle");
         addToggleRow(section, "Enable Twist Limit", data->enableTwistLimit,
                      [data, emit](bool v) { data->enableTwistLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableTwistLimit; }));
+                     "enableTwistLimit");
         addNumberRow(section, "Lower Twist", -178.f, 178.f, data->lowerTwistAngle,
                      [data, emit](float v) { data->lowerTwistAngle = v; emit(); },
-                     form.mixed([](T &c) { return c.lowerTwistAngle; }));
+                     "lowerTwistAngle");
         addNumberRow(section, "Upper Twist", -178.f, 178.f, data->upperTwistAngle,
                      [data, emit](float v) { data->upperTwistAngle = v; emit(); },
-                     form.mixed([](T &c) { return c.upperTwistAngle; }));
+                     "upperTwistAngle");
     }
 
     void buildWheelJoint3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -363,50 +363,50 @@ namespace {
         addConnectedRow(form, emit, "Chassis");
         addCollideConnectedRow(form, emit);
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         addVector3Row(section, "Spin Axis", data->axis, [data, emit](glm::vec3 v) { data->axis = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.axis; }));
+                      "axis");
         addVector3Row(section, "Suspension Axis", data->suspensionAxis,
                       [data, emit](glm::vec3 v) { data->suspensionAxis = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.suspensionAxis; }));
+                      "suspensionAxis");
         addToggleRow(section, "Enable Spring", data->enableSuspensionSpring,
                      [data, emit](bool v) { data->enableSuspensionSpring = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSuspensionSpring; }));
+                     "enableSuspensionSpring");
         addNumberRow(section, "Spring Hertz", 0.f, 60.f, data->suspensionHertz,
                      [data, emit](float v) { data->suspensionHertz = v; emit(); },
-                     form.mixed([](T &c) { return c.suspensionHertz; }));
+                     "suspensionHertz");
         addNumberRow(section, "Spring Damping", 0.f, 10.f, data->suspensionDampingRatio,
                      [data, emit](float v) { data->suspensionDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.suspensionDampingRatio; }));
+                     "suspensionDampingRatio");
         addToggleRow(section, "Enable Travel Limit", data->enableSuspensionLimit,
                      [data, emit](bool v) { data->enableSuspensionLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSuspensionLimit; }));
+                     "enableSuspensionLimit");
         addNumberRow(section, "Lower Travel", -10.f, 10.f, data->lowerSuspensionLimit,
                      [data, emit](float v) { data->lowerSuspensionLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.lowerSuspensionLimit; }));
+                     "lowerSuspensionLimit");
         addNumberRow(section, "Upper Travel", -10.f, 10.f, data->upperSuspensionLimit,
                      [data, emit](float v) { data->upperSuspensionLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.upperSuspensionLimit; }));
+                     "upperSuspensionLimit");
         addToggleRow(section, "Enable Steering", data->enableSteering, [data, emit](bool v) { data->enableSteering = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSteering; }));
+                     "enableSteering");
         addNumberRow(section, "Steering Hertz", 0.f, 60.f, data->steeringHertz,
                      [data, emit](float v) { data->steeringHertz = v; emit(); },
-                     form.mixed([](T &c) { return c.steeringHertz; }));
+                     "steeringHertz");
         addNumberRow(section, "Steering Damping", 0.f, 10.f, data->steeringDampingRatio,
                      [data, emit](float v) { data->steeringDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.steeringDampingRatio; }));
+                     "steeringDampingRatio");
         addNumberRow(section, "Max Steering Torque", 0.f, 1000000.f, data->maxSteeringTorque,
                      [data, emit](float v) { data->maxSteeringTorque = v; emit(); },
-                     form.mixed([](T &c) { return c.maxSteeringTorque; }));
+                     "maxSteeringTorque");
         addToggleRow(section, "Enable Steering Limit", data->enableSteeringLimit,
                      [data, emit](bool v) { data->enableSteeringLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSteeringLimit; }));
+                     "enableSteeringLimit");
         addNumberRow(section, "Lower Steering Angle", -89.f, 89.f, data->lowerSteeringAngle,
                      [data, emit](float v) { data->lowerSteeringAngle = v; emit(); },
-                     form.mixed([](T &c) { return c.lowerSteeringAngle; }));
+                     "lowerSteeringAngle");
         addNumberRow(section, "Upper Steering Angle", -89.f, 89.f, data->upperSteeringAngle,
                      [data, emit](float v) { data->upperSteeringAngle = v; emit(); },
-                     form.mixed([](T &c) { return c.upperSteeringAngle; }));
+                     "upperSteeringAngle");
         addMotorRows(form, emit, 100000.f, 1000000.f);
     }
 
@@ -418,18 +418,18 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         section.addContent(makeFormHint("Zero stiffness is rigid; a positive hertz makes the weld a spring."));
         addNumberRow(section, "Linear Hertz", 0.f, 60.f, data->linearHertz, [data, emit](float v) { data->linearHertz = v; emit(); },
-                     form.mixed([](T &c) { return c.linearHertz; }));
+                     "linearHertz");
         addNumberRow(section, "Linear Damping", 0.f, 10.f, data->linearDampingRatio,
                      [data, emit](float v) { data->linearDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.linearDampingRatio; }));
+                     "linearDampingRatio");
         addNumberRow(section, "Angular Hertz", 0.f, 60.f, data->angularHertz,
-                     [data, emit](float v) { data->angularHertz = v; emit(); }, form.mixed([](T &c) { return c.angularHertz; }));
+                     [data, emit](float v) { data->angularHertz = v; emit(); }, "angularHertz");
         addNumberRow(section, "Angular Damping", 0.f, 10.f, data->angularDampingRatio,
                      [data, emit](float v) { data->angularDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.angularDampingRatio; }));
+                     "angularDampingRatio");
     }
 
     void buildPrismaticJoint3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -440,32 +440,32 @@ namespace {
         addConnectedRow(form, emit, "Connected");
         addCollideConnectedRow(form, emit);
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         addVector3Row(section, "Axis", data->axis, [data, emit](glm::vec3 v) { data->axis = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.axis; }));
+                      "axis");
         addToggleRow(section, "Enable Spring", data->enableSpring, [data, emit](bool v) { data->enableSpring = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSpring; }));
+                     "enableSpring");
         addNumberRow(section, "Hertz", 0.f, 60.f, data->hertz, [data, emit](float v) { data->hertz = v; emit(); },
-                     form.mixed([](T &c) { return c.hertz; }));
+                     "hertz");
         addNumberRow(section, "Damping", 0.f, 10.f, data->dampingRatio, [data, emit](float v) { data->dampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.dampingRatio; }));
+                     "dampingRatio");
         addNumberRow(section, "Target Translation", -100.f, 100.f, data->targetTranslation,
                      [data, emit](float v) { data->targetTranslation = v; emit(); },
-                     form.mixed([](T &c) { return c.targetTranslation; }));
+                     "targetTranslation");
         addToggleRow(section, "Enable Limit", data->enableLimit, [data, emit](bool v) { data->enableLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableLimit; }));
+                     "enableLimit");
         addNumberRow(section, "Lower Translation", -100.f, 100.f, data->lowerTranslation,
                      [data, emit](float v) { data->lowerTranslation = v; emit(); },
-                     form.mixed([](T &c) { return c.lowerTranslation; }));
+                     "lowerTranslation");
         addNumberRow(section, "Upper Translation", -100.f, 100.f, data->upperTranslation,
                      [data, emit](float v) { data->upperTranslation = v; emit(); },
-                     form.mixed([](T &c) { return c.upperTranslation; }));
+                     "upperTranslation");
         addToggleRow(section, "Enable Motor", data->enableMotor, [data, emit](bool v) { data->enableMotor = v; emit(); },
-                     form.mixed([](T &c) { return c.enableMotor; }));
+                     "enableMotor");
         addNumberRow(section, "Motor Speed", -100.f, 100.f, data->motorSpeed, [data, emit](float v) { data->motorSpeed = v; emit(); },
-                     form.mixed([](T &c) { return c.motorSpeed; }));
+                     "motorSpeed");
         addNumberRow(section, "Max Force", 0.f, 1000000.f, data->maxMotorForce,
-                     [data, emit](float v) { data->maxMotorForce = v; emit(); }, form.mixed([](T &c) { return c.maxMotorForce; }));
+                     [data, emit](float v) { data->maxMotorForce = v; emit(); }, "maxMotorForce");
     }
 
     void buildDistanceJoint3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -475,31 +475,31 @@ namespace {
         auto emit = form.emitter(Rebuild::Joint);
         addConnectedRow(form, emit, "Connected");
         addVector3Row(section, "Anchor", data->anchor, [data, emit](glm::vec3 v) { data->anchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.anchor; }));
+                      "anchor");
         addVector3Row(section, "Connected Anchor", data->connectedAnchor,
                       [data, emit](glm::vec3 v) { data->connectedAnchor = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.connectedAnchor; }));
+                      "connectedAnchor");
         addNumberRow(section, "Length (0 = auto)", 0.f, 10000.f, data->length, [data, emit](float v) { data->length = v; emit(); },
-                     form.mixed([](T &c) { return c.length; }));
+                     "length");
         section.addContent(makeFormHint("Rigid without the spring; the limit and the motor apply with it."));
         addToggleRow(section, "Enable Spring", data->enableSpring, [data, emit](bool v) { data->enableSpring = v; emit(); },
-                     form.mixed([](T &c) { return c.enableSpring; }));
+                     "enableSpring");
         addNumberRow(section, "Hertz", 0.f, 60.f, data->hertz, [data, emit](float v) { data->hertz = v; emit(); },
-                     form.mixed([](T &c) { return c.hertz; }));
+                     "hertz");
         addNumberRow(section, "Damping", 0.f, 10.f, data->dampingRatio, [data, emit](float v) { data->dampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.dampingRatio; }));
+                     "dampingRatio");
         addToggleRow(section, "Enable Limit", data->enableLimit, [data, emit](bool v) { data->enableLimit = v; emit(); },
-                     form.mixed([](T &c) { return c.enableLimit; }));
+                     "enableLimit");
         addNumberRow(section, "Min Length", 0.f, 10000.f, data->minLength, [data, emit](float v) { data->minLength = v; emit(); },
-                     form.mixed([](T &c) { return c.minLength; }));
+                     "minLength");
         addNumberRow(section, "Max Length", 0.f, 10000.f, data->maxLength, [data, emit](float v) { data->maxLength = v; emit(); },
-                     form.mixed([](T &c) { return c.maxLength; }));
+                     "maxLength");
         addToggleRow(section, "Enable Motor", data->enableMotor, [data, emit](bool v) { data->enableMotor = v; emit(); },
-                     form.mixed([](T &c) { return c.enableMotor; }));
+                     "enableMotor");
         addNumberRow(section, "Motor Speed", -100.f, 100.f, data->motorSpeed, [data, emit](float v) { data->motorSpeed = v; emit(); },
-                     form.mixed([](T &c) { return c.motorSpeed; }));
+                     "motorSpeed");
         addNumberRow(section, "Max Force", 0.f, 1000000.f, data->maxMotorForce,
-                     [data, emit](float v) { data->maxMotorForce = v; emit(); }, form.mixed([](T &c) { return c.maxMotorForce; }));
+                     [data, emit](float v) { data->maxMotorForce = v; emit(); }, "maxMotorForce");
     }
 
     void buildFilterJoint3DSection(CollapsibleSection &section, const ComponentInspectorContext &context) {
@@ -523,31 +523,31 @@ namespace {
         ));
         addVector3Row(section, "Linear Velocity", data->linearVelocity,
                       [data, emit](glm::vec3 v) { data->linearVelocity = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.linearVelocity; }));
+                      "linearVelocity");
         addNumberRow(section, "Max Force", 0.f, 1000000.f, data->maxVelocityForce,
                      [data, emit](float v) { data->maxVelocityForce = v; emit(); },
-                     form.mixed([](T &c) { return c.maxVelocityForce; }));
+                     "maxVelocityForce");
         addVector3Row(section, "Angular Velocity", data->angularVelocity,
                       [data, emit](glm::vec3 v) { data->angularVelocity = v; emit(); },
-                      form.vectorMixed([](T &c) { return c.angularVelocity; }));
+                      "angularVelocity");
         addNumberRow(section, "Max Torque", 0.f, 1000000.f, data->maxVelocityTorque,
                      [data, emit](float v) { data->maxVelocityTorque = v; emit(); },
-                     form.mixed([](T &c) { return c.maxVelocityTorque; }));
+                     "maxVelocityTorque");
         addNumberRow(section, "Linear Hertz", 0.f, 60.f, data->linearHertz, [data, emit](float v) { data->linearHertz = v; emit(); },
-                     form.mixed([](T &c) { return c.linearHertz; }));
+                     "linearHertz");
         addNumberRow(section, "Linear Damping", 0.f, 10.f, data->linearDampingRatio,
                      [data, emit](float v) { data->linearDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.linearDampingRatio; }));
+                     "linearDampingRatio");
         addNumberRow(section, "Max Spring Force", 0.f, 1000000.f, data->maxSpringForce,
-                     [data, emit](float v) { data->maxSpringForce = v; emit(); }, form.mixed([](T &c) { return c.maxSpringForce; }));
+                     [data, emit](float v) { data->maxSpringForce = v; emit(); }, "maxSpringForce");
         addNumberRow(section, "Angular Hertz", 0.f, 60.f, data->angularHertz,
-                     [data, emit](float v) { data->angularHertz = v; emit(); }, form.mixed([](T &c) { return c.angularHertz; }));
+                     [data, emit](float v) { data->angularHertz = v; emit(); }, "angularHertz");
         addNumberRow(section, "Angular Damping", 0.f, 10.f, data->angularDampingRatio,
                      [data, emit](float v) { data->angularDampingRatio = v; emit(); },
-                     form.mixed([](T &c) { return c.angularDampingRatio; }));
+                     "angularDampingRatio");
         addNumberRow(section, "Max Spring Torque", 0.f, 1000000.f, data->maxSpringTorque,
                      [data, emit](float v) { data->maxSpringTorque = v; emit(); },
-                     form.mixed([](T &c) { return c.maxSpringTorque; }));
+                     "maxSpringTorque");
     }
 
     template<typename T>

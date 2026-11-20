@@ -35,7 +35,7 @@ casts, contact events.
 | the bodies table that tracks entities with the world (`trackEntity`) | `engine/include/Panda/Physics/EntityBodies.hpp` |
 | the script table ABI and its host functions, null-safe for a world without physics | `engine/include/Panda/Physics/PhysicsScriptApi.hpp`, `engine/src/Panda/Physics/PhysicsScriptHost.cpp` |
 | the SDK part: the Bamboo headers of the bodies, the joint, the ray cast and the character over one cached table, with the main-thread guard | `sdk/include/Bamboo/…`, `sdk/src/Bamboo/…`, `sdk/src/Bamboo/Internal/PhysicsTable.hpp` |
-| the editor part: inspector sections with mixed fields and an edit that reaches the running simulation, a viewport overlay, an editor-scope setting with its section | `editor/src/Panda/PhysicsEditor/PhysicsEditorExtensions.cpp`, `ColliderLines.cpp`, `PhysicsEditorSettings.hpp` |
+| the editor part: inspector sections whose rows name their fields and an edit that reaches the running simulation, a viewport overlay, an editor-scope setting with its section | `editor/src/Panda/PhysicsEditor/PhysicsEditorExtensions.cpp`, `ColliderLines.cpp`, `PhysicsEditorSettings.hpp` |
 | a vendor library linked in the tree and from the SDK package | `CMakeLists.txt` |
 
 The contracts of the simulation — the fixed step, the interpolated poses, what a transform

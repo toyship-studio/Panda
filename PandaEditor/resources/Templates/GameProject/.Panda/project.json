@@ -1,4 +1,5 @@
 {
+    "name": "___PROJECTNAME___",
     "world": {
         "startWorld": "Assets/world.world"
     },

@@ -932,6 +932,33 @@ int main(int argc, const char **argv) {
             report("a script field taken back leaves the scripts of the prefab, once",
                    named && value != nullptr && *value == 2.f && bulbFieldOf(lamp200) == bulb200);
         }
+        // The entity of a subtree by its name.
+        const auto named = [instances](UUID rootId, const std::string &name) {
+            std::vector<Panda::Entity> pending{instances->getById(rootId)};
+            while (!pending.empty()) {
+                Panda::Entity at = pending.back();
+                pending.pop_back();
+                if (!at.isValid()) { continue; }
+                if (at.getName() == name) { return at; }
+                for (UUID child : at.getChildEntities()) { pending.push_back(instances->getById(child)); }
+            }
+            return Panda::Entity();
+        };
+        // What was put under an instance in the world is an addition: the instance differs from
+        // its prefab by it — and an instance of another prefab put there is one too.
+        {
+            Panda::Entity sticker = instances->getById(UUID(101));
+            const Panda::Prefabs::Addition addition = Panda::Prefabs::additionOf(sticker);
+            const Panda::Prefabs::Difference rootDifference = Panda::Prefabs::differenceOf(instances->getById(UUID(100)));
+            report("an entity put under an instance is an addition: the instance differs by it",
+                   addition.instance == instances->getById(UUID(100)) && addition.top == sticker && rootDifference.added.size() == 1 &&
+                       rootDifference.added.front().id == UUID(101) && Panda::Prefabs::differenceCount(instances->getById(UUID(100))) == 2);
+        }
+        const Panda::AssetId TAG(9005);
+        assetHandler->prefabs[TAG] = "{\"entities\":[" + entity("Tag", 1, 0, "", 0.f, noScripts.c_str()) + "]}";
+        Panda::EntityPlacement underBulb;
+        underBulb.parent = instances->getById(bulb100);
+        instances->instantiate(Panda::AssetRef<Panda::PrefabAsset>(TAG), UUID(0), underBulb);
         instances->getById(UUID(100)).setName("Hall Lamp"); // what an instance is called is its own, like where it stands
         const Panda::Prefabs::Applied applied = Panda::Prefabs::apply(instances->getById(UUID(100)), {}, assetHandler->prefabs[LAMP]);
         report("Apply writes the difference into the prefab file", applied.any() && applied.file.find("\"intensity\": 20.0") != std::string::npos);
@@ -943,8 +970,69 @@ int main(int argc, const char **argv) {
                applied.file.find("Hall Lamp") == std::string::npos && instances->getById(UUID(100)).getName() == "Hall Lamp" &&
                    instances->getById(UUID(200)).getName() == "Lamp");
         report("the sticker added under the instance became an entity of the prefab",
-               applied.file.find("\"tag\": \"Sticker\"") != std::string::npos &&
-                   instances->getById(Panda::derivedEntityId(UUID(200), UUID(101))).isValid());
+               applied.file.find("\"tag\": \"Sticker\"") != std::string::npos && named(UUID(200), "Sticker").isValid() &&
+                   Panda::Prefabs::instanceRoot(named(UUID(100), "Sticker")) == instances->getById(UUID(100)) && applied.reidentified);
+        {
+            const Panda::Entity tag200 = named(UUID(200), "Tag");
+            report("an instance put under an instance is nested in the prefab after Apply",
+                   applied.file.find("\"prefab\": 9005") != std::string::npos && tag200.isValid() &&
+                       Panda::Prefabs::instanceRoot(tag200) == instances->getById(UUID(200)) &&
+                       tag200.getComponent<Panda::PrefabComponent>().prefab == TAG && Panda::Prefabs::differenceCount(instances->getById(UUID(100))) == 0);
+        }
+
+        // Apply Forced: the other instances lose what they had at the applied place — the Revert
+        // of that place — in an open world and in the text of a file, the lamp nested in a post too.
+        {
+            instances->getById(bulb200).getComponent<Panda::PointLightComponent>().intensity = 44.f;
+            instances->getById(bulb300).getComponent<Panda::PointLightComponent>().intensity = 46.f;
+            instances->getById(bulb100).getComponent<Panda::PointLightComponent>().intensity = 55.f;
+            const std::string before = Panda::Prefabs::save(*instances);
+            const Panda::Prefabs::Scope intensity{instances->getById(bulb100), "pointLightComponent", "intensity"};
+            const Panda::Prefabs::Applied forced = Panda::Prefabs::apply(instances->getById(UUID(100)), intensity, assetHandler->prefabs[LAMP]);
+            std::string stripped;
+            const bool strippedFile = Panda::Prefabs::stripApplied(forced, before, stripped);
+            const std::map<uint32_t, std::string> lines = strippedFile ? entitiesJson(stripped) : std::map<uint32_t, std::string>();
+            const bool fileLost = lines.contains(200) && lines.contains(300) && lines.at(200).find("intensity") == std::string::npos &&
+                                  lines.at(300).find("intensity") == std::string::npos && before.find("46.0") != std::string::npos;
+            assetHandler->prefabs[LAMP] = forced.file;
+            Panda::Prefabs::prefabChanged(LAMP, {instances}, reload, &forced);
+            report("Apply Forced: the other instances lose what they had at the place, in a file and in an open world, nested ones too",
+                   forced.any() && fileLost && intensityOf(instances->getById(bulb100)) == 55.f &&
+                       intensityOf(instances->getById(bulb200)) == 55.f && intensityOf(instances->getById(bulb300)) == 55.f);
+        }
+        // Put Back: a moved entity stands where the prefab has it, as the prefab has it there.
+        {
+            Panda::Entity cord = instances->getById(Panda::derivedEntityId(UUID(200), UUID(4)));
+            instances->setParent(cord, instances->getById(bulb200), /*keepWorldTransform*/ true);
+            const bool moved = Panda::Prefabs::differenceOf(cord).moved;
+            const Panda::Prefabs::Scope back{cord, "parent", ""};
+            Panda::Prefabs::setEntry(instances->getById(UUID(200)), Panda::Prefabs::entryWithout(instances->getById(UUID(200)), back));
+            report("Put Back brings a moved entity back under its prefab parent, as the prefab has it",
+                   moved && cord.getParent() == instances->getById(UUID(200)) && !Panda::Prefabs::differenceOf(cord).any());
+        }
+        // Apply of one addition: it alone goes into the prefab, and every instance gets it.
+        {
+            Panda::Entity badge = instances->instantiateEntity();
+            badge.setName("Badge");
+            instances->setParent(badge, instances->getById(UUID(200)), /*keepWorldTransform*/ false);
+            instances->getById(bulb200).getComponent<Panda::PointLightComponent>().radius = 2.f; // stays the instance's own
+            const Panda::Prefabs::Applied one = Panda::Prefabs::apply(instances->getById(UUID(200)), {badge, "", ""}, assetHandler->prefabs[LAMP]);
+            assetHandler->prefabs[LAMP] = one.file;
+            Panda::Prefabs::prefabChanged(LAMP, {instances}, reload);
+            report("Apply of one addition takes it alone into the prefab, and every instance gets it",
+                   one.any() && one.file.find("Badge") != std::string::npos && named(UUID(100), "Badge").isValid() &&
+                       Panda::Prefabs::instanceRoot(named(UUID(200), "Badge")) == instances->getById(UUID(200)) &&
+                       radiusOf(instances->getById(bulb200)) == 2.f && radiusOf(instances->getById(bulb100)) != 2.f);
+        }
+        // An addition that holds the prefab is not applied into it: the prefab would hold itself.
+        {
+            Panda::EntityPlacement underRoot;
+            underRoot.parent = instances->getById(UUID(200));
+            Panda::Entity post = instances->instantiate(Panda::AssetRef<Panda::PrefabAsset>(POST), UUID(0), underRoot);
+            const Panda::Prefabs::Applied loop = Panda::Prefabs::apply(instances->getById(UUID(200)), {post, "", ""}, assetHandler->prefabs[LAMP]);
+            report("an addition that holds the prefab is not applied into it", post.isValid() && !loop.any());
+            instances->destroy(post);
+        }
 
         // Copies: a new instance, a duplicate of one — each points at its own entities.
         Panda::Entity made = instances->instantiate(Panda::AssetRef<Panda::PrefabAsset>(LAMP));

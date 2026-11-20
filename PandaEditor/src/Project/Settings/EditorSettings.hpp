@@ -175,6 +175,17 @@ struct EditorAppearanceSettings final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
+// The settings of the editor it owns — the user's `settings.json` — as fields, one for each
+// key: `editorSettings().viewport`. The modules add their sections to the same file through the
+// settings registry.
+struct EditorSettings final {
+    EditorViewportSettings viewport;
+    EditorAppearanceSettings appearance;
+    EditorUpdateSettings updates;
+    EditorExternalToolsSettings externalTools;
+    EditorToolchainSettings toolchain;
+};
+
 /// The state of the last session: recent projects, the window and the docking layout.
 struct EditorSession final : public Rain::Codable {
     std::vector<RecentProject> recentProjects;

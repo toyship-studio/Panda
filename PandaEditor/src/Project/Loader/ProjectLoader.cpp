@@ -9,6 +9,7 @@
 
 #include <Panda/Renderer/ShaderFeatures.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <iterator>
@@ -75,18 +76,20 @@ ProjectLoader::~ProjectLoader() {
     GameContext::setScriptEngine(nullptr);
 }
 
-void ProjectLoader::loadInitialData(bool openLastProject, const path_t &project) {
+std::string ProjectLoader::loadInitialData(bool openLastProject, const path_t &project) {
     const path_t directory = editorDataDirectory();
     if (directory.empty()) { LOG_WARN("There is no user data directory: the settings of the editor are not kept."); }
     m_documents.editorSettingsFile().open(directory.empty() ? path_t() : directory / "settings.json");
     if (!directory.empty() && !readJson(directory / "session.json", m_jsonDecoder, m_session)) {
         m_session = EditorSession();
     }
+    std::string problem;
     if (!project.empty()) {
-        openProject(project);
-    } else if (openLastProject && m_session.hasOpenedProject) {
-        loadRecentProject();
+        openProject(project, &problem);
+    } else if (openLastProject && m_session.hasOpenedProject && !m_session.recentProjects.empty()) {
+        openProject(m_session.recentProjects.front().path, &problem);
     }
+    return problem;
 }
 
 void ProjectLoader::saveOnExit() {
@@ -127,16 +130,41 @@ const DockLayoutState &ProjectLoader::getDockLayout() {
     return m_session.dockLayout;
 }
 
-void ProjectLoader::loadRecentProject() {
-    if (m_session.recentProjects.empty()) { return; }
-    auto &recentProject = m_session.recentProjects.front();
-    openProject(recentProject.path);
+std::string ProjectLoader::readName(const path_t &folder, std::string *problem) {
+    const path_t file = folder / ".Panda" / "project.json";
+    std::string name;
+    std::string why;
+    std::error_code error;
+    if (!std::filesystem::is_directory(folder, error)) {
+        why = "There is no project at " + folder.string() + ".";
+    } else if (!std::filesystem::is_regular_file(file, error)) {
+        why = folder.string() + " is not a project: it has no .Panda/project.json.";
+    } else {
+        // Read the way the document of the file reads it, into a store of its own.
+        TypeContext settings;
+        std::ifstream stream(file);
+        Rain::JsonDecoder decoder;
+        if (!SettingsMapper::load(SettingsScope::Project, settings, decoder, stream)) {
+            why = folder.string() + ": .Panda/project.json is not valid JSON.";
+        } else {
+            name = settings.get<ProjectSettings>().name;
+            if (name.empty()) {
+                why = folder.string() + ": .Panda/project.json does not name the project. Add \"name\": the name of its folder in Scripts.";
+            }
+        }
+    }
+    if (problem != nullptr) { *problem = std::move(why); }
+    return name;
 }
 
-void ProjectLoader::openProject(const path_t &path) {
-    if (!std::filesystem::exists(path)) {
-        LOG_INFO("There is no project at %s.", path.string().c_str());
-        return;
+bool ProjectLoader::openProject(const path_t &path, std::string *problem) {
+    {
+        std::string why;
+        if (readName(path, &why).empty()) {
+            LOG_ERROR_EDITOR("%s", why.c_str());
+            if (problem != nullptr) { *problem = std::move(why); }
+            return false;
+        }
     }
     if (hasOpenedProject()) {
         // Project switch: the old project goes BEFORE its script build is unloaded in
@@ -145,7 +173,7 @@ void ProjectLoader::openProject(const path_t &path) {
         // updated by loaderDidLoadProject of the new project.
         releaseOpenedProject();
     }
-    // project.json of the project (a document) and its session.
+    // project.json of the project (a document: its "name" is projectName()) and its session.
     m_documents.openProject(path);
     if (!readJson(projectDataDirectory(path) / "session.json", m_jsonDecoder, m_projectSession)) {
         m_projectSession = ProjectSession();
@@ -153,11 +181,11 @@ void ProjectLoader::openProject(const path_t &path) {
     // The module set of the project (ProjectModules): the contributions are needed before the asset
     // registry and the worlds. Engine parts are not unloaded — the modules of the previous project
     // stay, new ones are added; the live worlds get pools for the new component types.
-    if (ProjectModules::load(m_documents.projectSettings().get<ProjectModuleSettings>()) > 0) {
+    if (ProjectModules::load(m_documents.projectSettings().modules) > 0) {
         m_documents.prepareComponentTypes();
         // The sections of the new modules were read as foreign values: they get their types now.
-        SettingsMapper::adoptForeign(SettingsScope::Project, m_documents.projectSettings());
-        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettings());
+        SettingsMapper::adoptForeign(SettingsScope::Project, m_documents.projectSettingsFile().settings());
+        SettingsMapper::adoptForeign(SettingsScope::Editor, m_documents.editorSettingsFile().settings());
     }
     applyShaderFeatures();
     // First switch the asset registry and the scripts to the new project, then notify the UI:
@@ -166,9 +194,10 @@ void ProjectLoader::openProject(const path_t &path) {
     // The scene shaders of the engine for the project's shader features (the project shaders
     // compile for them as they load).
     ShaderCook::cookAndReloadSceneShaders(path);
-    m_output->loaderDidLoadProject(path.filename().string(), path);
+    m_output->loaderDidLoadProject(projectName(), path);
     LOG_INFO("Opened the project at %s.", path.string().c_str());
     m_documents.openWorlds(m_projectSession);
+    return true;
 }
 
 namespace {
@@ -270,10 +299,9 @@ namespace {
 } // namespace
 
 ScriptEngineConfig ProjectLoader::makeScriptsConfig() {
-    const std::string projectName = projectPath().filename().string();
     return {
-        projectPath() / "Scripts" / projectName / "bin",
-        projectName,
+        projectPath() / "Scripts" / projectName() / "bin",
+        projectName(),
         projectPath() / ".Panda" / "ScriptCache"
     };
 }
@@ -398,16 +426,16 @@ const path_t &ProjectLoader::getOpenedProjectPath() {
     return projectPath();
 }
 
-void ProjectLoader::createProject(const std::string &name, const path_t &path) {
+bool ProjectLoader::createProject(const std::string &name, const path_t &path, std::string *problem) {
     m_projectCreator.createProject(name, path);
-    openProject(path);
+    return openProject(path, problem);
 }
 
 void ProjectLoader::appendRecentProject() {
     if (projectPath().empty()) { return; }
     RecentProject recentProject;
     recentProject.path = projectPath().generic_string();
-    recentProject.name = projectPath().filename().string();
+    recentProject.name = projectName();
     // Opened again, it is a recent project again.
     m_forgottenProjects.erase(
         std::remove(m_forgottenProjects.begin(), m_forgottenProjects.end(), recentProject), m_forgottenProjects.end()
@@ -476,6 +504,10 @@ void ProjectLoader::saveProject() {
 }
 
 void ProjectLoader::applyProjectSettings() {
+    // The file opened with a name; one taken out of it leaves the scripts and the game unnamed.
+    if (hasOpenedProject() && projectName().empty()) {
+        LOG_ERROR_EDITOR(".Panda/project.json does not name the project any more: put \"name\" back, the scripts and the export need it.");
+    }
     // A changed set of shader features recompiles the shaders of the project for it.
     if (hasOpenedProject() && applyShaderFeatures()) {
         ShaderCook::cookAndReloadSceneShaders(projectPath());
@@ -484,7 +516,7 @@ void ProjectLoader::applyProjectSettings() {
 }
 
 bool ProjectLoader::applyShaderFeatures() {
-    const ProjectRenderingSettings &rendering = m_documents.projectSettings().get<ProjectRenderingSettings>();
+    const ProjectRenderingSettings &rendering = m_documents.projectSettings().rendering;
     std::string unknown;
     const ShaderFeatureSet features = ShaderFeatureSet::fromNames(rendering.features, &unknown);
     if (!unknown.empty()) {

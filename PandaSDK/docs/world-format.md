@@ -207,6 +207,9 @@ A world — and a prefab — places a prefab by an entry in its `entities` that 
 - `"removed": true` — the instance has no such entity, nor what stands under it.
   `"parent": <id>` — the entity stands under another entity of the file than its prefab says
   (an entity of the file or of an instance, by its id in the world).
+- An entity of the file — or the entry of another instance — whose `parent` is an entity of an
+  instance is an **addition** to that instance: the instance differs from its prefab by it, and
+  an Apply puts it into the prefab.
 - What the root is called and where it stands are the instance's own: write its name
   (`tagComponent`), its `position` and its `rotation` always. They never follow the root of the
   prefab — a prefab that renames its root does not rename its instances — and the editor does
@@ -279,7 +282,12 @@ named "Missing Prefab" in its place, and the entry is written back unchanged.
 ## The project files
 
 `.Panda/project.json` is the project scope of the same settings model: one JSON object of
-sections by name, in version control. The core sections are `world` (`startWorld` — the world
+sections by name, in version control. `name` is a string, the name of the project: the editor
+calls the project so, and the files that come from it are called so — the folder of the
+scripts `Scripts/<name>` and the library they build, the game the export builds, the folder the
+game keeps its saves in. No path is written: they follow from the name, and the folder of the
+project may be called anything. A folder whose `project.json` has no `name` is not opened as a
+project. The core sections are `world` (`startWorld` — the world
 the game starts in, relative to the project with forward slashes; see
 [Exporting a game](export.md)), `rendering` (`features: ["lights", "shadows", …]` — the shader
 features the project enables, see `shaders.md`; without the section every feature is on),

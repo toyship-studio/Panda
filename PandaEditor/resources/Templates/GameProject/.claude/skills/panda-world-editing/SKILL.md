@@ -63,7 +63,8 @@ root has `"parent": 0`. A world places it with one entry:
   `overrides` (by `entity` — the id in the prefab file) for the entities under it, only the
   fields that differ. The name (`tagComponent`), `position` and `rotation` are the instance's
   own: always written.
-- Edit the prefab file to change every instance; edit the entry to change one.
+- Edit the prefab file to change every instance; edit the entry to change one. An entity whose
+  `parent` is an entity of an instance is an addition to that instance alone.
 - Do not copy the entities of a prefab into the world: the editor expands the entry when it
   reads the file. Details: PandaSDK `docs/world-format.md` ("Prefabs and instances") and
   `docs/prefabs.md`.

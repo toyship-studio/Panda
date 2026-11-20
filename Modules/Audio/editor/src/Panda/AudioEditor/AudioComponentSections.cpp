@@ -70,42 +70,42 @@ namespace {
         addAssetRow(section, "Clip", "audio", static_cast<uint32_t>(data->clip.getId()), [data, emit](uint32_t id) {
             data->clip = assetRefOf(id);
             emit();
-        });
+        }, "clip");
         addComboRow(section, "Bus", busNames(), busIndex(data->bus), [data, emit](int index) {
             if (index >= 0 && index < static_cast<int>(AudioEngine::BUS_NAMES.size())) {
                 data->bus = AudioEngine::BUS_NAMES[static_cast<size_t>(index)];
                 emit();
             }
-        });
+        }, "bus");
         addNumberRow(section, "Volume", 0.f, 1.f, data->volume, [data, emit](float v) {
             data->volume = v;
             emit();
-        });
+        }, "volume");
         addNumberRow(section, "Pitch", 0.1f, 3.f, data->pitch, [data, emit](float v) {
             data->pitch = v;
             emit();
-        });
+        }, "pitch");
         addToggleRow(section, "Loop", data->loop, [data, emit](bool v) {
             data->loop = v;
             emit();
-        });
+        }, "loop");
         addToggleRow(section, "Play On Start", data->playOnStart, [data, emit](bool v) {
             data->playOnStart = v;
             emit();
-        });
+        }, "playOnStart");
         addToggleRow(section, "Spatial", data->spatial, [data, emit](bool v) {
             data->spatial = v;
             emit();
-        });
+        }, "spatial");
         if (data->spatial) {
             addNumberRow(section, "Min Distance (m)", 0.f, 1000.f, data->minDistance, [data, emit](float v) {
                 data->minDistance = v;
                 emit();
-            });
+            }, "minDistance");
             addNumberRow(section, "Max Distance (m)", 0.f, 10000.f, data->maxDistance, [data, emit](float v) {
                 data->maxDistance = v;
                 emit();
-            });
+            }, "maxDistance");
             addComboRow(
                 section, "Attenuation", ATTENUATION_NAMES, static_cast<int>(data->attenuation),
                 [data, emit](int index) {
@@ -114,11 +114,11 @@ namespace {
                         emit();
                     }
                 }
-            );
+            , "attenuation");
             addNumberRow(section, "Doppler", 0.f, 5.f, data->dopplerFactor, [data, emit](float v) {
                 data->dopplerFactor = v;
                 emit();
-            });
+            }, "dopplerFactor");
         }
 
         // Play / Stop: in a running world the live voice of the entity (what a script would do),

@@ -386,15 +386,12 @@ namespace {
                 std::unordered_map<UUID, UUID> sources; // the id in the world → the id in the prefab
                 for (auto &[source, entity] : parts.live) { sources[entity.getId()] = source; }
                 for (auto &[source, entity] : parts.live) {
-                    for (const ComponentType &type : types.types()) {
-                        if (type.entityRefs == nullptr || type.typeId == PREFAB_TYPE || !entity.hasComponent(type.typeId)) { continue; }
-                        type.entityRefs(entity, [&](UUID &reference) {
-                            const auto found = sources.find(reference);
-                            if (found == sources.end() || found->second == reference) { return; }
-                            m_changed.emplace_back(&reference, reference);
-                            reference = found->second;
-                        });
-                    }
+                    types.forEachReference(entity, [&](UUID &reference) {
+                        const auto found = sources.find(reference);
+                        if (found == sources.end() || found->second == reference) { return; }
+                        m_changed.emplace_back(&reference, reference);
+                        reference = found->second;
+                    }, PREFAB_TYPE);
                 }
             }
         }
@@ -416,13 +413,10 @@ namespace {
             std::unordered_map<UUID, UUID> ids; // the id in the prefab → the id in the world
             for (auto &[source, entity] : parts.live) { ids[source] = entity.getId(); }
             for (auto &[source, entity] : parts.live) {
-                for (const ComponentType &type : types.types()) {
-                    if (type.entityRefs == nullptr || type.typeId == PREFAB_TYPE || !entity.hasComponent(type.typeId)) { continue; }
-                    type.entityRefs(entity, [&](UUID &reference) {
-                        const auto found = ids.find(reference);
-                        if (found != ids.end()) { reference = found->second; }
-                    });
-                }
+                types.forEachReference(entity, [&](UUID &reference) {
+                    const auto found = ids.find(reference);
+                    if (found != ids.end()) { reference = found->second; }
+                }, PREFAB_TYPE);
             }
         }
     }
@@ -622,33 +616,6 @@ namespace {
         return keys;
     }
 
-    // Takes a place out of a patch (an object of an entry: the entry itself for the root, an
-    // item of its overrides): the keys on the way that are left empty go too.
-    void erasePlace(Json &object, const std::string &component, const std::string &field) {
-        std::vector<std::string> keys{component};
-        for (std::string &key : split(field)) { keys.push_back(std::move(key)); }
-        for (size_t count = keys.size(); count > 0; count--) {
-            Json *owner = descend(object, keys, count - 1);
-            if (owner == nullptr || !owner->IsObject()) { continue; }
-            const Json *value = find(*owner, keys[count - 1].c_str());
-            if (value == nullptr) { continue; }
-            // Below the place that was asked for, a key goes only when it holds nothing any more.
-            if (count < keys.size() && !(value->IsObject() && value->MemberCount() == 0)) { break; }
-            erase(*owner, keys[count - 1].c_str());
-        }
-    }
-
-    // The item of the overrides of an entry that speaks of the path; nullptr — none.
-    Json *overrideAt(Json &entry, const std::vector<UUID> &path) {
-        Json *list = find(entry, OVERRIDES);
-        if (list == nullptr || !list->IsArray()) { return nullptr; }
-        for (Json &item : list->GetArray()) {
-            const Json *named = find(item, ENTITY);
-            if (named != nullptr && pathFrom(*named) == path) { return &item; }
-        }
-        return nullptr;
-    }
-
     // An override that says nothing any more leaves the list; an empty list leaves the entry.
     void prune(Json &entry) {
         Json *list = find(entry, OVERRIDES);
@@ -663,29 +630,6 @@ namespace {
     // link, the overrides — and the name, which is the instance's own like its place.
     bool isOwnOfRoot(const char *key) {
         return isReserved(key) || std::strcmp(key, PREFAB) == 0 || std::strcmp(key, OVERRIDES) == 0 || std::strcmp(key, TAG) == 0;
-    }
-
-    // The component keys of the root in its entry, its name and its place aside.
-    void eraseRootDifference(Json &entry) {
-        std::vector<std::string> keys;
-        for (auto member = entry.MemberBegin(); member != entry.MemberEnd(); ++member) {
-            const char *key = member->name.GetString();
-            if (isOwnOfRoot(key)) { continue; }
-            keys.emplace_back(key);
-        }
-        for (const std::string &key : keys) {
-            if (key != TRANSFORM) {
-                erase(entry, key.c_str());
-                continue;
-            }
-            Json &transform = *find(entry, TRANSFORM);
-            std::vector<std::string> inner;
-            for (auto member = transform.MemberBegin(); member != transform.MemberEnd(); ++member) {
-                const char *name = member->name.GetString();
-                if (std::strcmp(name, POSITION) != 0 && std::strcmp(name, ROTATION) != 0) { inner.emplace_back(name); }
-            }
-            for (const std::string &name : inner) { erase(transform, name.c_str()); }
-        }
     }
 
     // The entry says something of the root besides what it is called and where it stands.
@@ -750,84 +694,182 @@ namespace {
         }
     }
 
-    // What an Apply took, kept as `[{"entity": <path>, …patch}]`: the root of the prefab is
-    // named like any entity of it.
-    void notePatch(Json &patches, const Template &tmpl, UUID source, const Json &patch, JsonAllocator &allocator) {
-        std::vector<UUID> path;
-        if (!pathOf(tmpl, source, path)) { return; }
-        Json item(rapidjson::kObjectType);
-        add(item, ENTITY, pathJson(path, allocator), allocator);
-        for (auto member = patch.MemberBegin(); member != patch.MemberEnd(); ++member) {
-            add(item, member->name.GetString(), copyOf(member->value, allocator), allocator);
-        }
-        patches.PushBack(item, allocator);
+    /* ------------------------------ Places of a difference ------------------------------ */
+    // Revert in all its sizes, Restore, Put Back and the other instances of an Apply Forced are
+    // one operation: places are taken out of the difference an entry holds (`strip`). A place is
+    // an entity of a prefab, named by its path there, and a mask of what of it:
+    //     {"entity": 78, "pointLightComponent": {"intensity": true}}  — one field
+    //     {"entity": 78, "pointLightComponent": true}                 — a component
+    //     {"entity": 78, "*": true}                                   — all the entity differs in
+    //     {"entity": 79, "removed": true}, {"entity": 80, "parent": true, "transformComponent": true}
+    // A patch serves as its own mask: the places an Apply wrote are the patches it wrote.
+
+    constexpr const char *EVERYTHING = "*";
+
+    // A place of an entity of the prefab of `tmpl`, without a mask yet.
+    Json &addPlace(Json &places, const std::vector<UUID> &path, JsonAllocator &allocator) {
+        Json place(rapidjson::kObjectType);
+        add(place, ENTITY, pathJson(path, allocator), allocator);
+        places.PushBack(place, allocator);
+        return places[places.Size() - 1];
     }
 
-    // The keys of `applied` taken out of `patch`, place by place: a place the applied patch
-    // gave a value loses its own here.
-    void subtract(Json &patch, const Json &applied) {
-        if (!patch.IsObject() || !applied.IsObject() || isVector(patch) || isVector(applied)) { return; }
+    // A place with everything the entity says in it.
+    void notePlace(Json &places, const Template &tmpl, UUID source, const Json &mask, JsonAllocator &allocator) {
+        std::vector<UUID> path;
+        if (!pathOf(tmpl, source, path)) { return; }
+        Json &place = addPlace(places, path, allocator);
+        for (auto member = mask.MemberBegin(); member != mask.MemberEnd(); ++member) {
+            add(place, member->name.GetString(), copyOf(member->value, allocator), allocator);
+        }
+    }
+
+    // The places a mask names, taken out of a patch — an item of the overrides, or the entry
+    // itself (`root`: it is the patch of the root of its instance). A key of the mask with an
+    // object goes deeper, any other value takes the key with everything in it, `"*"` takes every
+    // key; a key left empty on the way goes too. What the root has of its own — its name and its
+    // place — stays whatever the mask says. A deeper place inside what the patch replaces as a
+    // whole (a field of a component the instance took off) leaves the patch as it is: the
+    // instance differs there by more than that place.
+    void subtract(Json &patch, const Json &mask, bool root) {
+        if (!patch.IsObject() || !mask.IsObject() || isVector(patch) || isVector(mask)) { return; }
+        const bool everything = find(mask, EVERYTHING) != nullptr;
         std::vector<std::string> gone;
-        for (auto member = applied.MemberBegin(); member != applied.MemberEnd(); ++member) {
+        for (auto member = patch.MemberBegin(); member != patch.MemberEnd(); ++member) {
             const char *key = member->name.GetString();
-            if (std::strcmp(key, ENTITY) == 0) { continue; }
-            Json *own = find(patch, key);
-            if (own == nullptr) { continue; }
-            if (own->IsObject() && member->value.IsObject() && !isVector(*own) && !isVector(member->value)) {
-                subtract(*own, member->value);
-                if (own->MemberCount() == 0) { gone.emplace_back(key); }
-            } else {
+            if (std::strcmp(key, ENTITY) == 0 || (root && isOwnOfRoot(key))) { continue; }
+            const Json *inner = everything ? nullptr : find(mask, key);
+            if (!everything && inner == nullptr) { continue; }
+            Json &own = member->value;
+            const bool deeper = inner != nullptr && inner->IsObject() && !isVector(*inner) && find(*inner, EVERYTHING) == nullptr;
+            if (root && std::strcmp(key, TRANSFORM) == 0 && own.IsObject()) {
+                // Of the transform of a root, what is not its place.
+                std::vector<std::string> inside;
+                for (auto field = own.MemberBegin(); field != own.MemberEnd(); ++field) {
+                    const char *name = field->name.GetString();
+                    if (std::strcmp(name, POSITION) == 0 || std::strcmp(name, ROTATION) == 0) { continue; }
+                    if (!deeper || find(*inner, name) != nullptr) { inside.emplace_back(name); }
+                }
+                for (const std::string &name : inside) { erase(own, name.c_str()); }
+                if (own.MemberCount() == 0) { gone.emplace_back(key); }
+                continue;
+            }
+            if (!deeper) {
                 gone.emplace_back(key);
+            } else if (own.IsObject() && !isVector(own)) {
+                subtract(own, *inner, false);
+                if (own.MemberCount() == 0) { gone.emplace_back(key); }
             }
         }
         for (const std::string &key : gone) { erase(patch, key.c_str()); }
     }
 
-    // Takes the applied keys out of one entry (of any prefab: an instance of a prefab that
-    // nests the applied one overrides its entities by a longer path). true — the entry changed.
-    bool stripEntry(Json &entry, const Json &patches, AssetId prefab) {
-        const Template *tmpl = templateOf(idIn(entry, PREFAB));
-        if (tmpl == nullptr) { return false; }
-        const std::string before = write(entry, false);
-        for (const Json &applied : patches.GetArray()) {
-            const std::vector<UUID> target = pathFrom(*find(applied, ENTITY));
-            // The root of the applied prefab: its difference is the entry itself.
-            if (tmpl->id == prefab && target.size() == 1 && target.front() == tmpl->root) {
-                subtract(entry, applied); // an applied patch never holds the place of its instance
-                continue;
+    // The entity a path names in the template `tmpl` is the entity `target` names in the
+    // template of `prefab`: the same prefab and the same path — or the same entity of `prefab`
+    // reached through the instances nested on the way, or through the prefab a root is a variant
+    // of (its root is an instance of that one).
+    bool correspondsTo(const Template *tmpl, const std::vector<UUID> &path, AssetId prefab, const std::vector<UUID> &target) {
+        for (size_t depth = 0; tmpl != nullptr && depth < path.size(); depth++) {
+            if (tmpl->id == prefab && std::equal(path.begin() + static_cast<std::ptrdiff_t>(depth), path.end(), target.begin(), target.end())) {
+                return true;
             }
-            Json *list = find(entry, OVERRIDES);
+            if (depth + 1 == path.size()) {
+                // The last step names an entity of this template: the root of an instance nested
+                // here (or the root of the template, a variant) is the root of its prefab, and of
+                // what that prefab is a variant of in turn.
+                const Template *at = tmpl;
+                UUID entity = path[depth];
+                for (size_t guard = 0; guard < 64; guard++) {
+                    const auto link = at->links.find(entity);
+                    if (link == at->links.end() || link->second.instance != entity || link->second.prefab == AssetId(0)) { return false; }
+                    at = templateOf(link->second.prefab);
+                    if (at == nullptr) { return false; }
+                    entity = at->root;
+                    if (at->id == prefab && target.size() == 1 && target.front() == entity) { return true; }
+                }
+                return false;
+            }
+            const auto link = tmpl->links.find(path[depth]);
+            tmpl = link != tmpl->links.end() ? templateOf(link->second.prefab) : nullptr;
+        }
+        return false;
+    }
+
+    // Places of the prefab `prefab` taken out of the difference an entry holds — an entry of an
+    // instance of that prefab, or of a prefab that holds it nested or is a variant of it. true —
+    // the entry changed.
+    bool strip(Json &entry, const Json &places, AssetId prefab) {
+        const Template *tmpl = templateOf(idIn(entry, PREFAB));
+        if (tmpl == nullptr || !places.IsArray()) { return false; }
+        const std::string before = write(entry, false);
+        Json *list = find(entry, OVERRIDES);
+        for (const Json &place : places.GetArray()) {
+            const Json *named = find(place, ENTITY);
+            if (named == nullptr) { continue; }
+            const std::vector<UUID> target = pathFrom(*named);
+            // The root of the instance: what it differs in is the entry itself.
+            if (correspondsTo(tmpl, {tmpl->root}, prefab, target)) { subtract(entry, place, true); }
             if (list == nullptr || !list->IsArray()) { continue; }
             for (Json &item : list->GetArray()) {
-                const Json *named = find(item, ENTITY);
-                if (named == nullptr) { continue; }
-                const std::vector<UUID> path = pathFrom(*named);
-                bool matches = false;
-                // The path of the override leads into the applied prefab, and what is left of it
-                // there names the applied entity. The root of a nested instance is named by the
-                // id of that instance alone.
-                for (size_t depth = 0; depth < path.size() && !matches; depth++) {
-                    const Template *at = tmpl;
-                    bool valid = true;
-                    for (size_t step = 0; step < depth && valid; step++) {
-                        const auto root = at->links.find(path[step]);
-                        at = root != at->links.end() ? templateOf(root->second.prefab) : nullptr;
-                        valid = at != nullptr;
-                    }
-                    if (!valid) { break; }
-                    if (at->id == prefab && std::vector<UUID>(path.begin() + static_cast<std::ptrdiff_t>(depth), path.end()) == target) { matches = true; }
-                    // …or ends on the nested instance itself, which is the root of the applied prefab.
-                    if (depth + 1 == path.size()) {
-                        const auto root = at->links.find(path[depth]);
-                        const Template *nested = root != at->links.end() ? templateOf(root->second.prefab) : nullptr;
-                        if (nested != nullptr && nested->id == prefab && target.size() == 1 && target.front() == nested->root) { matches = true; }
-                    }
-                }
-                if (matches) { subtract(item, applied); }
+                const Json *path = find(item, ENTITY);
+                if (path != nullptr && correspondsTo(tmpl, pathFrom(*path), prefab, target)) { subtract(item, place, false); }
             }
         }
         prune(entry);
         return write(entry, false) != before;
+    }
+
+    // The places a scope names in the entry of its instance.
+    void placesOf(const Template &tmpl, const Json &entry, const Scope &scope, Json &places, JsonAllocator &allocator) {
+        if (!scope.entity.isValid()) {
+            // The whole instance: the root, and every entity the entry says something of.
+            add(addPlace(places, {tmpl.root}, allocator), EVERYTHING, Json(true), allocator);
+            if (const Json *list = find(entry, OVERRIDES); list != nullptr && list->IsArray()) {
+                for (const Json &item : list->GetArray()) {
+                    if (const Json *named = find(item, ENTITY)) { add(addPlace(places, pathFrom(*named), allocator), EVERYTHING, Json(true), allocator); }
+                }
+            }
+            return;
+        }
+        if (!scope.entity.hasComponent<PrefabComponent>()) { return; }
+        std::vector<UUID> path;
+        if (!pathOf(tmpl, scope.entity.getComponent<PrefabComponent>().source, path)) { return; }
+        Json &place = addPlace(places, path, allocator);
+        if (scope.component.empty()) {
+            add(place, EVERYTHING, Json(true), allocator);
+        } else if (scope.component == PARENT) {
+            // Put Back: under the entity the prefab says, as the prefab has it there — the move gave
+            // it a transform that kept its place in the world, and that goes with the move.
+            add(place, PARENT, Json(true), allocator);
+            add(place, TRANSFORM, Json(true), allocator);
+        } else {
+            Json mask(true);
+            const std::vector<std::string> keys = split(scope.field);
+            for (auto key = keys.rbegin(); key != keys.rend(); ++key) {
+                Json wrap(rapidjson::kObjectType);
+                add(wrap, key->c_str(), std::move(mask), allocator);
+                mask = std::move(wrap);
+            }
+            add(place, scope.component.c_str(), std::move(mask), allocator);
+        }
+    }
+
+    /* ------------------------------ Additions ------------------------------ */
+
+    // The topmost entities added to an instance: the children of its entities that are not its
+    // parts, in the order of their ids.
+    std::vector<Entity> additionsTo(World &world, const Parts &parts, UUID instance) {
+        std::vector<Entity> found;
+        for (auto [source, entity] : parts.live) {
+            for (UUID childId : entity.getChildEntities()) {
+                Entity child = world.getById(childId);
+                if (!child.isValid()) { continue; }
+                if (child.hasComponent<PrefabComponent>() && child.getComponent<PrefabComponent>().instance == instance) { continue; }
+                found.push_back(child);
+            }
+        }
+        std::sort(found.begin(), found.end(), [](const Entity &l, const Entity &r) { return l.getId() < r.getId(); });
+        return found;
     }
 
 } // namespace
@@ -1210,6 +1252,22 @@ AssetId prefabOf(Entity entity) {
     return root.isValid() ? root.getComponent<PrefabComponent>().prefab : AssetId(0);
 }
 
+Addition additionOf(Entity entity) {
+    // Up from the entity: the first one on the way that stands under an entity of an instance
+    // without being a part of that instance is what was added to it.
+    for (Entity at = entity; at.isValid();) {
+        Entity parent = at.getParent();
+        if (!parent.isValid()) { break; }
+        Entity owner = instanceRoot(parent);
+        if (owner.isValid()) {
+            const bool part = at.hasComponent<PrefabComponent>() && at.getComponent<PrefabComponent>().instance == owner.getId();
+            if (!part) { return {owner, at}; }
+        }
+        at = parent;
+    }
+    return {};
+}
+
 std::string entryOf(Entity root) {
     Document entry;
     const Template *tmpl = nullptr;
@@ -1347,6 +1405,7 @@ Difference differenceOf(Entity entity) {
             if (id == tmpl->root || parts.live.contains(id) || !parts.live.contains(tmpl->parents.at(id))) { continue; }
             difference.removed.push_back({id, tmpl->nameOf(id)});
         }
+        for (Entity added : additionsTo(world, parts, instance)) { difference.added.push_back({added.getId(), added.getName()}); }
     }
     return difference;
 }
@@ -1357,52 +1416,20 @@ size_t differenceCount(Entity root) {
     if (!readEntry(root, entry, tmpl)) { return 0; }
     size_t count = 0;
     if (const Json *overrides = find(entry, OVERRIDES); overrides != nullptr && overrides->IsArray()) { count += overrides->Size(); }
-    // The root counts when its entry says more of it than where it stands.
-    return count + (rootDiffers(entry) ? 1 : 0);
+    // The root counts when its entry says more of it than what it is called and where it stands;
+    // every addition counts as an entity of its own.
+    World &world = *root.getWorld();
+    const Parts parts = partsByInstance(world, root.getId())[root.getId()];
+    return count + (rootDiffers(entry) ? 1 : 0) + additionsTo(world, parts, root.getId()).size();
 }
 
 std::string entryWithout(Entity root, const Scope &scope) {
     Document entry;
     const Template *tmpl = nullptr;
     if (!readEntry(root, entry, tmpl)) { return {}; }
-    if (!scope.entity.isValid()) {
-        // The whole instance: its prefab, at its place.
-        eraseRootDifference(entry);
-        erase(entry, OVERRIDES);
-        return write(entry, true);
-    }
-    if (!scope.entity.hasComponent<PrefabComponent>()) { return write(entry, true); }
-    const UUID source = scope.entity.getComponent<PrefabComponent>().source;
-    if (scope.entity == root) {
-        if (scope.component.empty()) {
-            eraseRootDifference(entry);
-        } else if (scope.component == TRANSFORM && scope.field.empty()) {
-            Document bare;
-            static_cast<Json &>(bare).CopyFrom(entry, bare.GetAllocator(), true);
-            eraseRootDifference(bare);
-            if (const Json *transform = find(bare, TRANSFORM)) { set(entry, TRANSFORM, copyOf(*transform, entry.GetAllocator()), entry.GetAllocator()); }
-        } else if (scope.component != TAG && !(scope.component == TRANSFORM && (scope.field == POSITION || scope.field == ROTATION))) {
-            erasePlace(entry, scope.component, scope.field);
-        }
-        return write(entry, true);
-    }
-    std::vector<UUID> path;
-    if (!pathOf(*tmpl, source, path)) { return write(entry, true); }
-    Json *item = overrideAt(entry, path);
-    if (item == nullptr) { return write(entry, true); }
-    if (scope.component.empty()) {
-        std::vector<std::string> keys;
-        for (auto member = item->MemberBegin(); member != item->MemberEnd(); ++member) {
-            if (std::strcmp(member->name.GetString(), ENTITY) != 0) { keys.emplace_back(member->name.GetString()); }
-        }
-        for (const std::string &key : keys) { erase(*item, key.c_str()); }
-    } else {
-        erasePlace(*item, scope.component, scope.field);
-        // Put back where the prefab has it: the move gave it a transform that kept its place
-        // in the world, and that goes with the move.
-        if (scope.component == PARENT) { erase(*item, TRANSFORM); }
-    }
-    prune(entry);
+    Document places(rapidjson::kArrayType);
+    placesOf(*tmpl, entry, scope, places, places.GetAllocator());
+    strip(entry, places, tmpl->id);
     return write(entry, true);
 }
 
@@ -1411,9 +1438,11 @@ std::string entryRestoring(Entity root, UUID source) {
     const Template *tmpl = nullptr;
     if (!readEntry(root, entry, tmpl)) { return {}; }
     std::vector<UUID> path;
-    if (!pathOf(*tmpl, source, path)) { return write(entry, true); }
-    if (Json *item = overrideAt(entry, path)) { erase(*item, REMOVED); }
-    prune(entry);
+    if (pathOf(*tmpl, source, path)) {
+        Document places(rapidjson::kArrayType);
+        add(addPlace(places, path, places.GetAllocator()), REMOVED, Json(true), places.GetAllocator());
+        strip(entry, places, tmpl->id);
+    }
     return write(entry, true);
 }
 
@@ -1423,19 +1452,24 @@ Applied apply(Entity root, const Scope &scope, const std::string &file) {
     const Template *tmpl = nullptr;
     if (!readEntry(root, entry, tmpl)) { return applied; }
     JsonAllocator &allocator = entry.GetAllocator();
+    World &world = *root.getWorld();
+    const UUID instance = root.getId();
+    Parts parts = partsByInstance(world, instance)[instance];
+    std::unordered_map<UUID, UUID> sources; // the id in the world → the id in the prefab
+    for (auto &[source, entity] : parts.live) { sources[entity.getId()] = source; }
     const bool whole = !scope.entity.isValid();
+    // An addition goes into the prefab as it is; anything else of the instance by its patches.
+    const Addition addition = whole ? Addition{} : additionOf(scope.entity);
+    const bool adding = addition.instance.isValid() && addition.instance == root;
+
     // The part of the difference to apply, as patches of entities of the prefab.
     struct Chosen {
         UUID source = 0;
         Json patch;
         bool removed = false;
-        UUID parent = 0; // the entity of the prefab it was moved under; 0 — it was not
+        UUID parent = 0; // the entity of the world it was moved under; 0 — it was not
     };
     std::vector<Chosen> chosen;
-    World &world = *root.getWorld();
-    Parts parts = partsByInstance(world, root.getId())[root.getId()];
-    std::unordered_map<UUID, UUID> sources; // the id in the world → the id in the prefab
-    for (auto &[source, entity] : parts.live) { sources[entity.getId()] = source; }
     const auto narrowed = [&](Json patch) {
         // One component, or one place of it: the rest of the patch stays with the instance.
         if (scope.component.empty()) { return patch; }
@@ -1458,70 +1492,77 @@ Applied apply(Entity root, const Scope &scope, const std::string &file) {
         add(only, scope.component.c_str(), std::move(nested), allocator);
         return only;
     };
-    const UUID only = whole ? UUID(0) : scope.entity.hasComponent<PrefabComponent>() ? scope.entity.getComponent<PrefabComponent>().source : UUID(0);
-    if (!whole && only == UUID(0)) { return applied; }
-    if (whole || only == tmpl->root) {
-        // The root: its difference is the entry itself; what it is called and where it stands
-        // are not applied.
-        Json patch(rapidjson::kObjectType);
-        for (auto member = entry.MemberBegin(); member != entry.MemberEnd(); ++member) {
-            const char *key = member->name.GetString();
-            if (isOwnOfRoot(key)) { continue; }
-            Json value = copyOf(member->value, allocator);
-            if (std::strcmp(key, TRANSFORM) == 0) {
-                erase(value, POSITION);
-                erase(value, ROTATION);
-                if (value.MemberCount() == 0) { continue; }
-            }
-            add(patch, key, std::move(value), allocator);
-        }
-        patch = narrowed(std::move(patch));
-        if (patch.MemberCount() > 0) {
-            Chosen item;
-            item.source = tmpl->root;
-            item.patch = std::move(patch);
-            chosen.push_back(std::move(item));
-        }
-    }
-    if (Json *overrides = find(entry, OVERRIDES); overrides != nullptr && overrides->IsArray()) {
-        for (Json &item : overrides->GetArray()) {
-            const UUID source = resolvePath(*tmpl, pathFrom(*find(item, ENTITY)));
-            if (source == UUID(0) || (!whole && source != only)) { continue; }
-            Chosen pick;
-            pick.source = source;
-            const Json *removed = find(item, REMOVED);
-            pick.removed = whole && removed != nullptr && removed->IsBool() && removed->GetBool();
-            if (const Json *parent = find(item, PARENT); whole && parent != nullptr) {
-                const auto above = sources.find(idOf(*parent));
-                pick.parent = above != sources.end() ? above->second : UUID(0); // moved out of the instance: stays its own
-            }
+    if (!adding) {
+        const UUID only = whole ? UUID(0) : scope.entity.hasComponent<PrefabComponent>() ? scope.entity.getComponent<PrefabComponent>().source : UUID(0);
+        if (!whole && only == UUID(0)) { return applied; }
+        if (whole || only == tmpl->root) {
+            // The root: its difference is the entry itself; what it is called and where it stands
+            // are not applied.
             Json patch(rapidjson::kObjectType);
-            for (auto member = item.MemberBegin(); member != item.MemberEnd(); ++member) {
+            for (auto member = entry.MemberBegin(); member != entry.MemberEnd(); ++member) {
                 const char *key = member->name.GetString();
-                if (std::strcmp(key, ENTITY) == 0 || std::strcmp(key, REMOVED) == 0 || std::strcmp(key, PARENT) == 0) { continue; }
-                add(patch, key, copyOf(member->value, allocator), allocator);
+                if (isOwnOfRoot(key)) { continue; }
+                Json value = copyOf(member->value, allocator);
+                if (std::strcmp(key, TRANSFORM) == 0) {
+                    erase(value, POSITION);
+                    erase(value, ROTATION);
+                    if (value.MemberCount() == 0) { continue; }
+                }
+                add(patch, key, std::move(value), allocator);
             }
-            pick.patch = narrowed(std::move(patch));
-            if (pick.patch.MemberCount() > 0 || pick.removed || pick.parent != UUID(0)) { chosen.push_back(std::move(pick)); }
+            patch = narrowed(std::move(patch));
+            if (patch.MemberCount() > 0) {
+                Chosen item;
+                item.source = tmpl->root;
+                item.patch = std::move(patch);
+                chosen.push_back(std::move(item));
+            }
+        }
+        // A move goes with the whole instance, with the entity as a whole, or by itself.
+        const bool moves = whole || scope.component.empty() || scope.component == PARENT;
+        if (Json *overrides = find(entry, OVERRIDES); overrides != nullptr && overrides->IsArray()) {
+            for (Json &item : overrides->GetArray()) {
+                const UUID source = resolvePath(*tmpl, pathFrom(*find(item, ENTITY)));
+                if (source == UUID(0) || (!whole && source != only)) { continue; }
+                Chosen pick;
+                pick.source = source;
+                const Json *removed = find(item, REMOVED);
+                pick.removed = whole && removed != nullptr && removed->IsBool() && removed->GetBool();
+                if (const Json *parent = find(item, PARENT); moves && parent != nullptr) { pick.parent = idOf(*parent); }
+                Json patch(rapidjson::kObjectType);
+                for (auto member = item.MemberBegin(); member != item.MemberEnd(); ++member) {
+                    const char *key = member->name.GetString();
+                    if (std::strcmp(key, ENTITY) == 0 || std::strcmp(key, REMOVED) == 0 || std::strcmp(key, PARENT) == 0) { continue; }
+                    add(patch, key, copyOf(member->value, allocator), allocator);
+                }
+                pick.patch = scope.component == PARENT ? Json(rapidjson::kObjectType) : narrowed(std::move(patch));
+                if (pick.patch.MemberCount() > 0 || pick.removed || pick.parent != UUID(0)) { chosen.push_back(std::move(pick)); }
+            }
         }
     }
-    // The plain entities added under the instance become entities of the prefab.
-    std::vector<Entity> added;
+    // What was added to the instance: with the whole of it, every addition; or the one named.
+    std::vector<Entity> additions;
     if (whole) {
-        std::vector<Entity> pending;
-        for (auto &[source, entity] : parts.live) { pending.push_back(entity); }
-        while (!pending.empty()) {
-            Entity above = pending.back();
-            pending.pop_back();
-            for (UUID childId : above.getChildEntities()) {
-                Entity child = world.getById(childId);
-                if (!child.isValid() || child.hasComponent<PrefabComponent>()) { continue; }
-                added.push_back(child);
-                pending.push_back(child);
+        additions = additionsTo(world, parts, instance);
+    } else if (adding) {
+        additions.push_back(addition.top);
+    }
+    if (chosen.empty() && additions.empty()) { return applied; }
+    // A prefab cannot hold itself: an addition that is — or holds — an instance of this prefab,
+    // or of one that holds it, stays the instance's own.
+    for (Entity top : additions) {
+        for (Entity at : world.subtree(top)) {
+            const AssetId nested = at.hasComponent<PrefabComponent>() ? at.getComponent<PrefabComponent>().prefab : AssetId(0);
+            if (nested != AssetId(0) && dependsOn(nested, tmpl->id)) {
+                LOG_WARN_EDITOR(
+                    "%s is an instance of a prefab that holds %s: applied into it, the prefab would hold itself. Nothing was applied.",
+                    at.getName().c_str(), tmpl->nameOf(tmpl->root).c_str()
+                );
+                applied.refused = true;
+                return applied;
             }
         }
     }
-    if (chosen.empty() && added.empty()) { return applied; }
 
     // The prefab as a world of its own: what was chosen is put into its entities, then it is
     // written the way a prefab is saved.
@@ -1529,77 +1570,122 @@ Applied apply(Entity root, const Scope &scope, const std::string &file) {
     if (!load(prefab, file)) { return applied; }
     Entity prefabRoot = prefab.getById(tmpl->root);
     if (!prefabRoot.isValid()) { return applied; }
-    Document patches(rapidjson::kArrayType);
+    Document places(rapidjson::kArrayType);
+    JsonAllocator &placesAllocator = places.GetAllocator();
+
+    // The additions: copies of what was added, under the entities of the prefab they stand
+    // under, with the transforms they have there. An instance of another prefab stays one: the
+    // prefab holds it nested from now on.
+    std::unordered_map<UUID, UUID> adopted; // the id in the world → the id of its copy in the prefab
+    for (Entity top : additions) {
+        const auto above = sources.find(top.getParent().getId());
+        Entity parent = above != sources.end() ? prefab.getById(above->second) : Entity();
+        if (!parent.isValid()) { continue; }
+        std::unordered_map<UUID, UUID> ids;
+        EntityPlacement placement;
+        placement.parent = parent;
+        // A part of the instance moved under an addition is not copied with it: it is moved there
+        // in the prefab, as it is in the instance.
+        const auto isPart = [instance](Entity entity) {
+            return entity.hasComponent<PrefabComponent>() && entity.getComponent<PrefabComponent>().instance == instance;
+        };
+        prefab.importEntity(world, top, placement, &ids, isPart);
+        adopted.insert(ids.begin(), ids.end());
+    }
+    // What the copies name of the instance, they name by the ids of the prefab.
+    const ComponentTypeRegistry &types = GameContext::getExtensions().components;
+    for (auto &[original, copy] : adopted) {
+        types.forEachReference(prefab.getById(copy), [&sources](UUID &reference) {
+            const auto found = sources.find(reference);
+            if (found != sources.end()) { reference = found->second; }
+        }, PREFAB_TYPE);
+    }
+
+    // The values and the moves, then the removals: what was moved out of a removed entity stays.
     for (Chosen &item : chosen) {
         Entity target = prefab.getById(item.source);
-        if (!target.isValid()) { continue; }
-        if (item.removed) {
-            prefab.destroy(target);
-            continue;
-        }
+        if (item.removed || !target.isValid()) { continue; }
         if (item.patch.MemberCount() > 0) {
             Document objects;
             const Json now = objectOf(target, objects.GetAllocator());
             Json wanted = copyOf(now, objects.GetAllocator());
             merge(wanted, item.patch, objects.GetAllocator());
             applyObject(target, wanted, now);
-            notePatch(patches, *tmpl, item.source, item.patch, patches.GetAllocator());
+            notePlace(places, *tmpl, item.source, item.patch, placesAllocator);
         }
         if (item.parent != UUID(0)) {
-            Entity above = prefab.getById(item.parent);
-            if (above.isValid()) { prefab.setParent(target, above, /*keepWorldTransform*/ false); }
+            // Under an entity of the instance, or under an addition that comes with this Apply; one
+            // moved out of the instance stays its own.
+            const auto part = sources.find(item.parent);
+            const auto copy = adopted.find(item.parent);
+            Entity above = part != sources.end() ? prefab.getById(part->second) : copy != adopted.end() ? prefab.getById(copy->second) : Entity();
+            if (above.isValid()) {
+                prefab.setParent(target, above, /*keepWorldTransform*/ false);
+                Json mask(rapidjson::kObjectType);
+                add(mask, PARENT, Json(true), placesAllocator);
+                notePlace(places, *tmpl, item.source, mask, placesAllocator);
+            }
         }
     }
-    // Added entities: the same ids where the prefab has them free.
-    std::unordered_map<UUID, UUID> addedIds; // the id in the world → the id in the prefab
-    {
-        TemplateSpace space(world, root.getId());
-        for (Entity entity : added) {
-            UUID id = entity.getId();
-            if (static_cast<entt::entity>(prefab.getById(id)) != entt::null) { id = prefab.newEntityId(); }
-            addedIds[entity.getId()] = id;
-            Entity made = prefab.instantiateEntity(id);
-            Document objects;
-            Json object = objectOf(entity, objects.GetAllocator());
-            erase(object, ID);
-            erase(object, RELATIONSHIP);
-            Rain::JsonDecoder decoder;
-            std::istringstream stream(write(object, false));
-            WorldMapper::loadEntity(made, decoder, stream);
+    for (Chosen &item : chosen) {
+        Entity target = prefab.getById(item.source);
+        if (!item.removed || !target.isValid()) { continue; }
+        // The other instances say nothing of it, nor of what goes with it, any more.
+        for (Entity gone : prefab.subtree(target)) {
+            Json everything(rapidjson::kObjectType);
+            add(everything, EVERYTHING, Json(true), placesAllocator);
+            notePlace(places, *tmpl, gone.getId(), everything, placesAllocator);
+        }
+        prefab.destroy(target);
+    }
+    // What the entities of the prefab name of the additions (a field of the root that names an
+    // added entity), they name by the copies.
+    if (!adopted.empty()) {
+        for (auto handle : prefab.getAllEntitiesWith<IdComponent>()) {
+            types.forEachReference(prefab.entity(handle), [&adopted](UUID &reference) {
+                const auto found = adopted.find(reference);
+                if (found != adopted.end()) { reference = found->second; }
+            }, PREFAB_TYPE);
         }
     }
-    for (Entity entity : added) {
-        const UUID parent = entity.getParent().getId();
-        const auto part = sources.find(parent);
-        const UUID above = part != sources.end() ? part->second : addedIds.at(parent);
-        prefab.setParent(prefab.getById(addedIds.at(entity.getId())), prefab.getById(above), /*keepWorldTransform*/ false);
+
+    // In the world the additions are parts of the instance from now on: each is the entity of
+    // the prefab its copy is, with the id of a part. An instance among them is nested now — its
+    // root keeps its prefab.
+    std::vector<std::pair<Entity, UUID>> parted;
+    for (auto &[original, copy] : adopted) {
+        Entity entity = world.getById(original);
+        if (!entity.isValid()) { continue; }
+        const bool nestedRoot = isRootOfInstance(entity);
+        const AssetId nested = nestedRoot ? entity.getComponent<PrefabComponent>().prefab : AssetId(0);
+        PrefabComponent &link = entity.hasComponent<PrefabComponent>() ? entity.getComponent<PrefabComponent>() : entity.addComponent<PrefabComponent>();
+        link.instance = instance;
+        link.source = copy;
+        link.prefab = nested;
+        parted.emplace_back(entity, copy);
     }
-    // In the world they are parts of the instance from now on, with the ids of parts.
-    for (Entity entity : added) {
-        const UUID source = addedIds.at(entity.getId());
-        const UUID id = freeDerivedEntityId(root.getId(), source, [&world](UUID id) { return static_cast<entt::entity>(world.getById(id)) != entt::null; });
+    std::sort(parted.begin(), parted.end(), [](const auto &l, const auto &r) { return l.second < r.second; });
+    for (auto &[entity, source] : parted) {
+        const UUID id = freeDerivedEntityId(instance, source, [&world](UUID id) { return static_cast<entt::entity>(world.getById(id)) != entt::null; });
         world.changeEntityId(entity, id);
-        PrefabComponent &link = entity.addComponent<PrefabComponent>();
-        link.instance = root.getId();
-        link.source = source;
     }
     applied.prefab = tmpl->id;
-    applied.instance = root.getId();
+    applied.instance = instance;
+    applied.reidentified = !parted.empty();
     applied.file = save(prefab, prefabRoot);
-    applied.patches = write(patches, false);
+    applied.places = write(places, false);
     return applied;
 }
 
 bool stripApplied(const Applied &applied, const std::string &file, std::string &result) {
     Document document;
-    Document patches;
-    if (!parse(file, document) || !parse(applied.patches, patches) || !patches.IsArray()) { return false; }
+    Document places;
+    if (!parse(file, document) || !parse(applied.places, places) || !places.IsArray()) { return false; }
     Json *entities = find(document, ENTITIES);
     if (entities == nullptr || !entities->IsArray()) { return false; }
     bool changed = false;
     for (Json &entry : entities->GetArray()) {
-        if (find(entry, PREFAB) == nullptr || idIn(entry, ID) == applied.instance) { continue; }
-        changed = stripEntry(entry, patches, applied.prefab) || changed;
+        if (find(entry, PREFAB) != nullptr) { changed = strip(entry, places, applied.prefab) || changed; }
     }
     if (changed) { result = write(document, true); }
     return changed;
@@ -1614,18 +1700,8 @@ void convertToInstance(Entity root, AssetId prefab) {
     World &world = *root.getWorld();
     const UUID instance = root.getId();
     // The entities under the root, by the ids they had: those are their ids in the prefab.
-    std::vector<Entity> under;
-    std::vector<Entity> pending{root};
-    while (!pending.empty()) {
-        Entity above = pending.back();
-        pending.pop_back();
-        for (UUID childId : above.getChildEntities()) {
-            Entity child = world.getById(childId);
-            if (!child.isValid()) { continue; }
-            under.push_back(child);
-            pending.push_back(child);
-        }
-    }
+    std::vector<Entity> under = world.subtree(root);
+    under.erase(under.begin());
     std::sort(under.begin(), under.end(), [](const Entity &l, const Entity &r) { return l.getId() < r.getId(); });
     const auto mark = [&](Entity entity, UUID source, bool isRoot) {
         // The root of an instance of another prefab that stood in the tree is nested in this one.
@@ -1707,16 +1783,6 @@ bool dependsOn(AssetId prefab, AssetId other) {
     return false;
 }
 
-std::vector<AssetId> prefabsIn(World &world) {
-    std::set<AssetId> prefabs;
-    auto view = world.getAllEntitiesWith<PrefabComponent>();
-    for (auto handle : view) {
-        const PrefabComponent &link = view.get<PrefabComponent>(handle);
-        if (link.prefab != AssetId(0) && world.isValidEntt(handle)) { prefabs.insert(link.prefab); }
-    }
-    return std::vector<AssetId>(prefabs.begin(), prefabs.end());
-}
-
 void prefabChanged(
     AssetId prefab, const std::vector<World *> &worlds, const std::function<void(AssetId)> &reload, const Applied *forced
 ) {
@@ -1735,8 +1801,8 @@ void prefabChanged(
     // The dirty flag a world has afterwards: what it had, or set — an instance lost keys to an
     // Apply Forced, and its file holds another entry now.
     std::unordered_map<World *, bool> dirty;
-    Document patches;
-    if (forced != nullptr) { parse(forced->patches, patches); }
+    Document places;
+    if (forced != nullptr) { parse(forced->places, places); }
     for (World *world : worlds) {
         dirty[world] = world->isChanged();
         auto view = world->getAllEntitiesWith<PrefabComponent>();
@@ -1750,11 +1816,11 @@ void prefabChanged(
             Document entry;
             const Template *tmpl = nullptr;
             if (!readEntry(root, entry, tmpl)) { continue; }
-            // Apply Forced: the other instances take the applied values. The one the difference
-            // was taken from has nothing to save for it either way: its file holds what the
-            // prefab now has.
-            if (forced != nullptr && patches.IsArray()) {
-                if (root.getId() == forced->instance || stripEntry(entry, patches, forced->prefab)) { dirty[world] = true; }
+            // Apply Forced: the other instances lose what they had at the applied places — the
+            // Revert of those places. The one the difference was taken from has nothing to save
+            // for it either way: its file holds what the prefab now has.
+            if (forced != nullptr && places.IsArray()) {
+                if (root.getId() == forced->instance || strip(entry, places, forced->prefab)) { dirty[world] = true; }
             }
             kept.push_back({world, root.getId(), write(entry, false)});
         }

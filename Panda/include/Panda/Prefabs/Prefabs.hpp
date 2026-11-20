@@ -58,6 +58,17 @@ Entity instanceRoot(Entity entity);
 // The prefab of the instance the entity is a part of; 0 — none.
 AssetId prefabOf(Entity entity);
 
+// An entity of the world that stands under an entity of an instance without being a part of it —
+// a plain entity, or an instance of another prefab, put there in the world: the instance differs
+// from its prefab by it, as by an override. `instance` — the root of the instance it was added
+// to, `top` — the topmost added entity on its way up, the one that goes with everything under it
+// (what Apply and Revert act on). Invalid — the entity is not added to an instance.
+struct Addition final {
+    Entity instance;
+    Entity top;
+};
+Addition additionOf(Entity entity);
+
 // The entry a world file holds for the instance — the prefab and what the instance differs in —
 // as JSON text. Empty — `root` is not the root of an instance whose prefab is there.
 std::string entryOf(Entity root);
@@ -89,21 +100,27 @@ struct RemovedEntity final {
     UUID source = 0; // its id in the prefab
     std::string name;
 };
+struct AddedEntity final {
+    UUID id = 0; // in the world: the topmost entity of an addition
+    std::string name;
+};
 struct Difference final {
     bool isPart = false; // the entity is a part of an instance whose prefab is there
     std::vector<ComponentDifference> components;
     bool moved = false;                // it stands under another entity than its prefab says
     std::vector<RemovedEntity> removed; // asked of a root: the entities of the prefab the instance has no more
+    std::vector<AddedEntity> added;     // asked of a root: what was added to the instance (Addition::top)
 
     bool any() const {
-        return !components.empty() || moved || !removed.empty();
+        return !components.empty() || moved || !removed.empty() || !added.empty();
     }
     const ComponentDifference *find(const std::string &component) const;
     // The place of the component differs: itself, something in it, or the component as a whole.
     bool differs(const std::string &component, const std::string &field) const;
 };
 Difference differenceOf(Entity entity);
-// How many entities of the instance differ from the prefab, the removed ones counted.
+// How many entities of the instance differ from the prefab: the removed ones and the additions
+// counted too.
 size_t differenceCount(Entity root);
 
 // The entry of the instance without the part of the difference the scope names: what Revert sets.
@@ -116,7 +133,15 @@ struct Applied final {
     AssetId prefab = 0;
     UUID instance = 0;   // the root of the instance it was taken from
     std::string file;    // the text of the prefab file with the difference in it
-    std::string patches; // JSON: [{"entity": <path in the prefab>, …the patch that was applied}]
+    // The places of the prefab Apply wrote, as Apply Forced takes them out of the other
+    // instances: [{"entity": <path in the prefab>, …a mask of the places}] (stripApplied).
+    std::string places;
+    // Entities of the world got other ids — an addition became a part of the instance: the undo
+    // history speaks of ids that are gone.
+    bool reidentified = false;
+    // Nothing was applied, and not because nothing differs: the log said why (a prefab would
+    // hold itself).
+    bool refused = false;
 
     bool any() const {
         return !file.empty();
@@ -124,12 +149,17 @@ struct Applied final {
 };
 // The part of the difference the scope names, written into the prefab: `file` is the text the
 // prefab file has now. With the whole instance the entities it removed leave the prefab, the
-// components it added or took off come and go there too, and the plain entities added under it
-// become entities of the prefab (and parts of the instance). Nothing differs — `any()` is false.
+// components it added or took off come and go there too, the entities it moved stand there as
+// they stand in it, and its additions become entities of the prefab — a plain entity as itself,
+// an instance of another prefab as an instance nested in this one — and parts of the instance.
+// A scope that names an addition (any entity of it) applies that addition alone. Nothing differs
+// — `any()` is false.
 Applied apply(Entity root, const Scope &scope, const std::string &file);
-// Apply Forced: the keys `applied` touched, taken out of the other instances of the prefab in
-// the text of a file — they show the applied value from now on. false — the file holds none of
-// them and `result` is untouched.
+// Apply Forced: the places `applied` wrote, taken out of the other instances of the prefab in
+// the text of a file — the Revert of those places, the one the Revert button does — so they show
+// the applied value from now on. An instance of a prefab that holds the applied one nested, or
+// is a variant of it, loses them at the longer path. false — the file holds none of them and
+// `result` is untouched.
 bool stripApplied(const Applied &applied, const std::string &file, std::string &result);
 
 // The entities of a world become a prefab: the text of a `.prefab` file with `root` and
@@ -161,8 +191,6 @@ void clear();
 // `prefab` holds `other` in it, directly or through a prefab it holds — or is it. An instance
 // of `prefab` inside `other` would hold itself.
 bool dependsOn(AssetId prefab, AssetId other);
-// The prefabs the world has instances of.
-std::vector<AssetId> prefabsIn(World &world);
 
 } // namespace Panda::Prefabs
 

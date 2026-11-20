@@ -409,11 +409,9 @@ void StartScreenController::refreshRecentProjects() {
     const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
     projects.reserve(recent.size());
     for (const Panda::RecentProject &project : recent) {
-        std::string name = project.name.empty() ? Panda::path_t(project.path).filename().string() : project.name;
-        if (name.empty()) { name = project.path; }
         std::error_code errorCode;
         const bool missing = !std::filesystem::exists(project.path, errorCode);
-        projects.push_back({std::move(name), project.path, missing});
+        projects.push_back({project.name, project.path, missing});
     }
     if (m_model.recentProjects == projects) { return; }
     m_model.recentProjects = std::move(projects);
@@ -465,27 +463,21 @@ void StartScreenController::startScreenDidRequestOpenProjectDialog() {
         setStatus("Project opening cancelled.");
         return;
     }
-    m_loader.openProject(*folder);
-    if (!m_loader.hasOpenedProject()) { setStatus("Could not open project: " + folder->string()); }
+    std::string problem;
+    if (!m_loader.openProject(*folder, &problem)) { setStatus(problem); }
 }
 
 void StartScreenController::startScreenDidRequestOpenRecentProject(size_t index) {
     const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
     if (index >= m_model.recentProjects.size() || index >= recent.size()) { return; }
-    const Panda::path_t projectPath = recent[index].path;
-    if (!std::filesystem::exists(projectPath)) {
-        setStatus("Project not found: " + projectPath.string());
-        return;
-    }
-    m_loader.openProject(projectPath);
-    if (!m_loader.hasOpenedProject()) { setStatus("Could not open project: " + projectPath.string()); }
+    std::string problem;
+    if (!m_loader.openProject(recent[index].path, &problem)) { setStatus(problem); }
 }
 
 void StartScreenController::startScreenDidRequestRemoveRecentProject(size_t index) {
     const std::vector<Panda::RecentProject> &recent = m_loader.getRecentProjectsList();
     if (index >= m_model.recentProjects.size() || index >= recent.size()) { return; }
-    const std::string name =
-        recent[index].name.empty() ? Panda::path_t(recent[index].path).filename().string() : recent[index].name;
+    const std::string name = recent[index].name;
     m_loader.removeRecentProject(static_cast<int>(index));
     m_loader.saveSession();
     refreshRecentProjects();
@@ -500,8 +492,8 @@ void StartScreenController::startScreenDidRequestCreateProject(const std::string
         setStatus("Project already exists: " + projectPath.string());
         return;
     }
-    m_loader.createProject(projectName, projectPath);
-    if (!m_loader.hasOpenedProject()) { setStatus("Could not create project: " + projectPath.string()); }
+    std::string problem;
+    if (!m_loader.createProject(projectName, projectPath, &problem)) { setStatus(problem); }
 }
 
 void StartScreenController::startScreenDidCancelProjectCreation() {

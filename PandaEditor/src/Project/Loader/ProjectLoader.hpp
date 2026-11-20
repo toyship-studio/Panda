@@ -43,15 +43,22 @@ public:
     ~ProjectLoader();
     // settings.json and the editor session, then the project of this instance: `project` when
     // the command line named one, else — openLastProject — the project the last session ended
-    // with (a second window starts on the start screen instead).
-    void loadInitialData(bool openLastProject, const path_t &project);
+    // with (a second window starts on the start screen instead). → why that folder was not
+    // opened (it is not a project: openProject); empty — it was, or none was asked for.
+    std::string loadInitialData(bool openLastProject, const path_t &project);
     // The exit, while the editor still answers (EditorLayer::onDetach): the files nobody asked to
     // write — the sessions, and the settings unless they were changed on disk.
     void saveOnExit();
     // The editor session (session.json): written at project open/close and at exit.
     void saveSession();
     void saveWindowState(LastOpenedProjectWindowState state);
-    void openProject(const path_t &path);
+    // The name the .Panda/project.json of a folder gives the project (ProjectSettings::name). Empty
+    // — the folder is not a project: there is no such folder or file, the file is not JSON, or
+    // it names no project; `problem` says which, in a sentence for the user.
+    static std::string readName(const path_t &folder, std::string *problem = nullptr);
+    // The project of the folder in place of the open one. false — the folder is not a project
+    // (readName): nothing changes, the reason is in the log and in `problem`.
+    bool openProject(const path_t &path, std::string *problem = nullptr);
     void reloadScriptsDll();
     // The script build on disk is another one than the loaded one (a step of Reload; the build
     // is not a document — nothing edits it in memory).
@@ -63,7 +70,8 @@ public:
     // again after the script build is loaded: the files may have moved by then.
     path_t scriptSource(const std::string &className);
     void closeProject();
-    void createProject(const std::string &name, const path_t &path);
+    // A new project of the template, named `name`, in `path`, opened (false — see openProject).
+    bool createProject(const std::string &name, const path_t &path, std::string *problem = nullptr);
     // The session of the open project (.Panda/session.json): the worlds are the documents' to
     // say when it is written; what the Export window is set to is kept here as it is chosen.
     const ProjectSession &projectSession() const {
@@ -76,6 +84,12 @@ public:
     const std::vector<RecentProject> &getRecentProjectsList();
     bool hasOpenedProject();
     const path_t &getOpenedProjectPath();
+    // The name of the open project: "name" of its project.json as the file says it now
+    // (ProjectSettings::name — what follows from it). Not a folder: the folder of the project may be called
+    // anything — a clone, a copy, a checkout of a branch.
+    const std::string &projectName() const {
+        return m_documents.projectSettings().name;
+    }
     void removeRecentProject(int index);
     // project.json was written or reread: the engine follows its shader features (a changed set
     // recompiles the scene shaders and the loaded project shaders).
@@ -95,7 +109,6 @@ private:
     // The open project goes: it is saved, the editor is told (loaderWillCloseProject), then its
     // worlds are released, then the registry of its assets.
     void releaseOpenedProject();
-    void loadRecentProject();
     void appendRecentProject();
     void finalizeOpenedProject();
     // The shader features of the "rendering" section → the engine (ShaderFeatures). true — the set

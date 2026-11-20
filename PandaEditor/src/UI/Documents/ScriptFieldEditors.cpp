@@ -377,6 +377,7 @@ void addScriptListRows(CollapsibleSection &section, ScriptListField field) {
     // of the field in the class, the row of an item by the name and the index — "levels.1". The
     // rows of all the lists of a script lie side by side in its section.
     header->setAccessibilityId(name);
+    header->setField(name); // the list as a whole, under scripts/<Class>/scriptFields of the component
     summary->setAccessibilityId("summary");
     section.addContent(header);
 
