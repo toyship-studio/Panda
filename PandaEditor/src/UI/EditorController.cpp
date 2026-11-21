@@ -12,6 +12,7 @@
 #include "UI/Documents/UiGalleryDocument.hpp"
 #include "UI/AssetActions.hpp"
 #include "UI/EditorDialogs.hpp"
+#include "UI/EditorModelHelper.hpp"
 #include "UI/EntityActions.hpp"
 #include "UI/WorldTabs.hpp"
 #include "UI/Settings/CoreSettingsSections.hpp"
@@ -271,6 +272,8 @@ Panda::DockLayoutState EditorController::captureDockLayout() const {
     Panda::DockLayoutState state = m_dockManager->captureLayout();
     m_worldTabs->saveLayout(state); // which world is in front is the project session's to say
     state.worldSettingsVisible = m_viewportView && m_viewportView->isSidebarVisible();
+    state.contentBrowserView = m_contentView->mode() == ContentBrowserView::Mode::List ? "list" : "icons";
+    state.contentBrowserFolders = m_contentView->foldersShown();
     return state;
 }
 
@@ -290,6 +293,8 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
         }
     }
     setWorldSettingsVisible(state.worldSettingsVisible);
+    m_contentView->setMode(state.contentBrowserView == "list" ? ContentBrowserView::Mode::List : ContentBrowserView::Mode::Icons);
+    m_contentView->setFoldersShown(state.contentBrowserFolders);
 }
 
 void EditorController::setStripStatusText(const std::string &text) {
@@ -463,14 +468,6 @@ void EditorController::selectionChanged() {
         // reference field, the history): its highlight is of another selection and goes.
         if (m_contentView->selectedAssets() != selection().assets()) { m_contentView->clearAssetSelection(); }
     }
-    // The foot of the Hierarchy: how large the world is and how much of it is selected.
-    const int total = liveEntityCount();
-    const std::string count = std::to_string(total) + (total == 1 ? " entity" : " entities");
-    m_hierarchyView->setStatusText(
-        m_panelsWorld == nullptr ? std::string() // no world is open: nothing to count
-        : entities.empty()       ? count
-                                 : std::to_string(entities.size()) + " of " + count + " selected"
-    );
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
     // A selected world or prefab is shown by its own tab (WorldTabs::open), not by a tab of asset
     // parameters.
@@ -673,11 +670,20 @@ void EditorController::viewportDidRequestStopEditing() {
 }
 
 std::string EditorController::assetTitle(Panda::AssetId id) {
+    for (const auto &[builtin, name] : builtinShaderOptions()) {
+        if (builtin == id) { return name; }
+    }
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     if (!handler) { return {}; }
     auto it = handler->getRegistry().find(id);
     if (it == handler->getRegistry().end()) { return {}; }
     return handler->getAssetName(it->first);
+}
+
+bool EditorController::isBuiltinAsset(Panda::AssetId id) {
+    const auto builtins = builtinShaderOptions();
+    return id != Panda::AssetId(0) &&
+           std::any_of(builtins.begin(), builtins.end(), [id](const auto &builtin) { return builtin.first == id; });
 }
 
 Panda::CommandHistory &EditorController::assetUndoStack(Panda::AssetId id) {
@@ -691,13 +697,13 @@ void EditorController::clearAssetUndoStack(Panda::AssetId id) {
 }
 
 void EditorController::selectAsset(Panda::AssetId id) {
-    if (id == Panda::AssetId(0)) { return; }
+    if (id == Panda::AssetId(0) || isBuiltinAsset(id)) { return; } // a built-in one has no form and no file
     selectAssets({id}); // opens or replaces the asset tab
     revealAsset(id);    // the selection is shown where the asset lives too
 }
 
 void EditorController::revealAsset(Panda::AssetId id) {
-    if (id == Panda::AssetId(0)) { return; }
+    if (id == Panda::AssetId(0) || isBuiltinAsset(id)) { return; }
     if (m_dockManager) { m_dockManager->showPanel("contentBrowser"); }
     m_contentView->revealAsset(id);
 }
@@ -1073,6 +1079,13 @@ void EditorController::registerCommands() {
     action("keymap.open", "Settings", "Open Keymap", [this] { openKeymap(); });
     action("palette.show", "Editor", "Command Palette", [this] { showCommandPalette(); });
     action("goto.show", "Editor", "Go to Asset or Entity", [this] { showGoTo(); });
+    // Find is of the panel the keyboard is in: the Content Browser takes it while it has the focus
+    // (registered first, on the same key), the Hierarchy otherwise.
+    command("contentBrowser.search", "Editor", "Find in Content Browser", [this] {
+        if (!m_contentView->hasKeyboard()) { return false; }
+        m_contentView->focusSearch();
+        return true;
+    });
     command("hierarchy.search", "Editor", "Find in Hierarchy", [this] {
         if (!showPanel("hierarchy")) { return false; }
         m_hierarchyView->focusSearch();

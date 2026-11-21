@@ -51,6 +51,13 @@ void AssetActions::contentDidRequestAddToWorld(const std::vector<Panda::AssetId>
     if (!prefabs.empty()) { m_workspace.entities().instantiatePrefabs(prefabs); }
 }
 
+void AssetActions::contentDidRequestOpenExternally(Panda::AssetId asset) {
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (!handler) { return; }
+    const Panda::path_t relative = handler->assetPath(asset);
+    if (!relative.empty()) { m_workspace.openInExternalEditor(handler->getProjectPath() / relative); }
+}
+
 void AssetActions::contentAddFileItems(Menu &menu, Panda::AssetId asset) {
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
     if (!handler) { return; }

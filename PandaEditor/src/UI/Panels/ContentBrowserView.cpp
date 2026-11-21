@@ -25,6 +25,21 @@ using namespace PandaUI;
 
 namespace {
 
+    using Entry = ContentBrowserDataSource::Entry;
+    using Folder = ContentBrowserDataSource::Folder;
+    using FileEntry = ContentBrowserDataSource::FileEntry;
+
+    // A row of a tree is an entry; the tree holds it as an untyped item.
+    TreeItem toItem(Entry *entry) {
+        return static_cast<void *>(entry);
+    }
+    Entry *toEntry(TreeItem item) {
+        return static_cast<Entry *>(item);
+    }
+    Folder *toFolder(TreeItem item) {
+        Entry *entry = toEntry(item);
+        return entry && entry->isFolder ? static_cast<Folder *>(entry) : nullptr;
+    }
 
     // The asset type string from the registry by id (for the icon/color).
     std::string assetTypeOf(Panda::AssetId id) {
@@ -35,6 +50,13 @@ namespace {
         return it != registry.end() ? assetTypeString(it->second.type) : "text";
     }
 
+    // A kind the editor has a form for (EditorExtensions::assetKinds); the rest is text it does not
+    // edit, and a double click hands it to the external editor.
+    bool hasForm(const std::string &kind) {
+        const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
+        return ui != nullptr && ui->createEditor != nullptr;
+    }
+
     // The look of a kind is its entry in the editor registry (EditorExtensions::assetKinds), for
     // the kinds of the core and of the modules alike; a file of no kind is a gray generic file.
     Color colorForType(const std::string &type, bool folder) {
@@ -43,7 +65,10 @@ namespace {
         return Color(0x8A8A8AFF);
     }
 
-    constexpr float PREVIEW_SIDE = 62.f; // side of the square preview slot in a grid cell
+    constexpr float PREVIEW_SIDE = 62.f;   // side of the square preview slot in a grid cell
+    constexpr float TOOLBAR_HEIGHT = 34.f;
+    constexpr float SEARCH_WIDTH = 200.f;  // the search field of the icons (the list gives it the row)
+    constexpr float TOOL_BUTTON = 26.f;
 
     const char *iconForType(const std::string &type, bool folder) {
         if (folder) { return Ic::Folder; }
@@ -51,6 +76,16 @@ namespace {
             return ui->icon.c_str();
         }
         return Ic::FileGeneric;
+    }
+
+    std::shared_ptr<Label> makeNothingFound() {
+        auto label = std::make_shared<Label>("Nothing found");
+        label->setFont(Typo::Caption);
+        label->setTextRole(TextRole::Dim);
+        label->setTextAlignment(TextAlignment::Center);
+        label->layout().setMargin(Edge::Top, 24.f);
+        label->setCollapsed(true);
+        return label;
     }
 
     class FolderCell final : public Panel {
@@ -174,6 +209,52 @@ namespace {
         std::function<void()> m_onClick;
     };
 
+    // A row of the list: the icon of the kind, the name and — for a found entry — its folder.
+    class ListCell final : public Panel {
+    public:
+        ListCell() {
+            setBackgroundColor(Color(0x00000000));
+            layout().setFlexDirection(FlexDirection::Row);
+            layout().setAlignItems(Align::Center);
+            layout().setGap(6.f);
+            m_icon = std::make_shared<ImageView>();
+            m_icon->setContentMode(ImageContentMode::Fit);
+            m_icon->setUserInteractionEnabled(false);
+            m_icon->layout().setSize({Ic::RowSize + 2.f, Ic::RowSize + 2.f});
+            m_icon->layout().setFlexShrink(0.f);
+            addSubview(m_icon);
+            m_name = std::make_shared<Label>("");
+            m_name->setFont(Typo::Body);
+            m_name->layout().setFlexShrink(1.f);
+            addSubview(m_name);
+            m_detail = std::make_shared<Label>("");
+            m_detail->setFont(Typo::Caption);
+            m_detail->setTextRole(TextRole::Dim);
+            m_detail->layout().setFlexShrink(4.f); // the folder gives way first
+            addSubview(m_detail);
+        }
+        // registered — a file the engine knows (an unknown one is muted, as in the grid); broken —
+        // its files are incomplete or unreadable (the Output panel says what is wrong).
+        void bind(const std::string &name, const char *icon, ThemeColor tint, bool registered, bool broken,
+                  const std::string &detail) {
+            m_icon->setTexture(icons().get(icon));
+            m_icon->setTintColor(tint);
+            m_name->setText(name);
+            if (broken) {
+                m_name->setTextColor(ThemeColor::danger);
+            } else {
+                m_name->setTextRole(registered ? TextRole::Primary : TextRole::Muted);
+            }
+            m_detail->setText(detail);
+            m_detail->setCollapsed(detail.empty());
+        }
+
+    private:
+        std::shared_ptr<ImageView> m_icon;
+        std::shared_ptr<Label> m_name;
+        std::shared_ptr<Label> m_detail;
+    };
+
 } // namespace
 
 ContentBrowserView::ContentBrowserView(ContentBrowserOutput *output)
@@ -183,192 +264,413 @@ ContentBrowserView::ContentBrowserView(ContentBrowserOutput *output)
     setupStyle();
 }
 
-void ContentBrowserView::refresh() {
-    m_dataSource.rebuild();
-    m_tree->reloadData();
-    for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) {
-        m_tree->setExpanded(node, true);
-    }
-    m_tree->setSelectedItem(m_dataSource.currentFolder());
-    m_grid->clearSelection();
-    m_grid->reloadData();
-    m_grid->setContentOffset(Point(0.f, 0.f));
-    rebuildBreadcrumb();
-    updateStatus();
-}
+/* ------------------------------ The views ------------------------------ */
 
 void ContentBrowserView::addSubviews() {
-    // --- Folder tree ---
-    m_tree = std::make_shared<TreeView>();
-    m_tree->setAccessibilityId("folders"); // a folder is in the tree and in the grid: a UI test says which
-    m_tree->setSelectionMode(TreeSelectionMode::Single);
-    m_tree->setRowHeight(24.f); // the same row height as in Hierarchy
-    TreeDataSource treeSource;
-    treeSource.rootItem = [this]() -> TreeItem { return m_dataSource.root(); };
-    treeSource.numberOfChildren = [](TreeItem item) { return static_cast<int>(static_cast<Folder *>(item)->children.size()); };
-    treeSource.childAt = [](TreeItem item, int index) -> TreeItem {
-        return static_cast<Folder *>(item)->children[index].get();
-    };
-    treeSource.cellForReuse = [] { return std::make_shared<FolderCell>(); };
-    treeSource.configureCell = [](View &cell, TreeItem item, int) {
-        static_cast<FolderCell &>(cell).setText(static_cast<Folder *>(item)->name);
-    };
-    treeSource.titleForItem = [](TreeItem item) { return static_cast<Folder *>(item)->name; };
-    m_tree->setDataSource(treeSource);
-    m_tree->setOnSelectionChanged([this](TreeView &tree) {
-        if (TreeItem item = tree.selectedItem()) { setCurrentFolder(static_cast<Folder *>(item)); }
-    });
+    addSubview(makeToolbar());
 
-    // --- Grid: subfolders + files of the current folder (data/thumbnails from ContentBrowserDataSource) ---
-    // A cell holds the preview and two lines of the name: a file name is rarely one short word.
-    // The cell is little wider than the preview — a name of some thirteen letters takes one line, a
-    // longer one goes on in the second — so the previews stand close, as the tiles of one grid.
+    // Icons: the folders | breadcrumbs (in the toolbar) + the grid.
+    m_tree = std::make_shared<TreeView>();
+    configureFolderTree();
     m_grid = std::make_shared<CollectionView>(
         std::make_shared<GridCollectionLayout>(Size(PREVIEW_SIDE + 22.f, 108.f), 4.f, 6.f)
     );
+    configureGrid();
+    m_gridNothing = makeNothingFound();
+    auto gridColumn = std::make_shared<Panel>();
+    gridColumn->setBackgroundColor(Color(0x00000000));
+    gridColumn->layout().setFlexDirection(FlexDirection::Column);
+    gridColumn->addSubview(m_gridNothing);
+    gridColumn->addSubview(m_grid);
+    m_split = std::make_shared<SplitView>(SplitOrientation::Horizontal);
+    m_split->addPane(m_tree, 1.f);
+    m_split->addPane(gridColumn, 3.f);
+    addSubview(m_split);
+
+    // List: every folder and file in one tree.
+    m_list = std::make_shared<TreeView>();
+    configureList();
+    m_listNothing = makeNothingFound();
+    m_listColumn = std::make_shared<Panel>();
+    m_listColumn->setBackgroundColor(Color(0x00000000));
+    m_listColumn->layout().setFlexDirection(FlexDirection::Column);
+    m_listColumn->layout().setFlexGrow(1.f);
+    m_listColumn->addSubview(m_listNothing);
+    m_listColumn->addSubview(m_list);
+    addSubview(m_listColumn);
+
+    applyMode();
+}
+
+std::shared_ptr<View> ContentBrowserView::makeToolbar() {
+    // [folders] [breadcrumbs ............] [search] [icons | list]
+    auto bar = std::make_shared<Panel>();
+    bar->setBackgroundColor(Color(0x00000000));
+    bar->layout().setFlexDirection(FlexDirection::Row);
+    bar->layout().setAlignItems(Align::Center);
+    bar->layout().setHeight(Length::points(TOOLBAR_HEIGHT));
+    bar->layout().setFlexShrink(0.f);
+    bar->layout().setPadding(Edge::Horizontal, 6.f);
+    bar->layout().setGap(4.f);
+
+    m_foldersButton = std::make_shared<IconButton>(Ic::Sidebar, Ic::HeaderSize, TOOL_BUTTON);
+    m_foldersButton->setAccessibilityId("showFolders");
+    m_foldersButton->setTooltip("Folders");
+    m_foldersButton->setOnClick([this] { setFoldersShown(!m_foldersShown); });
+    bar->addSubview(m_foldersButton);
+
+    m_breadcrumb = std::make_shared<Panel>();
+    m_breadcrumb->setBackgroundColor(Color(0x00000000));
+    m_breadcrumb->setClipsToBounds(true); // a deep path does not run under the search
+    m_breadcrumb->layout().setFlexDirection(FlexDirection::Row);
+    m_breadcrumb->layout().setAlignItems(Align::Center);
+    m_breadcrumb->layout().setFlexGrow(1.f);
+    m_breadcrumb->layout().setFlexShrink(1.f);
+    m_breadcrumb->layout().setGap(2.f);
+    m_breadcrumb->layout().setPadding(Edge::Horizontal, 4.f);
+    bar->addSubview(m_breadcrumb);
+
+    // The search of all of Assets by name: what it found replaces the folder in the grid (the
+    // tree in the list); an empty field is the folder again.
+    m_searchField = std::make_shared<TextField>();
+    m_searchField->setAccessibilityId("search");
+    m_searchField->setPlaceholder("Search assets…");
+    m_searchField->setClearsOnEscape(true);
+    m_searchField->layout().setFlexShrink(1.f);
+    m_searchField->layout().setMinWidth(Length::points(90.f));
+    m_searchField->setOnTextChanged([this](TextField &field) { setSearch(field.getText()); });
+    // Enter goes to what was found: its first item is selected, the arrows walk the rest.
+    m_searchField->setOnSubmit([this](TextField &) {
+        if (!m_dataSource.isSearching() || m_dataSource.found().empty()) { return; }
+        Context *context = getContext();
+        if (m_mode == Mode::List) {
+            m_list->setSelectedItem(toItem(m_dataSource.found().front()));
+            if (context) { context->setFocusedView(m_list.get()); }
+        } else {
+            m_grid->setSelectedIndices({0});
+            if (context) { context->setFocusedView(m_grid.get()); }
+        }
+        emitSelection();
+    });
+    bar->addSubview(m_searchField);
+
+    m_iconsButton = std::make_shared<IconButton>(Ic::ViewGrid, Ic::HeaderSize, TOOL_BUTTON);
+    m_iconsButton->setAccessibilityId("viewIcons");
+    m_iconsButton->setTooltip("Icons");
+    m_iconsButton->setOnClick([this] { setMode(Mode::Icons); });
+    bar->addSubview(m_iconsButton);
+    m_listButton = std::make_shared<IconButton>(Ic::ViewList, Ic::HeaderSize, TOOL_BUTTON);
+    m_listButton->setAccessibilityId("viewList");
+    m_listButton->setTooltip("List");
+    m_listButton->setOnClick([this] { setMode(Mode::List); });
+    bar->addSubview(m_listButton);
+    return bar;
+}
+
+void ContentBrowserView::configureFolderTree() {
+    m_tree->setAccessibilityId("folders"); // a folder is in the tree and in the grid: a UI test says which
+    m_tree->setSelectionMode(TreeSelectionMode::Single);
+    m_tree->setRowHeight(24.f); // the same row height as in Hierarchy
+    TreeDataSource source;
+    source.rootItem = [this]() -> TreeItem { return toItem(m_dataSource.root()); };
+    source.numberOfChildren = [](TreeItem item) {
+        const Folder *folder = toFolder(item);
+        return folder ? static_cast<int>(folder->children.size()) : 0;
+    };
+    source.childAt = [](TreeItem item, int index) -> TreeItem {
+        return toItem(toFolder(item)->children[static_cast<size_t>(index)].get());
+    };
+    source.cellForReuse = [] { return std::make_shared<FolderCell>(); };
+    source.configureCell = [](View &cell, TreeItem item, int) {
+        static_cast<FolderCell &>(cell).setText(toEntry(item)->name);
+    };
+    source.titleForItem = [](TreeItem item) { return toEntry(item)->name; };
+    m_tree->setDataSource(source);
+    m_tree->setExpanded(toItem(m_dataSource.root()), true);
+    m_tree->setOnSelectionChanged([this](TreeView &tree) {
+        Folder *folder = toFolder(tree.selectedItem());
+        if (!folder) { return; }
+        if (m_dataSource.isSearching()) { clearSearch(); } // a folder chosen ends the search: its content is asked for
+        setCurrentFolder(folder);
+    });
+    m_tree->setOnContextMenu([this](TreeView &, TreeItem item, Point position) {
+        if (item) { showContextMenu(toEntry(item), position); }
+    });
+}
+
+void ContentBrowserView::configureGrid() {
+    // The grid: the subfolders + files of the current folder, or what the search found (data and
+    // thumbnails from ContentBrowserDataSource). A cell holds the preview and two lines of the
+    // name: a file name is rarely one short word. The cell is little wider than the preview — a name
+    // of some thirteen letters takes one line, a longer one goes on in the second — so the previews
+    // stand close, as the tiles of one grid.
     m_grid->setAccessibilityId("files");
     m_grid->setSelectionMode(CollectionSelectionMode::Multiple);
     m_grid->layout().setFlexGrow(1.f);
-    CollectionViewDataSource gridSource;
-    gridSource.numberOfItems = [this] { return m_dataSource.itemCount(); };
-    gridSource.cellForReuse = [] { return std::make_shared<AssetCell>(); };
-    gridSource.configureCell = [this](View &cell, int index) {
-        if (Folder *folder = m_dataSource.folderAt(index)) {
-            static_cast<AssetCell &>(cell).bind(folder->name, "folder", true, true, TextureHandle());
-        } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
-            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-            const bool broken = file->assetId != 0 && handler && !handler->assetFilesExist(file->assetId);
-            static_cast<AssetCell &>(cell).bind(
-                file->name, assetTypeOf(file->assetId), false, file->assetId != 0,
-                m_dataSource.thumbnailFor(index), broken
-            );
+    CollectionViewDataSource source;
+    source.numberOfItems = [this] { return m_dataSource.itemCount(); };
+    source.cellForReuse = [] { return std::make_shared<AssetCell>(); };
+    source.configureCell = [this](View &cell, int index) {
+        const Entry *entry = m_dataSource.entryAt(index);
+        if (!entry) { return; }
+        AssetCell &assetCell = static_cast<AssetCell &>(cell);
+        // A found entry says where it is: the names alone may repeat across the folders.
+        assetCell.setTooltip(m_dataSource.isSearching() ? folderOf(*entry) : std::string());
+        if (entry->isFolder) {
+            assetCell.bind(entry->name, "folder", true, true, TextureHandle());
+            return;
         }
+        const FileEntry &file = static_cast<const FileEntry &>(*entry);
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+        const bool broken = file.assetId != 0 && handler && !handler->assetFilesExist(file.assetId);
+        assetCell.bind(
+            file.name, assetTypeOf(file.assetId), false, file.assetId != 0, m_dataSource.thumbnailFor(index), broken
+        );
     };
-    gridSource.titleForItem = [this](int index) -> std::string {
-        if (Folder *folder = m_dataSource.folderAt(index)) { return folder->name; }
-        if (const FileEntry *file = m_dataSource.fileAt(index)) { return file->name; }
-        return {};
+    source.titleForItem = [this](int index) -> std::string {
+        const Entry *entry = m_dataSource.entryAt(index);
+        return entry ? entry->name : std::string();
     };
-    gridSource.prefetchItems = [this](const std::vector<int> &indices) { m_dataSource.prefetchItems(indices); };
-    gridSource.cancelPrefetching = [this](const std::vector<int> &indices) {
-        m_dataSource.cancelPrefetching(indices);
-    };
-    // Drag source. A registered file: payload "asset.<kind>" + AssetId (a selection of several
-    // kinds: "asset"). A folder is dragged as what it holds — payload "folder" + the ids of every
-    // asset in it and in the folders under it, in the order the browser shows them. Its type is
-    // its own, so only a target that takes many assets answers to it (a list field of a script);
-    // a well and the viewport do not.
-    gridSource.canDragItem = [this](int index) {
+    source.prefetchItems = [this](const std::vector<int> &indices) { m_dataSource.prefetchItems(indices); };
+    source.cancelPrefetching = [this](const std::vector<int> &indices) { m_dataSource.cancelPrefetching(indices); };
+    // Drag source: a registered file, or a folder as what it holds (fillDragPayload).
+    source.canDragItem = [this](int index) {
         if (m_dataSource.folderAt(index) != nullptr) { return true; }
         const FileEntry *file = m_dataSource.fileAt(index);
         return file && file->assetId != 0;
     };
-    gridSource.fillDragPayload = [this](DragPayload &payload, const std::vector<int> &indices) {
-        if (indices.size() == 1) {
-            if (const Folder *folder = m_dataSource.folderAt(indices.front())) {
-                const auto collect = [&payload](const auto &self, const Folder &from) -> void {
-                    for (const FileEntry &file : from.files) {
-                        if (file.assetId != 0) { payload.items.push_back(static_cast<std::uint64_t>(file.assetId)); }
-                    }
-                    for (const std::shared_ptr<Folder> &child : from.children) { self(self, *child); }
-                };
-                collect(collect, *folder);
-                payload.type = "folder";
-                payload.ghostText = folder->name;
-                return;
-            }
+    source.fillDragPayload = [this](DragPayload &payload, const std::vector<int> &indices) {
+        std::vector<Entry *> entries;
+        for (int index : indices) {
+            if (Entry *entry = m_dataSource.entryAt(index)) { entries.push_back(entry); }
         }
-        std::string kind;
-        bool uniform = true;
-        std::string firstName;
-        for (int i : indices) {
-            const FileEntry *file = m_dataSource.fileAt(i);
-            if (!file || file->assetId == 0) { continue; }
-            const std::string k = assetTypeOf(file->assetId);
-            if (payload.items.empty()) {
-                kind = k;
-                firstName = file->name;
-            } else if (k != kind) {
-                uniform = false;
-            }
-            payload.items.push_back(static_cast<std::uint64_t>(file->assetId));
-        }
-        payload.type = (uniform && !kind.empty()) ? "asset." + kind : "asset";
-        payload.ghostText = payload.items.size() == 1 ? firstName : std::to_string(payload.items.size()) + " items";
+        fillDragPayload(payload, entries);
     };
-    m_grid->setDataSource(gridSource);
-    m_grid->setOnSelectionChanged([this](CollectionView &) {
-        updateStatus();
-        emitSelection();
+    m_grid->setDataSource(source);
+    m_grid->setOnSelectionChanged([this](CollectionView &) { emitSelection(); });
+    m_grid->setOnActivate([this](int index) { activate(m_dataSource.entryAt(index)); });
+    m_grid->setOnContextMenu([this](CollectionView &, int index, Point position) {
+        showContextMenu(m_dataSource.entryAt(index), position); // no cell — the background
     });
-    // Double click: a folder — enter it; a world — open it; a new supported file — import it.
-    m_grid->setOnActivate([this](int index) {
-        if (Folder *folder = m_dataSource.folderAt(index)) {
-            setCurrentFolder(folder);
-            return;
-        }
-        const FileEntry *file = m_dataSource.fileAt(index);
-        if (!file || !m_output) { return; }
-        // A world and a prefab are documents: each opens in a tab of its own.
-        if (file->assetId != 0 && (assetTypeOf(file->assetId) == "world" || assetTypeOf(file->assetId) == "prefab")) {
-            m_output->contentDidRequestOpenWorld(file->assetId);
-        }
-    });
-    m_grid->setOnContextMenu([this](CollectionView &, int index, Point position) { showGridContextMenu(index, position); });
-
-    // --- Breadcrumbs ---
-    m_breadcrumb = std::make_shared<Panel>();
-    m_breadcrumb->setBackgroundColor(Color(0x00000000));
-    m_breadcrumb->layout().setFlexDirection(FlexDirection::Row);
-    m_breadcrumb->layout().setAlignItems(Align::Center);
-    m_breadcrumb->layout().setGap(2.f);
-    m_breadcrumb->layout().setPadding(Edge::Horizontal, 10.f);
-    m_breadcrumb->layout().setPadding(Edge::Vertical, 4.f);
-
-    auto rightColumn = std::make_shared<Panel>();
-    rightColumn->setBackgroundColor(Color(0x00000000));
-    rightColumn->layout().setFlexDirection(FlexDirection::Column);
-    rightColumn->addSubview(m_breadcrumb);
-    rightColumn->addSubview(m_grid);
-
-    auto split = std::make_shared<SplitView>(SplitOrientation::Horizontal);
-    split->addPane(m_tree, 1.f);
-    split->addPane(rightColumn, 3.f);
-    addSubview(split);
-
-    m_status = std::make_shared<Label>("");
-    m_status->setFont(Typo::Caption);
-    m_status->setTextRole(TextRole::Muted);
-    m_status->layout().setPadding(Edge::Horizontal, 12.f);
-    m_status->layout().setPadding(Edge::Vertical, 8.f);
-    addSubview(m_status);
-
-    rebuildBreadcrumb();
-    updateStatus();
 }
 
-void ContentBrowserView::revealAsset(Panda::AssetId asset) {
-    // The folder that holds the file of the asset, anywhere in the tree.
-    Folder *found = nullptr;
-    int fileIndex = -1;
+void ContentBrowserView::configureList() {
+    m_list->setAccessibilityId("list");
+    m_list->setSelectionMode(TreeSelectionMode::Multiple);
+    m_list->setRowHeight(24.f); // the rows of the Hierarchy
+    m_list->layout().setFlexGrow(1.f);
+    TreeDataSource source;
+    source.rootItem = [this]() -> TreeItem { return toItem(m_dataSource.root()); };
+    source.numberOfChildren = [this](TreeItem item) -> int {
+        const Folder *folder = toFolder(item);
+        if (!folder) { return 0; }
+        // What a search found is one flat set under the root, as in the Hierarchy.
+        if (m_dataSource.isSearching()) {
+            return folder == m_dataSource.root() ? static_cast<int>(m_dataSource.found().size()) : 0;
+        }
+        return m_dataSource.childCount(*folder);
+    };
+    source.childAt = [this](TreeItem item, int index) -> TreeItem {
+        Folder *folder = toFolder(item);
+        Entry *child = nullptr;
+        if (m_dataSource.isSearching()) {
+            const std::vector<Entry *> &found = m_dataSource.found();
+            if (index >= 0 && index < static_cast<int>(found.size())) { child = found[static_cast<size_t>(index)]; }
+        } else if (folder) {
+            child = m_dataSource.childAt(*folder, index);
+        }
+        return toItem(child ? child : m_dataSource.root()); // the tree takes no null item
+    };
+    source.cellForReuse = [] { return std::make_shared<ListCell>(); };
+    source.configureCell = [this](View &cell, TreeItem item, int) {
+        const Entry *entry = toEntry(item);
+        ListCell &row = static_cast<ListCell &>(cell);
+        const std::string detail = m_dataSource.isSearching() && entry != m_dataSource.root() ? folderOf(*entry) : std::string();
+        if (entry->isFolder) {
+            row.bind(entry->name, Ic::Folder, ThemeColor(colorForType("folder", true)), true, false, detail);
+            return;
+        }
+        const FileEntry &file = static_cast<const FileEntry &>(*entry);
+        const bool registered = file.assetId != 0;
+        const std::string type = registered ? assetTypeOf(file.assetId) : std::string();
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+        const bool broken = registered && handler && !handler->assetFilesExist(file.assetId);
+        row.bind(file.name, registered ? iconForType(type, false) : Ic::FileGeneric,
+                 registered ? ThemeColor(colorForType(type, false)) : ThemeColor::textDim, registered, broken, detail);
+    };
+    source.titleForItem = [](TreeItem item) { return toEntry(item)->name; };
+    source.fillDragPayload = [this](DragPayload &payload, const std::vector<TreeItem> &items) {
+        std::vector<Entry *> entries;
+        for (TreeItem item : items) { entries.push_back(toEntry(item)); }
+        return fillDragPayload(payload, entries);
+    };
+    m_list->setDataSource(source);
+    m_list->setExpanded(toItem(m_dataSource.root()), true);
+    m_list->setOnSelectionChanged([this](TreeView &) { emitSelection(); });
+    m_list->setOnItemActivated([this](TreeView &, TreeItem item) { activate(toEntry(item)); });
+    m_list->setOnContextMenu([this](TreeView &, TreeItem item, Point position) {
+        showContextMenu(item ? toEntry(item) : nullptr, position);
+    });
+}
+
+/* ------------------------------ The mode ------------------------------ */
+
+void ContentBrowserView::setMode(Mode mode) {
+    if (mode == m_mode) { return; }
+    // The selection goes along: the rows (the cells) of the same assets.
+    const std::vector<Panda::AssetId> selected = selectedAssets();
+    m_mode = mode;
+    applyMode();
+    if (m_mode == Mode::List) {
+        std::vector<TreeItem> items;
+        for (Panda::AssetId id : selected) {
+            FileEntry *file = m_dataSource.findAsset(id);
+            if (!file) { continue; }
+            for (Folder *above = file->parent; above; above = above->parent) { m_list->setExpanded(toItem(above), true); }
+            items.push_back(toItem(file));
+        }
+        m_list->setSelectedItems(items);
+        if (!items.empty()) { m_list->revealItem(items.front()); }
+    } else {
+        std::vector<int> indices;
+        for (Panda::AssetId id : selected) {
+            const int index = m_dataSource.indexOfAsset(id);
+            if (index >= 0) { indices.push_back(index); }
+        }
+        m_grid->setSelectedIndices(indices);
+    }
+}
+
+void ContentBrowserView::setFoldersShown(bool shown) {
+    m_foldersShown = shown;
+    applyMode();
+}
+
+void ContentBrowserView::applyMode() {
+    const bool list = m_mode == Mode::List;
+    m_split->setCollapsed(list);
+    m_listColumn->setCollapsed(!list);
+    m_split->setPaneVisible(0, m_foldersShown);
+    m_foldersButton->setCollapsed(list); // the list is the folders itself
+    m_foldersButton->setActive(m_foldersShown);
+    m_iconsButton->setActive(!list);
+    m_listButton->setActive(list);
+    // The list has no current folder: the search takes the row.
+    m_breadcrumb->setCollapsed(list);
+    m_searchField->layout().setFlexGrow(list ? 1.f : 0.f);
+    m_searchField->layout().setWidth(list ? Length::autoValue() : Length::points(SEARCH_WIDTH));
+    rebuildBreadcrumb();
+    updateNothingFound();
+    setNeedsLayout();
+}
+
+void ContentBrowserView::focusSearch() {
+    Context *context = getContext();
+    if (context == nullptr) { return; }
+    context->setFocusedView(m_searchField.get());
+    m_searchField->selectAll();
+}
+
+bool ContentBrowserView::hasKeyboard() const {
+    const Context *context = getContext();
+    for (const View *view = context ? context->getFocusedView() : nullptr; view; view = view->getSuperview()) {
+        if (view == this) { return true; }
+    }
+    return false;
+}
+
+/* ------------------------------ The data ------------------------------ */
+
+void ContentBrowserView::refresh() {
+    // Every entry is made anew: the trees let go of the old ones first and get back, by path, what
+    // was open and selected in them.
+    const TreeState folders = releaseTree(*m_tree);
+    const TreeState list = releaseTree(*m_list);
+    m_dataSource.rebuild();
+    m_tree->reloadData();
+    m_list->reloadData();
+    restoreTree(*m_tree, folders);
+    restoreTree(*m_list, list);
+    Folder *root = m_dataSource.root();
+    m_tree->setExpanded(toItem(root), true);
+    m_list->setExpanded(toItem(root), true);
+    for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) { m_tree->setExpanded(toItem(node), true); }
+    m_tree->setSelectedItem(toItem(m_dataSource.currentFolder()));
+    m_grid->clearSelection();
+    m_grid->reloadData();
+    m_grid->setContentOffset(Point(0.f, 0.f));
+    rebuildBreadcrumb();
+    updateNothingFound();
+}
+
+ContentBrowserView::TreeState ContentBrowserView::releaseTree(TreeView &tree) {
+    TreeState state;
+    for (TreeItem item : tree.selectedItems()) { state.selected.push_back(toEntry(item)->path); }
+    tree.setSelectedItems({});
     std::vector<Folder *> pending = {m_dataSource.root()};
-    while (!pending.empty() && !found) {
+    while (!pending.empty()) {
         Folder *folder = pending.back();
         pending.pop_back();
         if (!folder) { continue; }
-        for (size_t i = 0; i < folder->files.size(); i++) {
-            if (folder->files[i].assetId == asset) {
-                found = folder;
-                fileIndex = static_cast<int>(i);
-                break;
-            }
+        if (tree.isExpanded(toItem(folder))) {
+            state.expanded.push_back(folder->path);
+            tree.setExpanded(toItem(folder), false);
         }
-        for (const std::shared_ptr<Folder> &child : folder->children) { pending.push_back(child.get()); }
+        for (const auto &child : folder->children) { pending.push_back(child.get()); }
     }
-    if (!found) { return; }
-    if (found != m_dataSource.currentFolder()) { setCurrentFolder(found, false); }
-    // The grid lists the subfolders first, then the files.
-    m_grid->flashIndex(static_cast<int>(found->children.size()) + fileIndex);
+    return state;
+}
+
+void ContentBrowserView::restoreTree(TreeView &tree, const TreeState &state) {
+    for (const Panda::path_t &path : state.expanded) {
+        if (Folder *folder = m_dataSource.findFolder(path)) { tree.setExpanded(toItem(folder), true); }
+    }
+    std::vector<TreeItem> selected;
+    for (const Panda::path_t &path : state.selected) {
+        if (Entry *entry = m_dataSource.findEntry(path)) { selected.push_back(toItem(entry)); }
+    }
+    tree.setSelectedItems(selected);
+}
+
+void ContentBrowserView::setSearch(const std::string &text) {
+    if (text == m_dataSource.search()) { return; }
+    // The selected cells stay selected where the new set has them.
+    const std::vector<Panda::AssetId> selected = m_mode == Mode::Icons ? selectedAssets() : std::vector<Panda::AssetId>();
+    m_dataSource.setSearch(text);
+    m_grid->reloadData();
+    m_grid->setContentOffset(Point(0.f, 0.f));
+    std::vector<int> indices;
+    for (Panda::AssetId id : selected) {
+        const int index = m_dataSource.indexOfAsset(id);
+        if (index >= 0) { indices.push_back(index); }
+    }
+    m_grid->setSelectedIndices(indices);
+    m_list->reloadData();
+    m_list->setContentOffset(Point(0.f, 0.f));
+    rebuildBreadcrumb();
+    updateNothingFound();
+}
+
+void ContentBrowserView::clearSearch() {
+    m_searchField->setText({});
+    setSearch({});
+}
+
+void ContentBrowserView::revealAsset(Panda::AssetId asset) {
+    FileEntry *file = m_dataSource.findAsset(asset);
+    if (!file) { return; }
+    const std::vector<Entry *> &found = m_dataSource.found();
+    // A search that did not find it gives way: the asset is shown where it lives.
+    if (m_dataSource.isSearching() && std::find(found.begin(), found.end(), file) == found.end()) { clearSearch(); }
+    if (m_mode == Mode::List) {
+        if (!m_dataSource.isSearching()) {
+            for (Folder *above = file->parent; above; above = above->parent) { m_list->setExpanded(toItem(above), true); }
+        }
+        m_list->flashItem(toItem(file));
+        return;
+    }
+    if (!m_dataSource.isSearching() && file->parent != m_dataSource.currentFolder()) { setCurrentFolder(file->parent, false); }
+    m_grid->flashIndex(m_dataSource.indexOfAsset(asset));
 }
 
 void ContentBrowserView::setCurrentFolder(Folder *folder, bool notify) {
@@ -377,11 +679,40 @@ void ContentBrowserView::setCurrentFolder(Folder *folder, bool notify) {
     m_grid->clearSelection();
     m_grid->reloadData();
     m_grid->setContentOffset(Point(0.f, 0.f));
-    for (Folder *node = folder; node; node = node->parent) { m_tree->setExpanded(node, true); }
-    m_tree->setSelectedItem(folder);
+    for (Folder *node = folder; node; node = node->parent) { m_tree->setExpanded(toItem(node), true); }
+    m_tree->setSelectedItem(toItem(folder));
     rebuildBreadcrumb();
-    updateStatus();
     if (notify && m_output) { m_output->contentDidSelectAssets({}); } // navigation clears the file selection
+}
+
+void ContentBrowserView::activate(Entry *entry) {
+    if (!entry) { return; }
+    if (entry->isFolder) {
+        Folder *folder = static_cast<Folder *>(entry);
+        if (m_mode == Mode::List && !m_dataSource.isSearching()) {
+            m_list->setExpanded(toItem(folder), !m_list->isExpanded(toItem(folder)));
+            return;
+        }
+        // A found folder, or one of the grid: its content is what was asked for.
+        if (m_dataSource.isSearching()) { clearSearch(); }
+        if (m_mode == Mode::List) {
+            for (Folder *node = folder; node; node = node->parent) { m_list->setExpanded(toItem(node), true); }
+            m_list->setSelectedItem(toItem(folder));
+            m_list->revealItem(toItem(folder));
+            return;
+        }
+        setCurrentFolder(folder);
+        return;
+    }
+    const FileEntry &file = static_cast<const FileEntry &>(*entry);
+    if (file.assetId == 0 || !m_output) { return; }
+    const std::string kind = assetTypeOf(file.assetId);
+    // A world and a prefab are documents: each opens in a tab of its own.
+    if (kind == "world" || kind == "prefab") {
+        m_output->contentDidRequestOpenWorld(file.assetId);
+    } else if (!hasForm(kind)) {
+        m_output->contentDidRequestOpenExternally(file.assetId);
+    }
 }
 
 void ContentBrowserView::emitSelection() {
@@ -390,9 +721,16 @@ void ContentBrowserView::emitSelection() {
 
 std::vector<Panda::AssetId> ContentBrowserView::selectedAssets() const {
     std::vector<Panda::AssetId> ids;
-    for (int index : m_grid->selectedIndices()) {
-        const FileEntry *file = m_dataSource.fileAt(index);
-        if (file && file->assetId != 0) { ids.push_back(file->assetId); }
+    const auto add = [&ids](const Entry *entry) {
+        if (entry && !entry->isFolder) {
+            const Panda::AssetId id = static_cast<const FileEntry *>(entry)->assetId;
+            if (id != 0) { ids.push_back(id); }
+        }
+    };
+    if (m_mode == Mode::List) {
+        for (TreeItem item : m_list->selectedItems()) { add(toEntry(item)); }
+    } else {
+        for (int index : m_grid->selectedIndices()) { add(m_dataSource.entryAt(index)); }
     }
     return ids;
 }
@@ -404,8 +742,73 @@ void ContentBrowserView::thumbnailDidBecomeReady(Panda::AssetId assetId) {
 
 void ContentBrowserView::clearAssetSelection() {
     m_grid->clearSelection();
-    updateStatus();
+    m_list->setSelectedItems({});
 }
+
+Panda::path_t ContentBrowserView::currentDirectory() {
+    if (m_mode == Mode::List) {
+        // The folder of the selected row: the row itself, the folder of a file; else Assets.
+        if (const Entry *entry = toEntry(m_list->selectedItem())) {
+            if (entry->isFolder) { return entry->path; }
+            if (entry->parent) { return entry->parent->path; }
+        }
+        return m_dataSource.root() ? m_dataSource.root()->path : Panda::path_t();
+    }
+    Folder *folder = m_dataSource.currentFolder();
+    return folder ? folder->path : Panda::path_t();
+}
+
+bool ContentBrowserView::fillDragPayload(DragPayload &payload, const std::vector<Entry *> &entries) const {
+    // A folder is dragged as what it holds — payload "folder" + the ids of every asset in it and in
+    // the folders under it, in the order the browser shows them. Its type is its own, so only a
+    // target that takes many assets answers to it (a list field of a script); a well and the
+    // viewport do not.
+    if (entries.size() == 1 && entries.front()->isFolder) {
+        const Folder &folder = static_cast<const Folder &>(*entries.front());
+        if (&folder == m_dataSource.root()) { return false; } // Assets itself is not a thing to drag
+        const auto collect = [&payload](const auto &self, const Folder &from) -> void {
+            for (const FileEntry &file : from.files) {
+                if (file.assetId != 0) { payload.items.push_back(static_cast<std::uint64_t>(file.assetId)); }
+            }
+            for (const std::shared_ptr<Folder> &child : from.children) { self(self, *child); }
+        };
+        collect(collect, folder);
+        payload.type = "folder";
+        payload.ghostText = folder.name;
+        return true;
+    }
+    // Registered files: "asset.<kind>" + their AssetIds (a selection of several kinds: "asset").
+    std::string kind;
+    bool uniform = true;
+    std::string firstName;
+    for (const Entry *entry : entries) {
+        if (entry->isFolder) { continue; }
+        const FileEntry &file = static_cast<const FileEntry &>(*entry);
+        if (file.assetId == 0) { continue; }
+        const std::string k = assetTypeOf(file.assetId);
+        if (payload.items.empty()) {
+            kind = k;
+            firstName = file.name;
+        } else if (k != kind) {
+            uniform = false;
+        }
+        payload.items.push_back(static_cast<std::uint64_t>(file.assetId));
+    }
+    if (payload.items.empty()) { return false; }
+    payload.type = (uniform && !kind.empty()) ? "asset." + kind : "asset";
+    payload.ghostText = payload.items.size() == 1 ? firstName : std::to_string(payload.items.size()) + " items";
+    return true;
+}
+
+std::string ContentBrowserView::folderOf(const Entry &entry) const {
+    std::vector<const Folder *> chain;
+    for (const Folder *node = entry.parent; node; node = node->parent) { chain.push_back(node); }
+    std::string path;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) { path += (path.empty() ? "" : "/") + (*it)->name; }
+    return path;
+}
+
+/* ------------------------------ Menus ------------------------------ */
 
 void ContentBrowserView::presentMenu(std::shared_ptr<Menu> menu, Point position) {
     Context *context = getContext();
@@ -415,9 +818,7 @@ void ContentBrowserView::presentMenu(std::shared_ptr<Menu> menu, Point position)
     context->addOverlay(popup);
 }
 
-void ContentBrowserView::showGridContextMenu(int index, Point position) {
-    Folder *currentFolder = m_dataSource.currentFolder();
-    if (!currentFolder) { return; }
+void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
     auto menu = std::make_shared<Menu>();
 
     // What can be made in a directory: a folder (its name is asked where the menu was), then the
@@ -434,87 +835,82 @@ void ContentBrowserView::showGridContextMenu(int index, Point position) {
         if (!actions.empty()) { target.addSeparator(); }
         for (const CreateAction &action : actions) { target.addItem(prefix + action.title, action.run); }
     };
-    if (Folder *folder = m_dataSource.folderAt(index)) { // subfolder
-        const Panda::path_t directory = folder->path;
-        menu->addItem("Open", [this, directory] {
-            // By path: the tree of folders may have been rebuilt while the menu was open.
-            if (Folder *target = m_dataSource.folderAt(m_dataSource.indexOfFolder(directory))) { setCurrentFolder(target); }
-        });
-        // What can be made inside it, without going in.
-        auto create = std::make_shared<Menu>();
-        addCreateItems(*create, directory, "");
-        menu->addSubmenu("New", create);
-        menu->addItem("Delete", [this, directory] {
-            if (m_output) { m_output->contentDidRequestDeleteFolder(directory); }
-        });
-        menu->addSeparator();
-        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
-    } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
-        if (file->assetId == 0) { // a file of a format foreign to the engine — no operations
-            return;
-        } else { // a registered asset
-            std::vector<Panda::AssetId> targets = selectedAssets();
-            if (std::find(targets.begin(), targets.end(), file->assetId) == targets.end()) { targets = {file->assetId}; }
-            const std::string name = file->name;
-            const std::string typeOfClicked = assetTypeOf(file->assetId);
-            if (typeOfClicked == "world" || typeOfClicked == "prefab") { // make it current (same as a double click)
-                const Panda::AssetId worldId = file->assetId;
-                menu->addItem(typeOfClicked == "world" ? "Open World" : "Open Prefab", [this, worldId] {
-                    if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
-                });
-            }
-            if (typeOfClicked == "material" || typeOfClicked == "postfx") { // single-file ones can be renamed
-                const Panda::AssetId renameId = file->assetId;
-                const std::string stem = file->path.stem().string();
-                menu->addItem("Rename", [this, renameId, stem, position] {
-                    showNameDialog(getContext(), position, "Rename", stem, [this, renameId](const std::string &newName) {
-                        if (m_output) { m_output->contentDidRequestRename(renameId, newName); }
-                    }, "Rename");
-                });
-            }
-            if (typeOfClicked == "mesh" || typeOfClicked == "prefab") { // into the world on screen: entities of a model, an instance of a prefab
-                std::vector<Panda::AssetId> meshes;
-                for (Panda::AssetId targetId : targets) {
-                    if (assetTypeOf(targetId) == typeOfClicked) { meshes.push_back(targetId); }
-                }
-                menu->addItem(meshes.size() > 1 ? "Add to World (all)" : "Add to World", [this, meshes] {
-                    if (m_output) { m_output->contentDidRequestAddToWorld(meshes); }
-                });
-            }
-            if (m_output && targets.size() == 1) { m_output->contentAddFileItems(*menu, targets.front()); }
-            menu->addItem(targets.size() > 1 ? "Reimport Selected" : "Reimport", [this, targets] {
-                if (m_output) { m_output->contentDidRequestImport(targets); }
-            });
-            // Confirmation is handled by the coordinator (one for all panels); the panel only sends
-            // the intent.
-            menu->addItem(targets.size() > 1 ? "Delete Selected" : "Delete", [this, targets] {
-                if (m_output) { m_output->contentDidRequestDelete(targets); }
-            });
-        }
-    } else { // the background of the grid: the current folder itself
-        const Panda::path_t directory = currentFolder->path;
+    if (entry == nullptr) { // the background: the folder shown (the folder of the selected row)
+        const Panda::path_t directory = currentDirectory();
         if (directory.empty()) { return; } // no project open
         addCreateItems(*menu, directory, "New ");
         menu->addSeparator();
         menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
+    } else if (entry->isFolder) {
+        const Panda::path_t directory = entry->path;
+        if (directory.empty()) { return; } // no project open
+        const bool root = entry == m_dataSource.root();
+        if (m_mode == Mode::Icons && !root) {
+            menu->addItem("Open", [this, directory] {
+                // By path: the tree of folders may have been rebuilt while the menu was open.
+                if (Folder *target = m_dataSource.findFolder(directory)) { activate(target); }
+            });
+        }
+        // What can be made inside it, without going in.
+        auto create = std::make_shared<Menu>();
+        addCreateItems(*create, directory, "");
+        menu->addSubmenu("New", create);
+        if (!root) {
+            menu->addItem("Delete", [this, directory] {
+                if (m_output) { m_output->contentDidRequestDeleteFolder(directory); }
+            });
+        }
+        menu->addSeparator();
+        menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
+    } else {
+        const FileEntry &file = static_cast<const FileEntry &>(*entry);
+        if (file.assetId == 0) { return; } // a file of a format foreign to the engine — no operations
+        std::vector<Panda::AssetId> targets = selectedAssets();
+        if (std::find(targets.begin(), targets.end(), file.assetId) == targets.end()) { targets = {file.assetId}; }
+        const std::string typeOfClicked = assetTypeOf(file.assetId);
+        if (typeOfClicked == "world" || typeOfClicked == "prefab") { // make it current (same as a double click)
+            const Panda::AssetId worldId = file.assetId;
+            menu->addItem(typeOfClicked == "world" ? "Open World" : "Open Prefab", [this, worldId] {
+                if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
+            });
+        }
+        if (typeOfClicked == "material" || typeOfClicked == "postfx") { // single-file ones can be renamed
+            const Panda::AssetId renameId = file.assetId;
+            const std::string stem = file.path.stem().string();
+            menu->addItem("Rename", [this, renameId, stem, position] {
+                showNameDialog(getContext(), position, "Rename", stem, [this, renameId](const std::string &newName) {
+                    if (m_output) { m_output->contentDidRequestRename(renameId, newName); }
+                }, "Rename");
+            });
+        }
+        if (typeOfClicked == "mesh" || typeOfClicked == "prefab") { // into the world on screen: entities of a model, an instance of a prefab
+            std::vector<Panda::AssetId> meshes;
+            for (Panda::AssetId targetId : targets) {
+                if (assetTypeOf(targetId) == typeOfClicked) { meshes.push_back(targetId); }
+            }
+            menu->addItem(meshes.size() > 1 ? "Add to World (all)" : "Add to World", [this, meshes] {
+                if (m_output) { m_output->contentDidRequestAddToWorld(meshes); }
+            });
+        }
+        if (m_output && targets.size() == 1) { m_output->contentAddFileItems(*menu, targets.front()); }
+        menu->addItem(targets.size() > 1 ? "Reimport Selected" : "Reimport", [this, targets] {
+            if (m_output) { m_output->contentDidRequestImport(targets); }
+        });
+        // Confirmation is handled by the coordinator (one for all panels); the panel only sends
+        // the intent.
+        menu->addItem(targets.size() > 1 ? "Delete Selected" : "Delete", [this, targets] {
+            if (m_output) { m_output->contentDidRequestDelete(targets); }
+        });
     }
     presentMenu(menu, position);
 }
 
-Panda::path_t ContentBrowserView::currentDirectory() {
-    Folder *folder = m_dataSource.currentFolder();
-    return folder ? folder->path : Panda::path_t();
-}
-
-bool ContentBrowserView::pointerDown(PointerEvent &) {
-    m_grid->clearSelection();
-    updateStatus();
-    if (m_output) { m_output->contentDidSelectAssets({}); }
-    return true;
-}
+/* ------------------------------ Breadcrumbs ------------------------------ */
 
 void ContentBrowserView::rebuildBreadcrumb() {
     m_breadcrumb->removeAllSubviews();
+    // The list shows where things are itself; a search is of all of Assets, not of the folder.
+    if (m_mode == Mode::List || m_dataSource.isSearching()) { return; }
     std::vector<Folder *> chain;
     for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) { chain.push_back(node); }
     std::reverse(chain.begin(), chain.end());
@@ -526,39 +922,40 @@ void ContentBrowserView::rebuildBreadcrumb() {
     }
 }
 
-void ContentBrowserView::updateStatus() {
-    std::vector<Folder *> chain;
-    for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) { chain.push_back(node); }
-    std::reverse(chain.begin(), chain.end());
-    std::string path;
-    for (size_t i = 0; i < chain.size(); ++i) { path += (i ? "/" : "") + chain[i]->name; }
+void ContentBrowserView::updateNothingFound() {
+    const bool nothing = m_dataSource.isSearching() && m_dataSource.found().empty();
+    m_gridNothing->setCollapsed(!nothing);
+    m_listNothing->setCollapsed(!nothing);
+}
 
-    const int count = m_dataSource.itemCount();
-    const std::vector<int> &selection = m_grid->selectedIndices();
-    if (selection.size() == 1) {
-        const int index = selection.front();
-        std::string name;
-        if (Folder *folder = m_dataSource.folderAt(index)) {
-            name = folder->name;
-        } else if (const FileEntry *file = m_dataSource.fileAt(index)) {
-            name = file->name;
-        }
-        m_status->setText(path + "  -  " + name);
-    } else if (selection.size() > 1) {
-        m_status->setText(path + "  -  " + std::to_string(selection.size()) + " selected");
-    } else {
-        m_status->setText(path + "  -  " + std::to_string(count) + " items");
-    }
+/* ------------------------------ Input ------------------------------ */
+
+bool ContentBrowserView::pointerDown(PointerEvent &) {
+    clearAssetSelection();
+    if (m_output) { m_output->contentDidSelectAssets({}); }
+    return true;
 }
 
 bool ContentBrowserView::keyDown(KeyEvent &event) {
+    // Escape in the search field: the field takes its text back first (the folder again); Escape in
+    // the empty field comes here and hands the keyboard back to the grid (the list).
+    if (event.key == Key::Escape && m_searchField->isFocused()) {
+        if (Context *context = getContext()) {
+            context->setFocusedView(m_mode == Mode::List ? static_cast<View *>(m_list.get()) : m_grid.get());
+        }
+        return true;
+    }
+    // Enter is the double click of the keyboard: on the selected cell (row).
     if (event.key == Key::Enter || event.key == Key::KeypadEnter) {
-        const std::vector<int> &selection = m_grid->selectedIndices();
-        if (!selection.empty()) {
-            if (Folder *folder = m_dataSource.folderAt(selection.front())) {
-                setCurrentFolder(folder);
-                return true;
-            }
+        Entry *entry = nullptr;
+        if (m_mode == Mode::List) {
+            entry = toEntry(m_list->selectedItem());
+        } else if (!m_grid->selectedIndices().empty()) {
+            entry = m_dataSource.entryAt(m_grid->selectedIndices().front());
+        }
+        if (entry) {
+            activate(entry);
+            return true;
         }
     }
     return false;
@@ -572,6 +969,7 @@ void ContentBrowserView::setupStyle() {
     setBackgroundColor(ThemeColor::windowBackground);
     if (m_tree) { m_tree->setBackgroundColor(ThemeColor::surface); }
     if (m_grid) { m_grid->setBackgroundColor(ThemeColor::windowBackground); }
+    if (m_list) { m_list->setBackgroundColor(ThemeColor::windowBackground); }
 }
 
 } // namespace Editor

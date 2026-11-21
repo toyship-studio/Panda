@@ -60,7 +60,6 @@ public:
     // A prefab is one tree: the Hierarchy shows that entity and what is under it, and nothing
     // else of its world. 0 — a world: every entity without a parent.
     void setRootEntity(Panda::UUID entity);
-    void setStatusText(const std::string &text);
     void setSelectedEntities(const std::vector<Panda::UUID> &entityIds); // programmatic highlight of the selection
     void expandEntity(Panda::UUID entityId, bool expanded);
     // The entity comes into view: its ancestors are expanded and the tree scrolls to its row when
@@ -94,7 +93,6 @@ private:
     std::string m_search; // lowercase; empty — the tree as it is
     std::shared_ptr<PandaUI::TextField> m_searchField;
     std::shared_ptr<PandaUI::TreeView> m_tree;
-    std::shared_ptr<PandaUI::Label> m_status;
     std::shared_ptr<PandaUI::Label> m_empty; // "No world is open", in place of the tree
 };
 

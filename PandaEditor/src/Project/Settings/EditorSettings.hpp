@@ -77,6 +77,8 @@ struct DockLayoutState final : public Rain::Codable {
     std::string selectedCenter;
     int focusedDock = -1; // Editor::Dock whose active tab had the keyboard focus; -1 = unknown (leave the focus alone)
     bool worldSettingsVisible = false; // the world settings sidebar of the viewport
+    std::string contentBrowserView;     // how the Content Browser shows Assets: "list", or icons (anything else)
+    bool contentBrowserFolders = true;  // its folder tree, beside the icons
 
     bool isValid() const {
         return !panels.empty();
@@ -99,6 +101,8 @@ struct DockLayoutState final : public Rain::Codable {
     RAIN_FIELD(focusedDock)
     RAIN_FIELD(pinnedTabs)
     RAIN_FIELD(worldSettingsVisible)
+    RAIN_FIELD(contentBrowserView)
+    RAIN_FIELD(contentBrowserFolders)
     RAIN_FIELDS_END
 };
 
@@ -166,12 +170,16 @@ struct EditorAppearanceSettings final : public Rain::Codable {
     std::string uiFont;     // a family installed on this machine for the UI text; empty — Inter Display
     std::string monoFont;   // the same for numbers, paths and code; empty — JetBrains Mono
     float uiFontSize = 16.f; // the body size; the editor is designed at 16, every text scales with it
+    // The memory, the CPU and the GPU of the editor at the right of the visibility strip; off —
+    // nothing is sampled for it (EditorStatistics::updateStatus).
+    bool showSystemStatus = true;
 
     RAIN_FIELDS_BEGIN(EditorAppearanceSettings)
     RAIN_FIELD(theme)
     RAIN_FIELD(uiFont)
     RAIN_FIELD(monoFont)
     RAIN_FIELD(uiFontSize)
+    RAIN_FIELD(showSystemStatus)
     RAIN_FIELDS_END
 };
 

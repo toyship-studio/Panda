@@ -210,7 +210,7 @@ void EditorLayer::onDetach() {
 
 void EditorLayer::onUpdate(double deltaTime) {
     syncWindowIdentity();
-    m_statistics.updateStatus(deltaTime, m_editorController.get());
+    m_statistics.updateStatus(deltaTime, m_editorController.get(), m_documents.editorSettings().appearance.showSystemStatus);
     m_updater.tick(deltaTime);
     pushUpdateStatus();
     if (m_play.takeQuitRequest()) { stop(); } // a script quit in the last frame: Stop before the worlds update

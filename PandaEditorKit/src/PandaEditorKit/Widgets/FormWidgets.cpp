@@ -89,11 +89,13 @@ std::shared_ptr<Label> makeFormHint(const std::string &text) {
     return hint;
 }
 
-std::shared_ptr<View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set) {
-    return std::make_shared<AssetWell>(
+std::shared_ptr<View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set, bool required) {
+    auto well = std::make_shared<AssetWell>(
         value, kind, [](uint32_t id) { return editorHost().assetTitle(Panda::AssetId(id)); }, std::move(set),
         [](uint32_t id) { editorHost().selectAsset(Panda::AssetId(id)); }
     );
+    if (required) { well->setRequired(true); }
+    return well;
 }
 
 namespace {

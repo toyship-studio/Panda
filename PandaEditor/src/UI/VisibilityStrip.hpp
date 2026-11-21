@@ -31,7 +31,8 @@ public:
 
     void setItems(const std::vector<StripItem> &items); // rebuild the buttons from the specification
     // Status indicators on the right (Zed style): RAM/VRAM/CPU/GPU. Updated by the owner
-    // once every ~half a second; the strip only displays.
+    // once every ~half a second; the strip only displays. Empty — none (the APPEARANCE settings
+    // turn it off).
     void setStatusText(const std::string &text);
 
 private:

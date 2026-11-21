@@ -29,7 +29,13 @@ public:
     virtual ~EditorHost() = default;
 
     // --- Assets and documents ---
-    virtual std::string assetTitle(Panda::AssetId id) = 0; // asset name in the project (empty — not in the registry)
+    // The name of an asset: of the project, or of one built into the engine (isBuiltinAsset);
+    // empty — there is none of this id.
+    virtual std::string assetTitle(Panda::AssetId id) = 0;
+    // An asset of the engine a reference may name besides those of the project — a built-in shader
+    // of materials (Unlit, Lit, PBR, the shaders of the modules): it has a name and no file, the
+    // picker offers it, there is nowhere to reveal it.
+    virtual bool isBuiltinAsset(Panda::AssetId id) = 0;
     // Undo stack of the asset document (created on demand); SAVE of a command applies it and
     // marks the document as "unsaved".
     virtual Panda::CommandHistory &assetUndoStack(Panda::AssetId id) = 0;
@@ -48,7 +54,8 @@ public:
     // The face of a font asset in the editor's own UI (the preview of the font tab); Sans when the
     // asset cannot be read.
     virtual PandaUI::FontFamily assetFont(Panda::AssetId id) = 0;
-    // Asset Picker at point at: project assets of kind kind (AssetKind::name); onPick(id) on selection.
+    // Asset Picker at point at: the assets of kind kind (AssetKind::name) — the built-in ones of the
+    // engine, then those of the project; onPick(id) on selection.
     virtual void pickAsset(
         PandaUI::Context *context, PandaUI::Point at, const std::string &kind, std::function<void(uint32_t)> onPick
     ) = 0;

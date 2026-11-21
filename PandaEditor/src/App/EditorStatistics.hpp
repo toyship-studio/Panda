@@ -18,8 +18,9 @@ public:
     // Every frame, with or without a project: the status of the strip — the RAM and the VRAM of
     // the process, the load of the CPU (a share of a core, like top) and of the GPU (its frame
     // time over the wall-clock one). The metrics are cheap, but running numbers are hard to read:
-    // they change twice a second.
-    void updateStatus(double deltaTime, Editor::EditorController *controller);
+    // they change twice a second. shown — the status is on in the APPEARANCE settings
+    // (EditorAppearanceSettings::showSystemStatus); off, nothing is sampled.
+    void updateStatus(double deltaTime, Editor::EditorController *controller, bool shown);
     // With a project open, after the frame of the world is drawn: the counters of the frame, the
     // layout passes of the chrome UI per second, the profiler four times a second.
     void updateFrame(double deltaTime, EditorViewports &viewports, EditorUI &ui, Editor::EditorController &controller);
@@ -35,6 +36,7 @@ private:
     float m_profilerRefreshWindow = 0.f;
     double m_statusTimer = 0.0;
     int m_statusFrames = 0; // frames since the status was last written
+    bool m_statusShown = false; // the strip shows a status written here
 };
 
 } // namespace Panda

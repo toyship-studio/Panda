@@ -32,6 +32,11 @@ struct TreeDataSource {
     // test (Core/Accessibility.hpp); a row that is out of sight is found by it.
     std::function<std::string(TreeItem item)> titleForItem;
     std::function<std::uint64_t(TreeItem item)> idForItem;       // opt.: item id → payload.items (external drop targets)
+    // opt.: the payload of a drag of items (the selection, or the row under the pointer) in place of
+    // the drag type and the ids — for a payload whose type depends on what is dragged (files of
+    // several kinds); false — these items are not dragged. The source of the payload is the tree, and
+    // it reparents only a payload of its own drag type.
+    std::function<bool(DragPayload &payload, const std::vector<TreeItem> &items)> fillDragPayload;
 };
 
 enum class TreeSelectionMode {

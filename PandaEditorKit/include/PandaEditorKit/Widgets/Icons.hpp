@@ -38,6 +38,9 @@ namespace Ic {
     inline constexpr const char *ChevronLeft = "chevron-left"; // back navigation (selection history)
     inline constexpr const char *ChevronRight = "chevron-right";
     inline constexpr const char *ChevronUp = "chevron-up";
+    inline constexpr const char *ViewGrid = "view-grid"; // the Content Browser as icons
+    inline constexpr const char *ViewList = "view-list"; // the Content Browser as a list (one tree)
+    inline constexpr const char *Sidebar = "sidebar";    // show/hide a side column (the folders)
     inline constexpr const char *Material = "material";
     inline constexpr const char *Mesh = "mesh";
     // Object type icons (editor tabs, Hierarchy). Resolution by components — ObjectIcons.

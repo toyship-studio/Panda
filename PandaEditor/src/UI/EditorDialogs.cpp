@@ -1,6 +1,7 @@
 #include <Panda/Extensions/Extensions.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 #include "UI/EditorDialogs.hpp"
+#include "UI/EditorModelHelper.hpp"
 
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include <PandaEditorKit/Widgets/ObjectIcons.hpp>
@@ -193,6 +194,14 @@ void showAssetPicker(
     items.reserve(found.size());
     ids.reserve(found.size());
     const char *icon = assetIconName(type);
+    // The ones built into the engine first, in the order they are registered (Unlit, Lit, PBR, the
+    // modules'): they are the usual choice, and they have no folder — the detail says where they are.
+    if (type == Panda::AssetType::SHADER) {
+        for (const auto &[builtin, name] : builtinShaderOptions()) {
+            items.push_back({name, "Built-in", icon});
+            ids.push_back(static_cast<uint32_t>(builtin));
+        }
+    }
     for (Found &asset : found) {
         items.push_back({std::move(asset.name), std::move(asset.folder), icon});
         ids.push_back(asset.id);

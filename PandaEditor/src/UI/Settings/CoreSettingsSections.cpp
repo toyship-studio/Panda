@@ -630,6 +630,11 @@ namespace {
             });
         })->setHelp("The size of the text of the editor; it is designed at 16");
         section.addContent(makeFormHint("Any font installed on this computer. A character the font lacks is drawn with the bundled one."));
+        addToggleRow(section, "System Status", appearance.showSystemStatus, [](bool on) {
+            editSettings<Panda::EditorSettings>(SettingsScope::Editor, [on](Panda::EditorSettings &settings) {
+                settings.appearance.showSystemStatus = on;
+            });
+        })->setHelp("Memory, CPU and GPU at the bottom right of the window");
     }
 
     /* ------------------------------ Project scope ------------------------------ */

@@ -212,6 +212,7 @@ public:
 
     // Editor::EditorHost — the host of the editor parts of packages.
     std::string assetTitle(Panda::AssetId id) override;
+    bool isBuiltinAsset(Panda::AssetId id) override;
     Panda::CommandHistory &assetUndoStack(Panda::AssetId id) override;
     void clearAssetUndoStack(Panda::AssetId id) override;
     void selectAsset(Panda::AssetId id) override;

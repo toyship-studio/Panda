@@ -64,6 +64,7 @@ VisibilityStripView::VisibilityStripView(VisibilityStripDelegate *delegate)
     m_statusLabel->setTextRole(PandaUI::TextRole::Muted);
     m_statusLabel->setUserInteractionEnabled(false);
     m_statusLabel->layout().setMargin(PandaUI::Edge::Right, 12.f);
+    m_statusLabel->setCollapsed(true); // until the first status
     row->addSubview(m_statusLabel);
 
     m_rightGroup = makeGroup();
@@ -74,6 +75,7 @@ VisibilityStripView::VisibilityStripView(VisibilityStripDelegate *delegate)
 
 void VisibilityStripView::setStatusText(const std::string &text) {
     m_statusLabel->setText(text);
+    m_statusLabel->setCollapsed(text.empty()); // no status (off in the settings): no margin either
 }
 
 void VisibilityStripView::setItems(const std::vector<StripItem> &items) {

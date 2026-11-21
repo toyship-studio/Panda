@@ -14,9 +14,14 @@ namespace PandaUI {
 class Label;
 class Popup;
 class ListView;
+class TextField;
 
 // Dropdown list: shows the selected item and a chevron, opens an overlay with the list of
 // choices on click. Built on Popup + ListView (selection/hover/scroll are reused).
+// A list longer than the dropdown shows (maxVisibleRows) is searched: the dropdown opens with a
+// search field that has the keyboard — typing filters the rows (a choice that starts with the text
+// first, then one that has it), the arrows walk them, Enter takes the highlighted one; Escape
+// takes the text back, then closes.
 // The look of a combobox: the recessed plate per state (as a text field), the chevron, the font and
 // the geometry; the dropdown card is a popover (Elevation::Popover) with a list.
 struct ComboboxAppearance {
@@ -35,7 +40,7 @@ struct ComboboxAppearance {
     float chevronThickness = 1.6f;
     CornerRadii cornerRadius = CornerRadii(Radius::sm);
     float borderWidth = 1.f;
-    int maxVisibleRows = 8;
+    int maxVisibleRows = 8; // a longer list scrolls, and has a search field
     float cardPadding = 4.f;
 };
 
@@ -77,6 +82,8 @@ public:
     }
 
 private:
+    class DropdownCard;
+
     void performPrimaryAction() override;
     void controlStateChanged(ControlState previous, ControlState current) override;
     void themeChanged() override;
@@ -84,8 +91,11 @@ private:
     void draw(float offsetX, float offsetY) override;
 
     void openDropdown();
+    void filterDropdown(const std::string &query); // the rows of the open list: the items that match
     void moveDropdownHighlight(int delta); // ↑/↓ over the open list (highlight, no commit)
     void commitDropdown();                 // select the highlighted item and close
+    void closeDropdown();                  // without a choice (Escape)
+    int itemOfRow(int row) const;          // the item a row of the open list shows; -1 — none
     void stepSelection(int delta);         // ↑/↓ with the list closed — direct selection change
     void updateLabel();
     void applyAppearance();
@@ -99,6 +109,9 @@ private:
     SelectionChangedCallback m_onSelectionChanged;
     Popup *m_dropdown = nullptr;       // the open dropdown (or null) — do not open it again
     ListView *m_dropdownList = nullptr; // the list inside the dropdown (for arrow-key navigation)
+    TextField *m_dropdownSearch = nullptr; // the search of a long list (null — the list is short)
+    Label *m_dropdownEmpty = nullptr;      // "Nothing found", in place of the rows
+    std::vector<int> m_dropdownRows;       // row of the open list → index in m_items
 };
 
 } // namespace PandaUI

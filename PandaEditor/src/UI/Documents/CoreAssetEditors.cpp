@@ -129,37 +129,18 @@ namespace {
 
             auto section = makeFormSection("MATERIAL");
 
-            // The shader is a combobox: built-in variants (Unlit/Lit/PBR) + the project's registered
-            // shaders, without None (meta.shader == 0 renders as Lit — shown honestly). A change
-            // updates the registry meta, reloads the material (the fields are resynchronized by
-            // reflection) and rebuilds this form at the next tick.
-            std::vector<std::pair<Panda::AssetId, std::string>> shaderOptions = builtinShaderOptions();
-            for (const auto &entry : registry) {
-                if (entry.second.type == Panda::AssetType::SHADER) {
-                    shaderOptions.push_back({entry.first, handler->getAssetName(entry.first)});
-                }
-            }
+            // The shader is a reference like any other asset field: dropped from the Content
+            // Browser, picked by a search of the shaders built into the engine (Unlit, Lit, PBR, the
+            // modules') and of the project, a click shows where the file is. It always names one —
+            // no clearing: a material with none (meta.shader == 0) renders as Lit and is shown as
+            // the actual Lit. A change updates the registry meta, reloads the material (the fields
+            // are resynchronized by reflection) and rebuilds this form at the next tick.
             Panda::AssetId currentShader = std::get<Panda::AssetInfo::MaterialSettings>(infoIt->second.settings).shader;
-            if (currentShader == 0) { currentShader = shaderOptions[1].first; } // legacy 0 → the actual Lit
-            int selectedShader = -1;
-            for (std::size_t i = 0; i < shaderOptions.size(); ++i) {
-                if (shaderOptions[i].first == currentShader) { selectedShader = static_cast<int>(i); }
-            }
-            if (selectedShader < 0) { // unknown id: show it, but do not overwrite silently
-                shaderOptions.push_back({currentShader, "Unknown (" + std::to_string(currentShader) + ")"});
-                selectedShader = static_cast<int>(shaderOptions.size()) - 1;
-            }
-            std::vector<std::string> shaderItems;
-            for (const auto &option : shaderOptions) { shaderItems.push_back(option.second); }
-            auto shaderBox = std::make_shared<Combobox>();
-            shaderBox->setItems(shaderItems);
-            shaderBox->setSelectedIndex(selectedShader);
-            shaderBox->setOnSelectionChanged([this, id, shaderOptions](Combobox &box) {
-                const int index = box.selectedIndex();
-                if (index < 0 || index >= static_cast<int>(shaderOptions.size())) { return; }
-                setShader(id, shaderOptions[index].first);
-            });
-            section->addContent(std::make_shared<PropertyRow>("Shader", shaderBox));
+            if (currentShader == 0) { currentShader = builtinShaderOptions()[1].first; } // legacy 0 → the actual Lit
+            auto shaderWell = makeAssetWell("shader", static_cast<uint32_t>(currentShader), [this, id](uint32_t shader) {
+                if (shader != 0) { setShader(id, Panda::AssetId(shader)); }
+            }, /*required*/ true);
+            section->addContent(std::make_shared<PropertyRow>("Shader", shaderWell));
 
             // Material fields come from the live asset (loaded lazily); the set is synchronized
             // with the shader reflection.

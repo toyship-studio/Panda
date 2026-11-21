@@ -103,6 +103,15 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
 - Several contexts and windows are supported; the single-window path stays simple.
 - Large data: `CollectionView` and `TreeView` are virtualized (only visible cells exist);
   `ListView` is a simple non-virtualized list.
+- A `Combobox` whose list is longer than its dropdown shows (`maxVisibleRows`) is searched: the
+  dropdown opens with a search field that has the keyboard — typing filters the choices (one that
+  starts with the text first, then one that has it), the arrows walk them, Enter takes one, the
+  first Escape takes the text back. The card keeps the size of the whole list while it is filtered:
+  the field does not move under the typing, and a dropdown that opened above the box (no room
+  below) does not jump below it. The pickers of the editor keep their size the same way.
+- A tree whose drag payload depends on what is dragged — files of several kinds — fills it itself
+  (`TreeDataSource::fillDragPayload`, as `CollectionViewDataSource::fillDragPayload`); the tree is
+  still the source, and it reparents only a payload of its own drag type.
 
 ## Overlays: popup and modal
 

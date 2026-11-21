@@ -146,13 +146,6 @@ void HierarchyPanelView::addSubviews() {
     m_empty->layout().setMargin(Edge::Top, 24.f);
     m_empty->setCollapsed(true);
     addSubview(m_empty);
-
-    m_status = std::make_shared<Label>("");
-    m_status->setFont(Typo::Caption);
-    m_status->setTextRole(TextRole::Muted);
-    m_status->layout().setPadding(Edge::Horizontal, 12.f);
-    m_status->layout().setPadding(Edge::Vertical, 8.f);
-    addSubview(m_status);
 }
 
 void HierarchyPanelView::configureTree() {
@@ -377,10 +370,6 @@ void HierarchyPanelView::reload() {
         for (const auto &match : matches) { m_rootChildren.push_back(match.second); }
     }
     m_tree->reloadData();
-}
-
-void HierarchyPanelView::setStatusText(const std::string &text) {
-    m_status->setText(text);
 }
 
 void HierarchyPanelView::setSelectedEntities(const std::vector<Panda::UUID> &entityIds) {

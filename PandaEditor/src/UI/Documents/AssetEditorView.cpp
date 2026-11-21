@@ -4,6 +4,7 @@
 #include "Project/Loader/AssetHandlerEditor.hpp"
 #include "UI/EditorModelHelper.hpp"
 
+#include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -167,13 +168,24 @@ void AssetEditorView::rebuildProperties() {
     const std::string kind = assetTypeString(it->second.type);
     const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
     if (ui == nullptr || ui->createEditor == nullptr) {
-        // A kind without an editor (a world, a shader, a file): the header says what it is.
+        // A kind without an editor (a world, a shader, a file): the header says what it is. A file
+        // the editor has no form for is text it does not edit (it has no text editor): the form
+        // hands it to the external editor of the settings, as a double click in the Content Browser
+        // does — a shader opens with both files of its pair.
         auto label = std::make_shared<Label>(kind == "world" ? "World" : kind);
         label->setFont(Typo::Item);
         label->setTextRole(TextRole::Secondary);
         auto section = makeFormSection(kind == "world" ? "WORLD" : "ASSET");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));
-        if (kind == "world") { section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab.")); }
+        if (kind == "world") {
+            section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab."));
+        } else {
+            const Panda::path_t file = handler->getProjectPath() / handler->assetPath(id);
+            section->addContent(makeFormButtonRow({makeFormButton("Open in External Editor", ButtonStyle::Neutral, [file] {
+                editorHost().openInExternalEditor(file);
+            })}));
+            section->addContent(makeFormHint("The external editor is set in Settings → External Tools."));
+        }
         m_props->addSubview(section);
         setNeedsLayout();
         return;

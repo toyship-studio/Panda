@@ -118,10 +118,15 @@ protected:
         return Control::pointerDown(event);
     }
     bool prepareDrag(DragPayload &payload, Point) override {
-        payload.type = m_tree->m_dragType;
         payload.source = m_tree; // source = this tree; reparent only within it
         payload.ghostText = m_tree->beginItemDrag(m_item); // sets m_dragItems
-        payload.items = m_tree->dragItemIds();             // node ids → external drop targets (e.g. Inspector)
+        if (const auto &fill = m_tree->m_dataSource.fillDragPayload) {
+            if (fill(payload, m_tree->m_dragItems)) { return true; }
+            m_tree->m_dragItems.clear();
+            return false;
+        }
+        payload.type = m_tree->m_dragType;
+        payload.items = m_tree->dragItemIds(); // node ids → external drop targets (e.g. Inspector)
         return true;
     }
     void performPrimaryAction() override {

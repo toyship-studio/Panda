@@ -47,9 +47,11 @@ std::shared_ptr<PandaUI::Label> makeFormHint(const std::string &text);
 
 // The editor of a reference to an asset of kind kind (AssetKind::name): AssetWell with drop, a
 // picker and clearing; the asset name and selection — through the editor host (EditorHost).
-// set(id) — the new value (0 — reset). addAssetRow puts it into a row of a section; on its own it
+// set(id) — the new value (0 — reset). required — the reference always names an asset (the shader
+// of a material): there is no clearing. addAssetRow puts it into a row of a section; on its own it
 // is an item of a list.
-std::shared_ptr<PandaUI::View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set);
+std::shared_ptr<PandaUI::View>
+makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set, bool required = false);
 std::shared_ptr<PandaUI::PropertyRow> addAssetRow(
     PandaUI::CollapsibleSection &section, const char *title, const char *kind, uint32_t value,
     std::function<void(uint32_t)> set, const char *field = nullptr

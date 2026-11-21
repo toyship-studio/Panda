@@ -11,9 +11,11 @@ namespace Editor {
 // Composite asset reference field: [preview+name | replace | reset].
 // A click on the value shows where the asset is (the Content Browser opens its folder and blinks
 // the cell; the selection and the tabs stay); a double click selects it (its editor tab). A click
-// on an empty field and the "replace" button open the Asset Picker; reset — by a separate button,
-// only when there is a value. D&D acceptance of the "asset.<kind>" payload. Preview: the host's
-// thumbnail (materials, textures), otherwise — the type icon. The picker and thumbnails — EditorHost.
+// on an empty field, on an asset built into the engine (EditorHost::isBuiltinAsset: it has no
+// file to show) and the "replace" button open the Asset Picker; reset — by a separate button,
+// only when there is a value and the reference may name none. D&D acceptance of the
+// "asset.<kind>" payload. Preview: the host's thumbnail (materials, textures), otherwise — the
+// icon of the kind. The picker and thumbnails — EditorHost.
 class AssetWell final : public PandaUI::Panel {
 public:
     AssetWell(
@@ -21,11 +23,14 @@ public:
         std::function<void(uint32_t)> onChange, std::function<void(uint32_t)> onSelect
     );
 
+    // A reference that always names an asset (the shader of a material): no reset button.
+    void setRequired(bool required);
+
     bool canAcceptDrop(const PandaUI::DragInfo &drag) override;
     void dragEntered(const PandaUI::DragInfo &drag) override;
     void dragExited() override;
     bool performDrop(const PandaUI::DragInfo &drag) override;
-    // The value is the name the well shows: the asset, or "None (<kind>)".
+    // The value is the name the well shows: the asset, "None (<kind>)" or "Missing (<kind>)".
     void describeAccessibility(PandaUI::Accessibility &accessibility) const override;
 
 protected:
@@ -54,6 +59,7 @@ private:
     std::shared_ptr<PandaUI::Label> m_label;
     std::shared_ptr<PandaUI::View> m_replaceButton;
     std::shared_ptr<PandaUI::View> m_clearButton;
+    bool m_required = false;
     bool m_dropHovered = false;
     bool m_thumbnailShown = false; // the preview is already in place — polling in draw stops
 };

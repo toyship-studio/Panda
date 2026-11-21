@@ -6,13 +6,57 @@
 #include "PandaUI/Elements/ListView.hpp"
 #include "PandaUI/Elements/Panel.hpp"
 #include "PandaUI/Elements/Popup.hpp"
+#include "PandaUI/Elements/TextField.hpp"
 #include "PandaUI/Rendering/UIRenderer.hpp"
 #include "PandaUI/Runtime/Context.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace PandaUI {
+
+namespace {
+
+    char folded(char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    bool startsWithIgnoringCase(const std::string &text, const std::string &query) {
+        return query.size() <= text.size() &&
+               std::equal(query.begin(), query.end(), text.begin(), [](char a, char b) { return folded(a) == folded(b); });
+    }
+
+    bool containsIgnoringCase(const std::string &text, const std::string &query) {
+        return std::search(text.begin(), text.end(), query.begin(), query.end(), [](char a, char b) {
+                   return folded(a) == folded(b);
+               }) != text.end();
+    }
+
+} // namespace
+
+// The card of the dropdown. The search field of a long list has the keyboard: the arrows it does
+// not use come up here and walk the rows, and an Escape it lets through (its text is empty) closes.
+class Combobox::DropdownCard final : public Panel {
+public:
+    explicit DropdownCard(Combobox *owner)
+        : m_owner(owner)
+        , m_alive(owner->weak_from_this()) {}
+
+    bool keyDown(KeyEvent &event) override {
+        if (m_alive.expired()) { return Panel::keyDown(event); }
+        switch (event.key) {
+            case Key::Up: m_owner->moveDropdownHighlight(-1); return true;
+            case Key::Down: m_owner->moveDropdownHighlight(1); return true;
+            case Key::Escape: m_owner->closeDropdown(); return true;
+            default: return Panel::keyDown(event);
+        }
+    }
+
+private:
+    Combobox *m_owner;
+    std::weak_ptr<View> m_alive; // the combobox may go first (a form rebuilt under the open dropdown)
+};
 
 ComboboxAppearance &Combobox::defaultAppearance() {
     static ComboboxAppearance appearance;
@@ -34,7 +78,11 @@ Combobox::Combobox()
     applyAppearance();
 }
 
-Combobox::~Combobox() = default;
+Combobox::~Combobox() {
+    // A form rebuilt under an open dropdown (an undo) takes the combobox away: the dropdown goes
+    // too, and its callbacks, which hold the combobox weakly, call nothing.
+    if (m_dropdown) { m_dropdown->dismiss(); }
+}
 
 void Combobox::setAppearance(const ComboboxAppearance &appearance) {
     m_appearance = appearance;
@@ -144,46 +192,137 @@ void Combobox::openDropdown() {
     Context *context = getContext();
     if (!context || m_items.empty() || m_dropdown) { return; } // already open — do not spawn another
 
-    // Popover card with a shadow, with a ListView inside (single selection, the current item is highlighted).
+    // Popover card with a shadow, with a ListView inside (single selection, the current item is
+    // highlighted) and, over a long list, the search field.
     const float cardPadding = m_appearance.cardPadding;
-    auto card = std::make_shared<Panel>();
+    const float width = getFrame().size.width - cardPadding * 2.f;
+    auto card = std::make_shared<DropdownCard>(this);
     applyElevation(*card, Elevation::Popover);
+    card->layout().setFlexDirection(FlexDirection::Column);
     card->layout().setPadding(cardPadding);
+
+    std::shared_ptr<TextField> search;
+    if (itemCount() > m_appearance.maxVisibleRows) {
+        search = std::make_shared<TextField>();
+        search->setPlaceholder("Search…");
+        search->setClearsOnEscape(true); // the first Escape takes the text back, the next closes
+        search->layout().setWidth(Length::points(width));
+        search->layout().setMargin(Edge::Bottom, cardPadding);
+        search->setOnTextChanged([this, alive = weak_from_this()](TextField &field) {
+            if (!alive.expired()) { filterDropdown(field.getText()); }
+        });
+        search->setOnSubmit([this, alive = weak_from_this()](TextField &) {
+            if (!alive.expired()) { commitDropdown(); }
+        });
+        card->addSubview(search);
+    }
 
     auto list = std::make_shared<ListView>();
     list->setSelectionMode(ListSelectionMode::Single);
     list->setBackgroundColor(Color(0x00000000));
-    list->setFocusable(false); // the focus stays on the combobox — it drives the arrow-key navigation
+    list->setFocusable(false); // the focus stays on the combobox (or its search) — it drives the arrow keys
     // A click on a row commits on PRESS: the combobox blur (the focus went to null on a click on a
     // non-focusable row) tears down the popover through focusChanged→dismiss, and the row does not live
     // to see the release.
     list->setCommitsSelectionOnPointerDown(true);
-    for (const auto &item : m_items) { list->addItem(item); }
-    if (m_selectedIndex >= 0) { list->setSelectedIndex(m_selectedIndex); }
+    // The card keeps the size of the whole list while a search filters it: the field does not move
+    // under the typing, and a card that opened above the combobox does not jump below it.
+    const int visible = std::min(itemCount(), m_appearance.maxVisibleRows);
+    const float listHeight = static_cast<float>(visible) * list->appearance().rowHeight;
+    list->layout().setWidth(Length::points(width));
+    list->layout().setHeight(Length::points(listHeight));
+    auto rows = std::make_shared<Panel>();
+    rows->setBackgroundColor(Color(0x00000000));
+    rows->layout().setWidth(Length::points(width));
+    rows->layout().setHeight(Length::points(listHeight));
+    rows->addSubview(list);
 
-    const int visible = std::min(static_cast<int>(m_items.size()), m_appearance.maxVisibleRows);
-    list->layout().setWidth(Length::points(getFrame().size.width - cardPadding * 2.f));
-    list->layout().setHeight(Length::points(static_cast<float>(visible) * list->appearance().rowHeight));
-    card->addSubview(list);
+    auto empty = std::make_shared<Label>("Nothing found");
+    empty->setTextRole(TextRole::Dim);
+    empty->setTextAlignment(TextAlignment::Center);
+    empty->setUserInteractionEnabled(false);
+    empty->layout().setPositionType(PositionType::Absolute); // over the empty rows, not under them
+    empty->layout().setPosition(Edge::Left, Length::points(0.f));
+    empty->layout().setPosition(Edge::Right, Length::points(0.f));
+    empty->layout().setPosition(Edge::Top, Length::points(Spacing::md));
+    rows->addSubview(empty);
+    card->addSubview(rows);
 
     auto popup = std::make_shared<Popup>(card, getWorldFrame());
     m_dropdown = popup.get();
     m_dropdownList = list.get();
-    popup->setOnDismiss([this] {
+    m_dropdownSearch = search.get();
+    m_dropdownEmpty = empty.get();
+    // The rows stay mapped after the dismiss: a click on a row commits on press, after the blur of
+    // the combobox has already closed the dropdown (focusChanged).
+    popup->setOnDismiss([this, alive = weak_from_this()] {
+        if (alive.expired()) { return; }
         m_dropdown = nullptr;
         m_dropdownList = nullptr;
+        m_dropdownSearch = nullptr;
+        m_dropdownEmpty = nullptr;
     });
+    filterDropdown({});
     // A click on a row — select and close (the arrow keys go through setSelectedIndex, which does not
     // call this callback).
-    list->setOnSelectionChanged([this, popup = popup.get()](ListView &sender) {
-        const int index = sender.selectedIndex();
+    list->setOnSelectionChanged([this, alive = weak_from_this()](ListView &sender) {
+        if (alive.expired()) { return; }
+        const int index = itemOfRow(sender.selectedIndex());
         if (index >= 0) {
             setSelectedIndex(index);
             if (m_onSelectionChanged) { m_onSelectionChanged(*this); }
         }
-        popup->dismiss();
+        closeDropdown();
     });
     context->addOverlay(popup);
+    if (search) { context->setFocusedView(search.get()); } // typing filters right away
+}
+
+void Combobox::filterDropdown(const std::string &query) {
+    if (!m_dropdownList) { return; }
+    // The best match first: a choice that starts with the text, then one that has it; within a rank
+    // the order of the items stays.
+    m_dropdownRows.clear();
+    std::vector<int> containing;
+    for (int index = 0; index < itemCount(); ++index) {
+        const std::string &item = m_items[static_cast<size_t>(index)];
+        if (query.empty() || startsWithIgnoringCase(item, query)) {
+            m_dropdownRows.push_back(index);
+        } else if (containsIgnoringCase(item, query)) {
+            containing.push_back(index);
+        }
+    }
+    m_dropdownRows.insert(m_dropdownRows.end(), containing.begin(), containing.end());
+    m_dropdownList->clearItems();
+    for (int index : m_dropdownRows) { m_dropdownList->addItem(m_items[static_cast<size_t>(index)]); }
+
+    const int rows = static_cast<int>(m_dropdownRows.size());
+    if (m_dropdownEmpty) { m_dropdownEmpty->setHidden(rows > 0); }
+    // The highlight: the current choice in the whole list, the best match of a search (Enter takes it).
+    int highlight = -1;
+    if (query.empty()) {
+        const auto it = std::find(m_dropdownRows.begin(), m_dropdownRows.end(), m_selectedIndex);
+        if (it != m_dropdownRows.end()) { highlight = static_cast<int>(it - m_dropdownRows.begin()); }
+    } else if (rows > 0) {
+        highlight = 0;
+    }
+    m_dropdownList->setSelectedIndex(highlight);
+    m_dropdownList->setContentOffset(Point(0.f, 0.f));
+    if (highlight >= 0) { m_dropdownList->scrollIndexIntoView(highlight); }
+}
+
+int Combobox::itemOfRow(int row) const {
+    return row >= 0 && row < static_cast<int>(m_dropdownRows.size()) ? m_dropdownRows[static_cast<size_t>(row)] : -1;
+}
+
+void Combobox::closeDropdown() {
+    if (!m_dropdown) { return; }
+    const bool searched = m_dropdownSearch != nullptr;
+    m_dropdown->dismiss();
+    // The keyboard comes back from the search to the combobox: the arrows go on changing the choice.
+    if (searched) {
+        if (Context *context = getContext()) { context->setFocusedView(this); }
+    }
 }
 
 bool Combobox::keyDown(KeyEvent &event) {
@@ -194,7 +333,7 @@ bool Combobox::keyDown(KeyEvent &event) {
             case Key::Enter:
             case Key::KeypadEnter:
             case Key::Space: commitDropdown(); return true;
-            case Key::Escape: m_dropdown->dismiss(); return true;
+            case Key::Escape: closeDropdown(); return true;
             default: return false;
         }
     }
@@ -209,28 +348,31 @@ bool Combobox::keyDown(KeyEvent &event) {
 }
 
 void Combobox::focusChanged(bool focused) {
-    Control::focusChanged(focused);                        // control-state → applyStyle (focus border)
-    if (!focused && m_dropdown) { m_dropdown->dismiss(); } // focus left the combobox → close the dropdown
+    Control::focusChanged(focused); // control-state → applyStyle (focus border)
+    // Focus left the combobox → close the dropdown. Not for a search: it takes the focus as the
+    // dropdown opens, and a click outside closes the popover.
+    if (!focused && m_dropdown && !m_dropdownSearch) { m_dropdown->dismiss(); }
 }
 
 void Combobox::moveDropdownHighlight(int delta) {
-    if (!m_dropdownList || m_items.empty()) { return; }
+    const int rows = static_cast<int>(m_dropdownRows.size());
+    if (!m_dropdownList || rows == 0) { return; }
     int current = m_dropdownList->selectedIndex();
-    if (current < 0) { current = delta > 0 ? -1 : itemCount(); }
-    const int next = std::clamp(current + delta, 0, itemCount() - 1);
+    if (current < 0) { current = delta > 0 ? -1 : rows; }
+    const int next = std::clamp(current + delta, 0, rows - 1);
     m_dropdownList->setSelectedIndex(next); // does not call onSelectionChanged → highlight without commit
     m_dropdownList->scrollIndexIntoView(next);
 }
 
 void Combobox::commitDropdown() {
     if (m_dropdownList) {
-        const int index = m_dropdownList->selectedIndex();
+        const int index = itemOfRow(m_dropdownList->selectedIndex());
         if (index >= 0 && index != m_selectedIndex) {
             setSelectedIndex(index);
             if (m_onSelectionChanged) { m_onSelectionChanged(*this); }
         }
     }
-    if (m_dropdown) { m_dropdown->dismiss(); }
+    closeDropdown();
 }
 
 void Combobox::stepSelection(int delta) {

@@ -52,6 +52,16 @@ namespace {
             m_search->layout().setWidth(Length::percent(100.f));
             addSubview(m_search);
 
+            // The card keeps the size of the whole list while the search filters it: the field does
+            // not move under the typing, and a card that opened above its field (no room below) does
+            // not jump below it. A short list is as tall as its rows, and "Nothing found" has a row.
+            const int visible = std::max(1, std::min(static_cast<int>(m_items.size()), PICKER_VISIBLE_ROWS));
+            auto rows = std::make_shared<Panel>();
+            rows->setBackgroundColor(Color(0x00000000));
+            rows->layout().setWidth(Length::percent(100.f));
+            rows->layout().setHeight(Length::points(PICKER_ROW_HEIGHT * static_cast<float>(visible)));
+            addSubview(rows);
+
             m_list = std::make_shared<ListView>();
             ListViewAppearance appearance = m_list->appearance();
             appearance.rowHeight = PICKER_ROW_HEIGHT;
@@ -59,14 +69,19 @@ namespace {
             m_list->setAppearance(appearance);
             m_list->setSelectionMode(ListSelectionMode::Single);
             m_list->layout().setWidth(Length::percent(100.f));
-            addSubview(m_list);
+            m_list->layout().setHeight(Length::percent(100.f));
+            rows->addSubview(m_list);
 
             m_empty = std::make_shared<Label>("Nothing found");
             m_empty->setFont(Typo::Caption);
             m_empty->setTextRole(TextRole::Dim);
             m_empty->setTextAlignment(TextAlignment::Center);
-            m_empty->layout().setMargin(Edge::Vertical, Spacing::md);
-            addSubview(m_empty);
+            m_empty->setUserInteractionEnabled(false);
+            m_empty->layout().setPositionType(PositionType::Absolute); // over the empty rows
+            m_empty->layout().setPosition(Edge::Left, Length::points(0.f));
+            m_empty->layout().setPosition(Edge::Right, Length::points(0.f));
+            m_empty->layout().setPosition(Edge::Top, Length::points(Spacing::sm));
+            rows->addSubview(m_empty);
 
             m_search->setOnTextChanged([this](TextField &field) { rebuild(field.getText()); });
             m_search->setOnSubmit([this](TextField &) { m_list->activateSelected(); });
@@ -114,11 +129,6 @@ namespace {
                     m_rows.push_back(index);
                 }
             }
-            const int shown = std::min(static_cast<int>(m_rows.size()), PICKER_VISIBLE_ROWS);
-            m_list->layout().setHeight(Length::points(PICKER_ROW_HEIGHT * static_cast<float>(shown)));
-            m_list->layout().setDisplay(m_rows.empty() ? Display::None : Display::Flex);
-            m_list->setHidden(m_rows.empty());
-            m_empty->layout().setDisplay(m_rows.empty() ? Display::Flex : Display::None);
             m_empty->setHidden(!m_rows.empty());
             if (!m_rows.empty()) { m_list->setSelectedIndex(0); } // Enter takes the best match
             m_list->setContentOffset(Point(0.f, 0.f));

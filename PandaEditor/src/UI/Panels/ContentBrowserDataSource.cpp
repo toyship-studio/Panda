@@ -48,6 +48,12 @@ namespace {
         return a < b; // the same name but for the case or the zeros: any order, always the same
     }
 
+    std::string folded(const std::string &text) {
+        std::string result = text;
+        for (char &c : result) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+        return result;
+    }
+
 } // namespace
 
 ContentBrowserDataSource::ContentBrowserDataSource() {
@@ -70,13 +76,16 @@ void ContentBrowserDataSource::rebuild() {
                 if (entry.is_directory(ec)) {
                     auto child = std::make_shared<Folder>();
                     child->name = name;
+                    child->foldedName = folded(name);
                     child->path = entry.path();
                     child->parent = &folder;
                     folder.children.push_back(std::move(child));
                 } else {
                     FileEntry file;
                     file.name = name;
+                    file.foldedName = folded(name);
                     file.path = entry.path();
+                    file.parent = &folder;
                     // The scan of the project imports everything supported by itself:
                     // assetId == 0 remains only for files of formats foreign to the engine.
                     file.assetId = handler->getAssetId(entry.path());
@@ -93,48 +102,140 @@ void ContentBrowserDataSource::rebuild() {
         };
         scan(*m_root);
     }
-    m_currentFolder = findFolder(m_root.get(), previousPath);
+    m_byName.clear(); // of the old tree: the next search orders the new one
+    m_currentFolder = findFolder(previousPath);
     if (!m_currentFolder) { m_currentFolder = m_root.get(); }
+    setSearch(m_search); // the found entries were of the old tree
     if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->cancelPending(); }
 }
 
 void ContentBrowserDataSource::setCurrentFolder(Folder *folder) {
     if (!folder) { return; }
     m_currentFolder = folder;
+    relist();
     // Outstanding thumbnail requests are about the previous folder; configureCell/prefetch will
     // request new ones.
     if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->cancelPending(); }
 }
 
-ContentBrowserDataSource::Folder *
-ContentBrowserDataSource::findFolder(Folder *node, const Panda::path_t &path) const {
-    if (!node || path.empty()) { return nullptr; }
-    if (node->path == path) { return node; }
-    for (const auto &child : node->children) {
-        if (Folder *found = findFolder(child.get(), path)) { return found; }
+ContentBrowserDataSource::Folder *ContentBrowserDataSource::findFolder(const Panda::path_t &path) const {
+    Entry *entry = findEntry(path);
+    return entry && entry->isFolder ? static_cast<Folder *>(entry) : nullptr;
+}
+
+ContentBrowserDataSource::Entry *ContentBrowserDataSource::findEntry(const Panda::path_t &path) const {
+    if (!m_root || path.empty()) { return nullptr; }
+    // Down the folders that hold the path: the entry is under the one whose path begins its own.
+    Folder *folder = m_root.get();
+    if (folder->path == path) { return folder; }
+    for (;;) {
+        Folder *next = nullptr;
+        for (const auto &child : folder->children) {
+            if (child->path == path) { return child.get(); }
+            const auto mismatch = std::mismatch(child->path.begin(), child->path.end(), path.begin(), path.end());
+            if (mismatch.first == child->path.end()) {
+                next = child.get();
+                break;
+            }
+        }
+        if (!next) { break; }
+        folder = next;
+    }
+    for (FileEntry &file : folder->files) {
+        if (file.path == path) { return &file; }
     }
     return nullptr;
 }
 
-int ContentBrowserDataSource::itemCount() const {
-    return m_currentFolder ? static_cast<int>(m_currentFolder->children.size() + m_currentFolder->files.size())
-                           : 0;
+ContentBrowserDataSource::FileEntry *ContentBrowserDataSource::findAsset(Panda::AssetId assetId) const {
+    if (!m_root || assetId == 0) { return nullptr; }
+    std::vector<Folder *> pending = {m_root.get()};
+    while (!pending.empty()) {
+        Folder *folder = pending.back();
+        pending.pop_back();
+        for (FileEntry &file : folder->files) {
+            if (file.assetId == assetId) { return &file; }
+        }
+        for (const auto &child : folder->children) { pending.push_back(child.get()); }
+    }
+    return nullptr;
 }
 
-int ContentBrowserDataSource::folderCount() const {
-    return m_currentFolder ? static_cast<int>(m_currentFolder->children.size()) : 0;
+int ContentBrowserDataSource::childCount(const Folder &folder) const {
+    return static_cast<int>(folder.children.size() + folder.files.size());
+}
+
+ContentBrowserDataSource::Entry *ContentBrowserDataSource::childAt(Folder &folder, int index) const {
+    const int folders = static_cast<int>(folder.children.size());
+    if (index < 0) { return nullptr; }
+    if (index < folders) { return folder.children[static_cast<size_t>(index)].get(); }
+    const size_t file = static_cast<size_t>(index - folders);
+    return file < folder.files.size() ? &folder.files[file] : nullptr;
+}
+
+void ContentBrowserDataSource::orderByName() {
+    // Folders first, by name; two of one name by folder.
+    m_byName.clear();
+    std::vector<Entry *> files;
+    std::vector<Folder *> pending = {m_root.get()};
+    while (!pending.empty()) {
+        Folder *folder = pending.back();
+        pending.pop_back();
+        for (const auto &child : folder->children) {
+            m_byName.push_back(child.get());
+            pending.push_back(child.get());
+        }
+        for (FileEntry &file : folder->files) { files.push_back(&file); }
+    }
+    const auto byName = [](const Entry *a, const Entry *b) {
+        return a->name != b->name ? nameLess(a->name, b->name) : nameLess(a->path.generic_string(), b->path.generic_string());
+    };
+    std::sort(m_byName.begin(), m_byName.end(), byName);
+    std::sort(files.begin(), files.end(), byName);
+    m_byName.insert(m_byName.end(), files.begin(), files.end());
+}
+
+void ContentBrowserDataSource::setSearch(const std::string &text) {
+    m_search = text;
+    m_found.clear();
+    if (!m_search.empty()) {
+        if (m_byName.empty()) { orderByName(); } // the first search of this tree
+        const std::string query = folded(m_search);
+        for (Entry *entry : m_byName) {
+            if (entry->foldedName.find(query) != std::string::npos) { m_found.push_back(entry); }
+        }
+    }
+    relist();
+    if (auto *thumbnails = Panda::AssetPreviews::shared()) { thumbnails->cancelPending(); }
+}
+
+void ContentBrowserDataSource::relist() {
+    m_listing.clear();
+    if (isSearching()) {
+        m_listing = m_found;
+        return;
+    }
+    if (!m_currentFolder) { return; }
+    m_listing.reserve(static_cast<size_t>(childCount(*m_currentFolder)));
+    for (int i = 0; i < childCount(*m_currentFolder); ++i) { m_listing.push_back(childAt(*m_currentFolder, i)); }
+}
+
+int ContentBrowserDataSource::itemCount() const {
+    return static_cast<int>(m_listing.size());
+}
+
+ContentBrowserDataSource::Entry *ContentBrowserDataSource::entryAt(int index) const {
+    return index >= 0 && index < itemCount() ? m_listing[static_cast<size_t>(index)] : nullptr;
 }
 
 ContentBrowserDataSource::Folder *ContentBrowserDataSource::folderAt(int index) const {
-    if (!m_currentFolder || index < 0 || index >= folderCount()) { return nullptr; }
-    return m_currentFolder->children[index].get();
+    Entry *entry = entryAt(index);
+    return entry && entry->isFolder ? static_cast<Folder *>(entry) : nullptr;
 }
 
 const ContentBrowserDataSource::FileEntry *ContentBrowserDataSource::fileAt(int index) const {
-    if (!m_currentFolder) { return nullptr; }
-    const int fileIndex = index - folderCount();
-    if (fileIndex < 0 || fileIndex >= static_cast<int>(m_currentFolder->files.size())) { return nullptr; }
-    return &m_currentFolder->files[fileIndex];
+    Entry *entry = entryAt(index);
+    return entry && !entry->isFolder ? static_cast<const FileEntry *>(entry) : nullptr;
 }
 
 Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
@@ -151,18 +252,18 @@ Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
 }
 
 int ContentBrowserDataSource::indexOfAsset(Panda::AssetId assetId) const {
-    if (!m_currentFolder || assetId == 0) { return -1; }
-    const int folders = folderCount();
-    for (int i = 0; i < static_cast<int>(m_currentFolder->files.size()); ++i) {
-        if (m_currentFolder->files[i].assetId == assetId) { return folders + i; }
+    if (assetId == 0) { return -1; }
+    for (int i = 0; i < itemCount(); ++i) {
+        const FileEntry *file = fileAt(i);
+        if (file && file->assetId == assetId) { return i; }
     }
     return -1;
 }
 
 int ContentBrowserDataSource::indexOfFolder(const Panda::path_t &path) const {
-    if (!m_currentFolder) { return -1; }
-    for (int i = 0; i < static_cast<int>(m_currentFolder->children.size()); ++i) {
-        if (m_currentFolder->children[static_cast<size_t>(i)]->path == path) { return i; }
+    for (int i = 0; i < itemCount(); ++i) {
+        const Folder *folder = folderAt(i);
+        if (folder && folder->path == path) { return i; }
     }
     return -1;
 }

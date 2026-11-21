@@ -302,7 +302,8 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   - `EditorAppearance` — the theme and the icons of the installed plugins, the fonts of the
     APPEARANCE settings, applied to the UI host.
   - `EditorStatistics` — what the Statistics and Profiler panels and the status of the
-    visibility strip get, at the pace a person reads.
+    visibility strip get, at the pace a person reads. The status is a setting (APPEARANCE →
+    System Status, `EditorAppearanceSettings::showSystemStatus`): off, nothing is sampled for it.
   - The start screen chooses a project by itself: `StartScreenController` opens, creates and
     forgets projects through the loader and says what came of it in its status line.
   The world on screen is not a state of its own: `shownWorld()` is the playing copy while the
@@ -403,7 +404,12 @@ of a tab — and of an asset in the Content Browser — starts with the file: it
 copies it), Open in External Editor and Reveal in File Manager. The external editor is a
 setting of the editor scope (`externalTools.editor`: a command such as `zed`, a path, or empty
 for the system default; `SystemTools::openInEditor`); a binary asset opens its text sidecar
-(`.pmeta`), a shader opens both files of the pair.
+(`.pmeta`), a shader opens both files of the pair. A double click on an asset the editor has no
+form for — a shader, a registered file of no kind — opens it there too
+(`ContentBrowserOutput::contentDidRequestOpenExternally`), and its form in the inspector says what
+it is and has the same button: the editor has no text editor and does not grow one — a shader is
+read and written in the external editor, the rest of the engine only names it (the field of a
+material, the picker).
 
 A file may be opened at a line (`EditorHost::openInExternalEditor(path, line, column)`): the
 output of a build names places, and each is a link (`BuildLogView`, the list of lines the
@@ -516,7 +522,26 @@ the disk and nothing else — it has no id and no sidecar; deleting one
 (`contentDidRequestDeleteFolder`) removes the assets under it through the asset database first,
 so the files derived from them and the loaded objects go too, and then the directory.
 
-The Content Browser is a drag source (`ContentBrowserView`, the grid). A registered file is
+The Content Browser has two modes, Finder's "as Icons" and "as List" (the buttons at the right of
+its toolbar; `ContentBrowserView::Mode`). Icons: the folder tree on the left — the button at the
+left of the toolbar hides it —, the breadcrumbs of the current folder in the toolbar, the grid of
+the folder. List: one tree of every folder and file, the project panel of VS Code and Zed: a
+double click opens and closes a folder, File → New puts an asset into the folder of the selected
+row. The mode and the folder tree are remembered with the layout (`DockLayoutState`:
+`contentBrowserView`, `contentBrowserFolders`). The search of the toolbar looks through all of
+Assets by name, in any case: the grid (or the list) shows what it found as one flat set, folders
+first, by name as a person reads it, and the folder of each is its tooltip (a detail of the row);
+a folder chosen in the tree, a found folder opened, or an asset revealed that the search did not
+find ends the search. The order of the result is made once per scan of the tree, by its first
+search (`ContentBrowserDataSource::m_byName`): a key filters it and sorts nothing (20 000 files in
+a debug build: 1 ms a key, not the 120 of a sort). Find (⌘F) is of the panel that has the
+keyboard: the Content Browser's search when the focus is in it (`contentBrowser.search`, on the
+same chord before `hierarchy.search`), the Hierarchy's otherwise. A rescan keeps, by path, the
+folders that were open and the rows that were selected in both trees — their rows are entries
+of the tree, which the scan makes anew. Neither the Content Browser nor the Hierarchy has a
+foot that counts what they show: a count nobody asked for is not drawn.
+
+The Content Browser is a drag source (`ContentBrowserView`, the grid and the list). A registered file is
 dragged as `asset.<kind>` with its id — a selection of several kinds as `asset`. A folder is
 dragged as what it holds: `folder` with the ids of every asset in it and under it, in the order
 the browser shows names (`nameLess`: the case does not matter, a run of digits is a number). The
@@ -716,7 +741,13 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   stays live. A search field takes the first Escape for itself — it clears what was typed
   (`TextField::setClearsOnEscape`) — and an empty one lets the key through: the picker or the
   palette closes, a panel gives the keyboard back to its list. Every search field of the editor
-  is set so (the pickers and the palettes, the Hierarchy, the Keymap, the Plugins).
+  is set so (the pickers and the palettes, the Hierarchy, the Content Browser, the Keymap, the
+  Plugins, a long combobox). A searched list keeps its size while it is filtered, so the field
+  does not move under the typing. The shader of a material is a field like the other asset fields
+  (`AssetWell`): a drop from the Content Browser, the picker — the shaders built into the engine
+  first (`EditorHost::isBuiltinAsset`: Unlit, Lit, PBR, the modules'; a name and no file, so a
+  click on one opens the picker instead of revealing it), then those of the project —, and no
+  clearing (`AssetWell::setRequired`): a material always has a shader.
 - **Modal**: confirmations (`showConfirmDialog`; a destructive action gets a button in the danger
   color), About, and FORMS of one-off operations with parameters. Domain forms live in the editor
   part of their module (the first one is `TerrainDialogs` in `Modules/Terrain/editor`): a

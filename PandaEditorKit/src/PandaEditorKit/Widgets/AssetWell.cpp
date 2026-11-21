@@ -1,6 +1,7 @@
 #include "PandaEditorKit/Widgets/AssetWell.hpp"
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
+#include "PandaEditorKit/EditorExtensions.hpp"
 #include "PandaEditorKit/EditorHost.hpp"
 #include "PandaEditorKit/Widgets/Icons.hpp"
 
@@ -15,20 +16,18 @@ namespace {
     constexpr float WELL_HEIGHT = 28.f;  // = the height of text fields
     constexpr float PREVIEW_SIZE = 20.f; // square slot of the thumbnail/type icon in the field
 
+    // The icon of the kind as the Content Browser shows it (EditorExtensions::assetKinds).
     const char *iconForKind(const std::string &kind) {
-        if (kind == "texture") { return Ic::FilePng; }
-        if (kind == "material") { return Ic::Material; }
-        if (kind == "mesh") { return Ic::Mesh; }
-        if (kind == "postfx") { return Ic::Sprite; }
-        if (kind == "font") { return Ic::Font; }
-        return Ic::FileGeneric;
+        const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
+        return ui != nullptr && !ui->icon.empty() ? ui->icon.c_str() : Ic::FileGeneric;
     }
 
 } // namespace
 
-// The "preview + name" zone: a click reveals the asset, a double click selects it (an empty field —
-// opens the picker). A separate Control so that the replace/reset buttons are not part of the
-// clickable area of the value.
+// The "preview + name" zone: a click reveals the asset, a double click selects it (an empty field,
+// and one that names an asset built into the engine — nowhere to reveal it — opens the picker). A
+// separate Control so that the replace/reset buttons are not part of the clickable area of the
+// value.
 class AssetWell::MainZone final : public Control {
 public:
     explicit MainZone(AssetWell *owner)
@@ -56,7 +55,7 @@ protected:
         const uint32_t asset = m_owner->m_assetId;
         const bool doubleClick = m_doubleClick;
         m_doubleClick = false; // the next activation (the keyboard) is a plain click again
-        if (!asset) {
+        if (!asset || editorHost().isBuiltinAsset(Panda::AssetId(asset))) {
             m_owner->openPicker();
         } else if (doubleClick) {
             if (m_owner->m_onSelect) { m_owner->m_onSelect(asset); }
@@ -162,10 +161,17 @@ void AssetWell::describeAccessibility(PandaUI::Accessibility &accessibility) con
     accessibility.value = m_label->getText();
 }
 
+void AssetWell::setRequired(bool required) {
+    m_required = required;
+    refresh();
+}
+
 void AssetWell::refresh() {
     const std::string name = (m_assetId && m_nameFor) ? m_nameFor(m_assetId) : std::string();
-    m_label->setText(name.empty() ? ("None (" + m_kind + ")") : name);
+    // An id with no asset behind it (the file is gone) is a reference to nothing, not an empty one.
+    m_label->setText(!name.empty() ? name : m_assetId ? "Missing (" + m_kind + ")" : "None (" + m_kind + ")");
     m_label->setTextRole(name.empty() ? TextRole::Muted : TextRole::Primary);
+    m_main->setTooltip(m_assetId && editorHost().isBuiltinAsset(Panda::AssetId(m_assetId)) ? "Built into the engine" : "");
 
     // Preview: the host's thumbnail (FBO → flip on GL); none — the type icon. The first request puts
     // the id into the render queue, the finished thumbnail is picked up by draw (see below).
@@ -182,9 +188,9 @@ void AssetWell::refresh() {
         m_preview->setTintColor(m_assetId ? Theme::current().textPrimary : Theme::current().textMuted);
     }
 
-    const bool hasValue = m_assetId != 0;
-    m_clearButton->setHidden(!hasValue);
-    m_clearButton->layout().setDisplay(hasValue ? Display::Flex : Display::None);
+    const bool clearable = m_assetId != 0 && !m_required;
+    m_clearButton->setHidden(!clearable);
+    m_clearButton->layout().setDisplay(clearable ? Display::Flex : Display::None);
 }
 
 bool AssetWell::wantsThumbnail() const {

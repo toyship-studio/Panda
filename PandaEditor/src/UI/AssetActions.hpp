@@ -34,6 +34,7 @@ public:
     void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) override;
     void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestOpenWorld(Panda::AssetId world) override;
+    void contentDidRequestOpenExternally(Panda::AssetId asset) override;
     CreateActions contentCreateActions(const Panda::path_t &directory) override;
     void contentDidRequestRename(Panda::AssetId asset, const std::string &newName) override;
     void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) override;

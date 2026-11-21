@@ -26,6 +26,7 @@ one per PNG of the editor. For the current preview:
 | Transport and edits | `play`, `stop`, `simulate`, `undo`, `redo`, `save`, `reload`, `export`, `plus`, `clear`, `copy`, `trash`, `more-h` |
 | Gizmo | `gizmo-move`, `gizmo-rotate`, `gizmo-scale`, `space-local`, `space-world`, `maximize`, `restore` |
 | Navigation | `home`, `folder`, `folder-open`, `chevron-left`, `chevron-right`, `chevron-up` |
+| Views | `view-grid`, `view-list`, `sidebar` |
 | Objects and assets | `entity-cube`, `light-sun`, `light-point`, `camera`, `mesh`, `material`, `sprite`, `script`, `audio`, `globe` |
 | Status | `info`, `warning`, `error` |
 | Settings and tools | `tune`, `configure`, `hammer`, `plugins` |

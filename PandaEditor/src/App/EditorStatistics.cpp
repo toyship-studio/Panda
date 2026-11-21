@@ -13,7 +13,15 @@
 
 namespace Panda {
 
-void EditorStatistics::updateStatus(double deltaTime, Editor::EditorController *controller) {
+void EditorStatistics::updateStatus(double deltaTime, Editor::EditorController *controller, bool shown) {
+    if (!shown) {
+        // Off in the settings: nothing is sampled, and the strip lets go of what it showed.
+        if (m_statusShown && controller != nullptr) { controller->setStripStatusText(std::string()); }
+        m_statusShown = false;
+        m_statusTimer = 0.0;
+        m_statusFrames = 0;
+        return;
+    }
     m_statusFrames++;
     m_statusTimer += deltaTime;
     if (m_statusTimer < 0.5) { return; }
@@ -34,6 +42,7 @@ void EditorStatistics::updateStatus(double deltaTime, Editor::EditorController *
         gigabytes(system.residentBytes), gigabytes(gpu.allocatedBytes), system.cpuPercent, gpuPercent, gpu.frameMs
     );
     controller->setStripStatusText(text);
+    m_statusShown = true;
 }
 
 void EditorStatistics::updateFrame(
