@@ -35,8 +35,20 @@ public:
     void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) override;
     void contentDidRequestOpenWorld(Panda::AssetId world) override;
     void contentDidRequestOpenExternally(Panda::AssetId asset) override;
+    void contentDidRequestImportFiles(const std::vector<Panda::path_t> &files, const Panda::path_t &directory) override;
+    void contentDidRequestImportDialog(const Panda::path_t &directory) override;
+    void contentDidShowFolder(const Panda::path_t &folder) override;
+    void contentDidRequestMove(const std::vector<Panda::path_t> &paths, const Panda::path_t &directory) override;
+
+private:
+    // A file or a folder of Assets to another path, the documents following it (FileDocuments::fileMoved);
+    // false — the log says why.
+    bool movePath(const Panda::path_t &from, const Panda::path_t &to);
+
+public:
+    void contentDidRequestDuplicate(const std::vector<Panda::AssetId> &assets) override;
     CreateActions contentCreateActions(const Panda::path_t &directory) override;
-    void contentDidRequestRename(Panda::AssetId asset, const std::string &newName) override;
+    void contentDidRequestRename(const Panda::path_t &path, const std::string &newName) override;
     void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) override;
     void contentDidRequestDeleteFolder(const Panda::path_t &folder) override;
 

@@ -16,7 +16,8 @@ and background jobs (`PandaAsync`).
 - `Fern`: the platform layer: windows, OS events (the input, the focus and the minimizing of a
   window — `WindowFocus` / `WindowLostFocus`, `WindowMinimized` / `WindowRestored`), graphics
   context, native menu, the file watch (`Fern::FileWatcher`, below), the writing of a file whole
-  or not at all (`Fern::writeFileAtomically`, below), a haptic tap (`Fern::playHaptic`: iOS plays
+  or not at all (`Fern::writeFileAtomically`, below), the lock of a file (`Fern::FileLock`,
+  below), a haptic tap (`Fern::playHaptic`: iOS plays
   it, the desktops have no motor in the hand and do nothing), and the network layer `Fern::Net`
   on the stacks of the systems
   (`context/networking.md`); it links PandaAsync for the completions of requests. Every input
@@ -52,9 +53,14 @@ and background jobs (`PandaAsync`).
   the old file is never left cut. A link is written through, the permissions of the old file
   stay, a read-only file is refused as a write in place would be. Every file the editor writes
   for the user goes through it (`PandaEditor/src/Project/System/JsonFiles.hpp` for the JSON
-  ones). The smoke test `FernFilesSmoke` (`scripts/fern_files_run_smoke.*`) checks the write
-  and runs the system's backend of the watch and the scan over a folder of its own; CI runs it
-  on the three systems.
+  ones).
+  `Fern::FileLock` (`Fern/Files/FileLock.hpp`) holds an exclusive lock of a file — `flock` on
+  macOS, iOS and Linux, `LockFileEx` on Windows — that the system lets go when the process ends
+  in any way, a crash and a kill too, and that no process started from this one inherits
+  (`O_CLOEXEC`, a handle without inheritance): what tells a folder whose owner is alive from one
+  a dead process left (the backups of the editor). The smoke test `FernFilesSmoke`
+  (`scripts/fern_files_run_smoke.*`) checks the write and the lock and runs the system's backend
+  of the watch and the scan over a folder of its own; CI runs it on the three systems.
 - `Miren`: the renderer abstraction with Metal, Direct3D 11 and OpenGL/GLES backends. The backend
   is fixed at build time by the CMake option `PANDA_SHADER_BACKEND` (`cmake/shader_bake.cmake`):
   Metal is the default on macOS, D3D11 on Windows, OpenGL elsewhere (GLES on mobile targets). The
@@ -250,8 +256,8 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   `EntityActions` — the Hierarchy and the entity tabs (create, duplicate, copy and paste, delete,
   reparent, rename, the transform, components, scripts; every edit a command of the world's
   history; and the prefabs: instances, Create Prefab, Unpack, Revert, Apply —
-  `context/prefabs.md`, "The editor"); `AssetActions` — the Content Browser (select, create, rename, reimport, delete —
-  assets and folders — and the question before a deletion); `WorldTabs` — the open worlds as
+  `context/prefabs.md`, "The editor"); `AssetActions` — the Content Browser (select, create, rename, move, duplicate, import of
+  files, reimport, delete — assets and folders — and the question before a deletion); `WorldTabs` — the open worlds as
   tabs of the center; `Panda::ProjectBuilds` — the CMake panel. The toolbar and the viewport
   overlay are answered by the coordinator itself. A part changes the model and EXPLICITLY asks
   the workspace to update what shows it (`refreshFromWorld`, `selectionChanged`,
@@ -394,6 +400,29 @@ Three operations are written once over them, in `DocumentActions`, whatever the 
   writes them, Don't Save lets the action drop them (the project settings, which outlive the
   action, go back to their file), Cancel stops the action. A save nobody asked for (the session written on exit or project
   switch) leaves a settings file changed on disk alone.
+- **Backups** (`FileDocuments::backUp`, `DocumentBackups`): the game code runs in the editor's
+  process, and a crash of it — or of the editor, or a kill — must not take the unsaved edits
+  along. Every open world and prefab with unsaved edits has a copy of its text aside: not in the
+  project — in the user data directory, a folder per session of the project
+  (`Backups/<project>-<hash of its path>/session-<time>/`: the texts and `backups.json`, which
+  names the file of each copy, or none for a world that has no file yet, and the time of that
+  file the edits were made over). The session holds the lock of its folder (`Fern::FileLock`,
+  which the system lets go however the process ends). Copies are written when Play starts and
+  before a script build is loaded — the moments new game code runs — and at the pauses of the
+  work (`EditorLayer::updateBackups`): the serialization is on the main thread and grows with the
+  world (20 000 entities: 1.8 s in a debug build), so it waits for a pause of the input, and what
+  the last copy cost sets how long — ten seconds apart at least, a hundredth of the time at most,
+  a pause three times the copy; a cheap copy also comes within a minute to a user who never
+  pauses. A world that did not change since its copy is not written again (`World::getRevision`).
+  Save, Reload and closing a world take its copy away; an orderly end of the session — Don't Save
+  included — removes the folder. A folder whose lock is free was left by a session that did not
+  end so: when the project opens, the question names its documents (Restore / Discard; Escape
+  asks again at the next open). Restored, a copy is unsaved edits of its document — the open one
+  of the file, else a new document of it, a new world for one without a file — made over the
+  file as it was then: a file changed on disk since is asked about at Save, the usual conflict.
+  Another editor with the same project open keeps its own folder, locked, and is never taken for
+  a crash. The copies cover the worlds and prefabs, where the long work is; the edits of an asset
+  form and of the settings are not copied.
 
 **Tab documents** (`Document`, `PandaEditorKit/Document.hpp`) are what the tab chrome
 (`EditorTabs` over `DockManager`) needs: a title and an icon, a view, `isDirty`, `save`,
@@ -505,7 +534,9 @@ and one writer with the world file. One project per process: File → New Window
 instance on the start screen (`SystemTools::startNewInstance`, `--new-window`); the instances
 share `settings.json` (guarded by the disk stamp) and `session.json` (the recent projects of
 the other instances are merged on write). An instance says which project it holds
-(`EditorLayer::syncWindowIdentity`): the window title is `<project> — <world file>`, and the
+(`EditorLayer::syncWindowIdentity`): the window title is `<project> — <world file>`, the window
+says whether a document is unsaved (the dot in its close button on macOS, a bullet after the title
+elsewhere — `Fern::Window::setModifiedState`, looked at four times a second), and the
 icon of the running application carries the project name (`Fern::setApplicationIconLabel`: on
 macOS a band over the Dock tile, drawn into `NSApplication.applicationIconImage`; the other
 desktops group the windows of an application under one icon and show the titles).
@@ -528,7 +559,8 @@ left of the toolbar hides it —, the breadcrumbs of the current folder in the t
 the folder. List: one tree of every folder and file, the project panel of VS Code and Zed: a
 double click opens and closes a folder, File → New puts an asset into the folder of the selected
 row. The mode and the folder tree are remembered with the layout (`DockLayoutState`:
-`contentBrowserView`, `contentBrowserFolders`). The search of the toolbar looks through all of
+`contentBrowserView`, `contentBrowserFolders`), the folder it shows with the session of the
+project (`ProjectSession::contentBrowserFolder`): a project opens where it was left. The search of the toolbar looks through all of
 Assets by name, in any case: the grid (or the list) shows what it found as one flat set, folders
 first, by name as a person reads it, and the folder of each is its tooltip (a detail of the row);
 a folder chosen in the tree, a found folder opened, or an asset revealed that the search did not
@@ -536,10 +568,30 @@ find ends the search. The order of the result is made once per scan of the tree,
 search (`ContentBrowserDataSource::m_byName`): a key filters it and sorts nothing (20 000 files in
 a debug build: 1 ms a key, not the 120 of a sort). Find (⌘F) is of the panel that has the
 keyboard: the Content Browser's search when the focus is in it (`contentBrowser.search`, on the
-same chord before `hierarchy.search`), the Hierarchy's otherwise. A rescan keeps, by path, the
+same chord before `hierarchy.search`), the Hierarchy's otherwise. Delete (Backspace) and F2 work
+the same way: with the keyboard in the browser they mean its selection — what is selected goes
+after the question of the part that deletes, a file the editor renames gets the rename dialog
+under its cell (`contentBrowser.delete`, `contentBrowser.rename`, before the entity commands of
+those keys). ⌘D (and Duplicate in the menu of an asset) copies the selected assets next to
+them: a free name ("red 2.mat"; the pair of a shader as a pair), a new id and the settings of
+the sidecar — the shader of a material, the import of a texture (`contentDidRequestDuplicate`). A rescan keeps, by path, the
 folders that were open and the rows that were selected in both trees — their rows are entries
 of the tree, which the scan makes anew. Neither the Content Browser nor the Hierarchy has a
-foot that counts what they show: a count nobody asked for is not drawn.
+foot that counts what they show: a count nobody asked for is not drawn. The assets selected
+anywhere — a reference field, Go to, an import — are highlighted where the browser shows them
+(`ContentBrowserView::showSelectedAssets`).
+
+Files of the file manager dropped onto the window (Fern `FilesDropped` on the three desktops →
+`EditorLayer::dropFiles`) go into the folder under the point — a folder cell of the grid, a
+folder row of a tree, the folder of a file under it — or into the folder the Content Browser
+shows; File → Import Files and the menu of the background of the browser choose them in the
+dialog of the system (`SystemTools::openFilesDialog`). A copy keeps its name or takes a free one
+("bark 2.png"; a shader keeps the pair of its name, "water 2.vert.hlsl"); a dropped folder comes
+with what is in it but the sidecars (the ids of another project: the copies are new assets) and
+the hidden files; a file of the project itself is not copied again. The scan registers them
+(`rescanProject`), the first is shown in its folder and they are selected
+(`AssetActions::contentDidRequestImportFiles`). An agent drops through the `pointer` tool
+(action `drop` with `files`), the same path.
 
 The Content Browser is a drag source (`ContentBrowserView`, the grid and the list). A registered file is
 dragged as `asset.<kind>` with its id — a selection of several kinds as `asset`. A folder is
@@ -551,6 +603,23 @@ folder. A selection of several assets is dragged into the form of an entity whos
 (pinned): selecting assets opens their own preview tab next to it and leaves a kept tab alone.
 A structural edit of a form — a script added, a row of a list — rebuilds the tab that asked
 (`EditorTabs`), not the tab of the selection: the selection may be those assets.
+
+What is dragged within the browser onto a folder — a folder cell of the grid, a folder row of
+either tree, a crumb of the path — moves there; the folder under the pointer wears the drop
+border meanwhile (`CollectionView::setDropHighlightIndex`, `TreeView::setDropHighlightItem`).
+F2 (Rename in the menu) renames any file of an asset and any folder but Assets itself; the
+extension stays. Both are one operation of the registry (`AssetHandlerEditor::movePath`): every
+file of an asset takes the new name — the pair of a shader as a pair, whichever of the two was
+named — and its sidecar goes along, so the id stays and whatever refers to the asset (a
+material, a world, a field of a script) still finds it; a folder moves as one move of the system
+and the assets under it follow. The files derived from the old path — the cooked texture, the
+compiled shader — go and are made again when needed. A glTF that names files beside it (its
+buffers, its pictures) moves only with its folder: alone it would lose them; renamed in place it
+keeps them. An open world follows its file — its tab takes the name — and so does the start
+world of `project.json` (`FileDocuments::fileMoved`): written at once, or with the next Save
+when the settings have an edit of their own that is not saved. After a move the selection stays
+on the moved assets; the icons stay in the folder they show and the moved cells leave it (Finder,
+Unity), the list opens the folder they went into (VS Code).
 
 Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
 double click or an edit). A world is a document, not an asset with parameters: a click on a
@@ -668,6 +737,11 @@ Unity's Scene and Game views:
   `EditorViewports::beginFrame`; `takePointer` → the gizmo's `InputState` and
   `ViewportToolFrame::pointerPosition` / `pointerDown` of the tools). The camera therefore reads
   no input of its own, and the editor keeps no flags about whose input it is.
+  The pointer carries the primary key (`ScenePointer::snap`: ⌘ on macOS, Ctrl elsewhere): while
+  it is held a drag of the gizmo goes by steps counted from where the drag began — Unity's
+  increment snap — 0.25 m, 15° and a tenth of the scale by default (`snapMove`, `snapRotate`,
+  `snapScale` of the `viewport` section of the editor settings; `Gizmos::setSteps`). The
+  tooltips of the three tools name their keys from the keymap and that key.
 - `EditorLayer` keeps the worlds, `PlaySession` the game that plays; `EditorViewports` owns the view of the world
   (`WorldView`: the HDR frame and its look), the targets of the editor passes (`EditorPassTargets`:
   the selection mask, the id buffer), the surfaces, the editor camera, the gizmo and the
@@ -747,7 +821,9 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   (`AssetWell`): a drop from the Content Browser, the picker — the shaders built into the engine
   first (`EditorHost::isBuiltinAsset`: Unlit, Lit, PBR, the modules'; a name and no file, so a
   click on one opens the picker instead of revealing it), then those of the project —, and no
-  clearing (`AssetWell::setRequired`): a material always has a shader.
+  clearing (`AssetWell::setRequired`): a material always has a shader. A change of the shader is
+  a step of the history of the material like a field (`SetMaterialShaderCommand`): undo gives back
+  the old shader and the values its fields had.
 - **Modal**: confirmations (`showConfirmDialog`; a destructive action gets a button in the danger
   color), About, and FORMS of one-off operations with parameters. Domain forms live in the editor
   part of their module (the first one is `TerrainDialogs` in `Modules/Terrain/editor`): a
@@ -847,6 +923,15 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   build, which loads the scripts when it is done (`toolbarDidTapPlay`). A project whose
   scripts are not built is not an error at open — one warning says where to build them
   (`ProjectLoader::reloadScriptsDll`).
+- **Play plays the scripts as they are written.** When a source of the scripts (`src/`, their
+  `CMakeLists.txt`) or the SDK they are built against (its script library, the Bamboo headers: an
+  update of the editor, a build of the engine — the embedded SDK keeps the times of what did not
+  change, `cmake/sync_panda_sdk.cmake`) was written after the library was built
+  (`ProjectLoader::isScriptsBuildBehind`),
+  Play — the toolbar, F5, the `play` tool — builds them first and the game starts when the build
+  is done, as an IDE builds before it runs (`EditorLayer::buildBeforePlay`); the CMake panel shows
+  the build. A build that fails starts nothing: the user is asked whether the last build will do
+  (Play Last Build, what Visual Studio asks), an agent gets the error with the log.
 - **The start screen** lists the recent projects in a scroll (any number fits the window) and
   marks a project whose folder is gone instead of failing on the click.
 
@@ -911,6 +996,20 @@ What follows from the rules:
 
 ### Frame
 
+- **The loop of a desktop application** (`Application::loop`; iOS takes its frames from the
+  display, `Fern::setFrameCallback`) makes a frame every 1/`maximumFps` at most: the thread
+  sleeps till a moment before the frame is due and the display's synchronization in
+  `Miren::frame` keeps the pace — it used to spin on the clock, a core busy for nothing where the
+  display does not hold the frame. An application with nothing going on that nobody looks at
+  asks for rest (`setRestInterval`): the next frame comes after the interval, or at once when an
+  event of a window comes first (`Fern::waitEvents` — a wait the system cuts short for its own
+  reasons is made again, so only an event of a window wakes the frame). `deliveredCompletions`
+  says whether the background jobs handed results to the main thread in the last frame. The
+  editor rests behind another application (`EditorLayer::updatePace`: not in front, not playing,
+  no build, no delivering job, no MCP request for two seconds) at ten frames a second — 3 % of a
+  core where the display's 120 took a half in a debug build — and draws every frame in front,
+  where materials that move with time have to move smoothly. `PandaSmoke` ("a wait for events")
+  holds the wait on the three desktops.
 - A frame is two calls: the world is simulated, then a view draws it.
 - **`World::update(deltaTime)` is the simulation**, and only that. It takes the game time of the
   frame (the real time, capped) and runs the frame phases over the world systems (`FramePhase`,
@@ -1297,7 +1396,7 @@ name (the template names the CMake projects and targets the same). A folder whos
 loader, the File menu, the start screen and the `open_project` tool). A build tree cmake made for another folder (the project was copied or moved) or, for
 the scripts, against another PandaSDK (another editor) is removed and made again before the
 build: its cache would build the headers of one SDK against the libraries of another. The two have two faces, because they are two different tasks. The
-scripts are the inner loop — edit a script, press Build, the library is loaded, play — and live
+scripts are the inner loop — edit a script, press Play: the library is built, loaded and played — and live
 in a tab of the bottom dock, `UI/Panels/CMakePanel`. The export of the game is a task of its own,
 done now and then, with choices before it and a result after it: it has a window of its own,
 `UI/ExportWindow` (below).

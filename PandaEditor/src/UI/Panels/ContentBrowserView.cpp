@@ -50,6 +50,13 @@ namespace {
         return it != registry.end() ? assetTypeString(it->second.type) : "text";
     }
 
+    // The name a rename starts from: a folder's own, a file's without its extension (a shader
+    // pair's without the compound one).
+    std::string renameStem(const Panda::path_t &path, bool folder) {
+        const std::string name = path.filename().string();
+        return folder ? name : Panda::AssetHandlerEditor::splitName(name).first;
+    }
+
     // A kind the editor has a form for (EditorExtensions::assetKinds); the rest is text it does not
     // edit, and a double click hands it to the external editor.
     bool hasForm(const std::string &kind) {
@@ -76,6 +83,11 @@ namespace {
             return ui->icon.c_str();
         }
         return Ic::FileGeneric;
+    }
+
+    bool isInside(const Panda::path_t &path, const Panda::path_t &folder) {
+        const auto mismatch = std::mismatch(folder.begin(), folder.end(), path.begin(), path.end());
+        return mismatch.first == folder.end();
     }
 
     std::shared_ptr<Label> makeNothingFound() {
@@ -175,8 +187,9 @@ namespace {
 
     class Crumb final : public Control {
     public:
-        Crumb(const std::string &text, bool current, std::function<void()> onClick)
-            : m_current(current)
+        Crumb(const std::string &text, Panda::path_t folder, bool current, std::function<void()> onClick)
+            : m_folder(std::move(folder))
+            , m_current(current)
             , m_onClick(std::move(onClick)) {
             setCursor(Cursor::PointingHand);
             setBackgroundColor(Color(0x00000000));
@@ -199,11 +212,17 @@ namespace {
             applyStyle();
         }
 
+    public:
+        const Panda::path_t &folder() const { // what a drop onto the crumb goes into
+            return m_folder;
+        }
+
     private:
         void applyStyle() {
             const bool hot = hasControlState(ControlState::Hovered) || hasControlState(ControlState::Highlighted);
             m_label->setTextRole((m_current || hot) ? TextRole::Primary : TextRole::Secondary);
         }
+        Panda::path_t m_folder;
         bool m_current;
         std::shared_ptr<Label> m_label;
         std::function<void()> m_onClick;
@@ -385,6 +404,11 @@ void ContentBrowserView::configureFolderTree() {
         static_cast<FolderCell &>(cell).setText(toEntry(item)->name);
     };
     source.titleForItem = [](TreeItem item) { return toEntry(item)->name; };
+    source.fillDragPayload = [this](DragPayload &payload, const std::vector<TreeItem> &items) {
+        std::vector<Entry *> entries;
+        for (TreeItem item : items) { entries.push_back(toEntry(item)); }
+        return fillDragPayload(payload, entries);
+    };
     m_tree->setDataSource(source);
     m_tree->setExpanded(toItem(m_dataSource.root()), true);
     m_tree->setOnSelectionChanged([this](TreeView &tree) {
@@ -564,6 +588,67 @@ void ContentBrowserView::applyMode() {
     setNeedsLayout();
 }
 
+void ContentBrowserView::showRenameDialog(const Entry &entry, Point at) {
+    const Panda::path_t path = entry.path;
+    showNameDialog(getContext(), at, "Rename", renameStem(path, entry.isFolder), [this, path](const std::string &newName) {
+        if (m_output) { m_output->contentDidRequestRename(path, newName); }
+    }, "Rename");
+}
+
+ContentBrowserView::Folder *ContentBrowserView::selectedFolder() const {
+    Entry *entry = nullptr;
+    if (m_mode == Mode::List) {
+        if (m_list->selectedItems().size() == 1) { entry = toEntry(m_list->selectedItems().front()); }
+    } else if (m_grid->selectedIndices().size() == 1) {
+        entry = m_dataSource.entryAt(m_grid->selectedIndices().front());
+    }
+    return entry && entry->isFolder && entry != m_dataSource.root() ? static_cast<Folder *>(entry) : nullptr;
+}
+
+bool ContentBrowserView::requestDeleteSelection() {
+    if (!m_output) { return false; }
+    const std::vector<Panda::AssetId> assets = selectedAssets();
+    if (!assets.empty()) {
+        m_output->contentDidRequestDelete(assets);
+        return true;
+    }
+    if (Folder *folder = selectedFolder()) {
+        m_output->contentDidRequestDeleteFolder(folder->path);
+        return true;
+    }
+    return false;
+}
+
+bool ContentBrowserView::requestDuplicateSelection() {
+    const std::vector<Panda::AssetId> assets = selectedAssets();
+    if (assets.empty() || !m_output) { return false; }
+    m_output->contentDidRequestDuplicate(assets);
+    return true;
+}
+
+bool ContentBrowserView::requestRenameSelection() {
+    // One asset, or one folder.
+    Entry *entry = nullptr;
+    const std::vector<Panda::AssetId> assets = selectedAssets();
+    if (assets.size() == 1) {
+        entry = m_dataSource.findAsset(assets.front());
+    } else if (assets.empty()) {
+        entry = selectedFolder();
+    }
+    if (entry == nullptr) { return false; }
+    // The dialog opens under the cell (the row) of the entry, or at the top of the browser.
+    Rect frame;
+    if (m_mode == Mode::List) {
+        frame = m_list->frameOfItem(toItem(entry));
+    } else {
+        frame = m_grid->frameOfIndex(entry->isFolder ? m_dataSource.indexOfFolder(entry->path)
+                                                     : m_dataSource.indexOfAsset(static_cast<FileEntry *>(entry)->assetId));
+    }
+    if (frame.size.width <= 0.f) { frame = getWorldFrame(); }
+    showRenameDialog(*entry, Point(frame.origin.x, frame.origin.y + frame.size.height));
+    return true;
+}
+
 void ContentBrowserView::focusSearch() {
     Context *context = getContext();
     if (context == nullptr) { return; }
@@ -682,7 +767,12 @@ void ContentBrowserView::setCurrentFolder(Folder *folder, bool notify) {
     for (Folder *node = folder; node; node = node->parent) { m_tree->setExpanded(toItem(node), true); }
     m_tree->setSelectedItem(toItem(folder));
     rebuildBreadcrumb();
+    if (m_output) { m_output->contentDidShowFolder(folder->path); }
     if (notify && m_output) { m_output->contentDidSelectAssets({}); } // navigation clears the file selection
+}
+
+void ContentBrowserView::showFolder(const Panda::path_t &folder) {
+    if (Folder *found = m_dataSource.findFolder(folder)) { setCurrentFolder(found, false); }
 }
 
 void ContentBrowserView::activate(Entry *entry) {
@@ -724,7 +814,8 @@ std::vector<Panda::AssetId> ContentBrowserView::selectedAssets() const {
     const auto add = [&ids](const Entry *entry) {
         if (entry && !entry->isFolder) {
             const Panda::AssetId id = static_cast<const FileEntry *>(entry)->assetId;
-            if (id != 0) { ids.push_back(id); }
+            // Once: the two files of a shader pair are cells of one asset.
+            if (id != 0 && std::find(ids.begin(), ids.end(), id) == ids.end()) { ids.push_back(id); }
         }
     };
     if (m_mode == Mode::List) {
@@ -738,6 +829,18 @@ std::vector<Panda::AssetId> ContentBrowserView::selectedAssets() const {
 void ContentBrowserView::thumbnailDidBecomeReady(Panda::AssetId assetId) {
     const int index = m_dataSource.indexOfAsset(assetId);
     if (index >= 0) { m_grid->reconfigureItem(index); }
+}
+
+void ContentBrowserView::showSelectedAssets(const std::vector<Panda::AssetId> &assets) {
+    std::vector<int> indices;
+    std::vector<TreeItem> rows;
+    for (Panda::AssetId id : assets) {
+        const int index = m_dataSource.indexOfAsset(id);
+        if (index >= 0) { indices.push_back(index); }
+        if (FileEntry *file = m_dataSource.findAsset(id)) { rows.push_back(toItem(file)); }
+    }
+    m_grid->setSelectedIndices(indices);
+    m_list->setSelectedItems(rows);
 }
 
 void ContentBrowserView::clearAssetSelection() {
@@ -774,6 +877,7 @@ bool ContentBrowserView::fillDragPayload(DragPayload &payload, const std::vector
         };
         collect(collect, folder);
         payload.type = "folder";
+        payload.files = {Panda::utf8Path(folder.path)};
         payload.ghostText = folder.name;
         return true;
     }
@@ -793,6 +897,7 @@ bool ContentBrowserView::fillDragPayload(DragPayload &payload, const std::vector
             uniform = false;
         }
         payload.items.push_back(static_cast<std::uint64_t>(file.assetId));
+        payload.files.push_back(Panda::utf8Path(file.path)); // a drop onto a folder of the browser moves them
     }
     if (payload.items.empty()) { return false; }
     payload.type = (uniform && !kind.empty()) ? "asset." + kind : "asset";
@@ -840,6 +945,9 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
         if (directory.empty()) { return; } // no project open
         addCreateItems(*menu, directory, "New ");
         menu->addSeparator();
+        menu->addItem("Import Files", [this, directory] {
+            if (m_output) { m_output->contentDidRequestImportDialog(directory); }
+        });
         menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
     } else if (entry->isFolder) {
         const Panda::path_t directory = entry->path;
@@ -856,6 +964,9 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
         addCreateItems(*create, directory, "");
         menu->addSubmenu("New", create);
         if (!root) {
+            menu->addItem("Rename", [this, directory, position] {
+                if (Entry *target = m_dataSource.findEntry(directory)) { showRenameDialog(*target, position); }
+            });
             menu->addItem("Delete", [this, directory] {
                 if (m_output) { m_output->contentDidRequestDeleteFolder(directory); }
             });
@@ -874,13 +985,11 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
                 if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
             });
         }
-        if (typeOfClicked == "material" || typeOfClicked == "postfx") { // single-file ones can be renamed
-            const Panda::AssetId renameId = file.assetId;
-            const std::string stem = file.path.stem().string();
-            menu->addItem("Rename", [this, renameId, stem, position] {
-                showNameDialog(getContext(), position, "Rename", stem, [this, renameId](const std::string &newName) {
-                    if (m_output) { m_output->contentDidRequestRename(renameId, newName); }
-                }, "Rename");
+        {
+            const Panda::path_t path = file.path;
+            menu->addItem("Rename", [this, path, position] {
+                // By path: the tree may have been rebuilt while the menu was open.
+                if (Entry *target = m_dataSource.findEntry(path)) { showRenameDialog(*target, position); }
             });
         }
         if (typeOfClicked == "mesh" || typeOfClicked == "prefab") { // into the world on screen: entities of a model, an instance of a prefab
@@ -892,6 +1001,9 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
                 if (m_output) { m_output->contentDidRequestAddToWorld(meshes); }
             });
         }
+        menu->addItem(targets.size() > 1 ? "Duplicate Selected" : "Duplicate", [this, targets] {
+            if (m_output) { m_output->contentDidRequestDuplicate(targets); }
+        });
         if (m_output && targets.size() == 1) { m_output->contentAddFileItems(*menu, targets.front()); }
         menu->addItem(targets.size() > 1 ? "Reimport Selected" : "Reimport", [this, targets] {
             if (m_output) { m_output->contentDidRequestImport(targets); }
@@ -918,7 +1030,7 @@ void ContentBrowserView::rebuildBreadcrumb() {
         if (i > 0) { m_breadcrumb->addSubview(makeIcon(Ic::ChevronRight, 13.f, ThemeColor::textDim)); }
         Folder *node = chain[i];
         const bool current = (i + 1 == chain.size());
-        m_breadcrumb->addSubview(std::make_shared<Crumb>(node->name, current, [this, node] { setCurrentFolder(node); }));
+        m_breadcrumb->addSubview(std::make_shared<Crumb>(node->name, node->path, current, [this, node] { setCurrentFolder(node); }));
     }
 }
 
@@ -929,6 +1041,88 @@ void ContentBrowserView::updateNothingFound() {
 }
 
 /* ------------------------------ Input ------------------------------ */
+
+ContentBrowserView::Folder *ContentBrowserView::folderAt(Point at) const {
+    for (const std::shared_ptr<View> &view : m_breadcrumb->getSubviews()) {
+        const auto *crumb = dynamic_cast<const Crumb *>(view.get());
+        if (crumb && crumb->getWorldFrame().contains(at)) { return m_dataSource.findFolder(crumb->folder()); }
+    }
+    Entry *under = nullptr;
+    if (m_mode == Mode::List) {
+        under = toEntry(m_list->itemAt(at));
+    } else if (m_foldersShown && m_tree->getWorldFrame().contains(at)) {
+        under = toEntry(m_tree->itemAt(at));
+    } else {
+        under = m_dataSource.entryAt(m_grid->indexAt(at));
+    }
+    if (!under) { return nullptr; }
+    return under->isFolder ? static_cast<Folder *>(under) : under->parent;
+}
+
+bool ContentBrowserView::isOwnDrag(const DragInfo &drag) const {
+    const void *source = drag.payload.source;
+    return (source == m_grid.get() || source == m_list.get() || source == m_tree.get()) && !drag.payload.files.empty();
+}
+
+bool ContentBrowserView::canMoveInto(const DragInfo &drag, const Folder *folder) const {
+    if (folder == nullptr) { return false; }
+    bool elsewhere = false;
+    for (const std::string &file : drag.payload.files) {
+        const Panda::path_t path = Panda::pathFromUtf8(file);
+        if (isInside(folder->path, path)) { return false; } // a folder into itself, or into what is under it
+        if (path.parent_path() != folder->path) { elsewhere = true; }
+    }
+    return elsewhere; // not where all of it is already
+}
+
+void ContentBrowserView::highlightDropFolder(const Folder *folder, Point at) {
+    const int index = folder ? m_dataSource.indexOfFolder(folder->path) : -1;
+    m_grid->setDropHighlightIndex(m_mode == Mode::Icons && m_grid->getWorldFrame().contains(at) ? index : -1);
+    const bool overTree = m_mode == Mode::Icons && m_foldersShown && m_tree->getWorldFrame().contains(at);
+    m_tree->setDropHighlightItem(overTree && folder ? toItem(const_cast<Folder *>(folder)) : nullptr);
+    m_list->setDropHighlightItem(m_mode == Mode::List && folder ? toItem(const_cast<Folder *>(folder)) : nullptr);
+}
+
+bool ContentBrowserView::canAcceptDrop(const DragInfo &drag) {
+    // Files of the file manager: into the folder under the point, or the folder shown.
+    if (drag.payload.type == "files" && drag.payload.source == nullptr) {
+        return !drag.payload.files.empty() && !currentDirectory().empty();
+    }
+    // What is dragged within the browser: into a folder under the point — a move.
+    return isOwnDrag(drag) && canMoveInto(drag, folderAt(drag.windowPosition));
+}
+
+void ContentBrowserView::dragEntered(const DragInfo &drag) {
+    dragUpdated(drag);
+}
+
+void ContentBrowserView::dragUpdated(const DragInfo &drag) {
+    Folder *folder = folderAt(drag.windowPosition);
+    highlightDropFolder(canMoveInto(drag, folder) ? folder : nullptr, drag.windowPosition);
+}
+
+void ContentBrowserView::dragExited() {
+    highlightDropFolder(nullptr, Point());
+}
+
+bool ContentBrowserView::performDrop(const DragInfo &drag) {
+    highlightDropFolder(nullptr, Point());
+    std::vector<Panda::path_t> paths;
+    paths.reserve(drag.payload.files.size());
+    for (const std::string &file : drag.payload.files) { paths.push_back(Panda::pathFromUtf8(file)); }
+    Folder *folder = folderAt(drag.windowPosition);
+    if (drag.payload.type == "files" && drag.payload.source == nullptr) {
+        const Panda::path_t directory = folder ? folder->path : currentDirectory();
+        if (m_output) { m_output->contentDidRequestImportFiles(paths, directory); }
+        return true;
+    }
+    if (!isOwnDrag(drag) || !canMoveInto(drag, folder)) { return false; }
+    // The list opens the folder, so the moved rows are seen there (VS Code); the icons stay in the
+    // folder they show, and the moved cells leave it (Finder, Unity).
+    if (m_mode == Mode::List) { m_list->setExpanded(toItem(folder), true); }
+    if (m_output) { m_output->contentDidRequestMove(paths, folder->path); }
+    return true;
+}
 
 bool ContentBrowserView::pointerDown(PointerEvent &) {
     clearAssetSelection();

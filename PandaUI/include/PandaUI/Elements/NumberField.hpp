@@ -5,11 +5,14 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 
 namespace PandaUI {
 
 // Numeric field on top of TextField: parses the input live, clamps it to a range and
-// brings it to the canonical form on Enter. The value is available as a float.
+// brings it to the canonical form on Enter. The value is available as a float. The input may be
+// arithmetic — "2*3", "(1 + 0.5) / 4", "-1,5" (evaluate) — and the value comes when the
+// expression is whole: "2*" keeps the value it had.
 //
 // The number can also be scrubbed — changed by a horizontal drag of a handle next to the field
 // (the label of its PropertyRow, the axis letter of a vector field): beginScrub, scrub per
@@ -17,6 +20,10 @@ namespace PandaUI {
 // when that is smaller), ten times that with coarse, a tenth with fine.
 class NumberField : public Panel {
 public:
+    // The value of a text as the field reads it: a number, or arithmetic of numbers — + − * /,
+    // parentheses, a sign before a number; a comma reads as a decimal point. false — not a whole
+    // expression (an operator with nothing after it, a division by zero, letters).
+    static bool evaluate(const std::string &text, double &value);
     using ValueChangedCallback = std::function<void(NumberField &)>;
 
     NumberField();

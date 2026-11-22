@@ -89,6 +89,10 @@ public:
     // Bytes of an answer are still on their way to a client (an application that is about to exit
     // waits for false, so the answer to "restart" leaves first).
     bool hasUnsentData() const;
+    // The requests taken since the start: a change from one frame to the next is a client at work.
+    uint64_t handledRequests() const {
+        return m_handledRequests;
+    }
 
 private:
     struct Connection;
@@ -118,6 +122,7 @@ private:
     Fern::Net::TcpListener m_listener;
     uint16_t m_port = 0;
     std::vector<std::unique_ptr<Connection>> m_connections;
+    uint64_t m_handledRequests = 0;
 };
 
 } // namespace Panda::Mcp

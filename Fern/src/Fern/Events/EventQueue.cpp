@@ -12,6 +12,19 @@ EventQueue::EventQueue()
 
 void EventQueue::reset() {
     m_events.reset();
+    m_droppedFiles.clear();
+}
+
+void EventQueue::postFilesDroppedEvent(std::vector<std::string> paths, float x, float y, Window *window) {
+    if (paths.empty()) { return; }
+    m_droppedFiles.push_back(std::move(paths));
+    FilesDroppedEvent event(static_cast<uint32_t>(m_droppedFiles.size() - 1), x, y, window);
+    m_events.write(event);
+}
+
+const std::vector<std::string> &EventQueue::droppedFiles(const FilesDroppedEvent &event) const {
+    static const std::vector<std::string> none;
+    return event.list < m_droppedFiles.size() ? m_droppedFiles[event.list] : none;
 }
 
 Event *EventQueue::poll() {

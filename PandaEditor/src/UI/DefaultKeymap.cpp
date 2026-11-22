@@ -24,6 +24,10 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         {"palette.show", "primary-shift-p"},
         {"goto.show", "primary-p"},
         {"contentBrowser.search", "primary-f"}, // with the keyboard in the Content Browser
+        {"contentBrowser.delete", "backspace"},
+        {"contentBrowser.delete", "delete"},
+        {"contentBrowser.rename", "f2"},
+        {"contentBrowser.duplicate", "primary-d"},
         {"hierarchy.search", "primary-f"},
         {"tab.close", "primary-w"},
         {"dock.toggleFullscreen", "shift-space"},

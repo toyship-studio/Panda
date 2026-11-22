@@ -5,8 +5,11 @@
 #include "Project/Assets/ShaderCook.hpp"
 #include "Project/Modules/ProjectModules.hpp"
 #include "Project/System/JsonFiles.hpp"
+#include "Project/System/PandaSdkLocator.hpp"
 #include "Project/System/SystemTools.hpp"
 #include "AssetHandlerEditor.hpp"
+
+#include <Foundation/PlatformDetection.hpp>
 
 #include <Panda/Renderer/ShaderFeatures.hpp>
 
@@ -297,6 +300,48 @@ bool ProjectLoader::isScriptsChangedOnDisk() {
     return diskTime != m_scriptsDllTime; // another build, a newer one or one put back
 }
 
+bool ProjectLoader::isScriptsBuildBehind() {
+    if (!hasOpenedProject()) { return false; }
+    std::error_code errorCode;
+    const auto built = std::filesystem::last_write_time(ScriptEngine::libraryFilePath(makeScriptsConfig()), errorCode);
+    if (errorCode) { return false; }
+    const path_t root = projectPath() / "Scripts" / projectName();
+    const auto newer = [&built](const path_t &file) {
+        std::error_code error;
+        const auto written = std::filesystem::last_write_time(file, error);
+        return !error && written > built;
+    };
+    if (newer(root / "CMakeLists.txt")) { return true; }
+    // The files a build compiles: another file there (a note) would ask for a build that links
+    // nothing new, at every Play.
+    static const char *const SOURCES[] = {".cpp", ".cc", ".cxx", ".c", ".hpp", ".hh", ".hxx", ".h", ".inl"};
+    for (std::filesystem::recursive_directory_iterator it(root / "src", errorCode), end; !errorCode && it != end;
+         it.increment(errorCode)) {
+        const std::string extension = it->path().extension().string();
+        const bool source = std::find(std::begin(SOURCES), std::end(SOURCES), extension) != std::end(SOURCES);
+        if (source && it->is_regular_file(errorCode) && newer(it->path())) { return true; }
+    }
+    // The SDK they are built against changed since — another editor: an update, a build of the
+    // engine. Its library of the script API and the headers of that API (Bamboo). The embedded SDK
+    // keeps the times of what did not change (cmake/sync_panda_sdk.cmake): only a real change says so.
+    if (const std::optional<path_t> config = findPandaSdkConfigDirectory()) {
+        const path_t sdk = config->parent_path().parent_path().parent_path();
+#if defined(PLATFORM_WINDOWS)
+        const path_t library = sdk / "lib" / "windows" / "PandaSDK.lib";
+#elif defined(PLATFORM_MACOS)
+        const path_t library = sdk / "lib" / "macos" / "libPandaSDK.a";
+#else
+        const path_t library = sdk / "lib" / "linux" / "libPandaSDK.a";
+#endif
+        if (newer(library)) { return true; }
+        for (std::filesystem::recursive_directory_iterator it(sdk / "include" / "Bamboo", errorCode), end;
+             !errorCode && it != end; it.increment(errorCode)) {
+            if (it->is_regular_file(errorCode) && newer(it->path())) { return true; }
+        }
+    }
+    return false;
+}
+
 namespace {
 
     // The classes the sources of a script project register: REGISTER_SCRIPT(Name) → the file. The
@@ -373,6 +418,8 @@ void ProjectLoader::reloadScriptsDll() {
             return;
         }
     }
+    // New game code comes into the process: the unsaved edits are kept aside first, in case it crashes.
+    m_documents.backUp();
     m_scriptEngine.reload(config);
     {
         // Even on failure: do not hammer the same broken library with every Reload.
@@ -470,6 +517,7 @@ void ProjectLoader::saveProject() {
     ProjectSession session = m_documents.session(); // the open worlds
     session.exportTarget = m_projectSession.exportTarget;
     session.exportConfiguration = m_projectSession.exportConfiguration;
+    session.contentBrowserFolder = m_projectSession.contentBrowserFolder;
     m_projectSession = std::move(session);
     const path_t sessionPath = projectDataDirectory(projectPath()) / "session.json";
     std::string error;

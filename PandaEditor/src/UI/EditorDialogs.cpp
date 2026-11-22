@@ -107,6 +107,27 @@ void showConfirmDialog(
     context->modals().present(dialog);
 }
 
+void showRestoreDialog(
+    Context *context, const std::vector<std::string> &documents, std::function<void()> onRestore,
+    std::function<void()> onDiscard
+) {
+    if (!context || documents.empty()) { return; }
+    // "world "Forest", prefab "Tree" and 2 more": a few names, then a count.
+    constexpr size_t NAMED = 3;
+    const size_t named = documents.size() <= NAMED + 1 ? documents.size() : NAMED;
+    std::string list;
+    for (size_t i = 0; i < named; i++) {
+        if (i > 0) { list += i + 1 == named && named == documents.size() ? " and " : ", "; }
+        list += documents[i];
+    }
+    if (named < documents.size()) { list += " and " + std::to_string(documents.size() - named) + " more"; }
+    auto dialog = std::make_shared<Dialog>("Restore Unsaved Changes?");
+    dialog->setMessage("The editor closed unexpectedly. The unsaved changes of " + list + " were kept.");
+    dialog->addAction("Discard", DialogActionRole::Default, std::move(onDiscard));
+    dialog->addAction("Restore", DialogActionRole::Primary, std::move(onRestore));
+    context->modals().present(dialog);
+}
+
 void showApplyToChildrenDialog(
     Context *context, const std::string &title, const std::string &message,
     std::function<void(bool includeChildren)> onApply, std::function<void()> onDismiss

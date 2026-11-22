@@ -22,6 +22,7 @@
 #include <Fern/Fonts/FontCatalog.hpp>
 #include <Fern/Fern.hpp>
 #include <Fern/Files/AtomicWrite.hpp>
+#include <Fern/Events/EventQueue.hpp>
 #include <Fern/Events/WindowEvents.hpp>
 #include <PandaUI/PandaUI.hpp>
 
@@ -31,7 +32,10 @@
 #include <PandaEditorKit/EditorHost.hpp>
 #include <PandaEditorKit/Selection.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <utility>
 
 namespace Panda {
 
@@ -209,7 +213,7 @@ void EditorLayer::onDetach() {
 /* ------------------------------ The frame ------------------------------ */
 
 void EditorLayer::onUpdate(double deltaTime) {
-    syncWindowIdentity();
+    syncWindowIdentity(deltaTime);
     m_statistics.updateStatus(deltaTime, m_editorController.get(), m_documents.editorSettings().appearance.showSystemStatus);
     m_updater.tick(deltaTime);
     pushUpdateStatus();
@@ -238,6 +242,7 @@ void EditorLayer::onUpdate(double deltaTime) {
         m_editorController->syncWorldStructure(); // scripts created/deleted entities → live Hierarchy
         m_editorController->updateChromeFromState(!isPlaying()); // toolbar + dirty scene tab
         m_builds.update(); // the output of cmake → the CMake panel; built scripts are loaded
+        followBuildBeforePlay();
     }
 
     if (m_loader.hasOpenedProject()) {
@@ -289,6 +294,68 @@ void EditorLayer::onUpdate(double deltaTime) {
         }
     }
     m_editorUI.update(deltaTime); // PandaUI chrome on top of the scene
+    updatePace(deltaTime);
+    updateBackups(deltaTime);
+}
+
+// A copy of the unsaved edits is a serialization of each changed world on this thread (a world
+// cannot be read elsewhere while it is edited), and its cost grows with the world: 20 000 entities
+// take 1.8 s in a debug build. So it waits for a pause of the input — never falling into a gesture —
+// and what the last copy cost decides how long: at least ten seconds apart and at most a hundredth
+// of the time, the pause three times as long as the copy. A cheap one (under 50 ms, a frame or
+// three) comes within a minute even to a user who never pauses; an expensive one waits for the
+// pause however long. Nothing is written when nothing changed (FileDocuments::backUp). Play and a
+// script build loaded make one at once, whatever it costs: the game code runs in this process, and
+// a crash of it takes the editor along.
+void EditorLayer::updateBackups(double deltaTime) {
+    constexpr double EVERY = 10.0;
+    constexpr double PAUSE = 2.0;
+    constexpr double LATEST = 60.0;
+    constexpr double CHEAP = 0.05;
+    if (!m_loader.hasOpenedProject()) { return; }
+    if (!m_backupsAsked && m_editorController && !m_editorUI.context().modals().isPresenting()) {
+        m_backupsAsked = true;
+        const std::vector<std::string> left = m_documents.leftBackups();
+        if (!left.empty()) {
+            Editor::showRestoreDialog(
+                &m_editorUI.context(), left,
+                [this, count = left.size()] {
+                    m_documents.restoreLeftBackups();
+                    LOG_INFO_EDITOR("Restored the unsaved changes of %zu %s.", count, count == 1 ? "document" : "documents");
+                },
+                [this] { m_documents.discardLeftBackups(); }
+            );
+        }
+    }
+    m_inputPause += deltaTime;
+    m_backupWait += deltaTime;
+    const double every = std::max(EVERY, m_backupCost * 100.0);
+    const double pause = std::max(PAUSE, m_backupCost * 3.0);
+    const bool forced = m_backupCost < CHEAP && m_backupWait >= LATEST;
+    if (m_backupWait < every || (m_inputPause < pause && !forced)) { return; }
+    m_backupWait = 0.0;
+    const auto begun = std::chrono::steady_clock::now();
+    if (m_documents.backUp() > 0) {
+        m_backupCost = std::chrono::duration<double>(std::chrono::steady_clock::now() - begun).count();
+    }
+}
+
+// The editor rests when nobody looks at it and nothing goes on: behind another application (an
+// unattended one is in front when a test says so — EditorMcp, `focus`), not playing, no build, no
+// background job delivering, no agent talking to it for two seconds. Then it draws ten frames a
+// second instead of the display's rate — what changes still shows, a tenth of a second late — and
+// an event of its windows (the click that brings it back) ends the rest at once. In front it
+// draws every frame: the materials that move with time move smoothly, and nothing waits.
+void EditorLayer::updatePace(double deltaTime) {
+    constexpr double QUIET_BEFORE_REST = 2.0; // seconds: a burst of work does not flicker in and out of rest
+    constexpr double REST_INTERVAL = 0.1;
+    const uint64_t mcpRequests = m_mcp ? m_mcp->handledRequests() : 0;
+    const bool agent = mcpRequests != m_mcpRequests;
+    m_mcpRequests = mcpRequests;
+    const bool busy = m_diskWatch.isInFront() || isPlaying() || m_builds.isRunning() ||
+                      Application::get()->deliveredCompletions() || agent;
+    m_quietSeconds = busy ? 0.0 : m_quietSeconds + deltaTime;
+    Application::get()->setRestInterval(m_quietSeconds > QUIET_BEFORE_REST ? REST_INTERVAL : 0.0);
 }
 
 void EditorLayer::syncViewports() {
@@ -400,7 +467,8 @@ void EditorLayer::updateGizmo() {
     if (shownWorld()->isRunning() && Editor::selection().hasEntities()) { Editor::selection().transformChanged(); }
     const glm::mat4 view = m_viewports.sceneView(); // the editor camera: the Scene manipulates in its screen rays
     Gizmos &gizmo = m_viewports.gizmo();
-    const bool visible = gizmo.manipulate(m_viewports.scene().getFrame(), input, &view);
+    gizmo.setSteps({m_viewportSettings.snapMove, m_viewportSettings.snapRotate, m_viewportSettings.snapScale});
+    const bool visible = gizmo.manipulate(m_viewports.scene().getFrame(), input, &view, m_scenePointer.snap);
     m_editorController->setGizmoVisible(visible);
     m_editorController->setGizmoActive(gizmo.isHovered()); // hover over a handle / drag → takes LMB from rect-select
 }
@@ -411,7 +479,7 @@ void EditorLayer::onEvent(Fern::Event *event) {
     // Nobody is at the screen (--unattended): the mouse and the keyboard of the machine are not
     // the input of the editor or of the game. What a UI test sends goes straight into the UI
     // (EditorMcp), not through the window.
-    if (m_launch.unattended && isInputEvent(event)) {
+    if (m_launch.unattended && (isInputEvent(event) || event->type == Fern::EventType::FilesDropped)) {
         event->isHandled = true;
         return;
     }
@@ -440,6 +508,15 @@ void EditorLayer::onEvent(Fern::Event *event) {
         return;
     }
 
+    if (event->type == Fern::EventType::FilesDropped) {
+        if (event->getWindow() == m_window) {
+            const auto *drop = static_cast<const Fern::FilesDroppedEvent *>(event);
+            dropFiles(Fern::getEventQueue()->droppedFiles(*drop), PandaUI::Point(drop->x, drop->y));
+        }
+        event->isHandled = true;
+        return;
+    }
+
     // The focus and the minimizing of the editor window: the game follows them.
     m_play.windowEvent(*event);
 
@@ -450,6 +527,7 @@ void EditorLayer::onEvent(Fern::Event *event) {
     // surface collects the camera navigation and the pointer of the gizmo and of the tools; none
     // of it reaches Panda::Input.
     if (isInputEvent(event)) {
+        m_inputPause = 0.0;
         if (isPlaying() && m_viewports.isGameLive() &&
             m_play.ownsEvent(*event, m_editorController->isGameViewportFocused(), modal)) {
             // A click on the game gives the Game tab the keyboard focus: the keys follow the mouse.
@@ -475,6 +553,17 @@ void EditorLayer::onEvent(Fern::Event *event) {
     }
 }
 
+// Files of the file manager dropped onto the window at a point: a view under it takes them (a
+// folder of the Content Browser), else they go into the folder the Content Browser shows. Not
+// under a modal, not without a project. EditorMcp drops the same way (`pointer`, action drop).
+void EditorLayer::dropFiles(const std::vector<std::string> &paths, PandaUI::Point position) {
+    if (!m_loader.hasOpenedProject() || !m_editorController || m_editorUI.context().modals().isPresenting()) { return; }
+    if (m_editorUI.context().dropFiles(paths, position)) { return; }
+    std::vector<path_t> files;
+    for (const std::string &path : paths) { files.push_back(path_t(reinterpret_cast<const char8_t *>(path.c_str()))); }
+    m_editorController->importFiles(files);
+}
+
 void EditorLayer::windowSizeChanged() {
 #ifdef PLATFORM_DESKTOP
     m_window->getDrawingContext()->update(); // the drawable follows the size of the window
@@ -497,6 +586,8 @@ void EditorLayer::play() {
         );
         return;
     }
+    // The game code runs in this process: a crash of it must not take the unsaved edits along.
+    m_documents.backUp();
     m_play.begin(editingWorld());
     // Nobody is at the screen (--unattended): the game is driven from its first frame — it has
     // the input whatever has the focus, and a cursor it locks is one of its own, never the
@@ -549,6 +640,38 @@ void EditorLayer::scriptsWereBuilt() {
         return;
     }
     m_loader.reloadScriptsDll();
+    if (std::exchange(m_playAfterBuild, false)) {
+        ScriptEngine *scripts = GameContext::getScriptEngine();
+        if (scripts != nullptr && scripts->isLoaded()) { play(); }
+    }
+}
+
+bool EditorLayer::buildBeforePlay(bool ask) {
+    if (m_playAfterBuild) { return true; }
+    // Another build runs (an export): the game does not wait for what it did not ask.
+    if (m_builds.isRunning() || !m_loader.isScriptsBuildBehind()) { return false; }
+    m_playAfterBuild = true;
+    m_playAfterBuildAsks = ask;
+    LOG_INFO_EDITOR("The scripts changed since they were built: the game starts when the build is done.");
+    if (m_editorController) { m_editorController->showPanel("cmake"); }
+    m_builds.start(BuildTargetKind::Scripts, BuildAction::Build);
+    return true;
+}
+
+// The build Play waited for has ended without new scripts (scriptsWereBuilt plays on success):
+// it failed, or it was stopped. The user is asked whether the last build will do — what Visual
+// Studio asks; a stop is an answer already.
+void EditorLayer::followBuildBeforePlay() {
+    if (!m_playAfterBuild || m_builds.isRunning()) { return; }
+    m_playAfterBuild = false;
+    if (!m_playAfterBuildAsks || m_builds.lastResult() != ProjectBuilds::Result::Failed || !m_editorController) { return; }
+    ScriptEngine *scripts = GameContext::getScriptEngine();
+    if (scripts == nullptr || !scripts->isLoaded()) { return; }
+    Editor::showConfirmDialog(
+        &m_editorUI.context(), "The scripts did not build",
+        "The errors are in the CMake panel. The last build of the scripts can play, without the changes since.",
+        "Play Last Build", /*destructive*/ false, [this] { play(); }
+    );
 }
 
 void EditorLayer::activateWorld(WorldFile &world) {
@@ -781,6 +904,7 @@ void EditorLayer::documentsDidWriteSettings(SettingsScope scope) {
 /* ------------------------------ The project and the window ------------------------------ */
 
 void EditorLayer::loaderDidLoadProject(const std::string &name, const path_t &path) {
+    m_backupsAsked = false; // what its last session left behind is offered once the project shows
     // Game saves, when launched from the editor, live next to the project (the folder is made
     // when a script asks for it).
     GameContext::setPersistentDataPath(path / ".Panda" / "SaveData");
@@ -1025,7 +1149,15 @@ void EditorLayer::saveOpenedProjectWindowState() {
 // Several editors run at once, one project each: the window title and the label on the
 // application icon say which project this one holds. Followed every frame — the world file
 // changes on Open, New and Save As, and a comparison of two strings costs nothing.
-void EditorLayer::syncWindowIdentity() {
+void EditorLayer::syncWindowIdentity(double deltaTime) {
+    // Unsaved: looked at four times a second — the documents are many, and the dot may come a
+    // moment after the edit.
+    m_unsavedCheck -= deltaTime;
+    if (m_unsavedCheck <= 0.0) {
+        m_unsavedCheck = 0.25;
+        const bool unsaved = m_loader.hasOpenedProject() && m_documents.hasUnsaved();
+        if (unsaved != m_window->getModifiedState()) { m_window->setModifiedState(unsaved); }
+    }
     std::string project;
     std::string title = "Welcome";
     if (m_loader.hasOpenedProject()) {

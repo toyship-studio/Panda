@@ -113,6 +113,11 @@ struct EditorViewportSettings final : public Rain::Codable {
     bool showPostprocessing = true; // postprocessing chain of the main camera (WYSIWYG)
     float cameraSpeed = 20.f;       // fly speed of the viewport camera (m/s)
     bool wireframe = false;         // debug wireframe of the scene
+    // The steps of the gizmo while the primary key is held (⌘ on macOS, Ctrl elsewhere): a move,
+    // a turn and a scale go by them, counted from where the drag began (Unity's increment snap).
+    float snapMove = 0.25f;  // m
+    float snapRotate = 15.f; // degrees
+    float snapScale = 0.1f;  // of the scale the drag began with
 
     RAIN_FIELDS_BEGIN(EditorViewportSettings)
     RAIN_FIELD(showGrid)
@@ -120,6 +125,9 @@ struct EditorViewportSettings final : public Rain::Codable {
     RAIN_FIELD(showPostprocessing)
     RAIN_FIELD(cameraSpeed)
     RAIN_FIELD(wireframe)
+    RAIN_FIELD(snapMove)
+    RAIN_FIELD(snapRotate)
+    RAIN_FIELD(snapScale)
     RAIN_FIELDS_END
 };
 

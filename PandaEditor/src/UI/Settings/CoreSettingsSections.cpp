@@ -1,6 +1,7 @@
 #include "UI/Settings/CoreSettingsSections.hpp"
 
 #include "Project/Loader/AssetHandlerEditor.hpp"
+#include <Foundation/PlatformDetection.hpp>
 #include "Project/Modules/ProjectModules.hpp"
 #include "Project/Settings/EditorSettings.hpp"
 #include "Project/Settings/ProjectSettings.hpp"
@@ -385,6 +386,24 @@ namespace {
             data->wireframe = on;
             emit();
         });
+        // The steps of the gizmo while the primary key is held: counted from where the drag began.
+#ifdef PLATFORM_MACOS
+        const std::string held = "\xE2\x8C\x98"; // ⌘
+#else
+        const std::string held = "Ctrl";
+#endif
+        addNumberRow(section, "Move Step", 0.001f, 1000.f, data->snapMove, [data, emit](float value) {
+            data->snapMove = value;
+            emit();
+        })->setHelp("Moves go by this step while " + held + " is held, m");
+        addNumberRow(section, "Rotate Step", 0.1f, 180.f, data->snapRotate, [data, emit](float value) {
+            data->snapRotate = value;
+            emit();
+        })->setHelp("Turns go by this step while " + held + " is held, degrees");
+        addNumberRow(section, "Scale Step", 0.001f, 10.f, data->snapScale, [data, emit](float value) {
+            data->snapScale = value;
+            emit();
+        })->setHelp("The scale goes by this step while " + held + " is held");
     }
 
     ThemeProvider s_themes;

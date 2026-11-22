@@ -159,6 +159,12 @@ public:
     }
     void setChanged(bool changed = true) {
         m_changed = changed;
+        if (changed) { m_revision++; }
+    }
+    // Grows with every change of the content (each setChanged): a copy of the world made at one
+    // revision is behind the world at another (the backups of the editor).
+    uint64_t getRevision() const {
+        return m_revision;
     }
     // World structure version: grows on entity creation/deletion/reparenting (including from
     // scripts in PLAY) — the editor rereads the Hierarchy and cleans the selection when it changes.
@@ -283,6 +289,7 @@ private:
     float m_fixedStepAlpha = 0.f;
     std::vector<entt::entity> m_pendingDestroy; // destroy in a running world: until the callbacks are over
     bool m_changed = false;
+    uint64_t m_revision = 0;
     uint64_t m_structureVersion = 0;
     CommandHistory m_commandHistory;
     entt::registry m_registry;

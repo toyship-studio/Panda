@@ -110,6 +110,14 @@ void Win32_System::pollEvents() {
     }
 }
 
+void Win32_System::waitEvents(double timeoutSeconds) {
+    // Returns when a message is in the queue (one already seen counts too: MWMO_INPUTAVAILABLE)
+    // or the time is out.
+    const DWORD milliseconds = static_cast<DWORD>(timeoutSeconds * 1000.0 + 0.5);
+    MsgWaitForMultipleObjectsEx(0, nullptr, milliseconds, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+    pollEvents();
+}
+
 Vec2 Win32_System::getCursorPosition() const {
     POINT point = {};
     GetCursorPos(&point);

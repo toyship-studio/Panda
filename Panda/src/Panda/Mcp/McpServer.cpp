@@ -382,6 +382,7 @@ bool Server::takeRequest(Connection &connection) {
 }
 
 void Server::handleRequest(Connection &connection, const Request &request) {
+    m_handledRequests++;
     // Local callers only: a page of a remote site that resolves its name to 127.0.0.1 (DNS
     // rebinding) still carries its own Host and Origin.
     const std::string *host = request.header("host");

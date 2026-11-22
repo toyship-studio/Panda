@@ -41,7 +41,7 @@ Gizmos::Gizmos(Camera *camera)
     , m_overlayHovered(false)
     , m_gizmoVisible(false) {}
 
-bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const glm::mat4 *viewMatrix) {
+bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const glm::mat4 *viewMatrix, bool snap) {
     Gizmo::setInput(input);
     Gizmo::beginFrame();
     m_gizmoVisible = false;
@@ -54,13 +54,18 @@ bool Gizmos::manipulate(Rect viewportRect, const Gizmo::InputState &input, const
     glm::mat4 projection = m_camera->getProjection();
     glm::mat4 transform = Editor::selection().medianMatrix();
     glm::mat4 delta = glm::mat4(1.0f);
+    // A move snaps on every axis; a turn and a scale take the first value.
+    float steps[3] = {m_steps.move, m_steps.move, m_steps.move};
+    if (m_operation == Operation::Rotate) { steps[0] = m_steps.rotate; }
+    if (m_operation == Operation::Scale) { steps[0] = m_steps.scale; }
     const bool manipulated = Gizmo::manipulate(
         glm::value_ptr(view),
         glm::value_ptr(projection),
         toGizmoOperation(m_operation),
         toGizmoMode(m_space),
         glm::value_ptr(transform),
-        glm::value_ptr(delta)
+        glm::value_ptr(delta),
+        snap ? steps : nullptr
     );
     if (!manipulated) { return true; } // visible but not being moved — draw it
 

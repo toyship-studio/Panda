@@ -10,9 +10,15 @@
 // a folder is told when it is made, renamed, moved in and moved away, and a file is told by the
 // path its folder has now; a file beside what is watched is not told, nor one in a folder that
 // was moved away; a watched file that is not there yet is told when it appears; nothing is told
-// when nothing changed. Returns non-zero on failure.
+// when nothing changed.
+//
+// Fern::FileLock: a lock taken is refused to another taker — another open of the same file in this
+// process stands for another process — until it is let go, and given then; it goes with its object
+// and moves with it; the file stays; a file in a folder that is not there is refused. Returns
+// non-zero on failure.
 
 #include <Fern/Files/AtomicWrite.hpp>
+#include <Fern/Files/FileLock.hpp>
 #include <Fern/Files/FileWatcher.hpp>
 
 #include <algorithm>
@@ -252,12 +258,38 @@ void atomicWrite(const path_t &base) {
 
 } // namespace
 
+void fileLock(const path_t &folder) {
+    std::printf("the lock of a file\n");
+    std::error_code error;
+    std::filesystem::create_directories(folder, error);
+    const path_t file = folder / "lock";
+    Fern::FileLock first;
+    check(first.tryLock(file) && first.isLocked(), "a lock nobody holds is taken");
+    check(std::filesystem::exists(file), "the file of a lock is made");
+    {
+        Fern::FileLock second;
+        check(!second.tryLock(file) && !second.isLocked(), "a lock somebody holds is refused");
+        first.unlock();
+        check(!first.isLocked(), "a lock let go is not held");
+        check(second.tryLock(file), "a lock let go is given to the next taker");
+        Fern::FileLock moved = std::move(second);
+        check(moved.isLocked() && !second.isLocked(), "a lock moves with its object");
+        check(!first.tryLock(file), "a moved lock is still held");
+    }
+    check(first.tryLock(file), "a lock goes with its object");
+    first.unlock();
+    check(std::filesystem::exists(file), "the file stays when the lock goes");
+    Fern::FileLock nowhere;
+    check(!nowhere.tryLock(folder / "missing" / "lock"), "a lock in a folder that is not there is refused");
+}
+
 int main() {
     std::error_code error;
     const path_t base = std::filesystem::temp_directory_path() /
                         ("fern-files-smoke-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::remove_all(base, error);
     atomicWrite(base / "atomic");
+    fileLock(base / "lock");
     run(Fern::FileWatcher::Backend::System, "the backend of the system", base / "system", 3000ms);
     run(Fern::FileWatcher::Backend::Scan, "the scan", base / "scan", 4000ms);
     std::filesystem::remove_all(base, error);

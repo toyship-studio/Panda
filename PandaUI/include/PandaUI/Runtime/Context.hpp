@@ -53,6 +53,10 @@ public:
     bool handleKeyDown(KeyEvent event);
     bool handleKeyUp(KeyEvent event);
     bool handleTextInput(TextInputEvent event);
+    // Files dropped onto the window from the file manager: the nearest view from the one under the
+    // point up that takes a payload of the type "files" with these paths (DragPayload::files)
+    // performs the drop. false — none took them: what such a drop means is the application's.
+    bool dropFiles(std::vector<std::string> paths, Point position);
     // An event of the window as a host delivers it (Core/Event.hpp): a resize takes the size, the
     // scale and the safe area of the event, an input event goes to its handler above. true — a
     // view consumed it.

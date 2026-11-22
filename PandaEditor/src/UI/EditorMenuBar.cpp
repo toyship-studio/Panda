@@ -94,6 +94,8 @@ void EditorMenuBar::rebuild() {
         item(fileMenu, "Save", "file.save");
         item(fileMenu, "Save All", "file.saveAll");
         fileMenu.addSeparator();
+        // Into the folder the Content Browser shows; dropping files onto the window does the same.
+        item(fileMenu, "Import Files", "file.import");
         item(fileMenu, "Show C++ Project", "file.showCppProject");
         item(fileMenu, "Close Tab", "tab.close");
         item(fileMenu, "Close Project", "file.closeProject");

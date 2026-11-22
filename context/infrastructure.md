@@ -215,7 +215,10 @@ Workflows in the engine repository:
   - Windows (`windows-2022`): Visual Studio 2022 Release build, the `PandaEditor/` layout of `bin/`
     (exe, resources, `Tools/`, `PandaSDK/`) as a zip. The SDK is copied by
     `cmake/sync_panda_sdk.cmake`, the same script that embeds it into the macOS bundle, so every
-    platform carries the same SDK without its own `tools/` (the editor brings `Tools/`). Authenticode signing is optional (without it
+    platform carries the same SDK without its own `tools/` (the editor brings `Tools/`). The
+    script mirrors: a file whose bytes did not change is not touched and keeps its time, what the
+    package no longer has goes — so a build of the editor does not make the scripts of a project
+    recompile against an SDK that did not change, and Play rebuilds them only when it did. Authenticode signing is optional (without it
     SmartScreen warns). The update helper (`Tools/PandaUpdateHelper.exe`) arrives with the updater.
   - Linux (`ubuntu-24.04` runner, `ubuntu:22.04` container): GCC 11 and the libraries of the
     README, the oldest system the editor supports, so the binary runs on Ubuntu 22.04 and newer.

@@ -67,6 +67,13 @@ struct AboutInfo {
 void showAboutDialog(PandaUI::Context *context, const AboutInfo &info);
 // A modal with a title, a message and OK.
 void showMessageDialog(PandaUI::Context *context, const std::string &title, const std::string &message);
+// The unsaved edits a session that crashed left behind (FileDocuments::leftBackups), named by
+// `documents`: Discard / Restore (Enter). Escape answers nothing — the question comes again the
+// next time the project opens.
+void showRestoreDialog(
+    PandaUI::Context *context, const std::vector<std::string> &documents, std::function<void()> onRestore,
+    std::function<void()> onDiscard
+);
 // A downloaded update: the version, its release notes (the plain text of the manifest), Restart
 // Now / Later / Release Notes.
 void showUpdateReadyDialog(

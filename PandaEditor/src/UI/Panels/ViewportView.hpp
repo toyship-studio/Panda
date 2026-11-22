@@ -50,6 +50,7 @@ struct ScenePointer {
     bool hovered = false;
     bool leftDown = false;      // the left button is held (it went down over the surface)
     bool leftPressed = false;   // it went down since the last take
+    bool snap = false;          // the primary key is held (⌘ on macOS, Ctrl elsewhere): the gizmo goes by steps
 };
 
 // The Scene surface: shows the frame of the Scene viewport (the engine feeds its texture) and is
@@ -120,6 +121,7 @@ private:
     // The navigation and the pointer since the last take.
     bool m_heldForward = false, m_heldBackward = false, m_heldLeft = false, m_heldRight = false;
     bool m_shiftHeld = false, m_controlHeld = false;
+    bool m_primaryHeld = false; // ⌘ on macOS, Ctrl elsewhere: the steps of the gizmo (ScenePointer::snap)
     bool m_rightDown = false; // a right-button drag rotates the camera
     PandaUI::Point m_rotate;
     float m_zoom = 0.f;

@@ -54,6 +54,8 @@ struct CollectionViewAppearance {
     ThemeColor selectionInactive = ThemeColor::selectionInactive;
     ThemeColor hover = ThemeColor::rowHover;
     SurfaceImage selectionImage;
+    ThemeColor dropBorder = ThemeColor::accent; // "drop into this item" (setDropHighlightIndex)
+    float dropBorderWidth = 1.5f;
 };
 
 class CollectionView : public ScrollView {
@@ -97,6 +99,14 @@ public:
     // "Here it is": scrolls the item into view and blinks its cell for a moment. The selection is
     // not touched. May follow reloadData in the same frame — applied in the next update.
     void flashIndex(int index);
+    // The item whose cell is under a point of the window; -1 — none (the background, or outside).
+    int indexAt(Point windowPosition) const;
+    // The frame of the cell of an item in the window while it is in sight (a popover opens at it);
+    // an empty Rect — the item is out of sight.
+    Rect frameOfIndex(int index) const;
+    // The item a drag would drop into wears the drop border; -1 — none. The drop itself is the
+    // application's (a target above the collection decides by indexAt).
+    void setDropHighlightIndex(int index);
 
     void update(double deltaTime) override;
     bool keyDown(KeyEvent &event) override; // ↑/↓ — change the selection (when the collection is focused)
@@ -135,6 +145,7 @@ private:
     int m_itemCount = 0;
 
     std::unordered_map<int, std::shared_ptr<Cell>> m_visibleCells; // index → visible cell
+    int m_dropHighlightIndex = -1;
     std::vector<std::shared_ptr<Cell>> m_recyclePool;              // free cells available for reuse
 
     CollectionSelectionMode m_selectionMode = CollectionSelectionMode::None;

@@ -57,6 +57,11 @@ public:
     void refreshStyle() { // the appearance of the owner changed
         applyStyle();
     }
+    void setDropHighlight(bool highlight) {
+        if (m_dropHighlight == highlight) { return; }
+        m_dropHighlight = highlight;
+        applyStyle();
+    }
 
     void describeAccessibility(Accessibility &accessibility) const override {
         accessibility.role = "cell";
@@ -105,7 +110,8 @@ private:
         const CollectionViewAppearance &a = m_owner->appearance();
         const bool selectable = m_owner->selectionMode() != CollectionSelectionMode::None;
         surface().setCornerRadius(a.cellRadius);
-        surface().setBorderWidth(0.f);
+        surface().setBorderWidth(m_dropHighlight ? a.dropBorderWidth : 0.f);
+        surface().setBorderColor(a.dropBorder);
         if (selectable && m_selected) {
             setBackgroundColor(m_active ? a.selection : a.selectionInactive); // soft plate; brighter in focus
         } else if (selectable && hasControlState(ControlState::Hovered)) {
@@ -125,6 +131,7 @@ private:
     int m_index = -1;
     bool m_selected = false;
     bool m_active = false; // the collection is focused (for the active selection color)
+    bool m_dropHighlight = false;
     bool m_additiveClick = false;
     bool m_rangeClick = false;
 };
@@ -323,6 +330,7 @@ void CollectionView::updateVisibleCells(bool forceRebuild) {
         cell->setItemIndex(index);
         m_dataSource.configureCell(cell->content(), index);
         cell->setCellSelected(showsSelected(index), isFocused() || (m_flashOn && index == m_flashIndex));
+        cell->setDropHighlight(index == m_dropHighlightIndex);
         cell->setFrameRect(m_layout->frameForItem(index, viewport));
         addContentSubview(cell);
         m_visibleCells[index] = cell;
@@ -415,6 +423,27 @@ bool CollectionView::beginCellDrag(int index, DragPayload &payload) {
     m_dataSource.fillDragPayload(payload, indices);
     payload.source = this;
     return !payload.type.empty();
+}
+
+int CollectionView::indexAt(Point windowPosition) const {
+    for (const auto &[index, cell] : m_visibleCells) {
+        if (cell && !cell->isHidden() && cell->getWorldFrame().contains(windowPosition)) { return index; }
+    }
+    return -1;
+}
+
+void CollectionView::setDropHighlightIndex(int index) {
+    if (index == m_dropHighlightIndex) { return; }
+    m_dropHighlightIndex = index;
+    for (const auto &[cellIndex, cell] : m_visibleCells) {
+        if (cell) { cell->setDropHighlight(cellIndex == m_dropHighlightIndex); }
+    }
+    setNeedsDisplay();
+}
+
+Rect CollectionView::frameOfIndex(int index) const {
+    const auto it = m_visibleCells.find(index);
+    return it != m_visibleCells.end() && it->second && !it->second->isHidden() ? it->second->getWorldFrame() : Rect();
 }
 
 void CollectionView::handleContextMenu(int index, Point position) {

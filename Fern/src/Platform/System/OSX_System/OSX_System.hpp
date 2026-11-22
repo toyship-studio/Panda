@@ -25,6 +25,7 @@ public:
     void setApplicationIconLabel(const char *label) override;
     void showAlert(const char *title, const char *message) override;
     void pollEvents() override;
+    void waitEvents(double timeoutSeconds) override;
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;
     void setClipboardText(const char *text) override;

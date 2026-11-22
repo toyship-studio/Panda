@@ -114,6 +114,51 @@ namespace {
     // A live editor: the shader is in the registry meta, the fields are on the live asset. Field
     // edits are undo commands of the document (a gesture merges into one step); the .mat is
     // written on Save.
+    // The shader of a material is a step of its history like a field: the change takes the fields of
+    // the new shader (AssetDocuments::setMaterialShader matches them), undo gives back the old
+    // shader and the values its fields had. The shader lives in the sidecar, written at once
+    // either way; the fields go to the .mat on Save.
+    class SetMaterialShaderCommand final : public Panda::WorldCommand {
+    public:
+        SetMaterialShaderCommand(Panda::AssetId material, Panda::AssetId before, Panda::AssetId after, Panda::MaterialData fields)
+            : m_material(material)
+            , m_before(before)
+            , m_after(after)
+            , m_fields(std::move(fields)) {}
+
+        bool execute() override {
+            return apply(m_after, nullptr);
+        }
+        bool undo() override {
+            return apply(m_before, &m_fields);
+        }
+
+    private:
+        bool apply(Panda::AssetId shader, const Panda::MaterialData *fields) {
+            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+            if (!handler) { return false; }
+            handler->documents().setMaterialShader(m_material, shader);
+            Panda::AssetRef<Panda::MaterialAsset> material{m_material};
+            Panda::MaterialAsset *asset = material.get();
+            if (!asset) { return false; }
+            if (fields) {
+                for (const Panda::MaterialField &field : fields->inputs) {
+                    if (!field.runtime && asset->getInputs().hasField(field.name)) {
+                        asset->setFieldValue(field.name.c_str(), field.value);
+                    }
+                }
+            }
+            asset->setChanged(true);
+            invalidateThumbnail(m_material);
+            return true;
+        }
+
+        Panda::AssetId m_material;
+        Panda::AssetId m_before;
+        Panda::AssetId m_after;
+        Panda::MaterialData m_fields; // the values before the change
+    };
+
     class MaterialEditor final : public AssetEditor {
     public:
         explicit MaterialEditor(const AssetEditorContext &context)
@@ -290,10 +335,15 @@ namespace {
     private:
         void setShader(Panda::AssetId id, Panda::AssetId shaderId) {
             Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-            if (!handler) { return; }
-            if (!handler->documents().setMaterialShader(id, shaderId)) { return; } // already set
-            invalidateThumbnail(id);
-            LOG_INFO_EDITOR("Material shader updated");
+            Panda::AssetRef<Panda::MaterialAsset> material{id};
+            if (!handler || !material) { return; }
+            const auto &registry = handler->getRegistry();
+            const auto it = registry.find(id);
+            if (it == registry.end()) { return; }
+            const Panda::AssetId before = std::get<Panda::AssetInfo::MaterialSettings>(it->second.settings).shader;
+            if (before == shaderId) { return; }
+            SetMaterialShaderCommand command(id, before, shaderId, material->getInputs());
+            editorHost().assetUndoStack(id).execute(command);
             if (m_context.edited) { m_context.edited(); }
             // The field set has changed → rebuild the form (deferred: a widget must not be
             // destroyed from its own callback).

@@ -149,6 +149,11 @@ ContentBrowserDataSource::Entry *ContentBrowserDataSource::findEntry(const Panda
 
 ContentBrowserDataSource::FileEntry *ContentBrowserDataSource::findAsset(Panda::AssetId assetId) const {
     if (!m_root || assetId == 0) { return nullptr; }
+    // The main file of the asset (the vertex source of a shader pair: both files are its cells).
+    if (auto *handler = Panda::AssetHandlerEditor::current()) {
+        Entry *main = findEntry(handler->getProjectPath() / handler->assetPath(assetId));
+        if (main != nullptr && !main->isFolder) { return static_cast<FileEntry *>(main); }
+    }
     std::vector<Folder *> pending = {m_root.get()};
     while (!pending.empty()) {
         Folder *folder = pending.back();
@@ -253,11 +258,16 @@ Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
 
 int ContentBrowserDataSource::indexOfAsset(Panda::AssetId assetId) const {
     if (assetId == 0) { return -1; }
+    // The cell of the main file when the grid shows it (a shader shows its pair as two cells).
+    const FileEntry *main = findAsset(assetId);
+    int first = -1;
     for (int i = 0; i < itemCount(); ++i) {
         const FileEntry *file = fileAt(i);
-        if (file && file->assetId == assetId) { return i; }
+        if (!file || file->assetId != assetId) { continue; }
+        if (file == main) { return i; }
+        if (first < 0) { first = i; }
     }
-    return -1;
+    return first;
 }
 
 int ContentBrowserDataSource::indexOfFolder(const Panda::path_t &path) const {

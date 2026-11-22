@@ -1,5 +1,6 @@
 #include "UI/Panels/ViewportView.hpp"
 
+#include <Foundation/PlatformDetection.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
 #include <algorithm>
@@ -78,6 +79,20 @@ SceneNavigation ViewportView::takeNavigation() {
     return navigation;
 }
 
+namespace {
+
+    // The primary key of the shortcuts: ⌘ on macOS, Ctrl elsewhere (UI/Commands.hpp, "primary").
+    template<typename Event>
+    bool isPrimaryHeld(const Event &event) {
+#ifdef PLATFORM_MACOS
+        return event.isSuperDown;
+#else
+        return event.isControlDown;
+#endif
+    }
+
+} // namespace
+
 ScenePointer ViewportView::takePointer() {
     ScenePointer pointer;
     pointer.position = m_pointer;
@@ -85,6 +100,7 @@ ScenePointer ViewportView::takePointer() {
     pointer.hovered = isHovered();
     pointer.leftDown = m_leftDown;
     pointer.leftPressed = m_leftPressed;
+    pointer.snap = m_primaryHeld;
     m_leftPressed = false;
     return pointer;
 }
@@ -92,6 +108,7 @@ ScenePointer ViewportView::takePointer() {
 bool ViewportView::pointerDown(PointerEvent &event) {
     if (Context *context = getContext()) { context->setFocusedView(this); } // focus → gizmo keys/camera
     m_pointer = event.position;
+    m_primaryHeld = isPrimaryHeld(event);
     if (event.button == PointerButton::Right) {
         m_rightDown = true; // the drag rotates the camera (captured: the moves come until the release)
         return true;
@@ -129,6 +146,7 @@ bool ViewportView::dropGestureIfFrameChanged() {
 
 bool ViewportView::pointerMove(PointerEvent &event) {
     m_pointer = event.position;
+    m_primaryHeld = isPrimaryHeld(event);
     if (m_rightDown) {
         m_rotate.x += event.delta.x;
         m_rotate.y += event.delta.y;
@@ -150,6 +168,7 @@ bool ViewportView::pointerMove(PointerEvent &event) {
 
 bool ViewportView::pointerUp(PointerEvent &event) {
     m_pointer = event.position;
+    m_primaryHeld = isPrimaryHeld(event);
     if (event.button == PointerButton::Right) {
         m_rightDown = false;
         return true;
@@ -208,6 +227,7 @@ void ViewportView::hideMarquee() {
 bool ViewportView::keyDown(KeyEvent &event) {
     m_shiftHeld = event.isShiftDown;
     m_controlHeld = event.isControlDown;
+    m_primaryHeld = isPrimaryHeld(event); // pressed during a drag that stands still: the steps begin
     switch (event.key) {
         // The flight keys are held state, not commands (UI/Commands.hpp): they are recorded, not
         // consumed, so a command on the same key still runs. With a command modifier the key IS
@@ -226,6 +246,7 @@ bool ViewportView::keyDown(KeyEvent &event) {
 bool ViewportView::keyUp(KeyEvent &event) {
     m_shiftHeld = event.isShiftDown;
     m_controlHeld = event.isControlDown;
+    m_primaryHeld = isPrimaryHeld(event);
     switch (event.key) {
         case Key::W: m_heldForward = false; break;
         case Key::S: m_heldBackward = false; break;
@@ -240,7 +261,7 @@ void ViewportView::focusChanged(bool focused) {
     if (focused) { return; }
     // The releases of the keys held when the focus left will not come here.
     m_heldForward = m_heldBackward = m_heldLeft = m_heldRight = false;
-    m_shiftHeld = m_controlHeld = false;
+    m_shiftHeld = m_controlHeld = m_primaryHeld = false;
 }
 
 } // namespace Editor

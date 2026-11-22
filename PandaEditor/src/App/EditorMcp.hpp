@@ -56,6 +56,9 @@ public:
 
     // Once a frame, before the frame of the editor is built.
     void update();
+    uint64_t handledRequests() const { // of the server (Mcp::Server::handledRequests)
+        return m_server.handledRequests();
+    }
 
 private:
     struct Screenshot;

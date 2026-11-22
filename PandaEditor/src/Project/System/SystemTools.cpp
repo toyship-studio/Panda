@@ -502,6 +502,30 @@ std::optional<path_t> SystemTools::openFileDialog() {
     return res;
 }
 
+std::vector<path_t> SystemTools::openFilesDialog() {
+    std::vector<path_t> chosen;
+    if (answerUnattended("Choose files")) { return chosen; }
+    NFD::Init();
+    const nfdpathset_t *paths = nullptr;
+    const nfdresult_t result = NFD::OpenDialogMultiple(paths);
+    if (result == NFD_OKAY) {
+        nfdpathsetsize_t count = 0;
+        NFD::PathSet::Count(paths, count);
+        for (nfdpathsetsize_t index = 0; index < count; index++) {
+            nfdu8char_t *path = nullptr;
+            if (NFD::PathSet::GetPath(paths, index, path) == NFD_OKAY) {
+                chosen.push_back(path_t(reinterpret_cast<const char8_t *>(path)));
+                NFD::PathSet::FreePath(path);
+            }
+        }
+        NFD::PathSet::Free(paths);
+    } else if (result == NFD_ERROR) {
+        LOG_ERROR("Error: %s", NFD::GetError());
+    }
+    NFD::Quit();
+    return chosen;
+}
+
 std::optional<path_t>
 SystemTools::saveFileDialog(const char *filter, const char *defaultPath, const char *defaultName) {
     if (answerUnattended("Choose where to save the file")) { return std::nullopt; }

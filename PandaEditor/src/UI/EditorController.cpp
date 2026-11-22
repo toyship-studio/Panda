@@ -119,9 +119,11 @@ EditorController::EditorController(Panda::EditorLayer &app)
     buildLayout();
     registerCommands();
     m_toolbarView->setKeyHints(m_commands);
+    m_viewportView->setKeyHints(m_commands);
     m_commands.addKeymapListener([] {
         if (s_controller == nullptr) { return; }
         s_controller->m_toolbarView->setKeyHints(s_controller->m_commands);
+        s_controller->m_viewportView->setKeyHints(s_controller->m_commands);
         s_controller->m_settings->keymapChanged();
     });
     selectionChanged(); // initial state: empty → status "-"
@@ -441,6 +443,14 @@ void EditorController::thumbnailDidBecomeReady(Panda::AssetId assetId) {
 
 void EditorController::refreshAssetPanels() {
     m_contentView->refresh();
+    // A project that has just opened: the Content Browser shows the folder it showed at the end of
+    // the last session of the project (ProjectSession::contentBrowserFolder).
+    const Panda::path_t project = m_app.project().getOpenedProjectPath();
+    if (project != m_contentProject) {
+        m_contentProject = project;
+        const std::string &folder = m_app.project().projectSession().contentBrowserFolder;
+        if (!project.empty() && !folder.empty()) { m_contentView->showFolder(project / folder); }
+    }
 }
 
 /* ----------------------------- Selection flow ---------------------------- */
@@ -464,9 +474,9 @@ void EditorController::selectionChanged() {
         m_contentView->clearAssetSelection();
     } else {
         m_hierarchyView->setSelectedEntities({});
-        // The assets were selected somewhere else than in the grid of the Content Browser (a
-        // reference field, the history): its highlight is of another selection and goes.
-        if (m_contentView->selectedAssets() != selection().assets()) { m_contentView->clearAssetSelection(); }
+        // The assets selected anywhere (a reference field, the history, Go to, an import) are
+        // the ones the Content Browser highlights where it shows them.
+        if (m_contentView->selectedAssets() != selection().assets()) { m_contentView->showSelectedAssets(selection().assets()); }
     }
     // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
     // A selected world or prefab is shown by its own tab (WorldTabs::open), not by a tab of asset
@@ -698,8 +708,12 @@ void EditorController::clearAssetUndoStack(Panda::AssetId id) {
 
 void EditorController::selectAsset(Panda::AssetId id) {
     if (id == Panda::AssetId(0) || isBuiltinAsset(id)) { return; } // a built-in one has no form and no file
-    selectAssets({id}); // opens or replaces the asset tab
-    revealAsset(id);    // the selection is shown where the asset lives too
+    revealAsset(id);    // the selection is shown where the asset lives too (going into its folder clears the grid)
+    selectAssets({id}); // opens or replaces the asset tab, and the cell of the asset is highlighted
+}
+
+void EditorController::importFiles(const std::vector<Panda::path_t> &files) {
+    if (m_assetActions) { m_assetActions->contentDidRequestImportFiles(files, m_contentView->currentDirectory()); }
 }
 
 void EditorController::revealAsset(Panda::AssetId id) {
@@ -810,6 +824,7 @@ void EditorController::toolbarDidTapPlay() {
         }
         return;
     }
+    if (m_app.buildBeforePlay(/*ask*/ true)) { return; } // the scripts changed: Play follows their build
     m_app.play();
 }
 
@@ -1079,12 +1094,26 @@ void EditorController::registerCommands() {
     action("keymap.open", "Settings", "Open Keymap", [this] { openKeymap(); });
     action("palette.show", "Editor", "Command Palette", [this] { showCommandPalette(); });
     action("goto.show", "Editor", "Go to Asset or Entity", [this] { showGoTo(); });
+    action("file.import", "File", "Import Files", [this] {
+        if (m_assetActions) { m_assetActions->contentDidRequestImportDialog(m_contentView->currentDirectory()); }
+    });
     // Find is of the panel the keyboard is in: the Content Browser takes it while it has the focus
     // (registered first, on the same key), the Hierarchy otherwise.
     command("contentBrowser.search", "Editor", "Find in Content Browser", [this] {
         if (!m_contentView->hasKeyboard()) { return false; }
         m_contentView->focusSearch();
         return true;
+    });
+    // The keys of the entities mean the files while the keyboard is in the Content Browser: the
+    // same chords, registered first.
+    command("contentBrowser.delete", "Assets", "Delete", [this] {
+        return m_contentView->hasKeyboard() && m_contentView->requestDeleteSelection();
+    });
+    command("contentBrowser.rename", "Assets", "Rename", [this] {
+        return m_contentView->hasKeyboard() && m_contentView->requestRenameSelection();
+    });
+    command("contentBrowser.duplicate", "Assets", "Duplicate", [this] {
+        return m_contentView->hasKeyboard() && m_contentView->requestDuplicateSelection();
     });
     command("hierarchy.search", "Editor", "Find in Hierarchy", [this] {
         if (!showPanel("hierarchy")) { return false; }

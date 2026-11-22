@@ -4,6 +4,7 @@
 #include <PandaUI/Runtime/Context.hpp>
 
 #include <Fern/Events/Event.hpp>
+#include <Fern/Events/EventQueue.hpp>
 #include <Fern/Events/KeyEvents.hpp>
 #include <Fern/Events/MouseEvents.hpp>
 #include <Fern/Events/TouchEvents.hpp>
@@ -210,6 +211,12 @@ void PandaUIFernHost::shutdown() {
 bool PandaUIFernHost::handleEvent(Fern::Event *event) {
     if (!isInitialized() || !event) { return false; }
     if (event->getWindow() && event->getWindow() != m_window) { return false; }
+    // Files of the file manager: a list of paths no PandaUI::Event carries — the view under the
+    // point that takes them (Context::dropFiles).
+    if (event->type == Fern::EventType::FilesDropped) {
+        const auto *drop = static_cast<const Fern::FilesDroppedEvent *>(event);
+        return m_context->dropFiles(Fern::getEventQueue()->droppedFiles(*drop), PandaUI::Point(drop->x, drop->y));
+    }
     PandaUI::Event uiEvent;
     if (!PandaUIFern::translate(event, *m_window, PandaUI::Point(0.f, 0.f), uiEvent)) { return false; }
     if (uiEvent.type == PandaUI::EventType::WindowResize) {

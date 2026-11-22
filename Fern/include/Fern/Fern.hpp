@@ -58,6 +58,10 @@ void setCursorLocked(bool locked);
 bool isCursorLocked();
 void setCursor(Cursor cursor);
 void pollEvents();
+/// pollEvents that waits first: until an event of the system comes or `timeoutSeconds` pass,
+/// whichever is sooner, then takes every event as pollEvents does. The loop of an application
+/// with nothing to draw sleeps here instead of drawing — and wakes at once for a click.
+void waitEvents(double timeoutSeconds);
 void setFrameCallback(FrameCallback callback, void *userData);
 void clearFrameCallback();
 void dispatchFrame(double deltaTime);

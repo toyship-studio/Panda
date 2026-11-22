@@ -118,10 +118,22 @@ public:
     // ---- edited. Play runs a copy of the active world (PlaySession); Stop drops the copy and
     // ---- returns to the world being edited. Each does nothing when it is already so.
     void play();
+    // Play with the scripts as they are written (the toolbar, F5, the MCP server): their sources
+    // changed since the library was built (ProjectLoader::isScriptsBuildBehind) — the build starts,
+    // and the game follows it when it succeeds, as an IDE builds before it runs. true — the game
+    // waits for that build. ask — a build that fails asks whether to play the last one (the user at
+    // the screen); without it the game just does not start, and the log says why (an agent).
+    bool buildBeforePlay(bool ask);
+    bool isWaitingToPlay() const {
+        return m_playAfterBuild;
+    }
     void stop();
     bool isPlaying() const {
         return m_play.isPlaying();
     }
+    // Files of the file manager dropped onto the main window at a point: a view under it takes
+    // them, else the folder the Content Browser shows (EditorMcp drops the same way).
+    void dropFiles(const std::vector<std::string> &paths, PandaUI::Point position);
     void setGameDriven(bool driven) {
         m_play.setDriven(driven);
     }
@@ -246,6 +258,7 @@ private:
     // A Build of the scripts succeeded: the editor loads the new library — at once, or when the
     // game stops (a playing game runs the code of the loaded one).
     void scriptsWereBuilt();
+    void followBuildBeforePlay(); // the build Play waited for ended without success
 
     // ---- The project and the window.
     void openProjectRequest();  // asks which folder, then — a project — about the unsaved edits
@@ -255,7 +268,14 @@ private:
     void newWindow(); // a second instance of the editor, on its start screen
     void saveOpenedProjectWindowState();
     void updateWindowState();
-    void syncWindowIdentity(); // the window title and the label of the application icon name the project
+    // The window title and the label of the application icon name the project; the window says
+    // whether some document is unsaved (the dot in the close button of macOS, a bullet after the
+    // title elsewhere — Fern::Window::setModifiedState).
+    void syncWindowIdentity(double deltaTime);
+    void updatePace(double deltaTime); // at rest when nobody looks and nothing goes on (Application::setRestInterval)
+    // The unsaved edits are copied aside at a pause of the input (FileDocuments::backUp), and the
+    // copies a crashed session left behind are offered back once the project shows.
+    void updateBackups(double deltaTime);
     void showStartScreen();
     void showEditorChrome();
     // Editor parts of the project modules (context/plugins.md, stage 2): registered once both an
@@ -283,6 +303,8 @@ private:
     // Which camera the frame is seen through is the business of the viewports.
     PlaySession m_play;
     bool m_scriptsBuiltWhilePlaying = false; // the new library is loaded when the game has stopped
+    bool m_playAfterBuild = false;           // Play waits for the build of the scripts (buildBeforePlay)
+    bool m_playAfterBuildAsks = false;       // its failure asks whether to play the last build
     Editor::ScenePointer m_scenePointer; // the pointer over the Scene surface this frame (the gizmo, the tools)
     // Every file the editor holds in memory: the settings of the editor and of the project, the
     // open worlds, the asset documents (Project/Documents/FileDocuments.hpp). Before the loader:
@@ -304,6 +326,7 @@ private:
     // --unattended: no native dialog for as long as the editor runs.
     std::unique_ptr<SystemTools::Unattended> m_unattended;
     std::string m_windowTitle; // what syncWindowIdentity has set: "<project> — <world file>"
+    double m_unsavedCheck = 0.0; // seconds to the next look at the unsaved documents
     std::string m_iconLabel;   // the project name on the application icon (empty — none)
     Editor::Commands m_commands; // the commands of the editor and their keys
     EditorMenuBar m_menuBar;
@@ -320,6 +343,12 @@ private:
     // The MCP server of the open project (the "mcp" section of project.json): an AI agent looks
     // at the editor and drives it through it.
     std::unique_ptr<EditorMcp> m_mcp;
+    uint64_t m_mcpRequests = 0; // what the server had taken at the last frame
+    double m_quietSeconds = 0.0; // since something went on (updatePace)
+    double m_inputPause = 0.0;   // seconds since the last input of the user (updateBackups)
+    double m_backupWait = 0.0;   // seconds since the last backup
+    double m_backupCost = 0.0;   // seconds the last backup that wrote something took
+    bool m_backupsAsked = false; // the left backups of the open project were offered
     UIRootMode m_uiRootMode = UIRootMode::None;
     PandaUI::TextureHandle m_sceneTexture; // the output of the Scene surface wrapped for its PandaUI panel
     Miren::TextureHandle m_sceneNative;    // last wrapped native handle — re-wrap only if it changes

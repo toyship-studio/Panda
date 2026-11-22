@@ -16,6 +16,9 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Serialization/AssetsMapper.hpp>
 
+#include <Rain/Value.hpp>
+
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -421,31 +424,121 @@ void AssetHandlerEditor::syncMaterialFieldsWithTemplate(MaterialData &data, Mate
     }
 }
 
-bool AssetHandlerEditor::renameAsset(AssetId id, const std::string &newFileName) {
-    if (!m_registry.contains(id) || newFileName.empty()) { return false; }
-    const AssetType type = m_registry.at(id).type;
-    // Single-file kinds: material, postfx and file-based kinds from the registry; the others
-    // (pairs/derived) are a separate task.
-    const AssetKind *kind = GameContext::getExtensions().assetKinds.find(type);
-    const bool singleFile = type == AssetType::MATERIAL || type == AssetType::POSTPROCESSING ||
-                            (kind != nullptr && kind->fileBased());
-    if (!singleFile) { return false; }
-    const path_t oldPath = assetPath(id);
-    const path_t newPath = oldPath.parent_path() / (newFileName + oldPath.extension().string());
-    if (std::filesystem::exists(m_projectPath / newPath)) {
-        LOG_ERROR_EDITOR("The asset was not renamed: %s exists already.", newPath.string().c_str());
+namespace {
+
+    bool isInsidePath(const path_t &path, const path_t &folder) {
+        const auto mismatch = std::mismatch(folder.begin(), folder.end(), path.begin(), path.end());
+        return mismatch.first == folder.end();
+    }
+
+    // A .gltf whose buffers or pictures are files beside it (not data inside it): moved to another
+    // folder, it would lose them.
+    bool gltfNamesFilesBeside(const path_t &file) {
+        if (file.extension() != ".gltf") { return false; }
+        std::ifstream stream(file);
+        std::stringstream text;
+        text << stream.rdbuf();
+        Rain::Value document;
+        if (!Rain::parseJson(text.str(), document)) { return false; }
+        for (const char *list : {"buffers", "images"}) {
+            const Rain::Value *items = document.find(list);
+            if (items == nullptr || !items->isArray()) { continue; }
+            for (const Rain::Value &item : items->items()) {
+                const Rain::Value *uri = item.isObject() ? item.find("uri") : nullptr;
+                if (uri != nullptr && uri->isString() && uri->getString().rfind("data:", 0) != 0) { return true; }
+            }
+        }
         return false;
     }
-    std::error_code errorCode;
-    std::filesystem::rename(m_projectPath / oldPath, m_projectPath / newPath, errorCode);
-    if (errorCode) {
-        LOG_ERROR_EDITOR("%s could not be renamed: the file cannot be moved.", oldPath.string().c_str());
-        return false;
+
+} // namespace
+
+std::pair<std::string, std::string> AssetHandlerEditor::splitName(const std::string &fileName) {
+    for (const char *compound : {".vert.hlsl", ".frag.hlsl"}) {
+        const std::string extension = compound;
+        if (fileName.size() > extension.size() && fileName.ends_with(extension)) {
+            return {fileName.substr(0, fileName.size() - extension.size()), extension};
+        }
     }
-    std::filesystem::remove(AssetPmeta::sidecarPathFor(m_projectPath / oldPath), errorCode);
-    m_registeredAssets.erase(oldPath);
-    registerPath(id, newPath);
-    savePmeta(id); // the sidecar goes to the new location
+    const size_t dot = fileName.rfind('.');
+    if (dot == std::string::npos || dot == 0) { return {fileName, std::string()}; }
+    return {fileName.substr(0, dot), fileName.substr(dot)};
+}
+
+bool AssetHandlerEditor::movePath(const path_t &from, const path_t &to, std::string *error) {
+    namespace fs = std::filesystem;
+    const auto fail = [error](std::string message) {
+        if (error != nullptr) { *error = std::move(message); }
+        return false;
+    };
+    const path_t assets = assetsPath();
+    std::error_code code;
+    if (from == assets || to == assets || !isInsidePath(from, assets) || !isInsidePath(to, assets)) {
+        return fail("only what is inside Assets moves");
+    }
+    if (!fs::exists(from, code)) { return fail(from.filename().string() + " is not there"); }
+    if (fs::exists(to, code)) { return fail(to.filename().string() + " is there already"); }
+    if (isInsidePath(to, from)) { return fail("a folder does not go into itself"); }
+    const path_t fromRelative = fs::relative(from, m_projectPath);
+    const path_t toRelative = fs::relative(to, m_projectPath);
+
+    // A folder: one move of the system, then the assets under it follow.
+    if (fs::is_directory(from, code)) {
+        std::vector<std::pair<AssetId, path_t>> moved;
+        for (const auto &[id, info] : m_registry) {
+            const path_t path = assetPath(id);
+            if (!path.empty() && isInsidePath(path, fromRelative)) { moved.emplace_back(id, path); }
+        }
+        fs::rename(from, to, code);
+        if (code) { return fail(code.message()); }
+        for (const auto &[id, oldRelative] : moved) {
+            for (const path_t &file : getAssetPaths(id)) { m_registeredAssets.erase(fs::relative(file, m_projectPath)); }
+            removeDerivedAssetFiles(m_projectPath, m_registry.at(id).type, oldRelative);
+            registerPath(id, toRelative / fs::relative(oldRelative, fromRelative));
+        }
+        return true;
+    }
+
+    const AssetId id = getAssetId(from);
+    if (!id) { // a file of no asset: as it is
+        fs::rename(from, to, code);
+        return code ? fail(code.message()) : true;
+    }
+    // The asset is named by its main file — the vertex source of a shader, whichever file of the
+    // pair was named here: the sidecar is of that one.
+    const path_t main = m_projectPath / assetPath(id);
+    const auto [oldName, mainExtension] = splitName(main.filename().string());
+    const std::string newName = splitName(to.filename().string()).first;
+    const path_t newMain = to.parent_path() / (newName + mainExtension);
+    if (from.parent_path() != to.parent_path() && gltfNamesFilesBeside(main)) {
+        return fail(main.filename().string() + " names files beside it: move the folder it is in");
+    }
+    // Every file of the asset takes the new name (the pair of a shader as a pair), and the sidecar.
+    std::vector<std::pair<path_t, path_t>> plan;
+    for (const path_t &file : getAssetPaths(id)) {
+        const std::string name = file.filename().string();
+        if (name.rfind(oldName, 0) != 0) { continue; }
+        plan.emplace_back(file, to.parent_path() / (newName + name.substr(oldName.size())));
+    }
+    plan.emplace_back(AssetPmeta::sidecarPathFor(main), AssetPmeta::sidecarPathFor(newMain));
+    for (const auto &[source, target] : plan) {
+        if (fs::exists(target, code)) { return fail(target.filename().string() + " is there already"); }
+    }
+    std::vector<std::pair<path_t, path_t>> done;
+    for (const auto &[source, target] : plan) {
+        if (!fs::exists(source, code)) { continue; } // the pair of a broken shader
+        fs::rename(source, target, code);
+        if (code) {
+            const std::string message = code.message();
+            for (auto it = done.rbegin(); it != done.rend(); ++it) { fs::rename(it->second, it->first, code); }
+            return fail(message);
+        }
+        done.emplace_back(source, target);
+    }
+    const path_t oldRelative = assetPath(id);
+    for (const path_t &file : getAssetPaths(id)) { m_registeredAssets.erase(fs::relative(file, m_projectPath)); }
+    removeDerivedAssetFiles(m_projectPath, m_registry.at(id).type, oldRelative);
+    registerPath(id, fs::relative(newMain, m_projectPath));
     return true;
 }
 

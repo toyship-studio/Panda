@@ -2,6 +2,7 @@
 
 #include <Panda/Assets/Base/Path.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -46,6 +47,14 @@ public:
         std::error_code errorCode;
         const auto time = std::filesystem::last_write_time(path, errorCode);
         return !errorCode && time != m_time;
+    }
+    // The time as a number, to be kept in a file and given back by another session (the backups
+    // of the unsaved edits): the ticks of the clock of the file system.
+    int64_t ticks() const {
+        return static_cast<int64_t>(m_time.time_since_epoch().count());
+    }
+    void setTicks(int64_t ticks) {
+        m_time = std::filesystem::file_time_type(std::filesystem::file_time_type::duration(ticks));
     }
 
 private:

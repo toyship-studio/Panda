@@ -8,6 +8,7 @@
 #include <Panda/GameLogic/GameContext.hpp>
 #include <Panda/Prefabs/Prefabs.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -201,6 +202,7 @@ WorldFile *FileDocuments::loadWorld(const path_t &path) {
 
 bool FileDocuments::readWorld(WorldFile &world, const path_t &path) {
     if (!world.read(path)) { return false; }
+    m_backups.remove(world.id()); // the file again: no edits to keep
     syncStartWorld(world);
     if (&world == m_activeWorld) { m_output->documentsDidLoadWorld(); }
     return true;
@@ -221,6 +223,7 @@ void FileDocuments::closeWorld(WorldFile &world) {
         WorldFile *neighbor = m_worlds.size() == 1 ? nullptr : m_worlds[index + 1 < m_worlds.size() ? index + 1 : index - 1].get();
         showWorld(neighbor);
     }
+    m_backups.remove(world.id()); // its edits were saved or given up before it closed
     m_worlds.erase(m_worlds.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
@@ -298,6 +301,7 @@ bool FileDocuments::applyToPrefab(Entity root, const Prefabs::Scope &scope, bool
 bool FileDocuments::saveWorld(WorldFile &world) {
     if (world.path().empty()) { return saveWorldAs(world); }
     if (!world.write(world.path())) { return false; }
+    m_backups.remove(world.id());
     syncStartWorld(world);
     registerWorldAsset(world.path());
     // A saved prefab reaches its instances in the open worlds at once.
@@ -321,6 +325,7 @@ bool FileDocuments::saveWorldAs(WorldFile &world) {
         return false;
     }
     if (!world.write(path)) { return false; }
+    m_backups.remove(world.id());
     if (!isSubpath(path, assets)) {
         LOG_WARN_EDITOR(
             "%s is saved outside the Assets folder of the project: it is a file the editor edits, not an asset — "
@@ -363,10 +368,68 @@ std::unique_ptr<AssetFile> FileDocuments::assetFile(AssetId id) {
     return std::make_unique<AssetFile>(*handler, id, handler->isAssetChangedOnDisk(id));
 }
 
+/* ------------------------------ The backups ------------------------------ */
+
+size_t FileDocuments::backUp() {
+    if (m_projectPath.empty()) { return 0; }
+    size_t written = 0;
+    for (const std::unique_ptr<WorldFile> &document : m_worlds) {
+        WorldFile &world = *document;
+        if (!world.isDirty()) {
+            m_backups.remove(world.id());
+            continue;
+        }
+        const uint64_t revision = world.world().getRevision();
+        const int64_t stamp = world.stamp().ticks();
+        if (m_backups.isCurrent(world.id(), revision, world.path(), stamp)) { continue; }
+        std::string text;
+        if (world.text(text) && m_backups.write(world.id(), revision, world.path(), stamp, text)) { written++; }
+    }
+    for (const uint32_t key : m_backups.keys()) {
+        if (findWorld(key) == nullptr) { m_backups.remove(key); }
+    }
+    return written;
+}
+
+std::vector<std::string> FileDocuments::leftBackups() const {
+    std::vector<std::string> titles;
+    for (const LeftBackup &left : m_backups.leftBehind()) { titles.push_back(WorldFile::titleOf(left.file)); }
+    return titles;
+}
+
+void FileDocuments::restoreLeftBackups() {
+    WorldFile *first = nullptr;
+    bool activeRestored = false;
+    for (const LeftBackup &left : m_backups.leftBehind()) {
+        WorldFile *world = left.file.empty() ? nullptr : findWorld(left.file);
+        const bool added = world == nullptr;
+        if (added) { world = &addWorld(/*starterContent*/ false); }
+        if (!world->restore(left.copy, left.file, left.stamp)) {
+            if (added) { m_worlds.pop_back(); }
+            continue;
+        }
+        syncStartWorld(*world);
+        activeRestored = activeRestored || world == m_activeWorld;
+        if (first == nullptr) { first = world; }
+    }
+    m_backups.dropLeftBehind();
+    backUp(); // the restored edits are of this session now: kept at once
+    if (activeRestored) {
+        m_output->documentsDidLoadWorld();
+    } else if (first != nullptr) {
+        activateWorld(*first);
+    }
+}
+
+void FileDocuments::discardLeftBackups() {
+    m_backups.dropLeftBehind();
+}
+
 /* ------------------------------ The project ------------------------------ */
 
 void FileDocuments::openProject(const path_t &projectPath) {
     m_projectPath = projectPath;
+    m_backups.open(projectPath);
     m_projectSettings.open(projectPath / ".Panda" / "project.json");
     // The open documents are where the instances of a changed prefab are (context/prefabs.md).
     if (AssetHandlerEditor *handler = AssetHandlerEditor::current()) {
@@ -396,6 +459,31 @@ void FileDocuments::openWorlds(const ProjectSession &session) {
     if (active != nullptr) { showWorld(active); }
 }
 
+void FileDocuments::fileMoved(const path_t &from, const path_t &to) {
+    const auto movedPath = [&from, &to](const path_t &path) -> path_t {
+        if (path == from) { return to; }
+        const auto mismatch = std::mismatch(from.begin(), from.end(), path.begin(), path.end());
+        if (mismatch.first != from.end()) { return {}; }
+        return to / std::filesystem::relative(path, from);
+    };
+    for (const std::unique_ptr<WorldFile> &world : m_worlds) {
+        if (const path_t moved = movedPath(world->path()); !moved.empty()) { world->fileMoved(moved); }
+    }
+    if (m_projectPath.empty()) { return; }
+    backUp(); // the copies of the worlds that moved name their new files
+    ProjectSettings &settings = projectSettings();
+    if (settings.startWorld.empty()) { return; }
+    const path_t moved = movedPath(m_projectPath / settings.startWorld);
+    if (moved.empty()) { return; }
+    const bool clean = !m_projectSettings.isDirty();
+    settings.startWorld = std::filesystem::relative(moved, m_projectPath).generic_string();
+    if (clean) {
+        m_projectSettings.save();
+    } else {
+        m_projectSettings.markEdited();
+    }
+}
+
 ProjectSession FileDocuments::session() {
     const EditorCameraSettings camera = m_output->documentsEditorCamera();
     if (m_activeWorld != nullptr) { m_activeWorld->setCamera(camera); }
@@ -417,6 +505,7 @@ void FileDocuments::closeProject() {
     // is gone.
     showWorld(nullptr);
     m_worlds.clear();
+    m_backups.close(); // the session ends in order: what was not saved was given up
     m_projectSettings.open({});
     m_projectPath.clear();
 }
@@ -424,6 +513,7 @@ void FileDocuments::closeProject() {
 void FileDocuments::releaseProject() {
     m_activeWorld = nullptr;
     m_worlds.clear();
+    m_backups.close();
     m_projectSettings.open({});
     m_projectPath.clear();
 }

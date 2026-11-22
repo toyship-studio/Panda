@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Project/Documents/AssetFile.hpp"
+#include "Project/Documents/DocumentBackups.hpp"
 #include "Project/Documents/SettingsFile.hpp"
 #include "Project/Documents/WorldFile.hpp"
 #include "Project/Settings/EditorSettings.hpp"
@@ -95,6 +96,10 @@ public:
     }
     WorldFile *findWorld(uint32_t id);
     WorldFile *findWorld(const path_t &path); // the open world of this file
+    // A file or a folder of the project moved (AssetHandlerEditor::movePath): the open worlds and
+    // prefabs in it follow it, and so does the start world of project.json — the file is written at
+    // once when the settings have no other unsaved edit, else the next Save writes it with them.
+    void fileMoved(const path_t &from, const path_t &to);
     bool isWorldFile(const FileDocument *file) const;
     // The editor camera stays with the world it was looking at; the new active world brings its own.
     void activateWorld(WorldFile &world);
@@ -118,6 +123,22 @@ public:
 
     // ---- The asset documents ----
     std::unique_ptr<AssetFile> assetFile(AssetId id); // a loaded asset of the project; null — not loaded
+
+    // ---- The backups of the unsaved edits (DocumentBackups) ----
+    // Every open world and prefab with unsaved edits gets a copy of its text as it is now, aside
+    // from its file; one without them has none. Nothing is written for a world that did not change
+    // since its last copy: the editor calls this before the game code runs (Play, a script build
+    // loaded) and at the pauses of the work (EditorLayer::updateBackups). Save, Reload and closing a
+    // world take its copy away, and so does the end of the session. How many copies were written.
+    size_t backUp();
+    // The unsaved edits a session of this project left behind (it crashed, or was killed): the
+    // documents they are of, as a question names them; empty — none.
+    std::vector<std::string> leftBackups() const;
+    // They come back as unsaved edits of their documents — the open one of the file, else a new
+    // document of it (a world that had no file: a new world) — and the first becomes the active
+    // world. Save writes them; a file changed on disk since is asked about there.
+    void restoreLeftBackups();
+    void discardLeftBackups();
 
     // ---- The project (ProjectLoader) ----
     const path_t &projectPath() const {
@@ -163,6 +184,7 @@ private:
     std::string projectRelative(const path_t &path) const; // forward slashes; empty — outside the project
 
     FileDocumentsOutput *m_output;
+    DocumentBackups m_backups;
     SettingsFile m_editorSettings;
     SettingsFile m_projectSettings;
     std::vector<std::unique_ptr<WorldFile>> m_worlds;

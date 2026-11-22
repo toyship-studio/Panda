@@ -20,8 +20,10 @@ the editor loads.
    `Scripts/___PROJECTNAME___/scripts/build_scripts.sh debug`, and the `reload` tool when the
    editor is started — it picks up the fresh library (by mtime).
    Fix compilation errors yourself, using the output.
-3. Read `logs` for errors; `play` and a `screenshot` of the `game` view show the game. Motion,
-   input and sound are checked by the user.
+3. Read `logs` for errors; `play` and a `screenshot` of the `game` view show the game. `play`
+   builds the scripts first when their sources changed since the last build (its answer waits
+   for the build, and is an error with the output when it fails). Motion, input and sound are
+   checked by the user.
 
 After the scripts are loaded the editor updates `.Panda/scripts-manifest.json` — take the fields
 for binding in a world from there (panda-script-fields).

@@ -147,7 +147,7 @@ struct EditorMcp::Screenshot {
 
 // One frame of input made in place of the user.
 struct EditorMcp::InputStep {
-    enum class Kind { Move, Down, Up, Scroll, KeyDown, KeyUp, Text, Idle };
+    enum class Kind { Move, Down, Up, Scroll, KeyDown, KeyUp, Text, Drop, Idle };
     Kind kind = Kind::Idle;
     PandaUI::Point position;                                    // Move, Down, Up, Scroll (window points)
     PandaUI::Point delta;                                       // Scroll
@@ -161,6 +161,7 @@ struct EditorMcp::InputStep {
     bool alt = false;
     bool super = false;
     bool newClick = false; // Down: not the second click of a double click
+    std::vector<std::string> files; // Drop: the paths dropped from the file manager
 };
 
 // A gesture of the pointer as a call of `pointer` describes it.
@@ -177,6 +178,7 @@ struct EditorMcp::Gesture {
     PandaUI::Point scrollDelta; // scroll
     bool trackpad = false;      // scroll
     float magnification = 0.f;  // pinch
+    std::vector<std::string> files; // drop
 };
 
 // A place a gesture goes to, named by the path of an element (PandaUI/Runtime/AccessibilityTree.hpp).
@@ -348,7 +350,8 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "play",
         "Starts the game inside the editor (Play): the scripts and the physics run in a copy of the active world, "
-        "the Game tab shows the frame. Answers with what the start logged.",
+        "the Game tab shows the frame. When the sources of the scripts changed since their build, they are built "
+        "first and the answer waits for it. Answers with what the start logged.",
         {},
         [this](const Rain::Value &) { return play(); },
     });
@@ -441,11 +444,13 @@ void EditorMcp::registerTools() {
         "screenshot was asked with another `width`). `click` presses and releases; `drag` presses, moves to "
         "`toTarget` or toX, toY over a few frames and releases; `down`, `move`, `up` make a gesture in parts, with "
         "a look in between; `scroll` turns the wheel by dx, dy (`trackpad` — a two-finger swipe instead); `pinch` "
-        "is the pinch of a trackpad. Answers with what is under the pointer afterwards: the elements from the "
+        "is the pinch of a trackpad; `drop` drops `files` of the file manager there (a folder of the Content "
+        "Browser takes them; elsewhere they go into the folder it shows). Answers with what is under the pointer afterwards: the elements from the "
         "innermost out, the cursor, the element in focus. While the Settings window is open the gesture goes to "
         "it (it is in front): the coordinates are those of a `settings` screenshot.",
         R"({"type":"object","properties":{)"
-        R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll","pinch"],"description":"Default: click."},)"
+        R"("action":{"type":"string","enum":["click","doubleClick","rightClick","move","down","up","drag","scroll","pinch","drop"],"description":"Default: click."},)"
+        R"("files":{"type":"array","items":{"type":"string"},"description":"drop: the paths of files dropped onto the place from the file manager, as the Finder or the Explorer drops them."},)"
         R"("target":{"type":"string","description":"The path of the element the gesture goes to (see `ui`), in place of x, y."},)"
         R"("at":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2,"description":"Where in the target, in shares of its width and height. Default [0.5, 0.5] — the middle."},)"
         R"("toTarget":{"type":"string","description":"drag: the path of the element it ends on, in place of toX, toY."},)"
@@ -978,6 +983,14 @@ Mcp::PendingResult EditorMcp::play() {
     if (m_editor.isPlaying()) { return Mcp::ready(textResult("The game is playing already.")); }
     const uint64_t from = LogHistory::nextSequence();
     SystemTools::Unattended unattended;
+    // The scripts changed since their build: the answer waits for the build and the start.
+    if (m_editor.buildBeforePlay(/*ask*/ false)) {
+        return [this, from]() -> std::optional<Mcp::ToolResult> {
+            if (m_editor.isPlaying()) { return textResult("Built the scripts, playing.\n" + logSince(from)); }
+            if (m_editor.isWaitingToPlay()) { return std::nullopt; }
+            return Mcp::ToolResult::error("The scripts did not build, so the game did not start.\n" + logSince(from));
+        };
+    }
     m_editor.play();
     return Mcp::ready(textResult("Playing.\n" + logSince(from)));
 }
@@ -1312,6 +1325,9 @@ Mcp::PendingResult EditorMcp::playInput(std::vector<InputStep> steps) {
                 context.handlePointerUp(event);
                 break;
             }
+            case InputStep::Kind::Drop:
+                m_editor.dropFiles(step.files, step.position); // as a drop of the window: EditorLayer::onEvent
+                break;
             case InputStep::Kind::Scroll: {
                 PandaUI::ScrollEvent event;
                 event.position = step.position;
@@ -1526,6 +1542,10 @@ std::vector<EditorMcp::InputStep> EditorMcp::gestureSteps(const Gesture &gesture
         // A swipe is many events in a row, a frame apart: `steps` of them, each by dx, dy.
         const int count = std::clamp(gesture.steps > 0 ? gesture.steps : 1, 1, 240);
         for (int i = 0; i < count; ++i) { steps.push_back(scroll); }
+    } else if (action == "drop") {
+        InputStep drop = step(InputStep::Kind::Drop);
+        drop.files = gesture.files;
+        steps.push_back(drop);
     } else if (action == "pinch") {
         InputStep pinch = step(InputStep::Kind::Scroll);
         pinch.trackpad = true;
@@ -1552,9 +1572,17 @@ Mcp::PendingResult EditorMcp::pointer(const Rain::Value &arguments) {
 
     Gesture gesture;
     gesture.action = Mcp::stringArgument(arguments, "action", "click");
-    static const char *ACTIONS[] = {"click", "doubleClick", "rightClick", "move", "down", "up", "drag", "scroll", "pinch"};
+    static const char *ACTIONS[] = {"click", "doubleClick", "rightClick", "move", "down", "up", "drag", "scroll", "pinch", "drop"};
     if (std::find(std::begin(ACTIONS), std::end(ACTIONS), gesture.action) == std::end(ACTIONS)) {
-        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag, scroll or pinch"));
+        return Mcp::ready(Mcp::ToolResult::error("action is click, doubleClick, rightClick, move, down, up, drag, scroll, pinch or drop"));
+    }
+    if (const Rain::Value *files = arguments.isObject() ? arguments.find("files") : nullptr; files && files->isArray()) {
+        for (const Rain::Value &file : files->items()) {
+            if (file.isString()) { gesture.files.push_back(file.getString()); }
+        }
+    }
+    if (gesture.action == "drop" && gesture.files.empty()) {
+        return Mcp::ready(Mcp::ToolResult::error("drop: pass `files`, the paths of the files the file manager drops"));
     }
     gesture.at = toWindow(Mcp::numberArgument(arguments, "x", 0.0), Mcp::numberArgument(arguments, "y", 0.0));
     gesture.to = toWindow(Mcp::numberArgument(arguments, "toX", 0.0), Mcp::numberArgument(arguments, "toY", 0.0));

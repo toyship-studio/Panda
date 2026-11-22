@@ -216,7 +216,7 @@ bool World::changeEntityId(Entity entity, UUID id) {
         });
     }
     bumpStructureVersion();
-    m_changed = true;
+    setChanged();
     return true;
 }
 
@@ -226,7 +226,7 @@ Entity World::instantiateEntity() {
     fillEntity(entity, newEntityId());
     m_entityIdMap[entity.getId()] = entity;
     bumpStructureVersion();
-    m_changed = true;
+    setChanged();
     return entity;
 }
 
@@ -236,7 +236,7 @@ Entity World::instantiateEntity(UUID id) {
     fillEntity(entity, id);
     bumpStructureVersion();
     m_entityIdMap[entity.getId()] = entity;
-    m_changed = true;
+    setChanged();
     return entity;
 }
 
@@ -275,7 +275,7 @@ void World::setParent(Entity entity, Entity parent, bool keepWorldTransform) {
     // have changed bodies: the systems hear of the move either way.
     transformChanged(entity, !keepWorldTransform);
     bumpStructureVersion();
-    m_changed = true;
+    setChanged();
 }
 
 void World::attach(Entity entity, Entity parent) {
@@ -302,7 +302,7 @@ void World::destroyNow(Entity entity) {
     detach(entity);
     destroySubtree(entity);
     bumpStructureVersion();
-    m_changed = true;
+    setChanged();
 }
 
 void World::destroySubtree(Entity entity) {
@@ -558,7 +558,7 @@ void World::settle(Entity root, const std::vector<Entity> &copies, Entity parent
     if (placement.position) { root.getTransform().setPosition(*placement.position); }
     if (placement.rotation) { root.getTransform().setRotation(*placement.rotation); }
     bumpStructureVersion();
-    m_changed = true;
+    setChanged();
     // A running world: the copies appear with their components at once, past
     // Entity::addComponent. The systems hear about them as about restored entities (bodies are
     // created) once the whole subtree stands in the hierarchy, then their scripts are created

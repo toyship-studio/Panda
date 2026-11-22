@@ -45,6 +45,20 @@ public:
     bool focused;
 };
 
+// FilesDropped: files of the file manager dropped onto the window — the list of their paths in the
+// queue (EventQueue::droppedFiles) and the point of the drop, in the coordinates of the mouse
+// events.
+class FilesDroppedEvent : public Event {
+public:
+    FilesDroppedEvent(uint32_t list, float x, float y, Window *window)
+        : Event(EventType::FilesDropped, window)
+        , list(list)
+        , x(x)
+        , y(y) {}
+    uint32_t list;
+    float x, y;
+};
+
 // WindowMinimized / WindowRestored.
 class WindowMinimizeEvent : public Event {
 public:

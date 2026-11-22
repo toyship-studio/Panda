@@ -83,18 +83,21 @@ struct SessionWorld final : public Rain::Codable {
 // was. The worlds open at the end of the last session, in the order of their tabs (none — the
 // project opens with no world), and the one that was active; what the Export window was last set to — the target
 // ("macos", "ios", "ios-device", "windows": the platform of its build folder) and the
-// configuration ("debug", "release"); empty — the defaults of the machine.
+// configuration ("debug", "release"); empty — the defaults of the machine; the folder the Content
+// Browser showed (relative to the project; empty — Assets).
 struct ProjectSession final : public Rain::Codable {
     std::vector<SessionWorld> worlds;
     std::string activeWorld;
     std::string exportTarget;
     std::string exportConfiguration;
+    std::string contentBrowserFolder;
 
     RAIN_FIELDS_BEGIN(ProjectSession)
     RAIN_FIELD(worlds)
     RAIN_FIELD(activeWorld)
     RAIN_FIELD(exportTarget)
     RAIN_FIELD(exportConfiguration)
+    RAIN_FIELD(contentBrowserFolder)
     RAIN_FIELDS_END
 };
 

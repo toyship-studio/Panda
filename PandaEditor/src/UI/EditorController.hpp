@@ -160,6 +160,9 @@ public:
     // ---- What else the application tells the chrome.
     void thumbnailDidBecomeReady(Panda::AssetId assetId); // the cell of the asset in the Content Browser follows
     void refreshAssetPanels();                            // the Content Browser rereads the registry
+    // Files of the file manager dropped where no view takes them: into the folder the Content
+    // Browser shows (AssetActions::contentDidRequestImportFiles).
+    void importFiles(const std::vector<Panda::path_t> &files);
     // The registries of the editor gained entries (the editor parts of a project's modules were
     // loaded): what is built from them is built again.
     void extensionsChanged();
@@ -325,6 +328,7 @@ private:
     // Before the panels: they are built with these as their outputs.
     std::unique_ptr<EntityActions> m_entityActions;
     std::unique_ptr<AssetActions> m_assetActions;
+    Panda::path_t m_contentProject; // the project the Content Browser was last refreshed for
     Panda::World *m_panelsWorld = nullptr; // the world shown by the panels (editing or playing)
     uint64_t m_lastStructureVersion = 0;   // snapshot of World::getStructureVersion for syncWorldStructure
     std::uint64_t m_lastSelectionVersion = 0; // the version of the selection the panels show (syncSelection)

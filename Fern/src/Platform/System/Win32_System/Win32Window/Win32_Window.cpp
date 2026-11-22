@@ -6,11 +6,14 @@
 
 #include <Foundation/GraphicsAPI.hpp>
 
+#include <shellapi.h> // DragAcceptFiles, DragQueryFileW: the files dropped from the Explorer
 #include <shobjidl.h>
 #include <windowsx.h>
 
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace Fern {
 
@@ -507,6 +510,7 @@ Win32_Window::Win32_Window(
         LOG_CRITICAL("Failed to create the Win32 window");
         exit(1);
     }
+    DragAcceptFiles(m_windowHandle, TRUE); // files of the Explorer: WM_DROPFILES
 
     // The window exists now, so the real per-monitor scale is known: apply the
     // requested logical client size (and origin, when provided) in native pixels.
@@ -955,6 +959,28 @@ LRESULT Win32_Window::handleMessage(UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_MOUSEMOVE:
             postMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             return 0;
+        case WM_DROPFILES: {
+            // Files of the Explorer (DragAcceptFiles at the creation): their paths in UTF-8 and the
+            // point in the client area, in the units of the mouse events.
+            HDROP drop = reinterpret_cast<HDROP>(wParam);
+            std::vector<std::string> paths;
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            for (UINT index = 0; index < count; index++) {
+                std::wstring wide(DragQueryFileW(drop, index, nullptr, 0) + 1, L'\0');
+                const UINT length = DragQueryFileW(drop, index, wide.data(), static_cast<UINT>(wide.size()));
+                const int bytes =
+                    WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(length), nullptr, 0, nullptr, nullptr);
+                std::string path(static_cast<size_t>(bytes), '\0');
+                WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(length), path.data(), bytes, nullptr, nullptr);
+                if (!path.empty()) { paths.push_back(std::move(path)); }
+            }
+            POINT point = {};
+            DragQueryPoint(drop, &point);
+            DragFinish(drop);
+            const float scale = getContentScale();
+            getEventQueue()->postFilesDroppedEvent(std::move(paths), point.x / scale, point.y / scale, this);
+            return 0;
+        }
         case WM_LBUTTONDOWN:
         case WM_RBUTTONDOWN:
         case WM_MBUTTONDOWN: {

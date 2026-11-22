@@ -102,6 +102,9 @@ public:
     // Expansion — UI state keyed by item identity.
     void setExpanded(TreeItem item, bool expanded);
     bool isExpanded(TreeItem item) const;
+    // The item and every item under it open or close — Alt (Option) with a click on the arrow or
+    // with ←/→, as in the Finder.
+    void setBranchExpanded(TreeItem item, bool expanded);
 
     // Selection — by item identity.
     void setSelectionMode(TreeSelectionMode mode);
@@ -125,6 +128,13 @@ public:
     // "Here it is": reveals the item and blinks its row for a moment. The selection is not
     // touched — the answer to "where does this reference point", not a navigation.
     void flashItem(TreeItem item);
+    // The item whose row is under a point of the window; null — none (below the rows, or outside).
+    TreeItem itemAt(Point windowPosition) const;
+    // The frame of the row of an item in the window while it is in sight; an empty Rect — not.
+    Rect frameOfItem(TreeItem item) const;
+    // The row a drag of another source would drop into wears the drop border (its own drag shows
+    // its target itself); null — none.
+    void setDropHighlightItem(TreeItem item);
     void setOnSelectionChanged(SelectionChangedCallback callback);
     void setOnContextMenu(ContextMenuCallback callback);
     // A double click on a row (not on its arrow): "open this" — what it means is the
@@ -139,7 +149,7 @@ public:
     void setDragType(std::string type);
 
     void update(double deltaTime) override;
-    bool keyDown(KeyEvent &event) override;     // ↑/↓ — navigation, ←/→ — collapse/expand, Shift+↑/↓ — range
+    bool keyDown(KeyEvent &event) override;     // ↑/↓ — navigation, ←/→ — collapse/expand (Alt: the branch), Shift+↑/↓ — range
     bool pointerDown(PointerEvent &event) override; // click on an empty area (not on a row) — clear the selection
 
     bool canAcceptDrop(const DragInfo &drag) override;
@@ -183,7 +193,7 @@ private:
     int subtreeEndIndex(int flatIndex) const; // last index of the subtree of row flatIndex
 
     void handleRowClicked(TreeItem item, bool additive, bool range);
-    void handleDisclosureClicked(TreeItem item);
+    void handleDisclosureClicked(TreeItem item, bool wholeBranch);
     void handleContextMenu(TreeItem item, Point position);
     void applySelectionToVisible();
     void selectSingle(TreeItem item);                   // select exactly one + make it the cursor/anchor + reveal it

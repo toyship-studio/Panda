@@ -1,6 +1,7 @@
 #include "PandaUI/Elements/NumberField.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +9,105 @@
 #include <utility>
 
 namespace PandaUI {
+
+namespace {
+
+    // expression := term (('+' | '-') term)* ; term := factor (('*' | '/') factor)* ;
+    // factor := ('+' | '-') factor | number | '(' expression ')'
+    class ExpressionReader final {
+    public:
+        explicit ExpressionReader(const std::string &text)
+            : m_text(text) {}
+
+        bool read(double &value) {
+            if (!expression(value)) { return false; }
+            skipSpaces();
+            return m_at == m_text.size() && std::isfinite(value);
+        }
+
+    private:
+        void skipSpaces() {
+            while (m_at < m_text.size() && (m_text[m_at] == ' ' || m_text[m_at] == '\t')) { m_at++; }
+        }
+        bool take(char symbol) {
+            skipSpaces();
+            if (m_at < m_text.size() && m_text[m_at] == symbol) {
+                m_at++;
+                return true;
+            }
+            return false;
+        }
+        bool expression(double &value) {
+            if (!term(value)) { return false; }
+            for (;;) {
+                double right = 0.0;
+                if (take('+')) {
+                    if (!term(right)) { return false; }
+                    value += right;
+                } else if (take('-')) {
+                    if (!term(right)) { return false; }
+                    value -= right;
+                } else {
+                    return true;
+                }
+            }
+        }
+        bool term(double &value) {
+            if (!factor(value)) { return false; }
+            for (;;) {
+                double right = 0.0;
+                if (take('*')) {
+                    if (!factor(right)) { return false; }
+                    value *= right;
+                } else if (take('/')) {
+                    if (!factor(right) || right == 0.0) { return false; }
+                    value /= right;
+                } else {
+                    return true;
+                }
+            }
+        }
+        bool factor(double &value) {
+            if (take('-')) {
+                if (!factor(value)) { return false; }
+                value = -value;
+                return true;
+            }
+            if (take('+')) { return factor(value); }
+            if (take('(')) { return expression(value) && take(')'); }
+            skipSpaces();
+            // A number: digits with a point (or a comma, as many keyboards type it) and an exponent.
+            const size_t start = m_at;
+            std::string number;
+            while (m_at < m_text.size()) {
+                const char c = m_text[m_at];
+                const bool exponentSign = (c == '+' || c == '-') && !number.empty() && (number.back() == 'e' || number.back() == 'E');
+                if (std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == ',' || c == 'e' || c == 'E' || exponentSign) {
+                    number.push_back(c == ',' ? '.' : c);
+                    m_at++;
+                } else {
+                    break;
+                }
+            }
+            if (number.empty()) { return false; }
+            char *end = nullptr;
+            value = std::strtod(number.c_str(), &end);
+            if (end != number.c_str() + number.size()) {
+                m_at = start;
+                return false; // "1e", "1.2.3"
+            }
+            return true;
+        }
+
+        const std::string &m_text;
+        size_t m_at = 0;
+    };
+
+} // namespace
+
+bool NumberField::evaluate(const std::string &text, double &value) {
+    return ExpressionReader(text).read(value);
+}
 
 NumberField::NumberField()
     : m_field(std::make_shared<TextField>())
@@ -134,11 +234,10 @@ void NumberField::handleTextChanged() {
     const std::string &text = m_field->getText();
     if (text.empty()) { return; }
 
-    char *end = nullptr;
-    const float parsed = std::strtof(text.c_str(), &end);
-    if (end == text.c_str()) { return; } // not a number — keep the previous value
+    double parsed = 0.0;
+    if (!evaluate(text, parsed)) { return; } // not a whole number or expression yet — keep the previous value
 
-    const float clamped = clampValue(parsed);
+    const float clamped = clampValue(static_cast<float>(parsed));
     const bool wasMixed = m_mixed;
     m_mixed = false; // entering a number fixes a concrete value for all
     if (clamped != m_value || wasMixed) {

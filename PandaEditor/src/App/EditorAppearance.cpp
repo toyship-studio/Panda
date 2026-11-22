@@ -63,8 +63,13 @@ void EditorAppearance::applyIcons() {
     m_ui.applyIconOverrides(files);
 }
 
+// The theme of an empty setting (a new user) or of one whose plugin is gone: Panda Dark, the
+// built-in dark theme as a plugin theme (its file adds nothing to the base) — so the APPEARANCE
+// section and the Plugins tab name the theme the editor shows, not nothing.
 std::string EditorAppearance::currentThemeId() const {
-    return m_documents.editorSettings().appearance.theme;
+    static const std::string DEFAULT_THEME = "dev.pandaengine.themes/panda-dark";
+    const std::string &theme = m_documents.editorSettings().appearance.theme;
+    return theme.empty() || m_plugins.findTheme(theme) == nullptr ? DEFAULT_THEME : theme;
 }
 
 void EditorAppearance::selectTheme(const std::string &themeId) {

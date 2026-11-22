@@ -48,6 +48,7 @@
 #endif
 
 #include <Rain/Value.hpp>
+#include <PandaUI/Elements/NumberField.hpp>
 #include <PandaUI/Elements/Slider.hpp>
 #include <PandaUI/Elements/Control.hpp>
 #include <PandaUI/Elements/ScrollView.hpp>
@@ -443,8 +444,13 @@ int main(int argc, const char **argv) {
                 previousChunk[i] = data.chunks[i].chunk;
             }
             // A smoke test frame does not wait for vsync — the pause gives the background bakes
-            // time (a real frame is ≥ 8 ms).
+            // the time of a real frame (≥ 8 ms) while there are bakes to wait for, and a
+            // millisecond otherwise. A fixed millisecond was an eighth of a frame: on a busy
+            // machine a chunk was still baking when it had to be resident (one run in fifteen).
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            for (int waited = 1; waited < 8 && !volume.ready(); waited++) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
         };
         const auto settle = [&](int maxFrames) {
             for (int frame = 0; frame < maxFrames && !volume.ready(); frame++) { pump(); }
@@ -549,6 +555,62 @@ int main(int argc, const char **argv) {
         const Rain::Value *member = document.find(key);
         return member != nullptr ? Rain::writeJson(*member) : std::string();
     };
+
+    // What a number field reads (PandaUI::NumberField::evaluate): a number, or arithmetic of numbers
+    // with the usual precedence and parentheses; a comma is a decimal point; a text that is not a
+    // whole expression yet gives no value (the field keeps the one it had).
+    std::printf("arithmetic in a number field\n");
+    {
+        const auto reads = [](const char *text, double expected) {
+            double value = 0.0;
+            return PandaUI::NumberField::evaluate(text, value) && std::abs(value - expected) < 1e-9;
+        };
+        const auto refuses = [](const char *text) {
+            double value = 0.0;
+            return !PandaUI::NumberField::evaluate(text, value);
+        };
+        report("a number is read as it is", reads("1.5", 1.5) && reads("-2", -2.0) && reads(".5", 0.5) && reads("2e3", 2000.0));
+        report("multiplication goes before addition", reads("2+3*4", 14.0) && reads("10-4/2", 8.0));
+        report("parentheses and signs", reads("(1 + 0.5) / 4", 0.375) && reads("-(2*3)", -6.0) && reads("2*-3", -6.0));
+        report("a comma reads as a decimal point", reads("1,5", 1.5) && reads("0,25*4", 1.0));
+        report("an expression that is not whole gives no value", refuses("2*") && refuses("(1+2") && refuses("-") && refuses("1/0") && refuses("abc"));
+    }
+
+    // The loop of an application at rest (Application::loop, setRestInterval) waits in
+    // Fern::waitEvents until its time or an event of a window: with no event it lasts until its
+    // time — it does not return at once (a core spinning) and does not hold on past it (a frame
+    // that never comes). The system wakes a wait for its own reasons too (the loop waits again
+    // then); a real event of a window ends the attempt — the mouse of someone at the machine over
+    // the window of the check — and the next one is made. Only a quiet attempt is measured.
+    std::printf("a wait for events\n");
+    {
+        Fern::EventQueue *queue = Fern::getEventQueue();
+        bool measured = false;
+        bool rested = false;
+        double seconds = 0.0;
+        int waits = 0; // a wait that does not wait is a loop of thousands of them
+        for (int attempt = 0; attempt < 20 && !measured; attempt++) {
+            Fern::pollEvents();
+            queue->reset(); // what came before is not this check's
+            const auto start = std::chrono::steady_clock::now();
+            seconds = 0.0;
+            waits = 0;
+            while (!queue->hasEvents() && seconds < 0.05 && waits < 1000) {
+                Fern::waitEvents(0.05 - seconds);
+                waits++;
+                seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            }
+            measured = !queue->hasEvents();
+            rested = measured && seconds >= 0.05 && seconds < 1.0 && waits <= 25;
+        }
+        queue->reset();
+        if (!measured) {
+            std::printf("    events kept coming: no quiet moment to measure the rest in\n");
+        } else if (!rested) {
+            std::printf("    the rest lasted %.3f s in %d waits (0.05 s in a few)\n", seconds, waits);
+        }
+        report("a rest with no event lasts until its time, and not past it", rested || !measured);
+    }
 
     // A finger in a scroll view (PandaUI::Context, View::takesTouch), as on iOS: a drag that begins
     // on a button scrolls the list and the button lets go without its action; a tap is the button's;
@@ -1158,9 +1220,11 @@ int main(int argc, const char **argv) {
         Panda::Prefabs::merge(base, patch);
         report("a patch merged into its base gives the value", base == value);
 
+#if PANDA_SMOKE_HAS_TERRAIN && PANDA_SMOKE_HAS_PHYSICS
         // A tree of a terrain is a copy of a prefab that no entity stands for: the colliders of
         // the prefab are shapes of the body of the terrain, where the tree stands, at its turn
-        // and its size. Nothing of it is seen in a picture.
+        // and its size. Nothing of it is seen in a picture. (The terrain and the physics are
+        // modules: the build without modules skips it.)
         {
             const Panda::AssetId TREE(9004);
             const std::string trunk = noScripts + ",\"capsuleCollider3dComponent\":{\"isSensor\":false,"
@@ -1210,6 +1274,7 @@ int main(int argc, const char **argv) {
             forest->finishRunning();
             delete forest;
         }
+#endif
 
         delete instances;
         Panda::Prefabs::clear();

@@ -77,7 +77,7 @@ target_include_directories(Fern PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
 if (PLATFORM_WIN32)
     # Native Win32 backend: WGL needs opengl32, the D3D11 context needs d3d11+dxgi.
-    target_link_libraries(Fern opengl32 d3d11 dxgi)
+    target_link_libraries(Fern opengl32 d3d11 dxgi shell32) # shell32: the files dropped from the Explorer
 elseif (PLATFORM_LINUX)
     # Dependencies - GLFW, only for Linux
     target_link_libraries(Fern glfw)

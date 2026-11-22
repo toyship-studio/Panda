@@ -24,6 +24,8 @@ public:
     static void setUserDataDirectory(path_t directory);
     static bool isUserDataDirectoryOverridden();
     static std::optional<path_t> openFileDialog();
+    // Files to open, as many as the user chose (empty — cancelled; unattended — none asked).
+    static std::vector<path_t> openFilesDialog();
     static std::optional<path_t> openFolderDialog(const char *initialFolder = "");
     static std::optional<path_t> saveFileDialog(
         const char *filter = "All\0*.*\0", const char *defaultPath = nullptr, const char *defaultName = nullptr

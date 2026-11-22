@@ -97,7 +97,12 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   `NumberField` scrubs it: the label is a drag handle (`NumberField::beginScrub` / `scrub` /
   `endScrub`; a pixel is a hundredth of the value, never more than a hundredth of the range,
   and the value lands on round numbers). `NumberField::setStep(1)` makes a field of whole numbers.
+  A number field reads arithmetic as Unity, Godot and Blender do — "2*3", "(1 + 0.5) / 4", a
+  comma as a decimal point ("1,5") — and takes the value when the expression is whole
+  (`NumberField::evaluate`; `PandaSmoke`, "arithmetic in a number field").
 - `View::setHidden` keeps the place of a view in the layout; `setCollapsed` takes it out.
+- A tree opens and closes a whole branch with Alt (Option) — a click on the arrow or ←/→, as in the
+  Finder (`TreeView::setBranchExpanded`).
 - `ListView` tells a row that was chosen (`setOnItemActivated`: a click, `activateSelected`)
   from a selection that only moved (the arrows): a palette picks on the first.
 - Several contexts and windows are supported; the single-window path stays simple.
@@ -109,6 +114,14 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   first Escape takes the text back. The card keeps the size of the whole list while it is filtered:
   the field does not move under the typing, and a dropdown that opened above the box (no room
   below) does not jump below it. The pickers of the editor keep their size the same way.
+- Files dropped onto the window from the file manager are a drop of the type "files" with their
+  paths (`DragPayload::files`): `Context::dropFiles` gives it to the nearest view under the point
+  that takes it (`canAcceptDrop` / `performDrop`); a host on Fern calls it for `FilesDropped`.
+  `CollectionView::indexAt` and `TreeView::itemAt` name the item under a point of the window.
+- A view that takes a drop INTO an item (a folder) marks it while the drag is over it:
+  `CollectionView::setDropHighlightIndex`, `TreeView::setDropHighlightItem` draw the drop border
+  of the appearance (`dropBorder`, `dropBorderWidth`) around that cell or row; -1 (null) takes it
+  away. What is a target is decided by the view that takes the drop — the collection only draws.
 - A tree whose drag payload depends on what is dragged — files of several kinds — fills it itself
   (`TreeDataSource::fillDragPayload`, as `CollectionViewDataSource::fillDragPayload`); the tree is
   still the source, and it reparents only a payload of its own drag type.

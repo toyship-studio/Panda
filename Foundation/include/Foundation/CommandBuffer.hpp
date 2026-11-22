@@ -65,6 +65,10 @@ public:
         m_writePos = 0;
     }
 
+    bool isEmpty() const {
+        return m_readPos >= m_writePos; // nothing written that was not read
+    }
+
 private:
     void writeHeader(Header &header) {
         align(m_writePos, __alignof(Header));

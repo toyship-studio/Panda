@@ -115,6 +115,14 @@ void GLFW_System::pollEvents() {
     glfwPollEvents();
 }
 
+void GLFW_System::waitEvents(double timeoutSeconds) {
+    if (timeoutSeconds > 0.0) {
+        glfwWaitEventsTimeout(timeoutSeconds);
+    } else {
+        glfwPollEvents(); // GLFW refuses a zero timeout
+    }
+}
+
 Vec2 GLFW_System::getCursorPosition() const {
     GLFW_Window *window = getFocusedWindow();
     if (!window) { return Vec2(); }

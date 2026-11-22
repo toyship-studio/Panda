@@ -108,7 +108,7 @@ protected:
             const TreeViewAppearance &a = m_tree->appearance();
             const float left = a.basePadLeft + static_cast<float>(m_depth) * a.indent;
             if (localX >= left && localX <= left + a.disclosureSize + 2.f) {
-                m_tree->handleDisclosureClicked(m_item);
+                m_tree->handleDisclosureClicked(m_item, event.isAltDown);
                 return true; // click on the arrow — the row is not selected
             }
         }
@@ -531,8 +531,25 @@ void TreeView::handleRowClicked(TreeItem item, bool additive, bool range) {
     if (m_onSelectionChanged) { m_onSelectionChanged(*this); }
 }
 
-void TreeView::handleDisclosureClicked(TreeItem item) {
-    setExpanded(item, !isExpanded(item));
+void TreeView::handleDisclosureClicked(TreeItem item, bool wholeBranch) {
+    if (wholeBranch) {
+        setBranchExpanded(item, !isExpanded(item));
+    } else {
+        setExpanded(item, !isExpanded(item));
+    }
+}
+
+void TreeView::setBranchExpanded(TreeItem item, bool expanded) {
+    if (!item || !m_dataSource.numberOfChildren) { return; }
+    std::vector<TreeItem> pending = {item};
+    while (!pending.empty()) {
+        TreeItem next = pending.back();
+        pending.pop_back();
+        const int count = m_dataSource.numberOfChildren(next);
+        if (count <= 0) { continue; }
+        setExpanded(next, expanded);
+        for (int index = 0; index < count; index++) { pending.push_back(m_dataSource.childAt(next, index)); }
+    }
 }
 
 void TreeView::handleContextMenu(TreeItem item, Point position) {
@@ -692,8 +709,21 @@ bool TreeView::keyDown(KeyEvent &event) {
     switch (event.key) {
         case Key::Up: moveCursor(-1, event.isShiftDown); return true;
         case Key::Down: moveCursor(1, event.isShiftDown); return true;
-        case Key::Left: collapseOrMoveToParent(); return true;
-        case Key::Right: expandOrMoveToChild(); return true;
+        // Alt (Option): the whole branch under the row opens or closes, as in the Finder.
+        case Key::Left:
+            if (event.isAltDown) {
+                setBranchExpanded(currentItem(), false);
+            } else {
+                collapseOrMoveToParent();
+            }
+            return true;
+        case Key::Right:
+            if (event.isAltDown) {
+                setBranchExpanded(currentItem(), true);
+            } else {
+                expandOrMoveToChild();
+            }
+            return true;
         default: return false;
     }
 }
@@ -722,6 +752,22 @@ std::vector<std::uint64_t> TreeView::dragItemIds() const {
 
 bool TreeView::canAcceptDrop(const DragInfo &drag) {
     return drag.payload.type == m_dragType && drag.payload.source == this && !m_dragItems.empty();
+}
+
+TreeItem TreeView::itemAt(Point windowPosition) const {
+    if (!getWorldFrame().contains(windowPosition)) { return nullptr; }
+    for (const auto &entry : m_visibleRows) {
+        const Rect frame = entry.second->getWorldFrame();
+        if (windowPosition.y >= frame.origin.y && windowPosition.y < frame.origin.y + frame.size.height) {
+            return entry.first >= 0 && entry.first < static_cast<int>(m_flat.size()) ? m_flat[static_cast<size_t>(entry.first)].item : nullptr;
+        }
+    }
+    return nullptr;
+}
+
+Rect TreeView::frameOfItem(TreeItem item) const {
+    const auto it = m_visibleRows.find(flatIndexOf(item));
+    return it != m_visibleRows.end() && it->second ? it->second->getWorldFrame() : Rect();
 }
 
 TreeView::DropTarget TreeView::computeDropTarget(Point windowPosition) const {
@@ -756,6 +802,10 @@ TreeView::DropTarget TreeView::computeDropTarget(Point windowPosition) const {
     target.flatIndex = idx;
     target.valid = true;
     return target;
+}
+
+void TreeView::setDropHighlightItem(TreeItem item) {
+    applyDropHighlight(item ? flatIndexOf(item) : -1);
 }
 
 void TreeView::applyDropHighlight(int flatIndex) {

@@ -11,15 +11,6 @@ namespace Panda::ZipArchive {
 
 namespace {
 
-    std::string utf8(const path_t &path) {
-        const std::u8string text = path.generic_u8string();
-        return std::string(text.begin(), text.end());
-    }
-
-    path_t fromUtf8(const std::string &text) {
-        return path_t(std::u8string(reinterpret_cast<const char8_t *>(text.data()), text.size()));
-    }
-
     FILE *openFile(const path_t &path, const char *mode) {
 #if defined(_WIN32)
         const std::wstring wideMode(mode, mode + std::char_traits<char>::length(mode));
@@ -46,7 +37,7 @@ namespace {
             const size_t end = name.find('/', start);
             const std::string component = name.substr(start, end == std::string::npos ? std::string::npos : end - start);
             if (component == "..") { return std::nullopt; }
-            if (!component.empty() && component != ".") { relative /= fromUtf8(component); }
+            if (!component.empty() && component != ".") { relative /= pathFromUtf8(component); }
             if (end == std::string::npos) { break; }
             start = end + 1;
         }
@@ -122,7 +113,7 @@ bool extract(const path_t &archive, const path_t &destination, std::string &erro
         std::filesystem::create_directories(target.parent_path(), code);
         std::ofstream stream(target, std::ios::binary | std::ios::trunc);
         if (!stream.is_open()) {
-            error = "Cannot write " + utf8(target);
+            error = "Cannot write " + utf8Path(target);
             return false;
         }
         if (!mz_zip_reader_extract_to_callback(&reader.zip, index, &writeToStream, &stream, 0) || !stream.good()) {
@@ -172,13 +163,13 @@ std::optional<std::vector<std::string>> list(const path_t &archive, std::string 
 bool create(const path_t &folder, const path_t &archive, std::string &error) {
     std::error_code code;
     if (!std::filesystem::is_directory(folder, code)) {
-        error = "Not a folder: " + utf8(folder);
+        error = "Not a folder: " + utf8Path(folder);
         return false;
     }
     std::filesystem::remove(archive, code);
     FILE *file = openFile(archive, "wb");
     if (!file) {
-        error = "Cannot write " + utf8(archive);
+        error = "Cannot write " + utf8Path(archive);
         return false;
     }
     mz_zip_archive zip = {};
@@ -188,12 +179,12 @@ bool create(const path_t &folder, const path_t &archive, std::string &error) {
         return false;
     }
     bool ok = true;
-    const std::string root = utf8(folder.filename());
+    const std::string root = utf8Path(folder.filename());
     ok = mz_zip_writer_add_mem(&zip, (root + "/").c_str(), nullptr, 0, 0);
     for (auto it = std::filesystem::recursive_directory_iterator(folder, code); ok && !code && it != std::filesystem::recursive_directory_iterator(); it.increment(code)) {
         const path_t path = it->path();
         if (path.filename() == ".DS_Store") { continue; }
-        const std::string name = root + "/" + utf8(std::filesystem::relative(path, folder, code));
+        const std::string name = root + "/" + utf8Path(std::filesystem::relative(path, folder, code));
         if (it->is_directory(code)) {
             ok = mz_zip_writer_add_mem(&zip, (name + "/").c_str(), nullptr, 0, 0);
             continue;
@@ -202,7 +193,7 @@ bool create(const path_t &folder, const path_t &archive, std::string &error) {
         std::ifstream stream(path, std::ios::binary);
         std::vector<char> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
         if (!stream.good() && !stream.eof()) {
-            error = "Cannot read " + utf8(path);
+            error = "Cannot read " + utf8Path(path);
             ok = false;
             break;
         }

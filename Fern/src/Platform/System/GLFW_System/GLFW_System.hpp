@@ -22,6 +22,7 @@ public:
     ) override;
     void disposeWindow(Window *window) override;
     void pollEvents() override;
+    void waitEvents(double timeoutSeconds) override;
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;
     void setClipboardText(const char *text) override;

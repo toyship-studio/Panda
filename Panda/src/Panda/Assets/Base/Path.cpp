@@ -11,4 +11,13 @@ path_t replaceLastChars(const path_t &path, const std::string &replacement) {
     return path_t(str);
 }
 
+std::string utf8Path(const path_t &path) {
+    const std::u8string text = path.generic_u8string();
+    return std::string(text.begin(), text.end());
+}
+
+path_t pathFromUtf8(const std::string &text) {
+    return path_t(std::u8string(text.begin(), text.end()));
+}
+
 } // namespace Panda

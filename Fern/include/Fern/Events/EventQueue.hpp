@@ -7,10 +7,13 @@
 #include <Foundation/CommandBuffer.hpp>
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace Fern {
 
 class Window;
+class FilesDroppedEvent;
 
 class EventQueue {
 public:
@@ -37,10 +40,19 @@ public:
     void postWindowFocusEvent(bool focused, Window *window);       // WindowFocus / WindowLostFocus
     void postWindowMinimizedEvent(bool minimized, Window *window); // WindowMinimized / WindowRestored
     void postAppQuitRequest();
+    // UTF-8 paths of the files dropped onto the window at the point (FilesDroppedEvent).
+    void postFilesDroppedEvent(std::vector<std::string> paths, float x, float y, Window *window);
+    const std::vector<std::string> &droppedFiles(const FilesDroppedEvent &event) const;
     Event *poll();
+    bool hasEvents() const {
+        return !m_events.isEmpty();
+    }
 
 private:
     Foundation::CommandBuffer m_events;
+    // The paths of the drops of this frame: an event is copied byte for byte into the buffer, so
+    // it carries the index of its list. Cleared with the events (reset).
+    std::vector<std::vector<std::string>> m_droppedFiles;
 };
 
 } // namespace Fern

@@ -69,6 +69,12 @@ struct Rect {
     inline bool isZero() {
         return origin.isZero() && size.isZero();
     }
+
+    // The point lies inside: the left and top edges included, the right and bottom ones not.
+    inline bool contains(Point point) const {
+        return point.x >= origin.x && point.y >= origin.y && point.x < origin.x + size.width &&
+               point.y < origin.y + size.height;
+    }
 };
 
 struct Color {

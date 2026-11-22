@@ -30,11 +30,24 @@ public:
     // A double click on an asset the editor has no form for (a shader): its file goes to the
     // external editor of the settings — the editor has no text editor of its own.
     virtual void contentDidRequestOpenExternally(Panda::AssetId assetId) = 0;
+    // Files of the file manager dropped onto the browser go into the directory (a folder with what
+    // is in it), and become assets.
+    virtual void contentDidRequestImportFiles(const std::vector<Panda::path_t> &files, const Panda::path_t &directory) = 0;
+    // The same for the files the user chooses in the dialog of the system (Import Files).
+    virtual void contentDidRequestImportDialog(const Panda::path_t &directory) = 0;
+    // Copies of the assets next to them: a free name ("red 2.mat"), a new id, the settings of the
+    // sidecar (the shader of a material, the import of a texture); selected.
+    virtual void contentDidRequestDuplicate(const std::vector<Panda::AssetId> &assets) = 0;
+    // The browser shows another folder (the session of the project remembers it).
+    virtual void contentDidShowFolder(const Panda::path_t &folder) = 0;
     // The assets that can be created in the directory (RMB on the grid background): the same list
     // as in File → New.
     virtual CreateActions contentCreateActions(const Panda::path_t &directory) = 0;
-    // Rename a single-file asset (material/postprocessing); newName is without the extension.
-    virtual void contentDidRequestRename(Panda::AssetId assetId, const std::string &newName) = 0;
+    // Rename a file of an asset (with the files of its pair) or a folder; newName is without the
+    // extension, which stays.
+    virtual void contentDidRequestRename(const Panda::path_t &path, const std::string &newName) = 0;
+    // Move files of assets and folders into the directory (a drag onto a folder).
+    virtual void contentDidRequestMove(const std::vector<Panda::path_t> &paths, const Panda::path_t &directory) = 0;
     // A new folder in the directory, named by the user.
     virtual void contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) = 0;
     // A folder goes with everything in it; the user is asked first.
@@ -59,12 +72,17 @@ public:
 
     void refresh();             // rescan Assets (the current folder, open folders and rows are kept by path)
     void clearAssetSelection(); // clear the selection of the cells and rows (e.g. when an entity is selected)
+    // The cells (rows) of the assets the editor selected elsewhere are highlighted where the browser
+    // shows them; nothing is announced back.
+    void showSelectedAssets(const std::vector<Panda::AssetId> &assets);
     std::vector<Panda::AssetId> selectedAssets() const; // the assets among the selected cells (rows)
     // Opens the folder of the asset and blinks its cell (its row); the selection of the editor stays.
     void revealAsset(Panda::AssetId asset);
     // The folder File → New puts an asset in: the folder shown (Icons), the folder of the selected
     // row (List). Empty without a project.
     Panda::path_t currentDirectory();
+    // Shows the folder of the path, when it is there (the folder of the last session).
+    void showFolder(const Panda::path_t &folder);
     // An asset thumbnail is ready/updated: rebind its cell if the grid shows it.
     void thumbnailDidBecomeReady(Panda::AssetId assetId);
 
@@ -79,6 +97,11 @@ public:
     void setFoldersShown(bool shown); // the folder tree of the icons
     // The search field takes the keyboard (the Find command, with the keyboard in the browser).
     void focusSearch();
+    // The keys of the browser (EditorController: Delete, F2): what is selected goes — the user is
+    // asked first — or is renamed in the dialog at its cell. false — nothing selected can be.
+    bool requestDeleteSelection();
+    bool requestRenameSelection();
+    bool requestDuplicateSelection(); // ⌘D: copies of the selected assets
     bool hasKeyboard() const; // the focus is in the browser
 
 private:
@@ -98,6 +121,15 @@ private:
 
     bool keyDown(PandaUI::KeyEvent &event) override;
     bool pointerDown(PandaUI::PointerEvent &event) override;
+    // Drops: files of the file manager (Context::dropFiles) go into the folder under the point — a
+    // folder cell of the grid, a folder row (the folder of a file row) of a tree, a crumb of the
+    // path — or the folder shown; what is dragged within the browser moves into a folder under the
+    // point, which wears the drop border meanwhile.
+    bool canAcceptDrop(const PandaUI::DragInfo &drag) override;
+    void dragEntered(const PandaUI::DragInfo &drag) override;
+    void dragUpdated(const PandaUI::DragInfo &drag) override;
+    void dragExited() override;
+    bool performDrop(const PandaUI::DragInfo &drag) override;
 
     std::shared_ptr<PandaUI::View> makeToolbar();
     void configureFolderTree();
@@ -122,6 +154,12 @@ private:
     // under it; files — "asset.<kind>" ("asset" for several kinds). False — nothing to drag.
     bool fillDragPayload(PandaUI::DragPayload &payload, const std::vector<Entry *> &entries) const;
     std::string folderOf(const Entry &entry) const; // "Assets/Textures": where a found entry is
+    Folder *selectedFolder() const; // the one folder selected (not Assets itself); null — none, or more
+    Folder *folderAt(PandaUI::Point at) const; // the folder a drop at the point goes into; null — none
+    bool isOwnDrag(const PandaUI::DragInfo &drag) const; // dragged from a view of this browser
+    bool canMoveInto(const PandaUI::DragInfo &drag, const Folder *folder) const;
+    void highlightDropFolder(const Folder *folder, PandaUI::Point at);
+    void showRenameDialog(const Entry &entry, PandaUI::Point at); // an asset (with its pair) or a folder
     TreeState releaseTree(PandaUI::TreeView &tree);
     void restoreTree(PandaUI::TreeView &tree, const TreeState &state);
 

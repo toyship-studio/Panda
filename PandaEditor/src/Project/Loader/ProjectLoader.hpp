@@ -60,6 +60,11 @@ public:
     // The script build on disk is another one than the loaded one (a step of Reload; the build
     // is not a document — nothing edits it in memory).
     bool isScriptsChangedOnDisk();
+    // The sources of the scripts (Scripts/<project>/src and its CMakeLists.txt) — or the SDK they
+    // are built against (its script library, the Bamboo headers) — were written after the library on
+    // disk was built: the game would play without the latest changes, or against another SDK.
+    // false — no library yet (not built at all), or it is newer than all of them.
+    bool isScriptsBuildBehind();
     // The file of the script library of the open project (it is there once the scripts were built).
     path_t scriptsLibraryPath();
     // The source file a script class is registered in (REGISTER_SCRIPT(Name)), found in the
@@ -77,6 +82,9 @@ public:
     void setExportChoice(std::string target, std::string configuration) {
         m_projectSession.exportTarget = std::move(target);
         m_projectSession.exportConfiguration = std::move(configuration);
+    }
+    void setContentBrowserFolder(std::string folder) { // relative to the project
+        m_projectSession.contentBrowserFolder = std::move(folder);
     }
     const std::vector<RecentProject> &getRecentProjectsList();
     bool hasOpenedProject();

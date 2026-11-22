@@ -840,6 +840,22 @@ void Context::finishDrag(Point position, bool drop) {
     setNeedsRedraw();
 }
 
+bool Context::dropFiles(std::vector<std::string> paths, Point position) {
+    DragInfo info;
+    info.payload.type = "files";
+    info.payload.files = std::move(paths);
+    info.windowPosition = position;
+    for (View *view = hitTest(position); view; view = view->getSuperview()) {
+        const Rect frame = view->getWorldFrame();
+        info.localPosition = Point(position.x - frame.origin.x, position.y - frame.origin.y);
+        if (!view->canAcceptDrop(info)) { continue; }
+        view->performDrop(info);
+        setNeedsRedraw();
+        return true;
+    }
+    return false;
+}
+
 void Context::cancelDrag() {
     if (!m_dragActive) { return; }
     finishDrag(m_mousePosition, false);

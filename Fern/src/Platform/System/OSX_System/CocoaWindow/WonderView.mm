@@ -193,6 +193,7 @@ static Fern::Modifiers modifiersOf(NSEvent *event) {
         fillKeyTable(m_helper);
         m_multiTouchScroll = NO;
         self.ignoreMouseEvents = 0;
+        [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]]; // files of the Finder (performDragOperation)
     }
     NSLog(@"WonderView created");
     return self;
@@ -272,6 +273,36 @@ static Fern::Modifiers modifiersOf(NSEvent *event) {
             getEventQueue()->postKeyEvent(keys[side], false, window, false, 0);
         }
     }
+}
+
+// MARK: - Files dropped from the Finder
+
+static NSArray<NSURL *> *droppedFileURLs(id<NSDraggingInfo> sender) {
+    return [sender.draggingPasteboard readObjectsForClasses:@[[NSURL class]]
+                                                    options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    return droppedFileURLs(sender).count > 0 ? NSDragOperationCopy : NSDragOperationNone;
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+    return droppedFileURLs(sender).count > 0 ? NSDragOperationCopy : NSDragOperationNone;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    std::vector<std::string> paths;
+    for (NSURL *url in droppedFileURLs(sender)) {
+        if (url.fileSystemRepresentation != nullptr) { paths.emplace_back(url.fileSystemRepresentation); }
+    }
+    if (paths.empty()) { return NO; }
+    // The point as the mouse events give it: from the top left of the view.
+    const NSPoint pos = [sender draggingLocation];
+    getEventQueue()->postFilesDroppedEvent(
+        std::move(paths), static_cast<float>(pos.x), static_cast<float>(self.frame.size.height - pos.y),
+        static_cast<Fern::Window *>(self.eventWindow)
+    );
+    return YES;
 }
 
 // MARK: - Mouse

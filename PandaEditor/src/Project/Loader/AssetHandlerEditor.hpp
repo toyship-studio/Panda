@@ -124,8 +124,17 @@ public:
     AssetImportPipeline &import() {
         return m_import;
     }
-    // Renames the asset file (material/postprocessing — single-file ones). newFileName has no extension.
-    bool renameAsset(AssetId id, const std::string &newFileName);
+    // Moves a file of Assets to another path in it — renames it, when the folder is the same: an
+    // asset with the files of its pair (a shader) and its sidecar, a file of no asset as it is, or a
+    // folder with everything in it. The ids stay (they live in the sidecars), so whatever
+    // references an asset by id holds; the registry follows, and the files derived from the old
+    // paths (cooked textures, compiled shaders) go — they are made again. A model whose file names
+    // files beside it (.gltf + .bin) moves with its folder only. false — `error` says why, and
+    // nothing is left half moved.
+    bool movePath(const path_t &from, const path_t &to, std::string *error);
+    // The name of a file of an asset and its extension: a shader source keeps its compound one
+    // ("water" + ".vert.hlsl"), any other file its last one ("bark" + ".png").
+    static std::pair<std::string, std::string> splitName(const std::string &fileName);
     // Field template of a built-in shader (inputs of the default material) or null for project shaders.
     static MaterialData *builtinShaderFieldTemplate(AssetId shaderId);
     // Synchronizes the fields with the template: removes extra ones, adds missing ones, keeps the

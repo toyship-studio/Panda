@@ -38,12 +38,6 @@ Application *Application::get() {
     return s_instance;
 }
 
-uint64_t getMillis() {
-    auto now =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-    return now.count();
-}
-
 Application::~Application() {
     LOG_INFO("Application: shutdown begins");
     F_DELETE(Foundation::getAllocator(), m_layerStack);
@@ -67,11 +61,8 @@ void Application::pushOverlay(Layer *layer) {
 Application::Application()
     : fps(0)
     , m_isApplicationShouldClose(false)
-    , m_timeMillis(0)
-    , m_startTimeMillis(0)
     , m_gameTime(0)
     , m_oneSecondTimeCount(0)
-    , m_deltaTimeMillis(0)
     , m_thisSecondFramesCount(0)
     , m_maximumFps(120)
     , m_layerStack(nullptr)
@@ -80,8 +71,6 @@ Application::Application()
     s_instance = this;
     PANDA_PROFILE_THREAD("Main Thread");
     m_scheduler.registerMainThread(); // ctor runs on the main thread; completions drain here
-    m_timeMillis = getMillis();
-    m_startTimeMillis = m_timeMillis;
     m_layerStack = F_NEW(Foundation::getAllocator(), LayerStack);
     Random::init();
     // The application exists: the application systems registered so far start, the ones that
@@ -98,15 +87,38 @@ Fern::Window *Application::getMainWindow() {
 }
 
 void Application::loop() {
+    // The clock is the steady one: the wall clock jumps when the time of the system is set.
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point last = Clock::now();
     while (!m_isApplicationShouldClose) {
-        uint64_t lastTime = m_timeMillis;
-        m_timeMillis = getMillis();
-        m_deltaTimeMillis += m_timeMillis - lastTime;
-        if (m_deltaTimeMillis < (1000 / m_maximumFps)) { continue; }
-        double deltaTime = m_deltaTimeMillis / 1000.0;
-        m_deltaTimeMillis = 0;
+        if (m_restInterval > 0.0) {
+            // At rest: the next frame after the interval, or at once when an event of a window
+            // comes first — a click that brings the application back is answered in that frame.
+            const Clock::time_point due =
+                last + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(m_restInterval));
+            while (!m_isApplicationShouldClose && !Fern::getEventQueue()->hasEvents()) {
+                const double left = std::chrono::duration<double>(due - Clock::now()).count();
+                if (left <= 0.0) { break; }
+                Fern::waitEvents(left);
+            }
+        } else {
+            // A frame every 1/maximumFps at most. The thread sleeps till a moment before it is due
+            // (it used to spin on the clock — a core busy for nothing where the display does not
+            // hold the frame), and the display's synchronization in Miren::frame keeps the pace: a
+            // sleep to the exact moment loses frames to its jitter.
+            const Clock::time_point wake =
+                last + std::chrono::microseconds(1000000 / m_maximumFps) - std::chrono::microseconds(1500);
+            if (Clock::now() < wake) { std::this_thread::sleep_until(wake); }
+        }
+        const Clock::time_point now = Clock::now();
+        const double deltaTime = std::chrono::duration<double>(now - last).count();
+        last = now;
         tick(deltaTime);
     }
+}
+
+void Application::setRestInterval(double seconds) {
+    m_restInterval = seconds > 0.0 ? seconds : 0.0;
 }
 
 bool Application::tick(double deltaTime) {
@@ -142,7 +154,8 @@ bool Application::tick(double deltaTime) {
     }
     {
         PANDA_PROFILE_SCOPE_N("Scheduler completions");
-        m_scheduler.processCompletions(); // run main-thread completions of background jobs
+        // Main-thread completions of background jobs; any — work is going on (deliveredCompletions).
+        m_deliveredCompletions = m_scheduler.processCompletions() > 0;
     }
     {
         PANDA_PROFILE_SCOPE_N("Miren::frame (main)");

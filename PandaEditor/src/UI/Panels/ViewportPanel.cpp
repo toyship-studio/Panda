@@ -1,4 +1,7 @@
 #include "UI/Panels/ViewportPanel.hpp"
+#include "UI/Commands.hpp"
+
+#include <Foundation/PlatformDetection.hpp>
 
 #include <PandaEditorKit/Widgets/Typography.hpp>
 #include "PandaUI/Rendering/DrawList.hpp"
@@ -151,10 +154,10 @@ void ViewportPanelView::addSubviews() {
     m_overlay = std::make_shared<OverlayBar>();
 
     const char *gizmoIcons[3] = {Ic::GizmoMove, Ic::GizmoRotate, Ic::GizmoScale};
-    const char *gizmoTips[3] = {"Move (1)", "Rotate (2)", "Scale (3)"}; // 1/2/3 as in PandaEditor
+    const char *gizmoIds[3] = {"move", "rotate", "scale"}; // the tooltip follows the keymap: a test names the id
     for (int i = 0; i < 3; ++i) {
         auto button = std::make_shared<IconButton>(gizmoIcons[i], Ic::GizmoSize, 28.f);
-        button->setTooltip(gizmoTips[i]);
+        button->setAccessibilityId(gizmoIds[i]);
         button->setOnClick([this, i] { applyGizmoMode(i); });
         m_overlay->addSubview(button);
         m_gizmoButtons.push_back(button);
@@ -266,6 +269,19 @@ void ViewportPanelView::addSubviews() {
     m_sidebar->setHidden(true);
     m_sidebar->layout().setDisplay(Display::None);
     addSubview(m_sidebar);
+}
+
+void ViewportPanelView::setKeyHints(const Commands &commands) {
+#ifdef PLATFORM_MACOS
+    const std::string snap = " \xE2\x80\x94 \xE2\x8C\x98 snaps"; // " — ⌘ snaps"
+#else
+    const std::string snap = " \xE2\x80\x94 Ctrl snaps";
+#endif
+    static const char *const TITLES[3] = {"Move", "Rotate", "Scale"};
+    static const char *const IDS[3] = {"gizmo.move", "gizmo.rotate", "gizmo.scale"};
+    for (size_t i = 0; i < m_gizmoButtons.size() && i < 3; ++i) {
+        m_gizmoButtons[i]->setTooltip(commands.hint(TITLES[i], IDS[i]) + snap);
+    }
 }
 
 void ViewportPanelView::setSidebarContent(std::shared_ptr<View> content) {

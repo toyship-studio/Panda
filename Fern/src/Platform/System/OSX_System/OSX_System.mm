@@ -168,6 +168,19 @@ void OSX_System::pollEvents() {
     }
 }
 
+void OSX_System::waitEvents(double timeoutSeconds) {
+    NSApplication* application = [NSApplication sharedApplication];
+    NSEvent *event = [application nextEventMatchingMask:NSEventMaskAny
+                                              untilDate:[NSDate dateWithTimeIntervalSinceNow:timeoutSeconds]
+                                                 inMode:NSDefaultRunLoopMode
+                                                dequeue:YES];
+    if (event) {
+        [application sendEvent:event];
+        [application updateWindows];
+    }
+    pollEvents(); // the rest of what came, and the menu bars
+}
+
 Vec2 OSX_System::getCursorPosition() const {
     const NSPoint mouseLoc = [NSEvent mouseLocation];
     return {static_cast<float>(mouseLoc.x), static_cast<float>(mouseLoc.y)};

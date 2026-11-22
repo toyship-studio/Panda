@@ -14,6 +14,8 @@ namespace PandaUI {
 //              to accept the drop;
 //  items     — ids of the dragged elements (multi-selection natively; single = one element).
 //              The application interprets the ids by type (asset id, entity id, tab index/handle);
+//  files     — of the type "files": the paths of files dropped onto the window from the file
+//              manager (Context::dropFiles; no source in the UI);
 //  source    — the source widget: identity (reparent only within its own tree, moving tabs between
 //              bars) and callbacks; the owner of the payload data is the source, it lives during
 //              the drag;
@@ -21,6 +23,7 @@ namespace PandaUI {
 struct DragPayload {
     std::string type;
     std::vector<std::uint64_t> items;
+    std::vector<std::string> files;
     void *source = nullptr;
     std::string ghostText;
 };

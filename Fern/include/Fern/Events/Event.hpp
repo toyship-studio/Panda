@@ -29,7 +29,10 @@ enum EventType {
     TouchBegan,
     TouchMoved,
     TouchEnded,
-    MenuCommand
+    MenuCommand,
+    // Files dropped onto a window from the file manager (FilesDroppedEvent): macOS, Windows,
+    // Linux. Their paths are in the queue (EventQueue::droppedFiles) until it is reset.
+    FilesDropped
 };
 
 struct Event : public Foundation::CommandBuffer::Command {

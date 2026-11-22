@@ -3,6 +3,7 @@
 #include "App/EditorLayer.hpp"
 #include "Preview/AssetPreviews.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
+#include "Project/System/SystemTools.hpp"
 #include "UI/EditorController.hpp"
 #include "UI/EditorDialogs.hpp"
 #include "UI/EditorModelHelper.hpp"
@@ -16,6 +17,7 @@
 
 #include <Panda/Prefabs/Prefabs.hpp>
 
+#include <algorithm>
 #include <filesystem>
 
 namespace Editor {
@@ -56,6 +58,142 @@ void AssetActions::contentDidRequestOpenExternally(Panda::AssetId asset) {
     if (!handler) { return; }
     const Panda::path_t relative = handler->assetPath(asset);
     if (!relative.empty()) { m_workspace.openInExternalEditor(handler->getProjectPath() / relative); }
+}
+
+namespace {
+
+    // A copy of a file, or of a folder with what is in it — but the sidecars (`.pmeta`, the ids of
+    // another project: the copies are new assets of this one) and the hidden files (.DS_Store).
+    bool copyIntoProject(const std::filesystem::path &source, const std::filesystem::path &target, std::error_code &error) {
+        namespace fs = std::filesystem;
+        if (!fs::is_directory(source, error)) { return fs::copy_file(source, target, fs::copy_options::none, error); }
+        if (!fs::create_directory(target, error)) { return false; }
+        for (auto it = fs::recursive_directory_iterator(source, error); !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
+            const std::string name = it->path().filename().string();
+            if (name.empty() || name.front() == '.' || name.ends_with(".pmeta")) {
+                if (it->is_directory(error)) { it.disable_recursion_pending(); }
+                continue;
+            }
+            const fs::path destination = target / fs::relative(it->path(), source, error);
+            if (error) { return false; }
+            if (it->is_directory(error)) {
+                fs::create_directories(destination, error);
+            } else {
+                fs::copy_file(it->path(), destination, fs::copy_options::none, error);
+            }
+            if (error) { return false; }
+        }
+        return !error;
+    }
+
+    bool isInside(const std::filesystem::path &path, const std::filesystem::path &folder) {
+        const auto mismatch = std::mismatch(folder.begin(), folder.end(), path.begin(), path.end());
+        return mismatch.first == folder.end();
+    }
+
+} // namespace
+
+// Files of the file manager become files of the project: copied into the folder under the name
+// they had, or a free one ("bark 2.png"; a shader keeps the pair of its name: "water 2.vert.hlsl"),
+// then registered by the scan like any file put into Assets, selected and shown — the user sees
+// where they went. A file of the project itself is not copied again: a copy is another asset.
+void AssetActions::contentDidRequestImportFiles(const std::vector<Panda::path_t> &files, const Panda::path_t &directory) {
+    namespace fs = std::filesystem;
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (!handler || directory.empty()) { return; }
+    std::error_code error;
+    const fs::path assets = fs::weakly_canonical(handler->assetsPath(), error);
+    std::vector<fs::path> added;
+    for (const fs::path &source : files) {
+        const fs::path canonical = fs::weakly_canonical(source, error);
+        const std::string name = source.filename().string();
+        if (error || name.empty() || !fs::exists(canonical, error)) { continue; }
+        if (isInside(canonical, assets)) {
+            LOG_WARN_EDITOR("%s is a file of the project already: it was not copied.", name.c_str());
+            continue;
+        }
+        const bool folder = fs::is_directory(canonical, error);
+        const auto [base, extension] = folder ? std::pair<std::string, std::string>(name, std::string())
+                                              : Panda::AssetHandlerEditor::splitName(name);
+        const fs::path target = Editor::uniqueAssetPath(directory, base, extension);
+        if (!copyIntoProject(canonical, target, error)) {
+            LOG_ERROR_EDITOR("%s was not added to the project: %s.", name.c_str(), error.message().c_str());
+            fs::remove_all(target, error); // half a folder is not left behind
+            continue;
+        }
+        added.push_back(target);
+    }
+    if (added.empty()) { return; }
+    handler->rescanProject();
+    m_workspace.refreshAssetPanels();
+    std::vector<Panda::AssetId> ids;
+    for (const fs::path &path : added) {
+        if (const Panda::AssetId id = handler->getAssetId(path)) { ids.push_back(id); }
+    }
+    if (!ids.empty()) {
+        m_workspace.revealAsset(ids.front()); // the folder first: going into it clears the highlight of the grid
+        m_workspace.selectAssets(ids);
+    }
+    const std::string what = added.size() == 1 ? added.front().filename().string() : std::to_string(added.size()) + " files";
+    const fs::path where = fs::relative(directory, handler->getProjectPath(), error);
+    LOG_INFO_EDITOR("Added %s to %s.", what.c_str(), where.generic_string().c_str());
+}
+
+void AssetActions::contentDidRequestDuplicate(const std::vector<Panda::AssetId> &assets) {
+    namespace fs = std::filesystem;
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (!handler) { return; }
+    const fs::path project = handler->getProjectPath();
+    std::vector<Panda::AssetId> copies;
+    for (Panda::AssetId id : assets) {
+        if (handler->assetPath(id).empty()) { continue; }
+        const fs::path main = project / handler->assetPath(id);
+        const std::string name = main.filename().string();
+        // The name of the main file is the name of every file of the asset (a shader's pair).
+        const auto [base, extension] = Panda::AssetHandlerEditor::splitName(name);
+        const fs::path copyMain = Editor::uniqueAssetPath(main.parent_path(), base, extension);
+        const std::string copyBase = Panda::AssetHandlerEditor::splitName(copyMain.filename().string()).first;
+        std::error_code error;
+        std::vector<fs::path> written;
+        for (const fs::path &file : handler->getAssetPaths(id)) {
+            const std::string fileName = file.filename().string();
+            if (fileName.rfind(base, 0) != 0) { continue; }
+            const fs::path target = file.parent_path() / (copyBase + fileName.substr(base.size()));
+            if (!fs::copy_file(file, target, fs::copy_options::none, error)) { break; }
+            written.push_back(target);
+        }
+        if (error) {
+            LOG_ERROR_EDITOR("%s was not duplicated: %s.", name.c_str(), error.message().c_str());
+            for (const fs::path &file : written) { fs::remove(file, error); }
+            continue;
+        }
+        // A new id, and the settings of the original: the shader of a material, the import of a
+        // texture — what the sidecar holds besides the id.
+        handler->registerAsset(copyMain);
+        if (const Panda::AssetId copy = handler->getAssetId(copyMain)) {
+            Panda::AssetInfo info = handler->getInfo(id);
+            info.id = copy;
+            handler->updateInfo(copy, info);
+            copies.push_back(copy);
+        }
+    }
+    if (copies.empty()) { return; }
+    m_workspace.refreshAssetPanels();
+    m_workspace.revealAsset(copies.front()); // the folder first: going into it clears the highlight of the grid
+    m_workspace.selectAssets(copies);
+}
+
+void AssetActions::contentDidShowFolder(const Panda::path_t &folder) {
+    const Panda::path_t project = m_app.project().getOpenedProjectPath();
+    if (project.empty()) { return; }
+    std::error_code error;
+    const Panda::path_t relative = std::filesystem::relative(folder, project, error);
+    if (!error) { m_app.project().setContentBrowserFolder(relative.generic_string()); }
+}
+
+void AssetActions::contentDidRequestImportDialog(const Panda::path_t &directory) {
+    const std::vector<Panda::path_t> files = Panda::SystemTools::openFilesDialog();
+    if (!files.empty()) { contentDidRequestImportFiles(files, directory); }
 }
 
 void AssetActions::contentAddFileItems(Menu &menu, Panda::AssetId asset) {
@@ -156,15 +294,45 @@ void AssetActions::contentDidRequestNewFolder(const Panda::path_t &directory, co
 
 /* ------------------------------ Changing ------------------------------ */
 
-void AssetActions::contentDidRequestRename(Panda::AssetId asset, const std::string &newName) {
+bool AssetActions::movePath(const Panda::path_t &from, const Panda::path_t &to) {
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (!handler) { return; }
-    if (!handler->renameAsset(asset, newName)) {
-        LOG_ERROR_EDITOR("Failed to rename asset");
+    if (!handler) { return false; }
+    std::string error;
+    if (!handler->movePath(from, to, &error)) {
+        LOG_ERROR_EDITOR("%s was not moved: %s.", from.filename().string().c_str(), error.c_str());
+        return false;
+    }
+    m_app.documents().fileMoved(from, to);
+    return true;
+}
+
+void AssetActions::contentDidRequestRename(const Panda::path_t &path, const std::string &newName) {
+    if (newName.empty() || newName.find_first_of("/\\:") != std::string::npos || newName.front() == '.') {
+        LOG_ERROR_EDITOR("A name has no slashes or colons and does not begin with a dot");
         return;
     }
+    std::error_code error;
+    const bool folder = std::filesystem::is_directory(path, error);
+    const std::string extension = folder ? std::string() : Panda::AssetHandlerEditor::splitName(path.filename().string()).second;
+    const Panda::path_t target = path.parent_path() / (newName + extension);
+    if (target == path || !movePath(path, target)) { return; }
     m_workspace.refreshAssetPanels();
     m_workspace.selectionChanged(); // the name on its tab may have changed
+}
+
+void AssetActions::contentDidRequestMove(const std::vector<Panda::path_t> &paths, const Panda::path_t &directory) {
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (!handler || directory.empty()) { return; }
+    std::vector<Panda::AssetId> moved;
+    for (const Panda::path_t &path : paths) {
+        if (path.parent_path() == directory) { continue; } // where it is already
+        const Panda::path_t target = directory / path.filename();
+        if (!movePath(path, target)) { continue; }
+        if (const Panda::AssetId id = handler->getAssetId(target)) { moved.push_back(id); }
+    }
+    m_workspace.refreshAssetPanels();
+    // The ids are the same: the selection stays on the moved assets, the browser stays where it is.
+    if (!moved.empty()) { m_workspace.selectAssets(moved); }
 }
 
 void AssetActions::contentDidRequestImport(const std::vector<Panda::AssetId> &assets) {

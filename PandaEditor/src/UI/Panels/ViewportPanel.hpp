@@ -41,12 +41,17 @@ public:
 // settings of the world live with the world document, like the N-panel of Blender). It has no
 // header of its own — the title is provided by the scene tab above. Implements ViewportViewOutput:
 // bridges the scene input (picking/gizmo keys/focus) to its own ViewportPanelOutput.
+class Commands;
+
 class ViewportPanelView final : public EditorView, public ViewportViewOutput {
 public:
     explicit ViewportPanelView(ViewportPanelOutput *output);
 
     // The world settings sidebar: the content is the sections of the world scope (the coordinator
     // owns the view), the chrome (header, close) is the panel's.
+    // The tooltips of the tools name the keys of the keymap, whatever it is now, and the key the
+    // steps of the gizmo are held by.
+    void setKeyHints(const Commands &commands);
     void setSidebarContent(std::shared_ptr<PandaUI::View> content);
     void setSidebarVisible(bool visible);
     // The settings of the world are of a world file: the document in front has them or — a

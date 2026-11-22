@@ -35,6 +35,7 @@ public:
     virtual void setCursor(Cursor cursor) = 0;
     virtual uint64_t getMilliSeconds() const = 0;
     virtual void pollEvents() = 0;
+    virtual void waitEvents(double timeoutSeconds) = 0; // Fern::waitEvents
     EventQueue *getEventQueue() {
         return &m_eventQueue;
     }

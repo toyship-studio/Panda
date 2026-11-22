@@ -30,6 +30,9 @@ void IOS_System::disposeWindow(Window *window) {
 
 void IOS_System::pollEvents() {}
 
+// The display drives the frames of iOS (setFrameCallback): no loop waits here.
+void IOS_System::waitEvents(double) {}
+
 Vec2 IOS_System::getCursorPosition() const {
     return Vec2(); // fingers, no cursor
 }

@@ -2,8 +2,12 @@
 
 #include "Fern/Platform/PlatformSystem.hpp"
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+#ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#    define NOMINMAX // mingw's libstdc++ defines it already
+#endif
 #ifndef UNICODE
 #    define UNICODE
 #endif
@@ -31,6 +35,7 @@ public:
     ) override;
     void disposeWindow(Window *window) override;
     void pollEvents() override;
+    void waitEvents(double timeoutSeconds) override;
     Vec2 getCursorPosition() const override;
     const char *getClipboardText() override;
     void setClipboardText(const char *text) override;

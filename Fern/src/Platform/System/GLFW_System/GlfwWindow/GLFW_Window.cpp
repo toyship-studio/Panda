@@ -10,6 +10,7 @@
 #include <cmath>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace Fern {
 
@@ -411,6 +412,20 @@ void GLFW_Window::addEventHandlers() {
     glfwSetWindowFocusCallback(m_windowHandle, [](GLFWwindow *windowHandle, int focused) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
         getEventQueue()->postWindowFocusEvent(focused == GLFW_TRUE, self);
+    });
+    // Files of the file manager: GLFW gives the paths, the point is where the cursor is.
+    glfwSetDropCallback(m_windowHandle, [](GLFWwindow *windowHandle, int count, const char **paths) {
+        GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));
+        std::vector<std::string> dropped;
+        for (int index = 0; index < count; index++) {
+            if (paths[index] != nullptr) { dropped.emplace_back(paths[index]); }
+        }
+        double x = 0.0, y = 0.0;
+        glfwGetCursorPos(windowHandle, &x, &y);
+        const Size unitScale = self->getUnitScale();
+        getEventQueue()->postFilesDroppedEvent(
+            std::move(dropped), static_cast<float>(x / unitScale.width), static_cast<float>(y / unitScale.height), self
+        );
     });
     glfwSetWindowIconifyCallback(m_windowHandle, [](GLFWwindow *windowHandle, int iconified) {
         GLFW_Window *self = static_cast<GLFW_Window *>(glfwGetWindowUserPointer(windowHandle));

@@ -69,6 +69,11 @@ void pollEvents() {
     s_system->pollEvents();
 }
 
+void waitEvents(double timeoutSeconds) {
+    PND_ASSERT(s_system != nullptr, "FERN NOT INITIALIZED");
+    s_system->waitEvents(timeoutSeconds > 0.0 ? timeoutSeconds : 0.0);
+}
+
 void setFrameCallback(FrameCallback callback, void *userData) {
     s_frameCallback = callback;
     s_frameCallbackUserData = userData;
