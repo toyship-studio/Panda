@@ -159,22 +159,17 @@ Asset *AssetHandlerRuntime::loadInternal(AssetId id, bool forcedReload) {
             LOG_ERROR("RUNTIME: Prefab %u not found at %s", (uint32_t)id, entryPath.string().c_str());
         }
     } else if (loadedType == AssetType::MATERIAL) {
-        auto meta = std::get<AssetInfo::MaterialSettings>(assetInfo.settings);
         path_t materialPath = m_runtimeDataPath / entryPath;
         MaterialDataDto dataDto;
         if (const std::unique_ptr<std::istream> binFile = GameFiles::open(materialPath)) {
             m_binaryDecoder.decode(*binFile, dataDto);
-            // Type guard: a legacy meta.shader may point to a non-shader — Lit fallback.
-            AssetRef<ShaderAsset> shader;
-            if (meta.shader) {
-                AssetRef<Asset> shaderAsset{meta.shader};
-                if (shaderAsset && shaderAsset->getType() == AssetType::SHADER) {
-                    shader = shaderAsset.as<ShaderAsset>();
-                } else {
-                    LOG_ERROR(
-                        "RUNTIME: Material %u shader %u missing, falling back", (uint32_t)id, (uint32_t)meta.shader
-                    );
-                }
+            // A shader that is not in the game (or is not a shader) leaves the Lit fallback of
+            // getShaderAsset.
+            const AssetRef<ShaderAsset> shader(dataDto.shader);
+            if (dataDto.shader && !shader) {
+                LOG_ERROR(
+                    "RUNTIME: Material %u shader %u missing, falling back", (uint32_t)id, (uint32_t)dataDto.shader
+                );
             }
             MaterialData data;
             AssetsMapper::toData(data, dataDto);

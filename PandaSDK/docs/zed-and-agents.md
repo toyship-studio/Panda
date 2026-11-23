@@ -10,7 +10,7 @@ of the editor.
 | File | Content |
 | --- | --- |
 | `Assets/**.world` | a world: the settings sections and the entities with their components, JSON ([the format](world-format.md)) |
-| `Assets/**.mat` | a material: the inputs of a shader, JSON ([assets](assets.md)) |
+| `Assets/**.mat` | a material: its shader and the inputs of the shader, JSON ([assets](assets.md)) |
 | `Assets/**.pmeta` | the sidecar of an asset: its id and import settings; written by the editor |
 | `.Panda/project.json` | the name of the project (`name`: the folder of the scripts, the library and the game are called by it) and its settings |
 | `.mcp.json` | where an MCP client finds the editor of the project ([the editor for an agent](#the-editor-for-an-agent)) |

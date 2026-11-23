@@ -27,7 +27,7 @@ namespace Terrain {
         namespace {
 
             // Historical slots of the core sequence (StaticResources::initStaticResources
-            // reserves them): they cannot change — projects store them in meta.shader.
+            // reserves them): they cannot change — the .mat files of projects store them.
             const AssetId SHADER_2D_ID = 23;
             const AssetId MATERIAL_2D_ID = 24;
             const AssetId SHADER_3D_ID = 25;

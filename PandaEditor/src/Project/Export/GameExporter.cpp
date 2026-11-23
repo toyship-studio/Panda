@@ -390,7 +390,7 @@ bool GameExporter::collectUsage(AssetHandlerEditor &assetHandler, const ExportSe
         m_pending.pop_back();
         const AssetInfo &info = registry.at(id);
         references.clear();
-        references.encode(sink, info); // its import settings: the shader of a material, the materials of a model
+        references.encode(sink, info); // its import settings: the materials of a model
         const path_t file = projectPath / assetHandler.assetPath(id);
         if (info.type == AssetType::WORLD || info.type == AssetType::PREFAB) {
             if (!cookWorld(assetHandler, id, references)) { return false; }
@@ -473,7 +473,6 @@ void GameExporter::exportMaterials(AssetHandlerEditor &assetHandler) {
     int cooked = 0;
     for (const auto &[id, info] : assetHandler.getRegistry()) {
         if (info.type != AssetType::MATERIAL || !isUsed(id)) { continue; }
-        auto meta = std::get<AssetInfo::MaterialSettings>(info.settings);
         const path_t materialPath = assetHandler.assetPath(id);
         MaterialDataDto dataDto;
         if (!readJsonFile(projectPath / materialPath, dataDto)) {
@@ -483,17 +482,16 @@ void GameExporter::exportMaterials(AssetHandlerEditor &assetHandler) {
 
         // The .mat on disk may lag behind the template of a built-in shader (not saved after an
         // engine update) — MATERIAL_FIELDS is packed in field order, a shortage = garbage in the UBO.
-        if (MaterialData *fieldsTemplate = AssetHandlerEditor::builtinShaderFieldTemplate(meta.shader)) {
+        if (MaterialData *fieldsTemplate = AssetHandlerEditor::builtinShaderFieldTemplate(dataDto.shader)) {
             MaterialData data;
             AssetsMapper::toData(data, dataDto);
             AssetHandlerEditor::syncMaterialFieldsWithTemplate(data, *fieldsTemplate);
-            dataDto = MaterialDataDto();
-            AssetsMapper::toDto(data, dataDto);
+            AssetsMapper::toDto(data, dataDto); // the fields anew, the shader stays
         } else {
             // Project shader: the .mat on disk may store a field as VEC4 although in HLSL it is
             // annotated with `// @color`. The runtime converts by the type from the cook — the type
             // is taken from reflection, as the editor does when loading a material.
-            AssetRef<ShaderAsset> shaderRef = AssetRef<Asset>(meta.shader).as<ShaderAsset>();
+            const AssetRef<ShaderAsset> shaderRef(dataDto.shader);
             if (shaderRef) {
                 const ShaderSpirvReflectionData reflection = shaderRef->getReflectionData();
                 const auto &colors = reflection.color_fields;

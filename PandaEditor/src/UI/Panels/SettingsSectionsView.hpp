@@ -32,6 +32,10 @@ public:
     // Only the sections with these titles (empty — all): the Display popover shows the viewport
     // section alone.
     void setTitleFilter(std::function<bool(const std::string &)> filter);
+    // As tall as its sections and no taller than the room it is given: what does not fit scrolls
+    // (the Display popover; a section folded leaves its header). Off: the view fills its parent —
+    // the sidebar, a page of the Settings window.
+    void setSizesToContent(bool sizesToContent);
 
 private:
     void addSubviews() override;

@@ -178,11 +178,13 @@ place:
   sRGB switched off — ask the user to toggle it in the texture inspector.
 - Meshes: `.gltf` (+ `.bin` and textures next to it). For every glTF material the editor creates
   `<name>.mat` next to the mesh; meshes of one folder share materials by name.
-- A material (`.mat`) is JSON `{"inputs": [{"name","type","value"}]}`; `type`: 0 float, 1 uint,
-  2 vec4, 3 texture (value — asset id, 0 = empty), 4 color (value — {x,y,z,w}). Edit the values
-  freely; the SET and the ORDER of the fields are the shader's contract, do not change them.
-  Create a new material in the editor (choosing a shader fills in the field template). The
-  material's shader is stored in the `.pmeta` sidecar, not in the `.mat`.
+- A material (`.mat`) is JSON `{"shader": 17, "inputs": [{"name","type","value"}]}`. `shader` —
+  the asset id of its shader: built in (17 PBR, 11 Lit, 9 Unlit) or a shader of the project (the
+  `id` of its `.pmeta`); without `shader` the material is PBR. `type`: 0 float, 1 uint, 2 vec4,
+  3 texture (value — asset id, 0 = empty), 4 color (value — {x,y,z,w}). Edit the values freely;
+  the SET and the ORDER of the fields are the shader's contract, do not change them. Create a new
+  material in the editor (choosing a shader fills in the field template); to change the shader,
+  choose it in the material's tab — the fields follow it.
 
 ## The exported game
 

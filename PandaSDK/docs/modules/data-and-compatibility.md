@@ -11,7 +11,8 @@ or without it. This page lists what a module writes and what it must not change.
 | `.world` | a key per component on an entity (`"beaconComponent": {…}`); a top-level key per world settings section (`"terrain": {…}`) | the JSON coders of the editor; the binary coder of the export |
 | `.Panda/project.json` | a key per project settings section | JSON |
 | `settings.json` of the user | a key per editor settings section | JSON |
-| `X.<ext>.pmeta` | the numeric kind id of the module's assets (`type`); the shader id of a material on a module shader (`meta.shader`) | JSON |
+| `X.<ext>.pmeta` | the numeric kind id of the module's assets (`type`) | JSON |
+| `.mat` | the shader id of a material on a module shader (`shader`) | JSON |
 | the module's asset files | the module's own format, read by `load` and written by `save` | the module |
 | the cooked data of an export | the same values in the binary world format and the module's asset files as they are, in the pack of the game (only what the game reaches); `modules.txt` | the export |
 

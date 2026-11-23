@@ -160,26 +160,20 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             asset = F_NEW(m_allocator, ShaderAsset)();
         }
     } else if (loadedType == AssetType::MATERIAL) {
-        auto meta = std::get<AssetInfo::MaterialSettings>(assetInfo.settings);
         MaterialDataDto dataDto;
         std::ifstream file(m_projectPath / relativePath);
         if (file.is_open()) {
             m_jsonDecoder.decode(file, dataDto);
             file.close();
-            // The shader reference is checked by type: a legacy id (for example, of the removed
-            // builtin bloom building blocks) may resolve to a foreign asset — then the Lit fallback
-            // of getShaderAsset.
-            AssetRef<ShaderAsset> shader;
-            if (meta.shader) {
-                AssetRef<Asset> shaderAsset{meta.shader};
-                if (shaderAsset && shaderAsset->getType() == AssetType::SHADER) {
-                    shader = shaderAsset.as<ShaderAsset>();
-                } else {
-                    LOG_WARN_EDITOR(
-                        "Material %s: its shader (asset %u) is missing, the Lit shader is used instead.",
-                        relativePath.string().c_str(), meta.shader
-                    );
-                }
+            // The shader the .mat names. One that is not there, or is not a shader, leaves the Lit
+            // fallback of getShaderAsset — and the material goes on naming it: Save keeps it, and
+            // the shader is found as soon as it comes.
+            const AssetRef<ShaderAsset> shader(dataDto.shader);
+            if (dataDto.shader && !shader) {
+                LOG_WARN_EDITOR(
+                    "Material %s: its shader (asset %u) is missing, the Lit shader is used instead.",
+                    relativePath.string().c_str(), (uint32_t)dataDto.shader
+                );
             }
             MaterialData data;
             AssetsMapper::toData(data, dataDto);
@@ -190,7 +184,7 @@ Asset *AssetHandlerEditor::loadInternal(AssetId id, bool forcedReload) {
             material->updateFields();
             // Builtin shaders have no reflection — the fields are kept consistent with the template on
             // load as well (the file may have been saved before the shader change).
-            if (MaterialData *fieldsTemplate = builtinShaderFieldTemplate(meta.shader)) {
+            if (MaterialData *fieldsTemplate = builtinShaderFieldTemplate(dataDto.shader)) {
                 syncMaterialFieldsWithTemplate(material->getInputs(), *fieldsTemplate);
             }
             asset = material;

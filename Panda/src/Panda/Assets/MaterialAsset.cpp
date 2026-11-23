@@ -178,6 +178,11 @@ MaterialData &MaterialAsset::getInputs() {
     return m_data;
 }
 
+void MaterialAsset::setShader(AssetRef<ShaderAsset> shader) {
+    m_shaderRef = shader;
+    m_fieldsUboDirty = true; // the fields the cache was packed for may not be the ones that follow
+}
+
 void MaterialAsset::updateFields() {
     if (!m_shaderRef) { return; }
     ShaderSpirvReflectionData reflection = m_shaderRef->getReflectionData();

@@ -17,7 +17,7 @@ class AssetHandler;
 
 // Static resources of contributions (context/plugins.md): a provider creates its assets after
 // the core (StaticResources::initStaticResources) and releases them before it. Ids of static
-// assets are persisted in projects (the materials' meta.shader) — each contribution has its own
+// assets are persisted in projects (the shader of a .mat) — each contribution has its own
 // stable ones.
 struct ResourceProvider final {
     std::string name;

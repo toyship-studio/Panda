@@ -25,7 +25,7 @@ bool AssetDocuments::saveAsset(AssetId id) {
     Asset *asset = loaded->second.asset;
     if (info.type == AssetType::MATERIAL) {
         auto *material = static_cast<MaterialAsset *>(asset);
-        if (!saveMaterial(info, material->getInputs())) { return false; }
+        if (!saveMaterial(info, material->getInputs(), material->getShaderId())) { return false; }
         material->setChanged(false);
         return true;
     }
@@ -62,27 +62,25 @@ bool AssetDocuments::saveAsset(AssetId id) {
 }
 
 bool AssetDocuments::setMaterialShader(AssetId materialId, AssetId shaderId) {
-    AssetInfo info = m_handler.getInfo(materialId);
-    auto meta = std::get<AssetInfo::MaterialSettings>(info.settings);
-    if (meta.shader == shaderId) { return false; }
-    meta.shader = shaderId;
-    info.settings = meta;
-    m_handler.updateInfo(materialId, info);   // the meta is in the registry, which saves itself
-    m_handler.loadInternal(materialId, true); // recreate with the new shader (+updateFields for project shaders)
     AssetRef<MaterialAsset> material{materialId};
-    if (material) {
-        if (MaterialData *tmpl = AssetHandlerEditor::builtinShaderFieldTemplate(shaderId)) {
-            AssetHandlerEditor::syncMaterialFieldsWithTemplate(material->getInputs(), *tmpl);
-        }
-        material->setChanged(true); // .mat — on Save
+    if (!material || material->getShaderId() == shaderId) { return false; }
+    // An edit of the document in memory like any other: the values of the fields that are not saved
+    // stay, the set follows the new shader — its reflection (a shader of the project) or its
+    // template (a built-in one has no reflection). The .mat is written on Save.
+    material->setShader(AssetRef<ShaderAsset>(shaderId));
+    material->updateFields();
+    if (MaterialData *tmpl = AssetHandlerEditor::builtinShaderFieldTemplate(shaderId)) {
+        AssetHandlerEditor::syncMaterialFieldsWithTemplate(material->getInputs(), *tmpl);
     }
+    material->setChanged(true);
     return true;
 }
 
-bool AssetDocuments::saveMaterial(const AssetInfo &info, const MaterialData &materialData) {
+bool AssetDocuments::saveMaterial(const AssetInfo &info, const MaterialData &materialData, AssetId shader) {
     const path_t materialPath = m_handler.assetPath(info.id);
     MaterialDataDto dataDto;
     AssetsMapper::toDto(materialData, dataDto);
+    dataDto.shader = shader;
     std::string error;
     if (!writeJsonFile(m_handler.m_projectPath / materialPath, dataDto, &error)) {
         LOG_ERROR_EDITOR("Not saved: %s.", error.c_str());
@@ -117,27 +115,21 @@ AssetId AssetDocuments::createMaterialAsset(const path_t &directory, AssetId sha
     for (int counter = 2; std::filesystem::exists(path); ++counter) {
         path = directory / ("Material " + std::to_string(counter) + ".mat");
     }
+    // The file names its shader from the start; the fields come with the load — by reflection (a
+    // shader of the project) or by the template of a built-in shader — and are written at once: a
+    // new file is complete.
+    MaterialDataDto dataDto;
+    dataDto.shader = shaderId;
     std::string error;
-    if (!writeJsonFile(path, MaterialDataDto(), &error)) {
+    if (!writeJsonFile(path, dataDto, &error)) {
         LOG_ERROR_EDITOR("The material is not created: %s.", error.c_str());
         return 0;
     }
     m_handler.registerAsset(path);
     AssetId id = m_handler.getAssetId(path);
     if (!id) { return 0; }
-    AssetInfo info = m_handler.getInfo(id);
-    auto meta = std::get<AssetInfo::MaterialSettings>(info.settings);
-    meta.shader = shaderId;
-    info.settings = meta;
-    m_handler.updateInfo(id, info);
-    m_handler.loadInternal(id, true); // updateFields: fields from reflection (project shaders)
     AssetRef<MaterialAsset> material{id};
-    if (material) {
-        if (MaterialData *tmpl = AssetHandlerEditor::builtinShaderFieldTemplate(shaderId)) {
-            AssetHandlerEditor::syncMaterialFieldsWithTemplate(material->getInputs(), *tmpl);
-        }
-        saveMaterial(info, material->getInputs()); // a new file is complete right away
-    }
+    if (material) { saveMaterial(m_handler.getInfo(id), material->getInputs(), shaderId); }
     LOG_INFO_EDITOR("Created %s.", path.filename().string().c_str());
     return id;
 }

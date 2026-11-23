@@ -46,7 +46,8 @@ public:
     bool setMaterialShader(AssetId materialId, AssetId shaderId);
 
     // --- Writing document files ---
-    bool saveMaterial(const AssetInfo &info, const MaterialData &materialData);
+    // The .mat: the shader and the fields.
+    bool saveMaterial(const AssetInfo &info, const MaterialData &materialData, AssetId shader);
     bool savePostprocessing(const AssetInfo &info, PostprocessingAsset &asset);
 
     // --- Factories of new documents (unique name in the directory; return the id, 0 — error) ---

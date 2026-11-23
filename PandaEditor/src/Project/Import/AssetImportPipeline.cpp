@@ -1,7 +1,7 @@
 #include "AssetImportPipeline.hpp"
 #include "Project/Import/TextureCompressor.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
-#include <Panda/Assets/StaticResources.hpp>
+#include <Panda/Assets/BuiltinAssets.hpp>
 
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <Panda/Base/ColorSpace.hpp>
@@ -229,16 +229,7 @@ void AssetImportPipeline::registerShaderAsset(const path_t &path) {
 }
 
 void AssetImportPipeline::registerMaterialAsset(const path_t &path) {
-    path_t assetPath = std::filesystem::relative(path, m_handler.m_projectPath);
-    AssetInfo info;
-    info.id = m_handler.freshAssetId();
-    info.type = AssetType::MATERIAL;
-    AssetInfo::MaterialSettings meta;
-    meta.shader = 0;
-    info.settings = meta;
-    m_handler.m_registry[info.id] = info;
-    m_handler.registerPath(info.id, assetPath);
-    m_handler.savePmeta(info.id);
+    registerPlainAsset(path, AssetType::MATERIAL); // the shader is in the .mat
 }
 
 void AssetImportPipeline::registerMeshAsset(const path_t &path) {
@@ -421,12 +412,6 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
             AssetInfo materialInfo;
             materialInfo.id = m_handler.freshAssetId();
             materialInfo.type = AssetType::MATERIAL;
-            AssetInfo::MaterialSettings materialAssetMeta;
-            // A glTF material is metallic/roughness by definition: the shader is PBR right away
-            // (0 would leave the Lit fallback; existing .mat files are not touched — the meta
-            // is written on creation).
-            materialAssetMeta.shader = StaticResources::defaultPbrShader.getId();
-            materialInfo.settings = materialAssetMeta;
             m_handler.m_registry[materialInfo.id] = materialInfo;
             m_handler.registerPath(materialInfo.id, materialPath);
             materialAssetId = materialInfo.id;
@@ -436,6 +421,9 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
         AssetInfo materialInfo = m_handler.m_registry.at(materialAssetId);
         MaterialData importedMaterialData = buildMaterialDataFromGltf(materialMeta, m_handler.m_registeredAssets);
         MaterialData materialData = importedMaterialData;
+        // A glTF material is metallic/roughness by definition: a new one is PBR. A material made
+        // before keeps its shader and its values (a reimport adds only what it lacks).
+        AssetId shader = BuiltinAsset::PBR_SHADER;
         std::ifstream existingMaterialFile(m_handler.m_projectPath / materialPath);
         if (existingMaterialFile.is_open()) {
             MaterialDataDto existingMaterialDataDto;
@@ -445,8 +433,9 @@ size_t AssetImportPipeline::createMaterialsFromGltf(AssetId meshAssetId) {
             MaterialData existingMaterialData;
             AssetsMapper::toData(existingMaterialData, existingMaterialDataDto);
             materialData = mergeMaterialDataPreservingExisting(importedMaterialData, existingMaterialData);
+            shader = existingMaterialDataDto.shader;
         }
-        if (!m_handler.documents().saveMaterial(materialInfo, materialData)) { continue; }
+        if (!m_handler.documents().saveMaterial(materialInfo, materialData, shader)) { continue; }
 
         // A slot is bound only if it is still empty: a reimport does not overwrite the user's replacement.
         AssetInfo::MeshSettings &liveMeshMeta = std::get<AssetInfo::MeshSettings>(m_handler.m_registry.at(meshAssetId).settings);

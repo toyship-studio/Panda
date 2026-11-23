@@ -11,7 +11,7 @@ namespace Terrain {
 
     // Static resources of the terrain contribution (ResourceProvider): created after the core
     // (its placeholder textures are needed), the ids are historical core slots reserved in
-    // StaticResources (they are persisted in meta.shader of project materials).
+    // StaticResources (they are persisted in the .mat files of projects).
     namespace Resources {
 
         // Defaults of the Terrain2D/3D components (an empty material reference in the component).

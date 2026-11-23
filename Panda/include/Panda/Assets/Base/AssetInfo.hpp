@@ -14,10 +14,12 @@ namespace Panda {
 
 // Asset passport — the ONLY description: id + type + settings (nested types below).
 // There are no paths here: where the asset lives is known by the registry (id → AssetFileReference,
-// filled by the scan from the sidecar's location). Shader/world/postprocessing and contributed
-// kinds have no settings — monostate. The same form is serialized into the sidecar X.<ext>.pmeta
-// (the settings JSON key is the historical "meta") and, paired with AssetFileReference, into the
-// export's assets.bin.
+// filled by the scan from the sidecar's location). The settings are what a file cannot hold
+// itself: the import of a picture, the materials of the slots of a model. A file of the engine's
+// own format holds what it is in itself (the shader of a material is in its .mat), so a material,
+// a shader, a world, a postprocessing chain and the contributed kinds have none — monostate. The
+// same form is serialized into the sidecar X.<ext>.pmeta (the settings JSON key is the historical
+// "meta") and, paired with AssetFileReference, into the export's assets.bin.
 struct AssetInfo : public Rain::Codable {
     struct TextureSettings : public Rain::Codable {
         Miren::TextureFiltering minFiltering = Miren::NEAREST;
@@ -37,14 +39,6 @@ struct AssetInfo : public Rain::Codable {
         RAIN_FIELD(numMips)
         RAIN_FIELD(srgb)
         RAIN_FIELD(compressed)
-        RAIN_FIELDS_END
-    };
-
-    struct MaterialSettings : public Rain::Codable {
-        UUID shader;
-
-        RAIN_FIELDS_BEGIN(MaterialSettings)
-        RAIN_FIELD(shader)
         RAIN_FIELDS_END
     };
 
@@ -116,21 +110,19 @@ struct AssetInfo : public Rain::Codable {
         RAIN_FIELDS_END
     };
 
-    using Settings = std::variant<std::monostate, TextureSettings, MaterialSettings, MeshSettings>;
+    using Settings = std::variant<std::monostate, TextureSettings, MeshSettings>;
 
     AssetId id;
     AssetType type = AssetType::NONE;
     Settings settings;
 
-    // Only built-in kinds with a cook have settings; plugin kinds and world/postfx have none.
+    // Only a texture and an imported model have settings.
     static void encode(const char *key, Rain::Encoder *encoder, const AssetInfo &data) {
         encoder->beginObject(key);
         encoder->encode("id", data.id);
         encoder->encode("type", data.type.value);
         if (data.type == AssetType::TEXTURE) {
             encoder->encode("meta", std::get<TextureSettings>(data.settings));
-        } else if (data.type == AssetType::MATERIAL) {
-            encoder->encode("meta", std::get<MaterialSettings>(data.settings));
         } else if (data.type == AssetType::IMPORTED_MESH) {
             encoder->encode("meta", std::get<MeshSettings>(data.settings));
         }
@@ -144,10 +136,6 @@ struct AssetInfo : public Rain::Codable {
         data.settings = std::monostate{};
         if (data.type == AssetType::TEXTURE) {
             TextureSettings settings;
-            decoder->decode("meta", settings);
-            data.settings = settings;
-        } else if (data.type == AssetType::MATERIAL) {
-            MaterialSettings settings;
             decoder->decode("meta", settings);
             data.settings = settings;
         } else if (data.type == AssetType::IMPORTED_MESH) {

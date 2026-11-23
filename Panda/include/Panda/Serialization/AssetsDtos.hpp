@@ -2,6 +2,7 @@
 
 #include "Panda/Base/Base.hpp"
 #include "Panda/Assets/Base/AssetRef.hpp"
+#include "Panda/Assets/BuiltinAssets.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 
 #include <Foundation/Foundation.hpp>
@@ -100,13 +101,15 @@ struct MaterialFieldDto : public Rain::Codable {
     }
 };
 
+// The .mat file: the shader and the values of its fields. The shader is the id of a shader asset —
+// built in (BuiltinAsset) or of the project; a file that names none is the default material of the
+// engine, PBR. 0 — no shader: drawn with the Lit fallback.
 struct MaterialDataDto : public Rain::Codable {
+    UUID shader = BuiltinAsset::PBR_SHADER;
     std::vector<MaterialFieldDto> inputs;
 
-    MaterialDataDto()
-        : inputs() {}
-
     RAIN_FIELDS_BEGIN(MaterialDataDto)
+    RAIN_FIELD(shader)
     RAIN_FIELD(inputs)
     RAIN_FIELDS_END
 };

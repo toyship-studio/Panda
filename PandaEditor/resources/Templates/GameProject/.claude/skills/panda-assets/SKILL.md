@@ -21,13 +21,15 @@ the id appears in the file's `.pmeta`).
 
 ## Editing a material (.mat)
 
-JSON `{"inputs": [{"name","type","value"}]}`; `type`: 0 float, 1 uint, 2 vec4,
+JSON `{"shader": 17, "inputs": [{"name","type","value"}]}`; `type`: 0 float, 1 uint, 2 vec4,
 3 texture (value — asset id, 0 = empty), 4 color (value — {x,y,z,w}).
 
+- `shader` — the asset id of the material's shader: built in (17 PBR, 11 Lit, 9 Unlit) or a shader
+  of the project (the `id` of its `.pmeta`); without `shader` the material is PBR.
 - Edit the values freely; the SET and the ORDER of the fields are the shader's contract, do not
   change them.
-- Create a new material in the editor (choosing a shader fills in the field template).
-- The material's shader is stored in the registry (the `.pmeta` sidecar), not in the .mat.
+- Create a new material in the editor (choosing a shader fills in the field template); to change
+  the shader, choose it in the material's tab — the fields follow it.
 
 After the edits, call the `reload` tool of the editor (its MCP server; without it ask the user
 to look at the editor — in front, it takes the changes by itself): the editor rereads the changed files. `logs` has the import and

@@ -11,6 +11,7 @@
 #include <PandaEditorKit/Widgets/Icons.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
+#include <Panda/Assets/BuiltinAssets.hpp>
 #include <Panda/Assets/MaterialAsset.hpp>
 #include <Panda/Assets/MaterialSystemValues.hpp>
 #include <Panda/Assets/PostprocessingAsset.hpp>
@@ -111,13 +112,11 @@ namespace {
 
     /* ------------------------------ Material ------------------------------ */
 
-    // A live editor: the shader is in the registry meta, the fields are on the live asset. Field
-    // edits are undo commands of the document (a gesture merges into one step); the .mat is
-    // written on Save.
+    // A live editor: the shader and the fields are on the live asset. Edits are undo commands of the
+    // document (a gesture merges into one step); the .mat is written on Save.
     // The shader of a material is a step of its history like a field: the change takes the fields of
     // the new shader (AssetDocuments::setMaterialShader matches them), undo gives back the old
-    // shader and the values its fields had. The shader lives in the sidecar, written at once
-    // either way; the fields go to the .mat on Save.
+    // shader and the values its fields had.
     class SetMaterialShaderCommand final : public Panda::WorldCommand {
     public:
         SetMaterialShaderCommand(Panda::AssetId material, Panda::AssetId before, Panda::AssetId after, Panda::MaterialData fields)
@@ -166,167 +165,161 @@ namespace {
 
         void build(View &container) override {
             const Panda::AssetId id = m_context.asset;
-            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-            if (!handler) { return; }
-            const auto &registry = handler->getRegistry();
-            auto infoIt = registry.find(id);
-            if (infoIt == registry.end()) { return; }
+            // The shader and the fields come from the live asset (loaded lazily); the set of the
+            // fields is synchronized with the shader.
+            Panda::AssetRef<Panda::MaterialAsset> material{id};
+            if (!material) { return; }
 
             auto section = makeFormSection("MATERIAL");
 
             // The shader is a reference like any other asset field: dropped from the Content
             // Browser, picked by a search of the shaders built into the engine (Unlit, Lit, PBR, the
             // modules') and of the project, a click shows where the file is. It always names one —
-            // no clearing: a material with none (meta.shader == 0) renders as Lit and is shown as
-            // the actual Lit. A change updates the registry meta, reloads the material (the fields
-            // are resynchronized by reflection) and rebuilds this form at the next tick.
-            Panda::AssetId currentShader = std::get<Panda::AssetInfo::MaterialSettings>(infoIt->second.settings).shader;
-            if (currentShader == 0) { currentShader = builtinShaderOptions()[1].first; } // legacy 0 → the actual Lit
+            // no clearing: a material with none ("shader": 0) renders as Lit and is shown as the
+            // actual Lit. A change takes the fields of the new shader and rebuilds this form at the
+            // next tick.
+            Panda::AssetId currentShader = material->getShaderId();
+            if (currentShader == 0) { currentShader = Panda::BuiltinAsset::LIT_SHADER; } // none → the Lit it is drawn with
             auto shaderWell = makeAssetWell("shader", static_cast<uint32_t>(currentShader), [this, id](uint32_t shader) {
                 if (shader != 0) { setShader(id, Panda::AssetId(shader)); }
             }, /*required*/ true);
             section->addContent(std::make_shared<PropertyRow>("Shader", shaderWell));
 
-            // Material fields come from the live asset (loaded lazily); the set is synchronized
-            // with the shader reflection.
-            Panda::AssetRef<Panda::MaterialAsset> material{id};
-            if (material) {
-                // The alpha mode of the material, when its shader has one: Cutout and Blend have
-                // fields of their own.
-                uint32_t alphaMode = 0;
-                if (material->getInputs().hasField("alphaMode")) {
-                    const Panda::MaterialFieldValue &mode = material->getInputs().getField("alphaMode").value;
-                    if (const uint32_t *value = std::get_if<uint32_t>(&mode)) { alphaMode = *value; }
-                }
-                for (const Panda::MaterialField &field : material->getInputs().inputs) {
-                    if (field.runtime) { continue; } // fed by the system every frame — not shown to the author
-                    const std::string fieldName = field.name;
-                    auto emitField = [this, id, fieldName](Panda::MaterialFieldValue value) {
-                        editField(id, fieldName, std::move(value));
-                    };
-                    // A same-named system value is set by the engine (scene wind, etc.): the field
-                    // is visible with the ACTUAL value but inactive; below it — the explanation and
-                    // a link to the world settings section that controls it. A tooltip does not
-                    // work: a disabled view is excluded from hit-testing.
-                    const bool systemField = Panda::MaterialSystemValues::isSystem(field);
-                    const Panda::MaterialFieldValue &shownValue = Panda::MaterialSystemValues::resolve(field);
-                    const auto markSystem = [systemField, &section, &fieldName](std::shared_ptr<View> widget) {
-                        if (!systemField) { return; }
-                        widget->setEnabled(false);
-                        widget->surface().setOpacity(0.55f); // visually "non-editable"
-                        auto hint = std::make_shared<Label>(std::string(Panda::MaterialSystemValues::hint(fieldName)));
-                        hint->setFont(Typo::Caption);
-                        hint->setTextRole(TextRole::Muted);
-                        const std::string target = Panda::MaterialSystemValues::section(fieldName);
-                        auto link = std::make_shared<Button>("Settings");
-                        link->setStyle(ButtonStyle::Link);
-                        link->setFont(Typo::Caption);
-                        link->layout().setPadding(Edge::Horizontal, 4.f);
-                        link->layout().setPadding(Edge::Vertical, 2.f);
-                        link->setOnClick([target](Button &) {
-                            editorHost().openSettings(Panda::SettingsScope::World, target);
-                        });
-                        auto row = StackView::horizontal(6.f);
-                        row->setAlignment(Align::Center);
-                        row->addSubview(hint);
-                        row->addSubview(link);
-                        // An empty title holds the label column — the explanation sits under the widget.
-                        section->addContent(std::make_shared<PropertyRow>("", row, false));
-                    };
-                    // The label is the name made readable; the name itself — what the .mat file
-                    // and the shader say — is the tooltip.
-                    const std::string title = humanizeIdentifier(fieldName);
-                    std::shared_ptr<PropertyRow> row;
-                    switch (field.type) {
-                        case Panda::MaterialFieldType::FLOAT: {
-                            auto widget = std::make_shared<NumberField>();
-                            widget->setFont(Typo::Value);
-                            widget->setValue(std::get<float>(shownValue));
-                            widget->setOnValueChanged([emitField](NumberField &f) { emitField(f.getValue()); });
-                            row = std::make_shared<PropertyRow>(title, widget);
-                            section->addContent(row);
-                            markSystem(widget);
-                            break;
-                        }
-                        case Panda::MaterialFieldType::UINT: {
-                            const uint32_t value = std::get<uint32_t>(shownValue);
-                            // The fields the renderer reads by name (the render traits of a
-                            // material) are shown as what they mean, not as numbers.
-                            if (fieldName == "alphaMode") {
-                                auto widget = std::make_shared<Combobox>();
-                                widget->setItems({"Opaque", "Cutout", "Blend"});
-                                widget->setSelectedIndex(static_cast<int>(std::min(value, 2u)));
-                                widget->setOnSelectionChanged([this, emitField](Combobox &box) {
-                                    emitField(static_cast<uint32_t>(std::max(0, box.selectedIndex())));
-                                    // The fields of the other modes leave the form.
-                                    if (m_context.rebuild) { m_context.rebuild(); }
-                                });
-                                row = std::make_shared<PropertyRow>(title, widget);
-                                row->setHelp(fieldName + ": Opaque; Cutout — a pixel below Alpha Cutoff is not drawn; "
-                                                         "Blend — drawn over what is behind it, after the opaque surfaces");
-                                section->addContent(row);
-                                markSystem(widget);
-                                continue;
-                            }
-                            if (fieldName == "doubleSided") {
-                                auto widget = std::make_shared<Toggle>();
-                                widget->setOn(value != 0);
-                                widget->setOnValueChanged([emitField](Toggle &toggle) {
-                                    emitField(static_cast<uint32_t>(toggle.isOn() ? 1 : 0));
-                                });
-                                row = std::make_shared<PropertyRow>(title, widget, false);
-                                row->setHelp(fieldName + ": both faces of the surface are drawn");
-                                section->addContent(row);
-                                markSystem(widget);
-                                continue;
-                            }
-                            auto widget = std::make_shared<NumberField>();
-                            widget->setFont(Typo::Value);
-                            widget->setStep(1.f);
-                            widget->setRange(0.f, 4294967040.f); // the largest uint32 a float holds
-                            widget->setValue(static_cast<float>(value));
-                            widget->setOnValueChanged([emitField](NumberField &f) {
-                                emitField(static_cast<uint32_t>(std::max(0.f, f.getValue())));
+            // The alpha mode of the material, when its shader has one: Cutout and Blend have
+            // fields of their own.
+            uint32_t alphaMode = 0;
+            if (material->getInputs().hasField("alphaMode")) {
+                const Panda::MaterialFieldValue &mode = material->getInputs().getField("alphaMode").value;
+                if (const uint32_t *value = std::get_if<uint32_t>(&mode)) { alphaMode = *value; }
+            }
+            for (const Panda::MaterialField &field : material->getInputs().inputs) {
+                if (field.runtime) { continue; } // fed by the system every frame — not shown to the author
+                const std::string fieldName = field.name;
+                auto emitField = [this, id, fieldName](Panda::MaterialFieldValue value) {
+                    editField(id, fieldName, std::move(value));
+                };
+                // A same-named system value is set by the engine (scene wind, etc.): the field
+                // is visible with the ACTUAL value but inactive; below it — the explanation and
+                // a link to the world settings section that controls it. A tooltip does not
+                // work: a disabled view is excluded from hit-testing.
+                const bool systemField = Panda::MaterialSystemValues::isSystem(field);
+                const Panda::MaterialFieldValue &shownValue = Panda::MaterialSystemValues::resolve(field);
+                const auto markSystem = [systemField, &section, &fieldName](std::shared_ptr<View> widget) {
+                    if (!systemField) { return; }
+                    widget->setEnabled(false);
+                    widget->surface().setOpacity(0.55f); // visually "non-editable"
+                    auto hint = std::make_shared<Label>(std::string(Panda::MaterialSystemValues::hint(fieldName)));
+                    hint->setFont(Typo::Caption);
+                    hint->setTextRole(TextRole::Muted);
+                    const std::string target = Panda::MaterialSystemValues::section(fieldName);
+                    auto link = std::make_shared<Button>("Settings");
+                    link->setStyle(ButtonStyle::Link);
+                    link->setFont(Typo::Caption);
+                    link->layout().setPadding(Edge::Horizontal, 4.f);
+                    link->layout().setPadding(Edge::Vertical, 2.f);
+                    link->setOnClick([target](Button &) {
+                        editorHost().openSettings(Panda::SettingsScope::World, target);
+                    });
+                    auto row = StackView::horizontal(6.f);
+                    row->setAlignment(Align::Center);
+                    row->addSubview(hint);
+                    row->addSubview(link);
+                    // An empty title holds the label column — the explanation sits under the widget.
+                    section->addContent(std::make_shared<PropertyRow>("", row, false));
+                };
+                // The label is the name made readable; the name itself — what the .mat file
+                // and the shader say — is the tooltip.
+                const std::string title = humanizeIdentifier(fieldName);
+                std::shared_ptr<PropertyRow> row;
+                switch (field.type) {
+                    case Panda::MaterialFieldType::FLOAT: {
+                        auto widget = std::make_shared<NumberField>();
+                        widget->setFont(Typo::Value);
+                        widget->setValue(std::get<float>(shownValue));
+                        widget->setOnValueChanged([emitField](NumberField &f) { emitField(f.getValue()); });
+                        row = std::make_shared<PropertyRow>(title, widget);
+                        section->addContent(row);
+                        markSystem(widget);
+                        break;
+                    }
+                    case Panda::MaterialFieldType::UINT: {
+                        const uint32_t value = std::get<uint32_t>(shownValue);
+                        // The fields the renderer reads by name (the render traits of a
+                        // material) are shown as what they mean, not as numbers.
+                        if (fieldName == "alphaMode") {
+                            auto widget = std::make_shared<Combobox>();
+                            widget->setItems({"Opaque", "Cutout", "Blend"});
+                            widget->setSelectedIndex(static_cast<int>(std::min(value, 2u)));
+                            widget->setOnSelectionChanged([this, emitField](Combobox &box) {
+                                emitField(static_cast<uint32_t>(std::max(0, box.selectedIndex())));
+                                // The fields of the other modes leave the form.
+                                if (m_context.rebuild) { m_context.rebuild(); }
                             });
                             row = std::make_shared<PropertyRow>(title, widget);
+                            row->setHelp(fieldName + ": Opaque; Cutout — a pixel below Alpha Cutoff is not drawn; "
+                                                     "Blend — drawn over what is behind it, after the opaque surfaces");
                             section->addContent(row);
                             markSystem(widget);
-                            break;
+                            continue;
                         }
-                        // COLOR is an sRGB color (converted to linear on upload to the GPU); raw VEC4
-                        // values are edited with the same widget — the value goes as is.
-                        case Panda::MaterialFieldType::COLOR:
-                        case Panda::MaterialFieldType::VEC4: {
-                            const Panda::Vec4 v = std::get<Panda::Vec4>(shownValue);
-                            auto widget = std::make_shared<ColorWell>(Color(v.x, v.y, v.z, v.w));
-                            // The fourth component of a color field is its to keep and to edit:
-                            // the opacity of a base color, a factor a shader reads from the alpha.
-                            widget->setAlphaEditable(true);
-                            widget->setOnColorChanged([emitField](ColorWell &w) {
-                                const Color c = w.getColor();
-                                emitField(Panda::Vec4(c.r, c.g, c.b, c.a));
+                        if (fieldName == "doubleSided") {
+                            auto widget = std::make_shared<Toggle>();
+                            widget->setOn(value != 0);
+                            widget->setOnValueChanged([emitField](Toggle &toggle) {
+                                emitField(static_cast<uint32_t>(toggle.isOn() ? 1 : 0));
                             });
                             row = std::make_shared<PropertyRow>(title, widget, false);
+                            row->setHelp(fieldName + ": both faces of the surface are drawn");
                             section->addContent(row);
                             markSystem(widget);
-                            break;
+                            continue;
                         }
-                        case Panda::MaterialFieldType::TEXTURE: {
-                            const uint32_t textureId =
-                                static_cast<uint32_t>(std::get<Panda::AssetRef<Panda::Asset>>(field.value).getId());
-                            row = addAssetRow(*section, title.c_str(), "texture", textureId, [emitField](uint32_t tid) {
-                                emitField(assetRefOf(tid));
-                            });
-                            break;
-                        }
-                        default: break;
+                        auto widget = std::make_shared<NumberField>();
+                        widget->setFont(Typo::Value);
+                        widget->setStep(1.f);
+                        widget->setRange(0.f, 4294967040.f); // the largest uint32 a float holds
+                        widget->setValue(static_cast<float>(value));
+                        widget->setOnValueChanged([emitField](NumberField &f) {
+                            emitField(static_cast<uint32_t>(std::max(0.f, f.getValue())));
+                        });
+                        row = std::make_shared<PropertyRow>(title, widget);
+                        section->addContent(row);
+                        markSystem(widget);
+                        break;
                     }
-                    if (row) {
-                        row->setHelp(fieldName);
-                        // A field of another alpha mode does nothing now.
-                        if (fieldName == "alphaCutoff") { row->setVisible(alphaMode == 1); }
-                        if (fieldName == "transmissionFactor") { row->setVisible(alphaMode == 2); }
+                    // COLOR is an sRGB color (converted to linear on upload to the GPU); raw VEC4
+                    // values are edited with the same widget — the value goes as is.
+                    case Panda::MaterialFieldType::COLOR:
+                    case Panda::MaterialFieldType::VEC4: {
+                        const Panda::Vec4 v = std::get<Panda::Vec4>(shownValue);
+                        auto widget = std::make_shared<ColorWell>(Color(v.x, v.y, v.z, v.w));
+                        // The fourth component of a color field is its to keep and to edit:
+                        // the opacity of a base color, a factor a shader reads from the alpha.
+                        widget->setAlphaEditable(true);
+                        widget->setOnColorChanged([emitField](ColorWell &w) {
+                            const Color c = w.getColor();
+                            emitField(Panda::Vec4(c.r, c.g, c.b, c.a));
+                        });
+                        row = std::make_shared<PropertyRow>(title, widget, false);
+                        section->addContent(row);
+                        markSystem(widget);
+                        break;
                     }
+                    case Panda::MaterialFieldType::TEXTURE: {
+                        const uint32_t textureId =
+                            static_cast<uint32_t>(std::get<Panda::AssetRef<Panda::Asset>>(field.value).getId());
+                        row = addAssetRow(*section, title.c_str(), "texture", textureId, [emitField](uint32_t tid) {
+                            emitField(assetRefOf(tid));
+                        });
+                        break;
+                    }
+                    default: break;
+                }
+                if (row) {
+                    row->setHelp(fieldName);
+                    // A field of another alpha mode does nothing now.
+                    if (fieldName == "alphaCutoff") { row->setVisible(alphaMode == 1); }
+                    if (fieldName == "transmissionFactor") { row->setVisible(alphaMode == 2); }
                 }
             }
             container.addSubview(section);
@@ -334,13 +327,9 @@ namespace {
 
     private:
         void setShader(Panda::AssetId id, Panda::AssetId shaderId) {
-            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
             Panda::AssetRef<Panda::MaterialAsset> material{id};
-            if (!handler || !material) { return; }
-            const auto &registry = handler->getRegistry();
-            const auto it = registry.find(id);
-            if (it == registry.end()) { return; }
-            const Panda::AssetId before = std::get<Panda::AssetInfo::MaterialSettings>(it->second.settings).shader;
+            if (!material) { return; }
+            const Panda::AssetId before = material->getShaderId();
             if (before == shaderId) { return; }
             SetMaterialShaderCommand command(id, before, shaderId, material->getInputs());
             editorHost().assetUndoStack(id).execute(command);

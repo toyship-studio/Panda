@@ -520,7 +520,8 @@ to another place of its bar only). World tabs
 - the **editor settings** (`EditorSettingsDocument`): the sections of the editor scope, applied
   and saved by every edit — no dirty state, no undo; `settings.json` edited by hand is reread
   by the disk watch. The VIEWPORT section is also the Display
-  popover of the viewport overlay;
+  popover of the viewport overlay, as tall as the section (`SettingsSectionsView::setSizesToContent`)
+  and scrolled only in a window too short for it;
 - the **Plugins tab** (`PluginsDocument`, `PluginsView`): the Extensions page of Zed over the
   plugin store (`Project/Plugins/PluginStore`, `context/infrastructure.md` section 3) — search,
   filters, the catalog of the portal in pages, one card per plugin with its action; everything
@@ -574,7 +575,7 @@ after the question of the part that deletes, a file the editor renames gets the 
 under its cell (`contentBrowser.delete`, `contentBrowser.rename`, before the entity commands of
 those keys). ⌘D (and Duplicate in the menu of an asset) copies the selected assets next to
 them: a free name ("red 2.mat"; the pair of a shader as a pair), a new id and the settings of
-the sidecar — the shader of a material, the import of a texture (`contentDidRequestDuplicate`). A rescan keeps, by path, the
+the sidecar — the import of a texture, the materials of a model; a material carries its shader in its `.mat` (`contentDidRequestDuplicate`). A rescan keeps, by path, the
 folders that were open and the rows that were selected in both trees — their rows are entries
 of the tree, which the scan makes anew. Neither the Content Browser nor the Hierarchy has a
 foot that counts what they show: a count nobody asked for is not drawn. The assets selected
@@ -821,9 +822,12 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   (`AssetWell`): a drop from the Content Browser, the picker — the shaders built into the engine
   first (`EditorHost::isBuiltinAsset`: Unlit, Lit, PBR, the modules'; a name and no file, so a
   click on one opens the picker instead of revealing it), then those of the project —, and no
-  clearing (`AssetWell::setRequired`): a material always has a shader. A change of the shader is
-  a step of the history of the material like a field (`SetMaterialShaderCommand`): undo gives back
-  the old shader and the values its fields had.
+  clearing (`AssetWell::setRequired`): a material always has a shader. The shader is a part of the
+  material document like its fields — the `"shader"` of its `.mat` (a file without it is PBR) —,
+  changed in memory and written on Save; a change takes the fields of the new shader and keeps the
+  values not saved yet (`AssetDocuments::setMaterialShader`), and is a step of the history of the
+  material (`SetMaterialShaderCommand`): undo gives back the old shader and the values its fields
+  had.
 - **Modal**: confirmations (`showConfirmDialog`; a destructive action gets a button in the danger
   color), About, and FORMS of one-off operations with parameters. Domain forms live in the editor
   part of their module (the first one is `TerrainDialogs` in `Modules/Terrain/editor`): a

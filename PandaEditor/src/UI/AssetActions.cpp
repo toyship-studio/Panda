@@ -15,6 +15,7 @@
 #include <Fern/Files/AtomicWrite.hpp>
 #include <PandaUI/Core/Clipboard.hpp>
 
+#include <Panda/Assets/BuiltinAssets.hpp>
 #include <Panda/Prefabs/Prefabs.hpp>
 
 #include <algorithm>
@@ -167,8 +168,8 @@ void AssetActions::contentDidRequestDuplicate(const std::vector<Panda::AssetId> 
             for (const fs::path &file : written) { fs::remove(file, error); }
             continue;
         }
-        // A new id, and the settings of the original: the shader of a material, the import of a
-        // texture — what the sidecar holds besides the id.
+        // A new id, and the settings of the original: the import of a texture, the materials of a
+        // model — what the sidecar holds besides the id (a material copies its shader with its .mat).
         handler->registerAsset(copyMain);
         if (const Panda::AssetId copy = handler->getAssetId(copyMain)) {
             Panda::AssetInfo info = handler->getInfo(id);
@@ -212,11 +213,12 @@ void AssetActions::contentAddFileItems(Menu &menu, Panda::AssetId asset) {
 
 CreateActions AssetActions::contentCreateActions(const Panda::path_t &directory) {
     CreateActions actions;
-    // A material starts with the first built-in shader; its tab changes it.
+    // A material starts as the default material of the engine, PBR (a .mat that names no shader,
+    // a material of a glTF); its tab changes it.
     actions.push_back({"Material", [this, directory] {
                            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
                            if (!handler) { return; }
-                           const Panda::AssetId shader = builtinShaderOptions().front().first;
+                           const Panda::AssetId shader = Panda::BuiltinAsset::PBR_SHADER;
                            created(handler->documents().createMaterialAsset(directory, shader), "material");
                        }});
     // A prefab starts as one entity named after its file, and opens in its tab.

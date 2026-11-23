@@ -64,8 +64,8 @@ ResourceProvider provider() {
   resources are already alive (a module loaded on project open) is initialized at once.
 - `release` runs in `deinitStaticResources`, before the core releases its own; it resets
   every `AssetRef` and deletes the Miren handles the module created.
-- The ids are persisted: a project material stores the id of its shader in the `.pmeta`
-  sidecar (`meta.shader`), so a static shader id never changes. A module takes its ids from
+- The ids are persisted: a project material stores the id of its shader in its `.mat`
+  (`shader`), so a static shader id never changes. A module takes its ids from
   the `0xE0000000` range (the particles start at `0xE0000100`; take the next free hundred);
   the terrain keeps historical slots of the core sequence (23–28, 38–40, 53) that the core
   reserves and skips. Never reuse a slot of another module.

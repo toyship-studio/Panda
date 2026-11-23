@@ -52,6 +52,11 @@ void SettingsSectionsView::setTitleFilter(std::function<bool(const std::string &
     rebuild();
 }
 
+void SettingsSectionsView::setSizesToContent(bool sizesToContent) {
+    m_body->setSizesToContent(sizesToContent);
+    layout().setFlexShrink(sizesToContent ? 1.f : 0.f); // gives way to a parent with a max size, as the body does
+}
+
 void SettingsSectionsView::rebuild() {
     for (const auto &[title, section] : m_byTitle) { m_expanded[title] = section->isExpanded(); }
     m_byTitle.clear();

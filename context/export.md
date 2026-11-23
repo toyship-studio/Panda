@@ -70,8 +70,8 @@ into the world of a `PrefabAsset` for `World::instantiate`.
 through it; encoding a document through it lists what the document names, whatever its type —
 a component of a module included, with no code per type. The cook keeps the ids that are assets
 of the project (an entity is named by an id too). What it encodes: the world (`WorldMapper`),
-the import settings of an asset (`AssetInfo`: the shader of a material, the slot materials of a
-model), the `.mat` and `.postfx` DTOs, and for a file kind of a module whatever its
+the import settings of an asset (`AssetInfo`: the slot materials of a model), the `.mat` (its
+shader and its textures) and `.postfx` DTOs, and for a file kind of a module whatever its
 `AssetKind::encodeReferences` hook encodes (the flora of a terrain). A kind whose file names
 other assets and has no hook loses them in the game: the hook is part of adding such a kind
 (`PandaSDK/docs/modules/asset-kinds.md`).

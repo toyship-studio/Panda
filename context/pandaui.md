@@ -79,7 +79,14 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   (drawOffset is the sum), nonlinear overscroll, a spring return, inertia → bounce. macOS momentum
   events must be told apart and muted where they break the bounce. A scroll view that is not laid
   out — the content of a tab that is not the selected one has no size — measures nothing and
-  keeps its offset: it is where it was when it is shown again.
+  keeps its offset: it is where it was when it is shown again. Its content lies over it and does
+  not count for its size (a panel fills the room its parent gives). `setSizesToContent(true)`
+  turns that around for one axis, as a box of a web page with `overflow: auto`: the content takes
+  part in the layout (the view is a Yoga scroll box: the content is measured at its whole length),
+  the view is as long as it and gives way (flexShrink 1) to a parent with less room or a max size
+  of the view itself — only what does not fit scrolls. A popover or a dialog of a length nobody
+  knows in advance is made of it: the card of the Display popover has a max height of 100% of
+  its popup, that is the window.
 - Rendering: primitives rect, rounded rect, border, shadow, text, image, plus `PrimBuffer`
   (drawTriangle, drawGradientRect, drawLine with round caps). Rebuilding all draw commands every
   frame is acceptable; do not complicate things with dirty regions ahead of need.

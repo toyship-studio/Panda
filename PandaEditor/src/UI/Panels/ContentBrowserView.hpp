@@ -36,7 +36,7 @@ public:
     // The same for the files the user chooses in the dialog of the system (Import Files).
     virtual void contentDidRequestImportDialog(const Panda::path_t &directory) = 0;
     // Copies of the assets next to them: a free name ("red 2.mat"), a new id, the settings of the
-    // sidecar (the shader of a material, the import of a texture); selected.
+    // sidecar (the import of a texture, the materials of a model); selected.
     virtual void contentDidRequestDuplicate(const std::vector<Panda::AssetId> &assets) = 0;
     // The browser shows another folder (the session of the project remembers it).
     virtual void contentDidShowFolder(const Panda::path_t &folder) = 0;

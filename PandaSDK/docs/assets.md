@@ -52,12 +52,13 @@ uses stays in the project ([Exporting a game](export.md)).
 
 ## Material `.mat`
 
-JSON: `{"inputs": [{"name", "type", "value"}]}`. `type`: 0 float, 1 uint, 2 vec4,
-3 texture (value — asset id, 0 = not set), 4 color (value — {x,y,z,w}).
-The material's shader is stored in the registry (`meta.shader` in the sidecar of the `.mat` — the
-id of a built-in or project shader). The set and the ORDER of the fields are the shader's
-contract: create a new material in the editor (choosing a shader fills in the correct field
-template) and edit the values as text. Writing a shader of your own: [Shaders](shaders.md).
+JSON: `{"shader": 17, "inputs": [{"name", "type", "value"}]}`. `shader` — the id of the shader
+asset: a built-in one (17 PBR, 11 Lit, 9 Unlit) or a shader of the project (the `id` of its
+`.pmeta`); a file without `shader` is PBR. `inputs`, `type`: 0 float, 1 uint, 2 vec4,
+3 texture (value — asset id, 0 = not set), 4 color (value — {x,y,z,w}). The set and the ORDER of
+the fields are the shader's contract: create a new material in the editor (choosing a shader
+fills in the correct field template) and edit the values as text. Writing a shader of your own:
+[Shaders](shaders.md).
 
 The fields of a material on the built-in PBR shader: `baseColorTexture` / `baseColorFactor`,
 `metallicRoughnessTexture` (g — roughness, b — metallic) / `metallicFactor` / `roughnessFactor`,

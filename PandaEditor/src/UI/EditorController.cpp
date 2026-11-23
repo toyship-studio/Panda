@@ -860,15 +860,18 @@ void EditorController::showDisplayOptions(View *anchor) {
     auto sections = std::make_shared<SettingsSectionsView>(Panda::SettingsScope::Editor);
     sections->setTitleFilter([](const std::string &title) { return title == "VIEWPORT"; });
     sections->setStore(&settings(Panda::SettingsScope::Editor));
+    sections->setSizesToContent(true);
     auto card = std::make_shared<Panel>();
     applyElevation(*card, Elevation::Popover);
-    card->layout().setSize({300.f, 230.f});
+    // As tall as the section and no taller than the window the popup covers: only what does not
+    // fit scrolls. A row added to the section needs no new size here.
+    card->layout().setWidth(Length::points(300.f));
+    card->layout().setMaxHeight(Length::percent(100.f));
     card->layout().setFlexDirection(FlexDirection::Column);
     card->layout().setPadding(4.f);
     card->addSubview(sections);
-    const Rect frame = anchor->getWorldFrame();
-    auto popup = std::make_shared<Popup>(card, Rect(frame.origin.x, frame.origin.y + frame.size.height + 4.f, 0.f, 0.f));
-    context->addOverlay(popup);
+    // Under the button, or above it when the window has no room below (Popup).
+    context->addOverlay(std::make_shared<Popup>(card, anchor->getWorldFrame()));
 }
 
 Panda::TypeContext &EditorController::settings(Panda::SettingsScope scope) {

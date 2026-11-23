@@ -4,7 +4,7 @@
 
 namespace PandaUI::Gallery {
 
-// ScrollView section: vertical and horizontal scrolling with inertia/bounce.
+// ScrollView section: vertical and horizontal scrolling with inertia/bounce, and a view sized to its content.
 class ScrollViewSection final : public DemoComponent {
 public:
     ScrollViewSection();

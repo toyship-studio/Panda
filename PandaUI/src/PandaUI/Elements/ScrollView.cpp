@@ -1,6 +1,7 @@
 #include "PandaUI/Elements/ScrollView.hpp"
 
 #include "PandaUI/Core/Profile.hpp"
+#include "PandaUI/Core/ViewInternal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -123,6 +124,13 @@ void ScrollView::setScrollDirection(ScrollDirection direction) {
     m_scrollDirection = direction;
     updateContentLayout();
     setContentOffsetInternal(m_contentOffset);
+}
+
+void ScrollView::setSizesToContent(bool sizesToContent) {
+    if (m_sizesToContent == sizesToContent) { return; }
+    m_sizesToContent = sizesToContent;
+    layout().setFlexShrink(sizesToContent ? 1.f : 0.f);
+    updateContentLayout();
 }
 
 void ScrollView::setBounces(bool bounces) {
@@ -409,6 +417,19 @@ void ScrollView::updateOverscrollAxis(float &overscroll, float &velocity, double
 }
 
 void ScrollView::updateContentLayout() {
+    // A view that sizes to its content keeps it in the flow, and is a scroll box to the layout
+    // (overflow: scroll): the content is measured there at its whole length along the axis, and
+    // the view takes that length as far as the room it is given allows. Otherwise the content lies
+    // over the view and counts for nothing in its size.
+    const bool inFlow =
+        m_sizesToContent && m_automaticallyAdjustsContentSize && m_scrollDirection != ScrollDirection::Both;
+    m_contentView->layout().setPositionType(inFlow ? PositionType::Relative : PositionType::Absolute);
+    YGNodeStyleSetOverflow(m_internal->ref, inFlow ? YGOverflowScroll : YGOverflowVisible);
+    if (inFlow) {
+        layout().setFlexDirection(m_scrollDirection == ScrollDirection::Horizontal ? FlexDirection::Row : FlexDirection::Column);
+    }
+    setNeedsLayout();
+
     if (!m_automaticallyAdjustsContentSize) {
         m_contentView->layout().setSize(m_contentSize);
         return;

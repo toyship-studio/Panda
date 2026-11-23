@@ -27,7 +27,13 @@ public:
         , m_shaderRef(shader)
         , m_data(data) {}
 
+    // The shader that draws the material: the one it names, or the Lit fallback when it names none
+    // or the one it names is not a shader that is there.
     AssetRef<ShaderAsset> getShaderAsset();
+    // The shader as the material names it (its .mat), found or not; 0 — none.
+    AssetId getShaderId() const {
+        return m_shaderRef.getId();
+    }
 
     // Fields/textures are written to the draw state by name; which program the slots land on
     // is decided by submit(viewId, program) — the material knows nothing about programs.
@@ -51,6 +57,9 @@ public:
 
 #ifdef PND_EDITOR
     MaterialData &getInputs();
+    // Another shader for the material in memory: the fields are the caller's to match to it
+    // (updateFields, the template of a built-in shader) — the editor's material document.
+    void setShader(AssetRef<ShaderAsset> shader);
     void updateFields();
     void setChanged(bool value) override;
     bool isChanged() const override;

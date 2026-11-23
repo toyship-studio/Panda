@@ -50,6 +50,17 @@ public:
     ScrollDirection getScrollDirection() const {
         return m_scrollDirection;
     }
+    // The view as long as its content along the axis it scrolls, and no longer than its layout lets
+    // it be — a max size of its own, or a parent with less room (the view gives way: flexShrink 1).
+    // Only what does not fit scrolls, as in a box of a web page with overflow: auto: a popover, a
+    // dialog, a form of a length nobody knows in advance. The content then takes part in the layout
+    // of the view instead of lying over it. Off (the default): the view is as large as its layout
+    // makes it, and the content does not count — a panel. One axis and an automatic content size
+    // only: a view that scrolls both ways, or one given its content size, does not size to it.
+    void setSizesToContent(bool sizesToContent);
+    bool sizesToContent() const {
+        return m_sizesToContent;
+    }
     void setBounces(bool bounces);
     bool getBounces() const {
         return m_bounces;
@@ -86,6 +97,7 @@ private:
     bool m_scrollEnabled;
     bool m_bounces;
     bool m_automaticallyAdjustsContentSize;
+    bool m_sizesToContent = false;
     bool m_isDragging;
     bool m_isScrollGestureActive;
     bool m_ignoreMomentumUntilNextGesture;
