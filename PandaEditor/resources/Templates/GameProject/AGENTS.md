@@ -34,12 +34,12 @@ files stay the way to change the project; the tools are for what a file cannot d
 | --- | --- |
 | `status` | the project, Edit or Play, the open worlds, unsaved documents, the viewports, the frame statistics |
 | `reload` | the editor takes what changed on disk: worlds, assets, shaders, settings, the script build |
-| `screenshot` | a picture of the `scene` view (the editor camera), of the `game` view (the main camera, the game UI) or of the whole editor `window` |
+| `screenshot` | a picture of the `world` view (the editor camera), of the `game` view (the main camera, the game UI) or of the whole editor `window` |
 | `logs` | the log of the editor: shader, import and script errors |
 | `play`, `stop` | runs the game inside the editor, returns to editing |
 | `build` | builds the C++ scripts (or, with `target: "export"`, the game) the way the editor does and answers with what cmake said, the compiler errors included; the editor loads scripts that were built |
 | `export` | the game as it will ship: cooks its data and answers with what the pack holds and which assets were left out; `action: "run"` plays the built game by itself and answers with its log and the picture of its last frame |
-| `camera` | places the editor camera of the `scene` view |
+| `camera` | places the editor camera of the `world` view |
 | `save` | writes what the user changed in the editor to the files |
 | `open_world`, `restart`, `quit` | another world (or a prefab) in front, a new start of the editor |
 

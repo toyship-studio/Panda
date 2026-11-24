@@ -32,7 +32,6 @@ struct TerrainFormHost {
     // Rebuild the form at the start of the next tick: the set of sections depends on the values,
     // and the form must not be torn down from a callback of its own control.
     std::function<void()> rebuild;
-    std::function<void()> edited; // the document was changed from the form (a preview tab gets pinned)
 };
 
 // Editor tab of a terrain asset: each section is one task. One-off operations with

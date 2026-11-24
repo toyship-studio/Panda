@@ -10,7 +10,7 @@ namespace {
         std::string name;
         MaterialFieldValue value;
         std::string hint;    // explanation for the editor of where the value is controlled from
-        std::string section; // the world settings section that controls the value
+        std::string component; // the component of the world that controls the value (its name in .world)
     };
 
     std::vector<SystemValue> s_values;
@@ -36,16 +36,16 @@ namespace {
 
 } // namespace
 
-void MaterialSystemValues::set(const char *name, MaterialFieldValue value, const char *hint, const char *section) {
+void MaterialSystemValues::set(const char *name, MaterialFieldValue value, const char *hint, const char *component) {
     if (SystemValue *entry = findEntry(name)) {
         if (hint) { entry->hint = hint; }
-        if (section) { entry->section = section; }
+        if (component) { entry->component = component; }
         if (equals(entry->value, value)) { return; } // dedup: may be called every frame
         entry->value = std::move(value);
         s_version++;
         return;
     }
-    s_values.push_back({name, std::move(value), hint ? hint : "", section ? section : ""});
+    s_values.push_back({name, std::move(value), hint ? hint : "", component ? component : ""});
     s_version++;
 }
 
@@ -65,9 +65,9 @@ const char *MaterialSystemValues::hint(const std::string &name) {
     return entry ? entry->hint.c_str() : "";
 }
 
-const char *MaterialSystemValues::section(const std::string &name) {
+const char *MaterialSystemValues::component(const std::string &name) {
     const SystemValue *entry = findEntry(name);
-    return entry ? entry->section.c_str() : "";
+    return entry ? entry->component.c_str() : "";
 }
 
 const MaterialFieldValue *MaterialSystemValues::find(const std::string &name) {

@@ -12,21 +12,26 @@
 
 namespace Panda {
 
-// Where a settings section lives (context/plugins.md): the world (`.world`, next to the entities;
-// the data in World::context), the project (`.Panda/project.json`) or the editor (the user's
-// `settings.json`). A scope is one JSON object of sections by name; the owner of the file keeps
-// the sections of the scope in a TypeContext and reads and writes them with SettingsMapper.
-enum class SettingsScope : uint8_t { World, Project, Editor };
+// Where a settings section lives (context/plugins.md): the project (`.Panda/project.json`) or
+// the editor (the user's `settings.json`). A world has no settings: what it looks like is
+// components of its entities (the sky, the sun, the wind). A scope is one JSON object of sections
+// by name; the owner of the file keeps the sections of the scope in a TypeContext and reads and
+// writes them with SettingsMapper.
+enum class SettingsScope : uint8_t { Project, Editor };
 
 // A settings section of the core or of a contribution: a value under its own key of the scope's
 // file. A key without a type (the module is not loaded) survives load and save as is
 // (ForeignSettings).
 struct SettingsType final {
-    SettingsScope scope = SettingsScope::World;
+    SettingsScope scope = SettingsScope::Project;
+    // The section is the editor's own (the name of the project, its start world, the MCP server):
+    // the export does not give it to the game. The sections of the project the core and the
+    // modules register — what a frame may cost — reach the game (SettingsMapper::encodeGameSettings).
+    bool editorOnly = false;
     std::string name;                                                           // key in the file
     void (*encode)(const char *key, Rain::Encoder &, TypeContext &) = nullptr; // value under key
     void (*decode)(const char *key, Rain::Decoder &, TypeContext &) = nullptr; // key present → apply
-    void (*copy)(TypeContext &from, TypeContext &to) = nullptr;                // world copy (Play)
+    void (*copy)(TypeContext &from, TypeContext &to) = nullptr;                // a file reread into a scratch store first
     void (*reset)(TypeContext &) = nullptr;                                    // to defaults (loading starts from them)
 };
 
@@ -58,9 +63,8 @@ template<auto Field>
 using SettingsOwner = typename Detail::FieldOf<decltype(Field)>::Type;
 
 // A key that is a field of one struct in the store: the settings an owner keeps together, read
-// as fields of one value (the core's `World::getSettings().graphics`, the editor's
-// `projectSettings().name`). The field is any value Rain codes — a string, a list, a Codable
-// section; its default is the one the struct gives it.
+// as fields of one value (the editor's `projectSettings().name`). The field is any value Rain
+// codes — a string, a list, a Codable section; its default is the one the struct gives it.
 template<auto Field>
 SettingsType settingsField(SettingsScope scope, const char *name) {
     using Owner = SettingsOwner<Field>;

@@ -32,12 +32,9 @@ void EditorViewports::init() {
 }
 
 void EditorViewports::sync(const ViewportFrames &frames) {
-    // The viewport in focus renders; when its tab is not on screen and the other one is — the other.
-    const bool gameFocused = frames.focused == ViewportKind::Game;
-    const bool focusedVisible = gameFocused ? frames.gameVisible : frames.sceneVisible;
-    const bool otherVisible = gameFocused ? frames.sceneVisible : frames.gameVisible;
-    const ViewportKind other = gameFocused ? ViewportKind::Scene : ViewportKind::Game;
-    m_live = focusedVisible || !otherVisible ? frames.focused : other;
+    // The viewport the world tab shows is the one that renders.
+    m_live = frames.shown;
+    m_onScreen = frames.visible;
     m_sceneSurface.setFrame(frames.scene);
     m_scene.setFrame(frames.scene);
     m_gameSurface.setFrame(frames.game);

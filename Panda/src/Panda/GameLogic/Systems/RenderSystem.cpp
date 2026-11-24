@@ -50,17 +50,12 @@ bool Frustum::visible(const glm::mat4 &transform, const glm::vec3 &localMin, con
 }
 
 void submitSky(World &world, Renderer3D &renderer, const glm::mat4 &skyViewProj) {
-    auto view = world.getAllEntitiesWith<SkyComponent>();
-    for (auto entityHandle : view) {
-        if (!world.isValidEntt(entityHandle)) { continue; }
-        AssetRef<RuntimeMeshAsset> skyMesh = StaticResources::defaultSkyMesh;
-        auto &skyComponent = view.get<SkyComponent>(entityHandle);
-        AssetRef<MaterialAsset> skyMaterial = skyComponent.material.as<MaterialAsset>();
-        if (!skyMaterial) { skyMaterial = StaticResources::defaultSkyMaterial; }
-        glm::mat4 viewProj = skyViewProj;
-        renderer.submitSky(viewProj, skyMesh, skyMaterial);
-        break;
-    }
+    const Entity sky = world.findMain<SkyComponent>();
+    if (!sky.isValid()) { return; } // no sky: black behind everything
+    AssetRef<MaterialAsset> skyMaterial = sky.getComponent<SkyComponent>().material.as<MaterialAsset>();
+    if (!skyMaterial) { skyMaterial = StaticResources::defaultSkyMaterial; }
+    glm::mat4 viewProj = skyViewProj;
+    renderer.submitSky(viewProj, StaticResources::defaultSkyMesh, skyMaterial);
 }
 
 void submitSprites(World &world, Renderer2D &renderer, const Frustum &frustum) {

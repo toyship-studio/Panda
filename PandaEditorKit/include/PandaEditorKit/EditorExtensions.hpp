@@ -84,7 +84,6 @@ private:
 struct AssetEditorContext {
     Panda::AssetId asset = 0;
     std::function<void()> rebuild; // rebuild the form at the next tick start (the section set depends on the values)
-    std::function<void()> edited;  // the document was changed from the form: the preview tab gets pinned
 };
 
 // Asset form tab: an instance per (panel, asset), survives form rebuilds — the state
@@ -186,10 +185,10 @@ struct ViewportOverlay final {
 // ---- Settings section over the sections of a scope (Extensions::settings) ----
 
 struct SettingsSection final {
-    Panda::SettingsScope scope = Panda::SettingsScope::World; // whose store the section edits
-    std::string title;                                        // "TERRAIN" (in caps)
-    // Content: reads and edits the settings in the store of the scope (the world: its context;
-    // the project and the editor: the stores of their files); rebuilt when the store changes.
+    Panda::SettingsScope scope = Panda::SettingsScope::Project; // whose store the section edits
+    std::string title;                                          // "TERRAIN" (in caps)
+    // Content: reads and edits the settings in the store of the scope (the store of its file:
+    // project.json, settings.json); rebuilt when the store changes.
     void (*build)(PandaUI::CollapsibleSection &section, Panda::TypeContext &store) = nullptr;
 };
 

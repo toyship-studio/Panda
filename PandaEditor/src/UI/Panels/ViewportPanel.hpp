@@ -30,44 +30,28 @@ public:
     // Assets (mesh/prefab/scene) dropped into the scene from the Content Browser → instantiate.
     virtual void viewportDidDropAssets(const std::vector<std::uint32_t> &assetIds, const std::string &kind) = 0;
     // The overlay gear: the display options popover (the viewport section of the editor scope)
-    // next to the anchor, and the world settings sidebar of the panel (shown / hidden).
+    // next to the anchor.
     virtual void viewportDidRequestDisplayOptions(PandaUI::View *anchor) = 0;
-    virtual void viewportDidToggleWorldSettings() = 0;
     virtual void viewportDidRequestStopEditing() = 0; // the Stop button of the edit mode banner
 };
 
-// VIEW: viewport panel — the scene surface (ViewportView) + a floating overlay toolbar (gizmo + camera
-// reset) + the world settings sidebar on the right (an opaque column, hidden by default: the
-// settings of the world live with the world document, like the N-panel of Blender). It has no
-// header of its own — the title is provided by the scene tab above. Implements ViewportViewOutput:
-// bridges the scene input (picking/gizmo keys/focus) to its own ViewportPanelOutput.
+// VIEW: viewport panel — the scene surface (ViewportView) + a floating overlay toolbar (gizmo, camera
+// reset, the display options). It has no header of its own — it is the middle of the world tab.
+// Implements ViewportViewOutput: bridges the scene input (picking/gizmo keys/focus) to its own
+// ViewportPanelOutput.
 class Commands;
 
 class ViewportPanelView final : public EditorView, public ViewportViewOutput {
 public:
     explicit ViewportPanelView(ViewportPanelOutput *output);
 
-    // The world settings sidebar: the content is the sections of the world scope (the coordinator
-    // owns the view), the chrome (header, close) is the panel's.
     // The tooltips of the tools name the keys of the keymap, whatever it is now, and the key the
     // steps of the gizmo are held by.
     void setKeyHints(const Commands &commands);
-    void setSidebarContent(std::shared_ptr<PandaUI::View> content);
-    void setSidebarVisible(bool visible);
-    // The settings of the world are of a world file: the document in front has them or — a
-    // prefab — does not, and then the button and the sidebar are gone.
-    void setWorldSettingsAvailable(bool available);
-    bool isSidebarVisible() const {
-        return m_sidebarVisible;
-    }
 
     // The frame of the Scene as the engine rendered it; flip for bottom-left-origin targets.
     void setSceneTexture(PandaUI::TextureHandle texture, bool flip) {
         m_scene->setSceneTexture(texture, flip);
-    }
-    // false — the Game has the focus and renders: the Scene keeps its last frame under a veil.
-    void setSceneLive(bool live) {
-        m_scene->setLive(live);
     }
     // On-screen frame (points) of the scene surface — engine sizes its FBO/camera from it.
     PandaUI::Rect sceneWorldFrame() const {
@@ -95,13 +79,9 @@ public:
     // brush): an accent border around the whole panel + a banner with a caption and a Stop button.
     // The owner of the state is the coordinator; the panel only draws.
     void setEditingSession(bool active, const std::string &title);
-    // The keyboard is on the Scene surface itself — not in the settings sidebar next to it.
+    // The keyboard is on the Scene surface itself — not in the overlay over it.
     bool sceneHasFocus() const {
         return m_scene && m_scene->isFocused();
-    }
-    // A selection gesture is in flight over the Scene (ViewportView::isSelecting).
-    bool isSelecting() const {
-        return m_scene && m_scene->isSelecting();
     }
     // The tool of the gizmo: 0 — Move, 1 — Rotate, 2 — Scale. As a press of its toolbar button.
     void setGizmoMode(int mode) {
@@ -136,11 +116,6 @@ private:
 
     ViewportPanelOutput *m_output;
     std::shared_ptr<PandaUI::Panel> m_sceneHost;      // the scene column: the surface and the overlays over it
-    std::shared_ptr<PandaUI::Panel> m_sidebar;        // the world settings column (hidden by default)
-    std::shared_ptr<PandaUI::Panel> m_sidebarHeader;
-    std::shared_ptr<PandaUI::Panel> m_sidebarContentHost;
-    std::shared_ptr<IconButton> m_worldSettingsButton; // overlay: highlighted while the sidebar is shown
-    bool m_sidebarVisible = false;
     std::shared_ptr<ViewportView> m_scene;            // scene surface (camera/picking input)
     std::shared_ptr<class HelperLinesOverlay> m_helperLines; // wireframe helpers (colliders) above the scene
     std::shared_ptr<GizmoOverlayView> m_gizmoOverlay; // the gizmo drawn over the frame

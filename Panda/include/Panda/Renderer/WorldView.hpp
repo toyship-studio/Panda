@@ -24,6 +24,9 @@ struct ViewCamera {
     glm::mat4 viewProj = glm::mat4(1.f);
     glm::mat4 skyViewProj = glm::mat4(1.f); // the same without the translation: the sky stays around the camera
     glm::vec3 position = glm::vec3(0.f);
+    // The main sky of the world is drawn behind the frame. A studio composed over something else
+    // (the preview of an asset) is lit by its sky and does not draw it.
+    bool drawsSky = true;
 
     // The main camera of the world as it stands now — asked after the simulation of the frame,
     // the scripts move the camera in it. false — the world has no main camera: the camera is

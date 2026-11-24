@@ -36,7 +36,7 @@ rebuilds the settings and statistics sections; nothing is ever unregistered.
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: the icon and the color of an asset kind in the Content Browser and on tabs, the form of its tab (`AssetEditor`) |
 | `assetCreators` | `AssetCreator {title, create(directory) → path}`: an asset the editor can create: an entry of File → New and of the Content Browser menu. `title` is the noun ("Terrain"), the menu says "New"; the core registers and selects the new file |
 | `viewportTools` | `ViewportTool` (an owned object): runs before the world update in EDIT, may capture the left mouse button, draws helper lines |
-| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the Scene tab shows, in EDIT and PLAY |
+| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the World view shows, in EDIT and PLAY |
 | `settingsSections` | `SettingsSection {scope, title, build(section, store)}`: the form of a settings section ([Settings](settings.md)) |
 | `documentTypes` | `DocumentType {id, title, icon, create}`: a document the "+" of a dock and the Window menu open, one instance at a time |
 | `statistics` | `StatisticsSection {title, rows, collect(values)}`: a section of the Statistics panel, polled once a frame |
@@ -142,9 +142,8 @@ extensions.assetCreators.push_back({"Terrain", createTerrain2D}); // writes a fl
 
 An `AssetEditor` is one object per open tab; `build(container)` fills the tab form and is
 called again after an undo, a reload or `context.rebuild()`, so the object keeps what must
-survive a rebuild (the selected rows of a list). `AssetEditorContext` carries the asset id,
-`rebuild` (rebuild at the next tick — never tear the form down from its own control) and
-`edited` (the document changed from the form: a preview tab gets pinned).
+survive a rebuild (the selected rows of a list). `AssetEditorContext` carries the asset id and
+`rebuild` (rebuild at the next tick — never tear the form down from its own control).
 
 Edits of the asset are commands on the document's stack:
 
@@ -178,7 +177,7 @@ s_tool = static_cast<TerrainTool *>(&extensions.viewportTools.add(std::make_uniq
 ```
 
 `ViewportToolFrame` gives the world being edited, the viewport camera, the matrices, the
-camera position, the pointer over the Scene surface (`viewportHovered`, `pointerPosition` in
+camera position, the pointer over the surface of the World view (`viewportHovered`, `pointerPosition` in
 viewport points, `pointerDown` — the left button went down over the surface and is held) and
 the frame time. A tool reads no `Panda::Input`: that is the game's. A tool that edits an
 asset runs an editing session: `editorHost().beginViewportEditing(title, assetId, onStop)`
@@ -187,7 +186,7 @@ and calls `onStop` when the user stops or closes the tab; the tool releases itse
 `endViewportEditing`. A stroke is one command on the document's stack.
 
 A `ViewportOverlay` draws without input: `appendHelperLines(world, lines, viewProj, frame)` is
-called once a frame while the Scene tab renders (EDIT, and PLAY looked at through the Scene),
+called once a frame while the World view renders (EDIT, and PLAY looked at through it),
 over the world it shows, with the editor camera. `HelperLine` is a segment in window coordinates — the overlay projects its world
 geometry itself and appends the lines in the order of importance, nearest first: the
 viewport draws as many as its share of the draw list holds. An overlay reads its own setting

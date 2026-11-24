@@ -18,9 +18,6 @@ using Editor::editorHost;
 
 namespace {
 
-    void edited(const TerrainFormHost &host) {
-        if (host.edited) { host.edited(); }
-    }
     void rebuild(const TerrainFormHost &host) {
         if (host.rebuild) { host.rebuild(); }
     }
@@ -44,7 +41,6 @@ void editFlora(const TerrainFormHost &host, Panda::AssetId assetId, const Panda:
     // A series of gesture ticks merges into one step (canMerge); execute applies it (sets changed).
     Panda::EditTerrainFloraCommand command(assetId, asset->getFloraSettings(), flora, std::move(orphaned));
     editorHost().assetUndoStack(assetId).execute(command);
-    edited(host);
 }
 
 void scatterTrees(
@@ -74,7 +70,6 @@ void scatterTrees(
     LOG_INFO_EDITOR("Scattered the trees of %s: %zu added, %zu removed.", layer->name.c_str(), added.size(), removed.size());
     Panda::EditTerrainTreesCommand command(assetId, std::move(removed), std::move(added));
     editorHost().assetUndoStack(assetId).execute(command);
-    edited(host);
     rebuild(host); // the layer's tree counter in the form
 }
 
@@ -89,7 +84,6 @@ void clearTrees(const TerrainFormHost &host, Panda::AssetId assetId, uint32_t tr
     if (removed.empty()) { return; }
     Panda::EditTerrainTreesCommand command(assetId, std::move(removed), {});
     editorHost().assetUndoStack(assetId).execute(command);
-    edited(host);
     rebuild(host);
 }
 
@@ -99,7 +93,6 @@ void resizeTerrain2D(const TerrainFormHost &host, Panda::AssetId assetId, uint32
     terrain->resize(cellsX, cellsZ);
     editorHost().clearAssetUndoStack(assetId);
     editorHost().refreshFromWorld(); // meshes will rebuild lazily; the panels need a refresh
-    edited(host);
     rebuild(host); // the Size row of the form
 }
 
@@ -111,7 +104,6 @@ void resizeTerrain3D(
     terrain->resize(cellsX, cellsY, cellsZ);
     editorHost().clearAssetUndoStack(assetId);
     editorHost().refreshFromWorld();
-    edited(host);
     rebuild(host);
 }
 
@@ -132,7 +124,6 @@ void importHeightmap(
     editorHost().clearAssetUndoStack(assetId);
     LOG_INFO_EDITOR("Imported the heightmap %s (%ux%u).", path.filename().string().c_str(), width, height);
     editorHost().refreshFromWorld();
-    edited(host);
     rebuild(host);
 }
 
@@ -146,7 +137,6 @@ void convertFloraMask(
         channel, static_cast<Panda::GrassPlacement>(fromPlacement), static_cast<Panda::GrassPlacement>(toPlacement)
     );
     editorHost().clearAssetUndoStack(assetId);
-    edited(host);
 }
 
 } // namespace TerrainEditor

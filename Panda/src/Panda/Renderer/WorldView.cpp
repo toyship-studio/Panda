@@ -71,7 +71,7 @@ void WorldView::render(World &world, const ViewCamera &camera) {
     if (!m_color.isValid()) { return; } // no size yet
     // The wind of this world for everything its frame draws (the scene blocks, the system
     // material fields, the modules): a world brings its own, nobody sets it from outside.
-    SceneWind::apply(world.getSettings().wind);
+    SceneWind::apply(world.wind());
     m_renderer3d.resetStats();
     m_camera = camera;
     // What the world draws is read once, for every pass of the frame.
@@ -132,7 +132,7 @@ void WorldView::submitWorld(
     const bool shadowPass = m_renderer3d.getMode() == RenderingMode::SHADOW_DEPTH;
     RenderSystem::Frustum frustum = RenderSystem::Frustum::of(viewProj);
     if (casters != nullptr) { frustum.narrow(*casters); }
-    RenderSystem::submitSky(world, m_renderer3d, skyViewProj);
+    if (m_camera.drawsSky) { RenderSystem::submitSky(world, m_renderer3d, skyViewProj); }
     if (!shadowPass) { RenderSystem::submitSprites(world, m_renderer2d, frustum); }
     // World systems (contributions of the worldSystems registry) — between sprites and meshes, in
     // all modes.

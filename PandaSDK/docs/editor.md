@@ -10,12 +10,26 @@ The editor follows the files it works on: an edit made in another program — a 
 agent, git — is taken as soon as the editor is the application in front, without a command. A
 document with unsaved edits is left as it is; saving it asks which version stays.
 
+## The window
+
+A tab is one file. On the left, the whole height of the window, are the files of the project
+(the Content Browser). In the center are the tabs of the files you opened: a world, a prefab, a
+material, a texture. The tab of a world is all of the world: its tree on the left, the world
+itself in the middle, the inspector of the selected entities on the right — and its Save, its Undo and the
+dot that says it has unsaved edits are of that one file. The output of the builds (Output, CMake,
+Statistics, Profiler) waits under the center until it is needed: a build shows it, and so do its
+buttons in the strip at the bottom of the window and ⌘J.
+
+The buttons of the strip show and hide the parts of the window: the files (⌘0) and the tree of
+the world tab (⌥⌘1) on the left, the panels under the center and the inspector of the world tab
+(⌥⌘0) on the right. A tab or a panel is dragged to another place by its title.
+
 ## Finding things
 
 | Keys | What |
 | --- | --- |
 | ⇧⌘P | **Command palette**: every command of the editor and every item of the menus by name. Type, ↑ ↓, Enter |
-| ⌘P | **Go to**: an entity of the open world or an asset of the project by name — it becomes the selection |
+| ⌘P | **Go to**: an entity of the open world (it becomes the selection) or an asset of the project (it opens in its tab) by name |
 | ⌘F | **Find in Hierarchy**: the entities whose name has the text, as a flat list; Escape brings the tree back |
 | ⌘, | **Settings**: a window over the editor — the editor, the project and the keymap. Escape closes it |
 | ⌘K | **Keymap**: the same window on its Keymap page |
@@ -47,6 +61,7 @@ Hierarchy (a click there gives it):
 | ⌘S, ⌥⌘S | Save the document of the tab, Save All |
 | ⇧Space | The panel under the keyboard takes the whole window, and back |
 | ⌘W | Close the tab the keyboard is in |
+| ⌘0, ⌥⌘1, ⌥⌘0, ⌘J | Show or hide the files, the tree, the inspector, the panels under the center |
 
 The Hierarchy lists the entities of a level — the roots, the children of an entity — the ones
 with children first, then by name: there is no order to arrange by hand, and the world file is
@@ -55,7 +70,19 @@ written in the same order.
 With the keyboard in the viewport W A S D fly the camera; a drag with the right button (two
 fingers on a trackpad) looks around, the wheel moves forward and back. A click selects the
 entity under the pointer; a drag with the left button selects by a rectangle. The inspector of
-what you selected opens when the button is released.
+the world tab shows what is selected. A file clicked in the Content Browser is selected there
+and leaves the inspector as it is, so a file — or several of them — is dragged from there into
+a field of the entity it shows.
+
+**How the world looks** is components of its entities, edited in the inspector like any other:
+the sky (its environment map, its ambient light, its fog), the sun (its light and its shadows),
+the camera (its exposure, bloom, ambient occlusion), the wind. A world uses one of each: the
+**Main** one. Main in the section of a second sky makes it the sky of the world and the first a
+spare (one step of Undo); a spare says which one the world uses, and a second component marked
+Main by mistake — a paste, a duplicate — shows a warning. A script switches the main one (the
+sky of the night, the camera of a cutscene). What a frame may cost — the maps of the shadows,
+the ambient occlusion, the distances of the terrain — is the same for every world and lives in
+the settings of the project.
 
 A script of an entity is a section of its inspector with the fields the class publishes
 (`PANDA_FIELD`). A list field (a `std::vector` in the class) is a block of rows: **+** in its
@@ -67,17 +94,17 @@ under the section opens the source of the class in your text editor (Settings �
 External Tools).
 
 **Prefabs.** A prefab — a tree of entities kept in a file of its own and placed in worlds any
-number of times — opens in a tab of the center like a world and is edited the same way; it is
-not played. The tab of the Hierarchy is titled with the file in front (`world.world`,
-`Lamp.prefab`). In a world the entities of an instance of a prefab are drawn in the accent
-color, and the inspector of such an entity marks what it has of its own, with Revert and Apply
-next to it. Everything about them is on its own page: [Prefabs](prefabs.md).
+number of times — opens in a tab of the center like a world and is edited the same way, with a
+tree of its own; it is not played. In a world the entities of an instance of a prefab are drawn
+in the accent color, and the inspector of such an entity marks what it has of its own, with
+Revert and Apply next to it. Everything about them is on its own page: [Prefabs](prefabs.md).
 
-A click on a world file in the Content Browser shows that world in the preview tab (its title
-is in italics): the next world clicked takes the same tab. A double click on the file or on the
-tab keeps it open, and so does the first edit. The tabs of the worlds can be dragged into
-another order. A world tab closes like any other tab; with the last one closed the center is
-empty — the "+" in the middle makes a new world, a click on a world file opens one.
+A click on a file in the Content Browser selects it; a double click (or Open in its menu) opens
+it — a world or a prefab in a world tab, a material, a texture or a model in a tab of its own, a
+shader in your text editor. A world tab comes back as you left it: the open branches of its
+tree, the selection. The tabs can be dragged into another order. A world tab closes like any
+other tab; with the last one closed the center is empty — the "+" in the middle makes a new
+world, a double click on a world file opens one.
 
 The Content Browser shows the `Assets` folder of the project as it is on disk, the names in the
 order a person reads them (`level2` before `level10`). A right click on the empty space makes a
@@ -92,13 +119,21 @@ build them; the CMake panel shows the build and the editor loads the result. Bui
 (Cmd/Ctrl+B) builds them at any time; a build that ends while the game plays is loaded when the
 game stops.
 
-The Scene (the tab of a world: the editor camera, the selection, the gizmo) and the Game (the
-main camera of the world, the game UI and the game input) are not drawn together: the editor
-draws the one you work in. With both on screen — the Game tab dragged into another dock — a
-click on a viewport gives it the focus and it renders; the other one keeps its last picture
-under a light gray veil with a caption that says who has the focus. Play gives the focus to the
-Game, Stop gives it back to the Scene. While the Scene has the focus during Play the game goes
-on — it is simulated and its UI lives — only its picture waits for the focus to return.
+The middle of a world tab is the World view (the editor camera, the selection, the gizmo) or
+the Game (the main camera of the world, the game UI and the game input); the switch **World |
+Game** next to Play goes from one to the other. Play shows the Game and gives it the keyboard;
+Stop shows the World view. The game plays in the tab of its world: the tree and the inspector
+show the playing copy while it runs, and Stop takes back whatever happened to it. While the World
+view is shown during Play the game goes on — it is simulated and its UI lives — only its picture
+is not drawn.
+
+**The Game keeps the panels it was left with.** The tree, the inspector, the files and the
+bottom panel are hidden and shown the same way while the game shows (the buttons of the strip,
+⌥⌘1, ⌥⌘0, ⌘0, ⌘J) — and what you hide around the Game comes back at Stop and is hidden again at
+the next Play. Give the game the whole window once, and every Play has it; keep the inspector
+beside the game to watch a field while it runs, and it stays there. The World view keeps its own
+panels the same way. The output of a build that Play started goes away by itself when the build
+has made the game; a build that failed leaves it, with the errors.
 
 The CMake panel builds the C++ scripts of the project: **Configure** runs cmake again
 (after a source file was added), **Build** compiles, **Clean** deletes the build folder so that
@@ -114,7 +149,7 @@ compiler, a warning of cmake — are a link: a click opens the file there in the
 ## Previews
 
 The tab of a material or a model has a little viewport at its top. It is turned the way the
-Scene is:
+World view is:
 
 - a two-finger swipe of the trackpad, or a drag with a mouse button, orbits the camera around
   the thing;
@@ -139,13 +174,8 @@ The inspector, the settings and the asset tabs are made of the same rows.
 - **A row that does not apply now is not shown**: the cutoff of a material that is not a cutout,
   the softness of a lamp without a cone.
 - **A reference field** (an asset, an entity) is `[value | choose | clear]`: a click on the
-  value shows where the thing is, a double click selects it, an empty field opens the list, and
-  a drop from the Content Browser or the Hierarchy sets it.
-- **The form of a selection is a preview tab** (its title is in italics): the next thing
-  selected takes the same tab. A double click on the tab keeps it open, and so does the first
-  edit of an asset. A form that is kept stays while something else is selected — an entity
-  whose list is to be filled, with several assets selected in the Content Browser and dragged
-  onto it at once.
+  value shows where the thing is, a double click opens the asset (or selects the entity), an
+  empty field opens the list, and a drop from the Content Browser or the Hierarchy sets it.
 - **A component section** has a menu at the right of its title: Copy Values, Paste Values,
   Reset, Remove Component. The values travel as text — `{"pointLightComponent": {...}}`, the
   form of the world file — so they paste into another entity or another project, and a copy made
@@ -163,13 +193,14 @@ covering the viewport's meaning: what is changed shows in the scene behind it.
 
 - **Editor** — this machine: the theme, the fonts, the viewport, the external editor. Applied
   and saved at once.
-- **Project** — `.Panda/project.json`: the start world, the rendering features, the modules.
-  Applied when saved: a bar with Save and Revert appears while there are unsaved changes, and
-  ⌘S and ⌘Z act on this page while the window has the keyboard.
+- **Project** — `.Panda/project.json`: the start world, the rendering features, what a frame
+  may cost (the shadow maps, the ambient occlusion, the occlusion volume, the distances of the
+  terrain), the modules. Applied when saved: a bar with Save and Revert appears while there are
+  unsaved changes, and ⌘S and ⌘Z act on this page while the window has the keyboard.
 - **Keymap** — the keys.
 
-The settings of a world are not here: they belong to the world file and live in the sidebar of
-the viewport (the World button).
+A world has no settings: how it looks is the components of its entities (the sky, the sun, the
+camera, the wind), in the inspector of its tab.
 
 ## Keymap
 
@@ -199,8 +230,7 @@ and the command palette show next to the names (`command` of the MCP server list
 
 ## The files behind it
 
-- A world is `Assets/*.world`; its settings sidebar (the World button of the viewport) edits
-  the `lighting`, `graphics` and `wind` sections of the file ([the format](world-format.md)).
+- A world is `Assets/*.world`: its entities and their components ([the format](world-format.md)).
 - The settings of the project are `.Panda/project.json`; the settings of the editor and the
   keymap are JSON files of the user (File → Settings → Open Settings File, Open Keymap File).
 - The Output panel says what the editor did and what went wrong, in sentences that name the

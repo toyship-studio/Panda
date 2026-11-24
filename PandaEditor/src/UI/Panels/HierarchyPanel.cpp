@@ -320,6 +320,32 @@ void HierarchyPanelView::setWorld(Panda::World *world) {
     reload();
 }
 
+HierarchyState HierarchyPanelView::captureState() const {
+    HierarchyState state;
+    for (TreeItem item : m_tree->expandedItems()) {
+        const std::uint32_t uuid = toUuid(item);
+        if (uuid != 0) { state.expanded.push_back(Panda::UUID(uuid)); } // the root of the world is always open
+    }
+    state.scroll = m_tree->getContentOffset().y;
+    state.search = m_searchField->getText();
+    return state;
+}
+
+void HierarchyPanelView::restoreState(const HierarchyState &state) {
+    std::vector<TreeItem> expanded{toItem(0)}; // the "World" root (the only container) is always expanded
+    if (m_rootEntity != Panda::UUID(0)) { expanded.push_back(toItem(static_cast<std::uint32_t>(m_rootEntity))); }
+    for (Panda::UUID id : state.expanded) { expanded.push_back(toItem(static_cast<std::uint32_t>(id))); }
+    m_tree->setExpandedItems(expanded);
+    m_searchField->setText(state.search); // a text set from here is not an edit: the search is set below
+    std::string search = state.search;
+    for (char &c : search) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    if (search != m_search) {
+        m_search = std::move(search);
+        reload();
+    }
+    m_tree->setContentOffset(Point(0.f, state.scroll));
+}
+
 void HierarchyPanelView::setRootEntity(Panda::UUID entity) {
     if (m_rootEntity == entity) { return; }
     m_rootEntity = entity;

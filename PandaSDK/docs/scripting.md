@@ -57,17 +57,21 @@ REGISTER_SCRIPT(MoveScript)
 - Input. `isKeyPressed` is the state of a key. `isKeyJustPressed` reports a press once: in
   `update` during the frame of the press, in `fixedUpdate` by exactly one step — so a one-shot
   action can be read where it is used. In the editor the input belongs to the game only while
-  the Game tab renders and has the keyboard focus (a click on the game gives it; the mouse over
-  the Game tab counts for pointer input): typing into the inspector or clicking the Hierarchy
-  during Play does not reach the scripts. The keys of the window are released when it loses the
-  focus.
+  the world tab shows the Game and the Game has the keyboard focus (a click on the game gives
+  it; the mouse over the Game counts for pointer input): typing into the inspector or clicking
+  the Hierarchy during Play does not reach the scripts. The keys of the window are released when
+  it loses the focus.
 - Haptics. `Haptics::play(Haptic::Light)` (`Bamboo/Haptics.hpp`) — a short tap felt in the hand,
   the answer of a phone to what a finger did; `Light`, `Medium`, `Heavy` say how firm. iOS plays
   it on its motor and keeps to the switch of the system haptics; the editor and the desktops have
   no motor in the hand, and the call does nothing there — a game calls it wherever it runs.
-- The world. A game runs one world at a time, and a script never names it: `WorldAPI` and
-  `WorldLightingAPI` act in the world the script runs in, an `EntityHandle` is an entity of that
-  world. `WorldAPI::load` replaces the world with another world file at the end of the frame.
+- The world. A game runs one world at a time, and a script never names it: `WorldAPI` acts in
+  the world the script runs in, an `EntityHandle` is an entity of that world. `WorldAPI::load`
+  replaces the world with another world file at the end of the frame. How the world looks is
+  components of its entities: a day that turns to night changes its sky
+  (`SkyComponentAPI::setEnvironmentMap`, `setAmbientColor`, … of the entity of the sky) and its sun;
+  `SkyComponentAPI::setMain`, `CameraComponentAPI::setMain`, `DirectionalLightComponentAPI::setMain`
+  make another one the main one of the world (a sky of the night, the camera of a cutscene).
 - `WorldAPI::destroyEntity` may be called from any callback, for any entity, the script's own
   included: the entity is destroyed after the callbacks that are running now, and until then it
   is still in the world.
@@ -159,7 +163,7 @@ sensible value.
 An edit in the inspector during Play is written into the running script at once, so a value read
 in `update` can be tuned while the game runs; a value used only in `start` has to be applied
 again by the script. Play runs on a copy of the world: Stop brings the values back, and Save
-(Cmd+S in the Scene) during Play saves the world being edited, not the copy. A value found in Play is typed in
+(Cmd+S in the World view) during Play saves the world being edited, not the copy. A value found in Play is typed in
 again after Stop.
 
 ## Fonts in the UI

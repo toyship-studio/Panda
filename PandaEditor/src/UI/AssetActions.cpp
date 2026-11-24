@@ -30,17 +30,13 @@ AssetActions::AssetActions(EditorController &workspace, Panda::EditorLayer &app)
     , m_app(app) {}
 
 void AssetActions::contentDidSelectAssets(const std::vector<Panda::AssetId> &assets) {
+    // A click selects, nothing more: the tab in front stays, and a file is dragged from here into
+    // a field of the entity its inspector shows.
     m_workspace.selectAssets(assets);
-    // A world is a document, not an asset with parameters: a click shows it the way a click on a
-    // file shows it in a code editor — in the preview tab.
-    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (assets.size() == 1 && handler && !handler->documentFilePath(assets.front()).empty()) {
-        m_workspace.worldTabs().open(assets.front(), /*preview*/ true);
-    }
 }
 
-void AssetActions::contentDidRequestOpenWorld(Panda::AssetId world) {
-    m_workspace.worldTabs().open(world, /*preview*/ false);
+void AssetActions::contentDidRequestOpen(Panda::AssetId asset) {
+    m_workspace.openAsset(asset);
 }
 
 void AssetActions::contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) {
@@ -52,13 +48,6 @@ void AssetActions::contentDidRequestAddToWorld(const std::vector<Panda::AssetId>
     }
     if (!meshes.empty()) { m_workspace.entities().instantiateMeshes(meshes); }
     if (!prefabs.empty()) { m_workspace.entities().instantiatePrefabs(prefabs); }
-}
-
-void AssetActions::contentDidRequestOpenExternally(Panda::AssetId asset) {
-    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (!handler) { return; }
-    const Panda::path_t relative = handler->assetPath(asset);
-    if (!relative.empty()) { m_workspace.openInExternalEditor(handler->getProjectPath() / relative); }
 }
 
 namespace {
@@ -236,7 +225,7 @@ CreateActions AssetActions::contentCreateActions(const Panda::path_t &directory)
                            }
                            const Panda::AssetId prefab = handler->documents().registerCreatedAsset(path);
                            created(prefab, "prefab");
-                           if (prefab) { m_workspace.worldTabs().open(prefab, /*preview*/ false); }
+                           if (prefab) { m_workspace.worldTabs().open(prefab); }
                        }});
     actions.push_back({"Postprocessing", [this, directory] {
                            Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
@@ -273,7 +262,7 @@ void AssetActions::created(Panda::AssetId asset, const std::string &what) {
         return;
     }
     m_workspace.refreshAssetPanels();
-    m_workspace.selectAssets({asset}); // the tab of the new asset opens right away
+    m_workspace.openAsset(asset); // a new asset is there to be set up: its tab opens right away
 }
 
 void AssetActions::contentDidRequestNewFolder(const Panda::path_t &directory, const std::string &name) {

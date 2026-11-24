@@ -8,7 +8,7 @@
 
 namespace Panda::Scripting {
 
-constexpr uint32_t SCRIPT_ABI_VERSION = 39;
+constexpr uint32_t SCRIPT_ABI_VERSION = 40;
 
 using ClearFn = void (*)();
 using InstantiateScriptFn = Handle (*)(Handle entityHandle, const char *name);
@@ -65,8 +65,8 @@ using WorldFindAllByTagFn = uint32_t (*)(const char *tag, Handle *entityHandles,
 using WorldCreateEntityFn = Handle (*)(const char *tag);
 using WorldDestroyEntityFn = void (*)(Handle id);
 
-using WorldLightingSetAmbientColorFn = void (*)(float r, float g, float b, float a);
-using WorldLightingSetAmbientIntensityFn = void (*)(float intensity);
+using SkyComponentSetAmbientColorFn = void (*)(Handle entityHandle, float r, float g, float b, float a);
+using SkyComponentSetAmbientIntensityFn = void (*)(Handle entityHandle, float intensity);
 
 using InputIsKeyPressedFn = bool (*)(int key);
 using InputIsKeyJustPressedFn = bool (*)(int key);
@@ -147,8 +147,8 @@ using HostApiTableFindFn = const void *(*)(const char *name, uint32_t version);
 using InputGetMousePositionFn = void (*)(float *x, float *y);
 using InputGetMouseScrollFn = void (*)(float *x, float *y);
 using PointLightComponentSetFn = void (*)(Handle entityHandle, float r, float g, float b, float intensity, float radius, bool enabled);
-using WorldLightingSetEnvironmentIntensityFn = void (*)(float intensity);
-using WorldLightingSetEnvironmentMapFn = void (*)(Handle textureId);
+using SkyComponentSetEnvironmentIntensityFn = void (*)(Handle entityHandle, float intensity);
+using SkyComponentSetEnvironmentMapFn = void (*)(Handle entityHandle, Handle textureId);
 using CameraComponentSetFieldOfViewFn = void (*)(Handle entityHandle, float degrees);
 using CameraComponentGetFieldOfViewFn = float (*)(Handle entityHandle);
 
@@ -171,6 +171,8 @@ using MeshReadFn = bool (*)(
 using WorldInstantiateFn = Handle (*)(Handle original, Handle parent, const float *position, const float *rotation);
 // v39: a short tap felt in the hand (Fern::playHaptic): 0 light, 1 medium, 2 heavy.
 using HapticsPlayFn = void (*)(uint32_t haptic);
+// v40: the component of the entity becomes the main one of its kind (its name in .world).
+using EntitySetMainFn = void (*)(Handle entityHandle, const char *component);
 
 using ConsoleLogFn = void (*)(int type, const char *);
 
@@ -239,8 +241,8 @@ struct ScriptHostApi final {
     WorldFindAllByTagFn world_FindAllByTag = nullptr;
     WorldCreateEntityFn world_CreateEntity = nullptr;
     WorldDestroyEntityFn world_DestroyEntity = nullptr;
-    WorldLightingSetAmbientColorFn worldLighting_SetAmbientColor = nullptr;
-    WorldLightingSetAmbientIntensityFn worldLighting_SetAmbientIntensity = nullptr;
+    SkyComponentSetAmbientColorFn skyComponent_SetAmbientColor = nullptr;
+    SkyComponentSetAmbientIntensityFn skyComponent_SetAmbientIntensity = nullptr;
     InputIsKeyPressedFn input_IsKeyPressed = nullptr;
     InputIsKeyJustPressedFn input_IsKeyJustPressed = nullptr;
     InputIsMouseButtonPressedFn input_IsMouseButtonPressed = nullptr;
@@ -311,16 +313,19 @@ struct ScriptHostApi final {
     InputGetMousePositionFn input_GetMousePosition = nullptr;
     InputGetMouseScrollFn input_GetMouseScroll = nullptr;
     PointLightComponentSetFn pointLightComponent_Set = nullptr;
-    WorldLightingSetEnvironmentIntensityFn worldLighting_SetEnvironmentIntensity = nullptr;
+    SkyComponentSetEnvironmentIntensityFn skyComponent_SetEnvironmentIntensity = nullptr;
     CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView = nullptr;
     CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView = nullptr;
-    WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap = nullptr;
+    SkyComponentSetEnvironmentMapFn skyComponent_SetEnvironmentMap = nullptr;
     // v36
     MeshReadFn mesh_Read = nullptr;
     // v38
     WorldInstantiateFn world_Instantiate = nullptr;
     // v39
     HapticsPlayFn haptics_Play = nullptr;
+    // v40: the settings of the world are components — the sky of an entity in the place of the
+    // lighting of the world; the main one of a kind (the camera, the sun, the sky, the wind).
+    EntitySetMainFn entity_SetMain = nullptr;
 };
 
 using LoadScriptPluginFn = const ScriptPluginApi *(*)(const ScriptHostApi *hostApi);

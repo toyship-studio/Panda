@@ -9,6 +9,7 @@ namespace Panda {
 
 World *GameContext::s_runningWorld = nullptr;
 AssetHandler *GameContext::s_assetHandler = nullptr;
+TypeContext *GameContext::s_projectSettings = nullptr;
 ScriptEngine *GameContext::s_scriptEngine = nullptr;
 GameContext::WorldLoadRequestHandler GameContext::s_worldLoadRequestHandler = nullptr;
 GameContext::QuitRequestHandler GameContext::s_quitRequestHandler = nullptr;
@@ -35,6 +36,18 @@ AssetHandler *GameContext::getAssetHandler() {
 
 void GameContext::setAssetHandler(AssetHandler *handler) {
     s_assetHandler = handler;
+}
+
+TypeContext &GameContext::getProjectSettings() {
+    if (s_projectSettings != nullptr) { return *s_projectSettings; }
+    // No host: the defaults of every section — a store nobody writes, whose sections are made
+    // with their defaults when first asked for.
+    static TypeContext defaults;
+    return defaults;
+}
+
+void GameContext::setProjectSettings(TypeContext *settings) {
+    s_projectSettings = settings;
 }
 
 ScriptEngine *GameContext::getScriptEngine() {

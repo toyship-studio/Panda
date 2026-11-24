@@ -31,7 +31,13 @@ void toggleComponentPresence(Panda::World &world, const std::unordered_set<Panda
         if (add ? !has : has) { targets.insert(entity); }
     }
     if (targets.empty()) { return; }
-    Panda::AddRemoveComponentCommand<T> command(targets);
+    T added{};
+    if constexpr (requires(T component) { component.isMain; }) {
+        // A kind a world uses one of (the camera, the sun, the sky, the wind): next to the main
+        // one a new component is a spare.
+        if (add && world.findMain<T>().isValid()) { added.isMain = false; }
+    }
+    Panda::AddRemoveComponentCommand<T> command(targets, added);
     world.getCommandHistory().execute(command);
     world.setChanged();
 }
@@ -102,6 +108,28 @@ void commitComponent(Panda::World &world, const std::unordered_set<Panda::Entity
             entity.setWorldChanged();
         }
     }
+    command.saveAfterEdit();
+    world.getCommandHistory().record(command);
+}
+
+// The component T of the entity becomes the main one of its kind (`main`), the others of the
+// world spares — or it stops being the main one — as one undoable edit (World::setMain). The kinds
+// a world uses one of: the camera, the sun, the sky, the wind (BaseComponents.hpp).
+template<typename T>
+void commitMain(Panda::World &world, Panda::Entity entity, bool main) {
+    std::unordered_set<Panda::Entity> all;
+    for (auto handle : world.getAllEntitiesWith<T>()) {
+        if (world.isValidEntt(handle)) { all.insert(world.entity(handle)); }
+    }
+    if (!entity.isValid() || !entity.hasComponent<T>()) { return; }
+    GenericComponentUpdate<T> command(all);
+    command.saveBeforeEdit();
+    if (main) {
+        world.setMain<T>(entity);
+    } else {
+        entity.getComponent<T>().isMain = false;
+    }
+    for (Panda::Entity each : all) { each.setWorldChanged(); }
     command.saveAfterEdit();
     world.getCommandHistory().record(command);
 }

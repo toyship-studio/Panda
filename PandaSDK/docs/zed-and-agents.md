@@ -53,9 +53,9 @@ sidecars.
 Every tab of the editor edits one file, and the file is always in reach:
 
 - Right-click a tab or an asset in the Content Browser: the menu starts with the path of the
-  file (a click copies it), **Open in External Editor** and **Reveal in File Manager**. An
-  entity tab and a world tab show the `.world` file; a texture or a model opens its text
-  sidecar (`.pmeta`); a shader opens both files of its pair.
+  file (a click copies it), **Open in External Editor** and **Reveal in File Manager**. A
+  world tab shows the `.world` file; a texture or a model opens its text sidecar (`.pmeta`); a
+  shader opens both files of its pair.
 - The external editor is chosen in Editor Settings → External Tools, or as
   `"externalTools": {"editor": "zed"}` in `settings.json`: a command, the path of an executable,
   or empty for the application the system opens the file with. File → Settings → Open Settings
@@ -103,9 +103,9 @@ A project keeps several worlds open at once, each in a tab of the center of the 
 - A double click on a `.world` file in the Content Browser opens it in a tab of its own; File →
   New → World adds a new one. Nothing is asked: the worlds that are open stay open, with their
   unsaved edits and their undo history.
-- The tab in front is the active world: the viewport, the Hierarchy, the inspector tabs and the
-  world settings show it, Play plays it and the export cooks it. Each world remembers where the
-  editor camera stood in it.
+- The world tab in front is the active world: its tree, its World view and its inspector show it,
+  Play plays it in the same tab. Each world remembers where the editor camera stood in it, and its
+  tab the open branches of its tree and its selection.
 - Entities go from one world to another through the clipboard: Copy in one tab, Paste in
   another.
 - Closing a tab closes the world and asks about its unsaved edits. Save (Cmd/Ctrl+S) writes
@@ -185,16 +185,16 @@ asset — a text file does that already; it has only what a file cannot do:
 | `status` | the project, Edit or Play, the open worlds, the unsaved documents, the viewports, the editor camera, the frame statistics, the shader features, the number of errors in the log |
 | `reload` | the editor takes what changed on disk now, in front or not, and stops the game if it plays. Answers with what the editor logged |
 | `focus` | tells the editor that it is the application in front (`front: true`, it then takes what changes on disk by itself) or behind. An editor nobody is at (`--unattended`) is behind until told: for a test of what happens when the user comes back to the editor |
-| `screenshot` | a picture of a viewport: `scene` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI; or `window` — the whole editor window with its panels. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
+| `screenshot` | a picture of a view of the world tab: `world` — the world through the editor camera, with the grid and the helper icons; `game` — the frame of the game through the main camera of the world, with the game UI; or `window` — the whole editor window with its panels. `width` scales it down (1280 by default), `wait` delays the shot, `file` also writes the PNG |
 | `logs` | the log of the editor and the engine: what the Output panel shows and the engine console. `since` returns only the new lines, `level` filters |
 | `play`, `stop` | Play and Stop |
 | `build` | builds the C++ of the project the way the editor does and answers when the build has ended, with how it ended and what cmake said — the compiler errors are in the answer. `target`: `scripts` (the default, as the CMake panel builds them) or `export` (the game, for the target and the configuration the Export window shows); `action`: `build` (the default), `configure`, `clean`. Scripts that were built are loaded by the editor: no `reload` is needed after it |
 | `export` | the game as it will ship ([Exporting a game](export.md)). `action`: `cook` (the default) cooks the data of the game from the files of the project and answers with the account of it — the start world, what the pack holds by kind, its largest files, the warnings and the assets left out because nothing reaches them; `report` — the same account of the last cook; `files` — every file of the pack with its size (`filter`: a part of the path); `run` — plays the built game by itself for `frames` frames and answers with its log, how it ended and the picture of its last frame. A full check is `export` cook, `build` with `target: "export"`, `export` run |
-| `camera` | where the editor camera of the Scene is; `position` moves it, `target` turns it to a point |
+| `camera` | where the editor camera of the World view is; `position` moves it, `target` turns it to a point |
 | `save` | Save All: what the user changed in the editor reaches the files |
 | `open_world` | opens a world file — or a prefab file — in a tab and makes it the document in front (`status` lists the open ones, a prefab with `"prefab": true`) |
 | `open_project` | switches the editor to another project (`path`), the way File → Open Project does. `discard: true` when documents are unsaved |
-| `show` | brings a part of the editor in front, for a `screenshot`: a `panel`, the `settings` (`world` — the sidebar of the viewport; `project`, `editor`, `keymap` — a page of the Settings window, shot with the `settings` view; `close` closes that window), the tab of an `asset`, the inspector of an `entity` |
+| `show` | brings a part of the editor in front, for a `screenshot`: a `panel`, the `settings` (`project`, `editor`, `keymap` — a page of the Settings window, shot with the `settings` view; `close` closes that window), the tab of an `asset`, the inspector of an `entity` |
 | `command` | the commands of the editor — what its menus, its command palette and its keys run. Without arguments lists them (id, name, keys); with `id` runs one (`file.save`, `world.play`, `entity.duplicate`, `settings.open`); with `id` and `keys` or `reset` changes the keymap. Ask the editor by a command rather than by pressing keys. The prefab commands act on the selection (`show` with `entity` selects one): `prefab.create` (the entity becomes a prefab file and an instance of it), `prefab.unpack`, `prefab.open`, `prefab.revert`, `prefab.apply`, `prefab.applyForced` (the whole instance the entity is a part of), `prefab.addToWorld` (the prefabs selected in the Content Browser, as instances) |
 | `ui` | the editor window as elements instead of pixels: what every control is (`role`), the `id` it was given, the `label` it shows, the `value` it holds (the text of a field, on / off, the number of rows of a tree) and its `frame` in the coordinates of a `window` screenshot. `path` names elements — segments separated by `/`, each an element inside the one before it: `inspector/Transform/Position/X`, `hierarchy/Camera`, `menu/Duplicate`; a segment is an id, else a label, else a role, `role:name` and `name[2]` tell apart what a name alone does not. The call waits (`wait`, 2 s by default) for what the path names to be there, or for `gone`, `count`, `value`, `label` to hold, and fails saying what is there instead. For testing the editor's own UI |
 | `pointer`, `key` | the mouse and the keyboard in the editor window, where the user's would go: a click, a double click, a drag, the wheel — at an element by its path (`target`, `toTarget`; see `ui`) or at a point of a `window` screenshot; a drag with another `button`, a two-finger swipe (`scroll` with `trackpad`, `steps` events in a row), a `pinch`; text and keys into the element in focus, or into `target`, clicked first. A gesture at an element waits for it, scrolls it into sight, and fails when it is disabled or something lies over it. While the Settings window is open they go to it. For testing the editor's own UI — a button, a menu, a field, the gizmo and the camera of the Scene. The answer names what is under the pointer |

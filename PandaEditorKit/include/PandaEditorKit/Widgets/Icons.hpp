@@ -57,6 +57,7 @@ namespace Ic {
     inline constexpr const char *Sprite = "sprite";
     inline constexpr const char *Script = "script";
     inline constexpr const char *Globe = "globe";
+    inline constexpr const char *Wind = "wind"; // the wind of a world (WindComponent)
     inline constexpr const char *Audio = "audio";
     inline constexpr const char *Trash = "trash";
     inline constexpr const char *Configure = "tune";          // settings (sliders)
@@ -72,7 +73,6 @@ namespace Ic {
     inline constexpr const char *PanelOutput = "panel-output";
     inline constexpr const char *PanelStatistics = "panel-statistics";
     inline constexpr const char *PanelProfiler = "panel-profiler";
-    inline constexpr const char *PanelWorldSettings = "panel-world-settings";
     inline constexpr const char *PanelViewport = "panel-viewport";
     inline constexpr const char *PanelCMake = "panel-cmake";
     // File type previews (file-icons, 168px) — for the Content Browser grid.

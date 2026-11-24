@@ -59,7 +59,8 @@ struct WorldSystem final {
     // the world, it is painted over by everything behind it. Not in the shadow depth passes —
     // what is blended casts no shadow.
     void (*submitBlended)(World &, Renderer3D &, const glm::vec3 &cameraPosition, const glm::mat4 &viewProj) = nullptr;
-    // Occlusion volume: occluders in the world AABB and the source version (a change — a rebake).
+    // Occlusion volume: occluders in the world AABB and the source version (a change — a rebake;
+    // 0 — the world has none of this system: a world where every system says 0 has no volume).
     void (*collectOccluders)(
         World &, const glm::vec3 &minWorld, const glm::vec3 &maxWorld, std::vector<Occluder> &out
     ) = nullptr;

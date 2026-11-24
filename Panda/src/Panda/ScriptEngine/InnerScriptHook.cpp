@@ -235,32 +235,55 @@ namespace InternalCalls {
         entity.getWorld()->destroy(entity); // a running world: after the callbacks
     }
 
-    void worldLighting_SetAmbientColor(float r, float g, float b, float a) {
-        World *world = GameContext::getRunningWorld();
-        if (!world) { return; }
-        world->getSettings().lighting.ambientColor = Color(r, g, b, a);
+    // The sky of an entity (SkyComponent): what a script changes of it — a day that turns to
+    // night. A world shows its main sky; a spare one changes and shows nothing until it is made
+    // the main one (entity_SetMain).
+    SkyComponent *scriptSky(Handle id, const char *call) {
+        Entity entity = resolveScriptEntity(id);
+        if (!entity.isValid()) { return nullptr; }
+        if (!entity.hasComponent<SkyComponent>()) {
+            LOG_ERROR_EDITOR("%s: the entity %s has no sky.", call, entity.getName().c_str());
+            return nullptr;
+        }
+        entity.setWorldChanged();
+        return &entity.getComponent<SkyComponent>();
     }
 
-    void worldLighting_SetAmbientIntensity(float intensity) {
-        World *world = GameContext::getRunningWorld();
-        if (!world) { return; }
-        world->getSettings().lighting.ambientIntensity = intensity;
+    void skyComponent_SetAmbientColor(Handle id, float r, float g, float b, float a) {
+        if (SkyComponent *sky = scriptSky(id, "SkyComponentAPI::setAmbientColor")) { sky->ambientColor = Color(r, g, b, a); }
     }
 
-    void worldLighting_SetEnvironmentIntensity(float intensity) {
-        World *world = GameContext::getRunningWorld();
-        if (!world) { return; }
-        world->getSettings().lighting.environmentIntensity = intensity;
+    void skyComponent_SetAmbientIntensity(Handle id, float intensity) {
+        if (SkyComponent *sky = scriptSky(id, "SkyComponentAPI::setAmbientIntensity")) { sky->ambientIntensity = intensity; }
     }
 
-    void worldLighting_SetEnvironmentMap(Handle textureId) {
+    void skyComponent_SetEnvironmentIntensity(Handle id, float intensity) {
+        if (SkyComponent *sky = scriptSky(id, "SkyComponentAPI::setEnvironmentIntensity")) { sky->environmentIntensity = intensity; }
+    }
+
+    void skyComponent_SetEnvironmentMap(Handle id, Handle textureId) {
         if (textureId && !AssetRef<TextureAsset>(textureId).get()) {
             LOG_ERROR_EDITOR("A script sets texture %u as the environment map, and it does not exist.", static_cast<unsigned>(textureId));
             return;
         }
-        World *world = GameContext::getRunningWorld();
-        if (!world) { return; }
-        world->getSettings().lighting.environmentMap = AssetRef<Asset>(textureId);
+        if (SkyComponent *sky = scriptSky(id, "SkyComponentAPI::setEnvironmentMap")) { sky->environmentMap = AssetRef<Asset>(textureId); }
+    }
+
+    // The component of the entity becomes the main one of its kind (the camera, the sun, the sky,
+    // the wind — a component type that has the main one: ComponentType::isMain).
+    void entity_SetMain(Handle id, const char *component) {
+        Entity entity = resolveScriptEntity(id);
+        if (!entity.isValid() || component == nullptr) { return; }
+        const ComponentType *type = GameContext::getExtensions().components.find(component);
+        if (type == nullptr || type->setMain == nullptr) {
+            LOG_ERROR_EDITOR("setMain: %s is not a kind a world has one main of.", component);
+            return;
+        }
+        if (!entity.hasComponent(type->typeId)) {
+            LOG_ERROR_EDITOR("setMain: the entity %s has no %s.", entity.getName().c_str(), component);
+            return;
+        }
+        entity.getWorld()->setMain(*type, entity);
     }
 
     /// ENTITY
@@ -914,8 +937,8 @@ namespace {
         s_hostApi.world_FindAllByTag = InternalCalls::world_FindAllByTag;
         s_hostApi.world_CreateEntity = InternalCalls::world_CreateEntity;
         s_hostApi.world_DestroyEntity = InternalCalls::world_DestroyEntity;
-        s_hostApi.worldLighting_SetAmbientColor = InternalCalls::worldLighting_SetAmbientColor;
-        s_hostApi.worldLighting_SetAmbientIntensity = InternalCalls::worldLighting_SetAmbientIntensity;
+        s_hostApi.skyComponent_SetAmbientColor = InternalCalls::skyComponent_SetAmbientColor;
+        s_hostApi.skyComponent_SetAmbientIntensity = InternalCalls::skyComponent_SetAmbientIntensity;
         s_hostApi.input_IsKeyPressed = InternalCalls::input_IsKeyPressed;
         s_hostApi.input_IsKeyJustPressed = InternalCalls::input_IsKeyJustPressed;
         s_hostApi.input_IsMouseButtonPressed = InternalCalls::input_IsMouseButtonPressed;
@@ -970,13 +993,14 @@ namespace {
         s_hostApi.input_GetMousePosition = InternalCalls::input_GetMousePosition;
         s_hostApi.input_GetMouseScroll = InternalCalls::input_GetMouseScroll;
         s_hostApi.pointLightComponent_Set = InternalCalls::pointLightComponent_Set;
-        s_hostApi.worldLighting_SetEnvironmentIntensity = InternalCalls::worldLighting_SetEnvironmentIntensity;
+        s_hostApi.skyComponent_SetEnvironmentIntensity = InternalCalls::skyComponent_SetEnvironmentIntensity;
         s_hostApi.cameraComponent_SetFieldOfView = InternalCalls::cameraComponent_SetFieldOfView;
         s_hostApi.cameraComponent_GetFieldOfView = InternalCalls::cameraComponent_GetFieldOfView;
-        s_hostApi.worldLighting_SetEnvironmentMap = InternalCalls::worldLighting_SetEnvironmentMap;
+        s_hostApi.skyComponent_SetEnvironmentMap = InternalCalls::skyComponent_SetEnvironmentMap;
         s_hostApi.mesh_Read = InternalCalls::mesh_Read;
         s_hostApi.world_Instantiate = InternalCalls::world_Instantiate;
         s_hostApi.haptics_Play = InternalCalls::haptics_Play;
+        s_hostApi.entity_SetMain = InternalCalls::entity_SetMain;
         s_hostApi.console_Log = InternalCalls::console_Log;
         GameUI::bindHostApi(s_hostApi);
 

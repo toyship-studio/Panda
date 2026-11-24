@@ -14,7 +14,8 @@
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 
 #include <Panda/GameLogic/GameContext.hpp>
-#include <Panda/GameLogic/WorldSettings.hpp>
+#include <Panda/Renderer/OcclusionVolume.hpp>
+#include <Panda/Renderer/RenderingSettings.hpp>
 #include <Panda/Renderer/SceneWind.hpp>
 #include <Panda/Renderer/ShaderFeatures.hpp>
 
@@ -32,8 +33,8 @@ namespace {
     using Panda::SettingsScope;
 
     // A section of a module edits a copy of its struct and commits it as a whole (Kit:
-    // commitSettings<T>). The settings the core and the editor keep as one struct each
-    // (Panda::WorldSettings, Panda::ProjectSettings, Panda::EditorSettings) are edited by several
+    // commitSettings<T>). The settings the editor keeps as one struct each
+    // (Panda::ProjectSettings, Panda::EditorSettings) are edited by several
     // forms: a form edits its part — a field, or a field of a field — as a copy (fieldCopy) and
     // writes that part alone into the struct as the store has it then (writeField), so what the
     // other forms edit stays theirs. Either way one undo step per gesture.
@@ -51,32 +52,14 @@ namespace {
         };
     }
 
-    /* ------------------------------ World scope ------------------------------ */
+    /* ------------------------------ The cost of a frame (the project scope) ------------------------------ */
 
-    void buildLighting(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::lighting>(store);
-        auto emit = writeField<&Panda::WorldSettings::lighting>(SettingsScope::World, data);
-        addColorRow(section, "Ambient Color", data->ambientColor, [data, emit](const Panda::Color &color) {
-            data->ambientColor = color;
-            emit();
-        });
-        addNumberRow(section, "Ambient Intensity", 0.f, 10.f, data->ambientIntensity, [data, emit](float value) {
-            data->ambientIntensity = value;
-            emit();
-        });
-        // World environment map (equirect, png/jpg/.hdr): the environmentMap system texture — the
-        // default sky and PBR reflections; empty — the built-in gradient, no reflections.
-        addAssetRow(
-            section, "Environment Map", "texture", static_cast<uint32_t>(data->environmentMap.getId()),
-            [data, emit](uint32_t id) {
-                data->environmentMap = assetRefOf(id);
-                emit();
-            }
-        );
-        addNumberRow(section, "Environment Intensity", 0.f, 64.f, data->environmentIntensity, [data, emit](float value) {
-            data->environmentIntensity = value;
-            emit();
-        });
+    // A section of the project that the core keeps in one struct of its own (RenderingSettings.hpp,
+    // OcclusionVolume::Settings): a copy is edited and committed whole.
+    template<typename T>
+    std::pair<std::shared_ptr<T>, std::function<void()>> projectSection(Panda::TypeContext &store) {
+        auto data = std::make_shared<T>(store.get<T>());
+        return {data, [data] { commitSettings<T>(SettingsScope::Project, *data); }};
     }
 
     // The side of a texture in texels: the sizes a person would choose from. A size written into
@@ -96,14 +79,10 @@ namespace {
         });
     }
 
-    // The shadows of the world: the cascades of the sun and the tiles of the lamps.
+    // The maps of the shadows: the cascades of the sun and the tiles of the lamps. Whether a light
+    // casts shadows and how dark and soft they are is the light's.
     void buildShadows(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::shadows>(store);
-        auto emit = writeField<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::shadows>(SettingsScope::World, data);
-        addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
-            data->enabled = on;
-            emit();
-        });
+        auto [data, emit] = projectSection<Panda::ShadowSettings>(store);
         addIntegerRow(section, "Cascades", 1, 4, static_cast<int>(data->cascadeCount), [data, emit](int value) {
             data->cascadeCount = static_cast<uint32_t>(value);
             emit();
@@ -116,20 +95,12 @@ namespace {
             data->distance = value;
             emit();
         })->setHelp("How far from the camera the sun casts shadows, m");
-        addNumberRow(section, "Strength", 0.f, 1.f, data->strength, [data, emit](float value) {
-            data->strength = value;
-            emit();
-        })->setHelp("0 — no shadow, 1 — the sun does not reach a shadowed point at all");
-        addNumberRow(section, "Softness", 0.f, 5.f, data->softness, [data, emit](float value) {
-            data->softness = value;
-            emit();
-        })->setHelp("The angular radius of the sun, degrees: how fast the edge of a shadow softens with the distance from its caster. 0 — an edge of a fixed width");
         addTexelSizeRow(section, "Lamp Map Size", {128, 256, 512, 1024, 2048}, data->lampTileSize, [data, emit](uint32_t value) {
             data->lampTileSize = value;
             emit();
         })->setHelp("The side of the map of a lamp that casts shadows, texels: a spot has one map, a lamp that shines all around six");
         // Biases against acne: slope — the rasterizer of the depth pass; normal offset and receiver
-        // bias — in cascade texels (independent of the scene scale).
+        // bias — in texels of a map (independent of the scene scale).
         addNumberRow(section, "Slope Bias", 0.f, 16.f, data->slopeBias, [data, emit](float value) {
             data->slopeBias = value;
             emit();
@@ -142,29 +113,17 @@ namespace {
             data->receiverBias = value;
             emit();
         })->setHelp("Moves the point that is looked up towards the light, texels of the map");
+        section.addContent(makeFormHint("How dark and soft the shadows are is the light's: its Cast Shadows, Strength and Softness."));
     }
 
-    // Screen-space ambient occlusion: the contact darkening of the ambient light (the `ssao`
-    // feature of the project).
-    void buildSsao(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::ssao>(store);
-        auto emit = writeField<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::ssao>(SettingsScope::World, data);
-        addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
-            data->enabled = on;
-            emit();
-        });
-        addNumberRow(section, "Radius", 0.05f, 4.f, data->radius, [data, emit](float value) {
-            data->radius = value;
-            emit();
-        })->setHelp("How far an occluder reaches, m");
-        addNumberRow(section, "Intensity", 0.f, 4.f, data->intensity, [data, emit](float value) {
-            data->intensity = value;
-            emit();
-        })->setHelp("0 — none, 1 — the occlusion as computed, above — darker");
+    // What the screen-space ambient occlusion may cost (the `ssao` feature of the project).
+    // Whether a camera has it and how far and how dark it reaches is the camera's.
+    void buildAmbientOcclusion(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto [data, emit] = projectSection<Panda::AmbientOcclusionSettings>(store);
 
         // The budget: directions around a pixel × depth samples along each, at half or at full
-        // resolution. The world file holds the three numbers; the quality is a name for a set of
-        // them, not a setting of its own.
+        // resolution. The file holds the three numbers; the quality is a name for a set of them,
+        // not a setting of its own.
         struct Quality {
             const char *name;
             int slices;
@@ -174,7 +133,7 @@ namespace {
         static const Quality QUALITIES[] = {
             {"Low", 2, 3, false}, {"Medium", 3, 4, false}, {"High", 3, 4, true}, {"Ultra", 6, 6, true}};
         const int qualityCount = static_cast<int>(std::size(QUALITIES));
-        auto qualityOf = [qualityCount](const Panda::SsaoSettings &ssao) {
+        auto qualityOf = [qualityCount](const Panda::AmbientOcclusionSettings &ssao) {
             for (int i = 0; i < qualityCount; ++i) {
                 const Quality &quality = QUALITIES[i];
                 if (ssao.slices == quality.slices && ssao.steps == quality.steps && ssao.fullResolution == quality.fullResolution) {
@@ -201,12 +160,12 @@ namespace {
             changed();
         });
         qualityRow->setHelp("What the occlusion may cost: a set of the three numbers below");
-        auto slicesRow = addIntegerRow(section, "Slices", 1, Panda::SsaoSettings::MAX_SLICES, data->slices, [data, changed](int value) {
+        auto slicesRow = addIntegerRow(section, "Slices", 1, Panda::AmbientOcclusionSettings::MAX_SLICES, data->slices, [data, changed](int value) {
             data->slices = value;
             changed();
         });
         slicesRow->setHelp("Directions the surroundings of a pixel are searched in: more — less grain");
-        auto stepsRow = addIntegerRow(section, "Steps", 1, Panda::SsaoSettings::MAX_STEPS, data->steps, [data, changed](int value) {
+        auto stepsRow = addIntegerRow(section, "Steps", 1, Panda::AmbientOcclusionSettings::MAX_STEPS, data->steps, [data, changed](int value) {
             data->steps = value;
             changed();
         });
@@ -219,6 +178,7 @@ namespace {
         for (const auto &row : {slicesRow, stepsRow, fullRow}) { row->setIndent(14.f); }
         auto cost = makeFormHint({});
         section.addContent(cost);
+        section.addContent(makeFormHint("Whether a camera has it, its radius and intensity are the camera's."));
 
         auto *quality = dynamic_cast<Combobox *>(qualityRow->editor().get());
         auto *slices = dynamic_cast<NumberField *>(slicesRow->editor().get());
@@ -226,7 +186,7 @@ namespace {
         auto *full = dynamic_cast<Toggle *>(fullRow->editor().get());
         Label *costLabel = cost.get();
         *refresh = [data, qualityOf, quality, slices, steps, full, costLabel] {
-            const Panda::SsaoSettings &ssao = *data;
+            const Panda::AmbientOcclusionSettings &ssao = *data;
             if (quality != nullptr) { quality->setSelectedIndex(qualityOf(ssao)); }
             // A field the user is not in takes the value (a preset was chosen); setValue of the
             // field being typed into would rewrite the text under the caret.
@@ -245,76 +205,27 @@ namespace {
         (*refresh)();
     }
 
-    // Fog: the air between the camera and what it sees (FogRenderer). No feature of the project
-    // behind it: a world without fog runs no pass.
-    void buildFog(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::fog>(store);
-        auto emit = writeField<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::fog>(SettingsScope::World, data);
-        addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
-            data->enabled = on;
-            emit();
-        });
-        auto density = addNumberRow(section, "Density", 0.f, 1.f, data->density, [data, emit](float value) {
-            data->density = value;
-            emit();
-        });
-        density->setHelp("The light a meter of air takes away at the base height: 0.002 — a hazy day, 0.01 — a misty one, 0.1 — a thick fog");
-        if (auto *field = dynamic_cast<NumberField *>(density->editor().get())) { field->setStep(0.001f); }
-        addNumberRow(section, "Height Falloff", 0.f, 2000.f, data->heightFalloff, [data, emit](float value) {
-            data->heightFalloff = value;
-            emit();
-        })->setHelp("Every this many meters up the fog is half as dense; 0 — the same at every height");
-        addNumberRow(section, "Base Height", -10000.f, 10000.f, data->baseHeight, [data, emit](float value) {
-            data->baseHeight = value;
-            emit();
-        })->setHelp("The height the density is given at, m");
-        addNumberRow(section, "Start Distance", 0.f, 10000.f, data->startDistance, [data, emit](float value) {
-            data->startDistance = value;
-            emit();
-        })->setHelp("The air closer than this to the camera is clear, m");
-        addNumberRow(section, "Max Opacity", 0.f, 1.f, data->maxOpacity, [data, emit](float value) {
-            data->maxOpacity = value;
-            emit();
-        })->setHelp("The most the fog hides: below 1 the far things stay visible through it");
-        addColorRow(section, "Tint", data->tint, [data, emit](const Panda::Color &color) {
-            data->tint = color;
-            emit();
-        })->setHelp("Multiplies the light the fog takes from the sky of the world; white — the color of the sky near the horizon");
-        addNumberRow(section, "Sun Scatter", 0.f, 4.f, data->sunScatter, [data, emit](float value) {
-            data->sunScatter = value;
-            emit();
-        })->setHelp("The glow of the fog around the sun; 0 — none");
-        addToggleRow(section, "Affect Sky", data->affectSky, [data, emit](bool on) {
-            data->affectSky = on;
-            emit();
-        })->setHelp("The sky is behind all the air of its direction: the horizon dissolves in the fog, the zenith stays");
-        section.addContent(makeFormHint("The fog is lit by the world: its color follows the environment map and the sun."));
-    }
-
-    // Occlusion Volume: sky visibility and sun transmittance from the flora scattering.
-    void buildOcclusion(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::occlusion>(store);
-        auto emit = writeField<&Panda::WorldSettings::graphics, &Panda::WorldGraphicsSettings::occlusion>(SettingsScope::World, data);
-        addToggleRow(section, "Enabled", data->enabled, [data, emit](bool on) {
-            data->enabled = on;
-            emit();
-        });
+    // Occlusion Volume (the `occlusion` feature of the project): sky visibility and sun
+    // transmittance from the flora scattering — how the vegetation darkens the light under it, and
+    // how fine and how wide the volume around the camera is.
+    void buildOcclusionVolume(CollapsibleSection &section, Panda::TypeContext &store) {
+        auto [data, emit] = projectSection<Panda::OcclusionVolume::Settings>(store);
         addNumberRow(section, "AO Strength", 0.f, 1.f, data->aoStrength, [data, emit](float value) {
             data->aoStrength = value;
             emit();
-        });
+        })->setHelp("How much the vegetation dims the light of the sky under it");
         addNumberRow(section, "Sun Near", 0.f, 1.f, data->sunStrengthNear, [data, emit](float value) {
             data->sunStrengthNear = value;
             emit();
-        });
+        })->setHelp("How much the vegetation dims the sun within the shadow distance");
         addNumberRow(section, "Sun Far", 0.f, 1.f, data->sunStrengthFar, [data, emit](float value) {
             data->sunStrengthFar = value;
             emit();
-        });
+        })->setHelp("…and beyond it");
         addNumberRow(section, "Cell Size", 0.5f, 8.f, data->cellSize, [data, emit](float value) {
             data->cellSize = value;
             emit();
-        });
+        })->setHelp("The side of a cell of the volume, m");
         // Window — chunks per side (a chunk is 64 cells: with a 4 m cell an 8-chunk window = 2 km).
         addIntegerRow(section, "Window Chunks", 2, 8, data->windowChunks, [data, emit](int value) {
             data->windowChunks = value;
@@ -332,29 +243,6 @@ namespace {
         // Sky visibility exponent: > 1 darkens the dense interior, leaves open areas untouched.
         addNumberRow(section, "Contrast", 0.5f, 4.f, data->contrast, [data, emit](float value) {
             data->contrast = value;
-            emit();
-        });
-    }
-
-    // The scene wind of the world: sways all vegetation; strength and gustiness go out as system
-    // material fields (windStrength/windGustiness), direction and phases — via PANDA_FIELDS.
-    void buildWind(CollapsibleSection &section, Panda::TypeContext &store) {
-        auto data = fieldCopy<&Panda::WorldSettings::wind>(store);
-        auto emit = writeField<&Panda::WorldSettings::wind>(SettingsScope::World, data);
-        addNumberRow(section, "Strength", 0.f, 1.f, data->strength, [data, emit](float value) {
-            data->strength = value;
-            emit();
-        });
-        addNumberRow(section, "Speed", 0.f, 8.f, data->speed, [data, emit](float value) {
-            data->speed = value;
-            emit();
-        });
-        addNumberRow(section, "Gustiness", 0.f, 1.f, data->gustiness, [data, emit](float value) {
-            data->gustiness = value;
-            emit();
-        });
-        addNumberRow(section, "Direction", 0.f, 360.f, data->directionDegrees, [data, emit](float value) {
-            data->directionDegrees = value;
             emit();
         });
     }
@@ -771,12 +659,6 @@ void setUpdateProvider(UpdateProvider provider) {
 }
 
 void registerCoreSettingsSections(EditorExtensions &extensions) {
-    extensions.settingsSections.push_back({SettingsScope::World, "WORLD", buildLighting});
-    extensions.settingsSections.push_back({SettingsScope::World, "SHADOWS", buildShadows});
-    extensions.settingsSections.push_back({SettingsScope::World, "AMBIENT OCCLUSION", buildSsao});
-    extensions.settingsSections.push_back({SettingsScope::World, "FOG", buildFog});
-    extensions.settingsSections.push_back({SettingsScope::World, "OCCLUSION VOLUME", buildOcclusion});
-    extensions.settingsSections.push_back({SettingsScope::World, "WIND", buildWind});
     extensions.settingsSections.push_back({SettingsScope::Editor, "VIEWPORT", buildViewport});
     extensions.settingsSections.push_back({SettingsScope::Editor, "APPEARANCE", buildAppearance});
     extensions.settingsSections.push_back({SettingsScope::Editor, "EXTERNAL TOOLS", buildExternalTools});
@@ -784,6 +666,11 @@ void registerCoreSettingsSections(EditorExtensions &extensions) {
     extensions.settingsSections.push_back({SettingsScope::Editor, "UPDATES", buildUpdates});
     extensions.settingsSections.push_back({SettingsScope::Project, "WORLD", buildProjectWorld});
     extensions.settingsSections.push_back({SettingsScope::Project, "RENDERING", buildProjectRendering});
+    // What a frame may cost, the same for every world of the game (what a world looks like is
+    // components of its entities: the sky, the sun, the camera, the wind).
+    extensions.settingsSections.push_back({SettingsScope::Project, "SHADOWS", buildShadows});
+    extensions.settingsSections.push_back({SettingsScope::Project, "AMBIENT OCCLUSION", buildAmbientOcclusion});
+    extensions.settingsSections.push_back({SettingsScope::Project, "OCCLUSION VOLUME", buildOcclusionVolume});
     extensions.settingsSections.push_back({SettingsScope::Project, "MODULES", buildProjectModules});
     extensions.settingsSections.push_back({SettingsScope::Project, "MCP SERVER", buildProjectMcp});
 }

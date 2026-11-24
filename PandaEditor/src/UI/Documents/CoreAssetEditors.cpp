@@ -198,9 +198,9 @@ namespace {
                 auto emitField = [this, id, fieldName](Panda::MaterialFieldValue value) {
                     editField(id, fieldName, std::move(value));
                 };
-                // A same-named system value is set by the engine (scene wind, etc.): the field
-                // is visible with the ACTUAL value but inactive; below it — the explanation and
-                // a link to the world settings section that controls it. A tooltip does not
+                // A same-named system value is set by the engine (the wind of the world): the
+                // field is visible with the ACTUAL value but inactive; below it — the explanation
+                // and a link to the component of the world that controls it. A tooltip does not
                 // work: a disabled view is excluded from hit-testing.
                 const bool systemField = Panda::MaterialSystemValues::isSystem(field);
                 const Panda::MaterialFieldValue &shownValue = Panda::MaterialSystemValues::resolve(field);
@@ -211,15 +211,15 @@ namespace {
                     auto hint = std::make_shared<Label>(std::string(Panda::MaterialSystemValues::hint(fieldName)));
                     hint->setFont(Typo::Caption);
                     hint->setTextRole(TextRole::Muted);
-                    const std::string target = Panda::MaterialSystemValues::section(fieldName);
-                    auto link = std::make_shared<Button>("Settings");
+                    const std::string target = Panda::MaterialSystemValues::component(fieldName);
+                    const ComponentInspector *source = editorExtensions().componentInspectors.find(target);
+                    auto link = std::make_shared<Button>(source != nullptr ? source->displayName : "Show");
                     link->setStyle(ButtonStyle::Link);
                     link->setFont(Typo::Caption);
                     link->layout().setPadding(Edge::Horizontal, 4.f);
                     link->layout().setPadding(Edge::Vertical, 2.f);
-                    link->setOnClick([target](Button &) {
-                        editorHost().openSettings(Panda::SettingsScope::World, target);
-                    });
+                    link->setOnClick([target](Button &) { editorHost().showMain(target); });
+                    link->setCollapsed(target.empty());
                     auto row = StackView::horizontal(6.f);
                     row->setAlignment(Align::Center);
                     row->addSubview(hint);
@@ -333,7 +333,6 @@ namespace {
             if (before == shaderId) { return; }
             SetMaterialShaderCommand command(id, before, shaderId, material->getInputs());
             editorHost().assetUndoStack(id).execute(command);
-            if (m_context.edited) { m_context.edited(); }
             // The field set has changed → rebuild the form (deferred: a widget must not be
             // destroyed from its own callback).
             if (m_context.rebuild) { m_context.rebuild(); }
@@ -350,7 +349,6 @@ namespace {
             );
             editorHost().assetUndoStack(id).execute(command);
             invalidateThumbnail(id);
-            if (m_context.edited) { m_context.edited(); }
         }
 
         AssetEditorContext m_context;
@@ -398,12 +396,11 @@ namespace {
             {
                 auto ownTonemap = std::make_shared<Toggle>();
                 ownTonemap->setOn(asset ? asset->handlesTonemap() : false);
-                ownTonemap->setOnValueChanged([this, id](Toggle &t) {
+                ownTonemap->setOnValueChanged([id](Toggle &t) {
                     Panda::AssetRef<Panda::PostprocessingAsset> target{id};
                     if (Panda::PostprocessingAsset *postprocessing = target.get()) {
                         postprocessing->setHandlesTonemap(t.isOn());
                         postprocessing->setChanged(true);
-                        if (m_context.edited) { m_context.edited(); }
                     }
                 });
                 section->addContent(std::make_shared<PropertyRow>("Handles Tonemap", ownTonemap, false));
@@ -445,7 +442,7 @@ namespace {
                         (*data)[i].material = Panda::AssetId(materialId);
                         emit();
                     },
-                    [](uint32_t materialId) { editorHost().selectAsset(Panda::AssetId(materialId)); }
+                    [](uint32_t materialId) { editorHost().openAsset(Panda::AssetId(materialId)); }
                 );
                 well->layout().setMinWidth(Length::points(140.f)); // the title of the material stays readable
                 row->addSubview(well);
@@ -510,7 +507,6 @@ namespace {
             // history step); execute applies it to the live asset.
             Panda::EditPostprocessingCommand command(id, postprocessing->getPasses(), std::move(after));
             editorHost().assetUndoStack(id).execute(command);
-            if (m_context.edited) { m_context.edited(); }
             // The list changes structurally (add/remove/move) → rebuild the form deferred.
             if (m_context.rebuild) { m_context.rebuild(); }
         }
@@ -569,7 +565,6 @@ namespace {
             if (before == materialId) { return; }
             Panda::SetMeshSlotMaterialCommand command(meshId, slot, before, materialId);
             editorHost().assetUndoStack(meshId).execute(command); // execute applies it and marks the asset
-            if (m_context.edited) { m_context.edited(); }
         }
 
         AssetEditorContext m_context;

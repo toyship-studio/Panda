@@ -2,10 +2,14 @@
 
 #include "PandaEditorKit/ComponentCommands.hpp"
 #include "PandaEditorKit/EditorExtensions.hpp"
+#include "PandaEditorKit/EditorHost.hpp"
 #include "PandaEditorKit/Widgets/FormWidgets.hpp"
+
+#include <PandaUI/Runtime/Context.hpp>
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace Editor {
@@ -39,5 +43,38 @@ struct ComponentForm {
     std::shared_ptr<T> data;
     std::function<void()> commit;
 };
+
+// The Main row of a component of a kind a world uses one of (BaseComponents.hpp: the camera, the
+// sun, the sky, the wind): a radio button over the world — on, this component is the one the
+// world uses and the others are spares; off, it is a spare. Under it, what the world does with it:
+// a spare names the one the world uses; a second main one is a warning, the world uses the first.
+// `kind` — what the component is to a person ("sky").
+template<typename T>
+void addMainRow(PandaUI::CollapsibleSection &section, const ComponentForm<T> &form, const char *kind, const char *help) {
+    const auto data = form.data;
+    Panda::World *world = &form.world;
+    Panda::Entity entity = form.entities.front();
+    PandaUI::CollapsibleSection *owner = &section; // alive while its row calls back
+    addToggleRow(section, "Main", data->isMain, [data, world, entity, owner](bool on) {
+        data->isMain = on;
+        commitMain<T>(*world, entity, on);
+        // The note under the row follows on the next tick: a form is not built again from inside
+        // a control of its own.
+        if (PandaUI::Context *context = owner->getContext()) {
+            context->postDeferred([] { editorHost().refreshFromWorld(); });
+        }
+    }, "isMain")->setHelp(help);
+    const Panda::Entity used = world->findMain<T>();
+    if (data->isMain && used.isValid() && !(used == entity)) {
+        section.addContent(makeFormWarning(
+            "Another " + std::string(kind) + " is main too: the world uses " + used.getName() + ". Turn one of them off."
+        ));
+    } else if (!data->isMain) {
+        section.addContent(makeFormHint(
+            used.isValid() ? "A spare: the world uses " + used.getName() + "."
+                           : "No " + std::string(kind) + " of the world is main: the world has none."
+        ));
+    }
+}
 
 } // namespace Editor

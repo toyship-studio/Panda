@@ -13,7 +13,7 @@ endif ()
 # changed header reaches, and the editor sees the scripts behind their SDK only when it really
 # changed — not after every build of the editor. What the package no longer has goes.
 set(_PANDA_SDK_FILES "")
-foreach (_PANDA_SDK_ENTRY include lib resources docs modules plugins)
+foreach (_PANDA_SDK_ENTRY include vendor lib resources docs modules plugins)
     if (IS_DIRECTORY "${PANDA_SDK_SOURCE}/${_PANDA_SDK_ENTRY}")
         file(GLOB_RECURSE _PANDA_SDK_ENTRY_FILES LIST_DIRECTORIES false RELATIVE "${PANDA_SDK_SOURCE}"
             "${PANDA_SDK_SOURCE}/${_PANDA_SDK_ENTRY}/*")

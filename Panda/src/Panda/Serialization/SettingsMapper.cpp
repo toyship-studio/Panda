@@ -3,8 +3,11 @@
 #include "Panda/GameLogic/GameContext.hpp"
 
 #include <Foundation/Foundation.hpp>
+#include <Rain/Coders/BinaryDecoder.hpp>
+#include <Rain/Coders/BinaryEncoder.hpp>
 #include <Rain/Coders/JsonDecoder.hpp>
 
+#include <sstream>
 #include <string>
 
 namespace Panda {
@@ -13,7 +16,6 @@ namespace {
 
     const char *scopeName(SettingsScope scope) {
         switch (scope) {
-            case SettingsScope::World: return "world";
             case SettingsScope::Project: return "project";
             case SettingsScope::Editor: return "editor";
         }
@@ -22,7 +24,7 @@ namespace {
 
     // One object of sections: the whole file of a scope (Rain calls the static encode/decode).
     struct SettingsDocument {
-        SettingsScope scope = SettingsScope::World;
+        SettingsScope scope = SettingsScope::Project;
         TypeContext *store = nullptr;
 
         static void encode(const char *key, Rain::Encoder *encoder, const SettingsDocument &document) {
@@ -34,6 +36,28 @@ namespace {
         static bool decode(const char *key, Rain::Decoder *decoder, SettingsDocument &document) {
             if (!decoder->beginObject(key)) { return false; }
             SettingsMapper::decode(document.scope, *document.store, *decoder);
+            decoder->endObject();
+            return true;
+        }
+    };
+
+    // The sections of the project a game reads (SettingsMapper::encodeGameSettings).
+    struct GameSettingsDocument {
+        TypeContext *store = nullptr;
+
+        static void encode(const char *key, Rain::Encoder *encoder, const GameSettingsDocument &document) {
+            encoder->beginObject(key);
+            for (const SettingsType &type : GameContext::getExtensions().settings.types()) {
+                if (type.scope == SettingsScope::Project && !type.editorOnly) {
+                    type.encode(type.name.c_str(), *encoder, *document.store);
+                }
+            }
+            encoder->endObject();
+        }
+
+        static bool decode(const char *key, Rain::Decoder *decoder, GameSettingsDocument &document) {
+            if (!decoder->beginObject(key)) { return false; }
+            SettingsMapper::decode(SettingsScope::Project, *document.store, *decoder);
             decoder->endObject();
             return true;
         }
@@ -143,6 +167,24 @@ void SettingsMapper::copy(SettingsScope scope, TypeContext &from, TypeContext &t
     }
     to.erase<ForeignSettings>();
     if (const ForeignSettings *foreign = from.find<ForeignSettings>()) { to.get<ForeignSettings>() = *foreign; }
+}
+
+std::string SettingsMapper::encodeGameSettings(TypeContext &store) {
+    GameSettingsDocument document;
+    document.store = &store;
+    std::ostringstream stream(std::ios::binary);
+    Rain::BinaryEncoder().encode(stream, document);
+    return stream.str();
+}
+
+bool SettingsMapper::decodeGameSettings(TypeContext &store, const std::string &data) {
+    reset(SettingsScope::Project, store);
+    GameSettingsDocument document;
+    document.store = &store;
+    std::istringstream stream(data, std::ios::binary);
+    if (Rain::BinaryDecoder().decode(stream, document)) { return true; }
+    reset(SettingsScope::Project, store); // what a broken object gave is not kept
+    return false;
 }
 
 bool SettingsMapper::load(SettingsScope scope, TypeContext &store, Rain::Decoder &decoder, std::istream &stream) {

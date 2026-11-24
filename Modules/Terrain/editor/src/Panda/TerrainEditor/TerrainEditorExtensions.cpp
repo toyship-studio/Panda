@@ -7,6 +7,7 @@
 #include <PandaEditorKit/ComponentCommands.hpp>
 #include <PandaEditorKit/EditorExtensions.hpp>
 #include <PandaEditorKit/EditorHost.hpp>
+#include <PandaEditorKit/SettingsCommands.hpp>
 #include <PandaEditorKit/Widgets/FormWidgets.hpp>
 #include <PandaEditorKit/Widgets/Typography.hpp>
 
@@ -47,7 +48,7 @@ namespace {
     void addOpenTerrainEditorButton(CollapsibleSection &section, uint32_t terrainAssetId) {
         if (terrainAssetId == 0) { return; } // no terrain assigned — nothing to edit
         auto open = makeFormButton("Open Terrain Editor", ButtonStyle::AccentOutline, [terrainAssetId] {
-            editorHost().selectAsset(Panda::AssetId(terrainAssetId));
+            editorHost().openAsset(Panda::AssetId(terrainAssetId));
         });
         section.addContent(makeFormButtonRow({open}));
     }
@@ -77,68 +78,48 @@ namespace {
         }, "physicsEnabled");
     }
 
-    // ---- Settings sections: the module's world settings (the "terrain" and "flora" sections of
-    // .world, World::context<T>) — LOD/ring distances and flora ranges, meters. The store is the
-    // context of the world the editor shows.
+    // ---- Settings sections: the module's sections of the project settings ("terrain" and "flora"
+    // of project.json, GameContext::getProjectSettings) — how far the terrain and the flora are
+    // drawn, meters: what a frame may cost, the same for every terrain of the game. An edit is a
+    // step of the history of the project settings and waits for Save, as every one there does.
 
-    std::shared_ptr<NumberField> numberField(float min, float max, float value, std::function<void(float)> apply) {
-        auto field = std::make_shared<NumberField>();
-        field->setFont(Typo::Value);
-        field->setRange(min, max);
-        field->setValue(value);
-        field->setOnValueChanged([apply = std::move(apply)](NumberField &f) { apply(f.getValue()); });
-        return field;
+    template<typename T, typename Field>
+    std::shared_ptr<PropertyRow> addDistanceRow(
+        CollapsibleSection &section, const char *title, float min, float max, const T &value, Field field
+    ) {
+        return addNumberRow(section, title, min, max, value.*field, [field](float v) {
+            editSettings<T>(Panda::SettingsScope::Project, [field, v](T &settings) { settings.*field = v; });
+        });
+    }
+
+    template<typename T, typename Field>
+    void addWidthRow(CollapsibleSection &section, const char *title, const T &value, Field field) {
+        addIntegerRow(section, title, 0, 256, value.*field, [field](int v) {
+            editSettings<T>(Panda::SettingsScope::Project, [field, v](T &settings) { settings.*field = v; });
+        });
     }
 
     void buildTerrainSettings(CollapsibleSection &section, Panda::TypeContext &store) {
-        Panda::TypeContext *w = &store;
-        const Panda::TerrainLodSettings &lod = store.get<Panda::TerrainLodSettings>();
-        section.addContent(std::make_shared<PropertyRow>(
-            "LOD 1 Distance", numberField(8.f, 4096.f, lod.lod1, [w](float v) { w->get<Panda::TerrainLodSettings>().lod1 = v; })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "LOD 2 Distance", numberField(8.f, 8192.f, lod.lod2, [w](float v) { w->get<Panda::TerrainLodSettings>().lod2 = v; })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "Draw Distance",
-            numberField(0.f, 16384.f, lod.drawDistance, [w](float v) { w->get<Panda::TerrainLodSettings>().drawDistance = v; })
-        ));
+        using Lod = Panda::TerrainLodSettings;
+        const Lod &lod = store.get<Lod>();
+        addDistanceRow(section, "LOD 1 Distance", 8.f, 4096.f, lod, &Lod::lod1);
+        addDistanceRow(section, "LOD 2 Distance", 8.f, 8192.f, lod, &Lod::lod2);
+        addDistanceRow(section, "Draw Distance", 0.f, 16384.f, lod, &Lod::drawDistance)
+            ->setHelp("How far from the camera the terrain is drawn, m; 0 — all of it");
         // Width of the LOD grid rings (tiles): rings 2–4 — from the nearest to the farthest.
-        section.addContent(std::make_shared<PropertyRow>(
-            "Ring 2 Width", numberField(0.f, 256.f, static_cast<float>(lod.ring2Width), [w](float v) {
-                w->get<Panda::TerrainLodSettings>().ring2Width = static_cast<int>(v);
-            })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "Ring 3 Width", numberField(0.f, 256.f, static_cast<float>(lod.ring3Width), [w](float v) {
-                w->get<Panda::TerrainLodSettings>().ring3Width = static_cast<int>(v);
-            })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "Ring 4 Width", numberField(0.f, 256.f, static_cast<float>(lod.ring4Width), [w](float v) {
-                w->get<Panda::TerrainLodSettings>().ring4Width = static_cast<int>(v);
-            })
-        ));
+        addWidthRow(section, "Ring 2 Width", lod, &Lod::ring2Width);
+        addWidthRow(section, "Ring 3 Width", lod, &Lod::ring3Width);
+        addWidthRow(section, "Ring 4 Width", lod, &Lod::ring4Width);
     }
 
     void buildFloraSettings(CollapsibleSection &section, Panda::TypeContext &store) {
-        Panda::TypeContext *w = &store;
-        const Panda::FloraDistances &flora = store.get<Panda::FloraDistances>();
-        section.addContent(std::make_shared<PropertyRow>(
-            "Grass Distance", numberField(10.f, 1000.f, flora.grass, [w](float v) { w->get<Panda::FloraDistances>().grass = v; })
-        ));
-        // Width of the grass dissolve zone at the far boundary.
-        section.addContent(std::make_shared<PropertyRow>(
-            "Grass Dissolve",
-            numberField(0.f, 1000.f, flora.grassDissolve, [w](float v) { w->get<Panda::FloraDistances>().grassDissolve = v; })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "Tree Distance", numberField(10.f, 4000.f, flora.tree, [w](float v) { w->get<Panda::FloraDistances>().tree = v; })
-        ));
-        section.addContent(std::make_shared<PropertyRow>(
-            "Imposter Distance",
-            numberField(0.f, 16000.f, flora.imposter, [w](float v) { w->get<Panda::FloraDistances>().imposter = v; })
-        ));
+        using Flora = Panda::FloraDistances;
+        const Flora &flora = store.get<Flora>();
+        addDistanceRow(section, "Grass Distance", 10.f, 1000.f, flora, &Flora::grass);
+        addDistanceRow(section, "Grass Dissolve", 0.f, 1000.f, flora, &Flora::grassDissolve)
+            ->setHelp("Where the grass meshes have dissolved, m; 0 — at the grass distance");
+        addDistanceRow(section, "Tree Distance", 10.f, 4000.f, flora, &Flora::tree);
+        addDistanceRow(section, "Imposter Distance", 0.f, 16000.f, flora, &Flora::imposter);
     }
 
     // ---- "New Terrain" / "New Terrain 3D": an empty terrain is created flat (no noise, no generation).
@@ -270,8 +251,8 @@ void registerExtensions(EditorExtensions &extensions) {
 
     s_tool = static_cast<Panda::TerrainTool *>(&extensions.viewportTools.add(std::make_unique<Panda::TerrainTool>()));
 
-    extensions.settingsSections.push_back({Panda::SettingsScope::World, "TERRAIN", buildTerrainSettings});
-    extensions.settingsSections.push_back({Panda::SettingsScope::World, "FLORA", buildFloraSettings});
+    extensions.settingsSections.push_back({Panda::SettingsScope::Project, "TERRAIN", buildTerrainSettings});
+    extensions.settingsSections.push_back({Panda::SettingsScope::Project, "FLORA", buildFloraSettings});
 
     extensions.statistics.push_back({"FLORA", {"Blocks", "Plants", "Rebuilds"}, collectFloraStatistics});
 

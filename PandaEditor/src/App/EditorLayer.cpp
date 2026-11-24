@@ -101,6 +101,9 @@ EditorLayer::~EditorLayer() = default; // EditorController and EditorMcp are com
 
 void EditorLayer::onAttach() {
     Foundation::EditorLogger::init(Editor::OutputPanelView::loggerCallback); // engine logs → Output panel
+    // The engine reads the settings of the project from the store of project.json: an edit of a
+    // section (the shadow maps, the distances of the terrain) applies at once, Save writes it.
+    GameContext::setProjectSettings(&m_documents.projectSettingsFile().settings());
     // The user shader compiler is slangc from the editor bundle (or PandaSDK): without it
     // MirenTools would fall back to "slangc" from PATH, which the user does not have.
     if (std::optional<path_t> slangc = SystemTools::findSlangExecutable()) {
@@ -120,10 +123,10 @@ void EditorLayer::onAttach() {
     // A project of the launch that is not one: the start screen says why (it is built below).
     const std::string notOpened = m_loader.loadInitialData(m_launch.openLastProject, m_launch.project);
     // A world applies its wind itself when its frame begins. Here the wind of the loaded world
-    // goes into SceneWind BEFORE the first frame and before the UI is built: pinned material
-    // tabs build their forms in applyDockLayout and must show the world value of the system
-    // fields (windStrength/windGustiness), not the default.
-    SceneWind::apply(editingWorld().getSettings().wind);
+    // goes into SceneWind BEFORE the first frame and before the UI is built: the material tabs of
+    // the layout build their forms in applyDockLayout and must show the value of the system
+    // fields (windStrength/windGustiness) the world blows, not the default.
+    SceneWind::apply(editingWorld().wind());
     if (!m_loader.hasOpenedProject()) { updateWindowState(); }
     // The user's keys, next to the editor's settings.json; the menu is rebuilt by the listener.
     const path_t settingsPath = m_documents.editorSettingsFile().path();
@@ -200,6 +203,7 @@ void EditorLayer::onDetach() {
     // The files nobody asked to write, while the editor still answers (the camera of the active
     // world goes into the session).
     m_loader.saveOnExit();
+    GameContext::setProjectSettings(nullptr);
     m_mcp.reset();
     Fern::setCursorLocked(false);
     AssetPreviews::setShared(nullptr);
@@ -271,10 +275,12 @@ void EditorLayer::onUpdate(double deltaTime) {
         if (!playing) {
             updateViewportTools(deltaTime); // brushes — before the frame is drawn: edits are remeshed this frame
         }
-        // The game is simulated, then the world on screen is drawn through the live viewport. A
-        // playing world that does not run (it waits for its next world) keeps its last frame.
+        // The game is simulated, then the world is drawn through the live viewport — while that
+        // one is on screen: behind the tab of a material nobody looks at the world, and the game
+        // goes on without its picture. A playing world that does not run (it waits for its next
+        // world) keeps its last frame.
         if (playing && m_play.isRunning()) { m_play.simulate(deltaTime); }
-        if (!playing || m_play.isRunning()) {
+        if (m_viewports.isOnScreen() && (!playing || m_play.isRunning())) {
             m_viewports.render(world, m_viewportSettings, Application::get()->getTime());
         }
         if (playing) { m_play.updateUi(deltaTime); } // the UI of the game over its frame; the world a script asked for
@@ -363,10 +369,9 @@ void EditorLayer::syncViewports() {
     const Editor::ViewportSurfaces surfaces = m_editorController->viewportSurfaces();
     ViewportFrames frames;
     frames.scene = Rect(surfaces.scene.origin.x, surfaces.scene.origin.y, surfaces.scene.size.width, surfaces.scene.size.height);
-    frames.sceneVisible = surfaces.sceneVisible;
     frames.game = Rect(surfaces.game.origin.x, surfaces.game.origin.y, surfaces.game.size.width, surfaces.game.size.height);
-    frames.gameVisible = surfaces.gameVisible;
-    frames.focused = surfaces.gameInFocus ? ViewportKind::Game : ViewportKind::Scene;
+    frames.shown = surfaces.showsGame ? ViewportKind::Game : ViewportKind::Scene;
+    frames.visible = surfaces.visible;
     m_viewports.sync(frames);
     // Wrap the output textures once (the native handles are stable across resizes) and feed the panels.
     // The wrap waits for a laid-out tab: an ImageView draws nothing for a texture of size zero, and the
@@ -386,7 +391,6 @@ void EditorLayer::syncViewports() {
         m_gameNative = gameNative;
     }
     if (m_gameTexture.isValid()) { m_editorController->setGameViewportTexture(m_gameTexture, flip); }
-    m_editorController->setLiveViewport(m_viewports.isGameLive());
     m_editorController->setGameViewportMessage(
         !hasWorld() && !isPlaying()                                ? "No world is open"
         : m_viewports.isGameLive() && !m_viewports.gameHasCamera() ? "No main camera in the world: the editor camera is shown"
@@ -521,16 +525,20 @@ void EditorLayer::onEvent(Fern::Event *event) {
     m_play.windowEvent(*event);
 
     // The input of the window is either the game's or the editor's, never both. In Play, while
-    // the Game renders, the game owns the pointer over the Game surface and the keys of the
-    // focused Game tab (PlaySession::ownsEvent): its UI sees them first, the rest Application
-    // feeds to Panda::Input. Everything else is the editor's: the PandaUI chrome, whose Scene
-    // surface collects the camera navigation and the pointer of the gizmo and of the tools; none
-    // of it reaches Panda::Input.
+    // the Game is on screen, the game owns the pointer where the Game surface is what lies under
+    // it — not a menu or a popup of the editor over the frame — and the keys while that surface
+    // has the focus (PlaySession::ownsEvent): its UI sees them first, the rest Application feeds
+    // to Panda::Input. Everything else is the editor's: the PandaUI chrome, whose World view
+    // collects the camera navigation and the pointer of the gizmo and of the tools; none of it
+    // reaches Panda::Input.
     if (isInputEvent(event)) {
         m_inputPause = 0.0;
-        if (isPlaying() && m_viewports.isGameLive() &&
-            m_play.ownsEvent(*event, m_editorController->isGameViewportFocused(), modal)) {
-            // A click on the game gives the Game tab the keyboard focus: the keys follow the mouse.
+        const auto overGame = [this](double x, double y) {
+            return m_editorController->isGameUnderPointer(PandaUI::Point(static_cast<float>(x), static_cast<float>(y)));
+        };
+        if (isPlaying() && m_viewports.isGameOnScreen() &&
+            m_play.ownsEvent(*event, m_editorController->isGameViewportFocused(), modal, overGame)) {
+            // A click on the game gives the Game the keyboard focus: the keys follow the mouse.
             if (event->type == Fern::EventType::MouseButtonPressed) { m_editorController->focusGameView(); }
             if (m_play.handleEvent(event)) { event->isHandled = true; }
             return;
@@ -595,8 +603,8 @@ void EditorLayer::play() {
     if (m_launch.unattended) { m_play.setDriven(true); }
     Editor::selection().setWorld(shownWorld()); // the same ids: the selection moves to the copy
     m_viewports.scene().setWorld(shownWorld());
-    // The Game tab opens (or comes to the front) and takes the focus: the frame and the input of
-    // the game are there; the Scene tab stays the editor's view of the playing world.
+    // The world tab shows the Game and gives it the focus: the frame and the input of the game
+    // are there; the switch of the toolbar shows the Scene of the playing world instead.
     if (m_editorController) {
         m_editorController->openGameView();
         m_editorController->setActiveWorld(panelsWorld()); // panels → the live world
@@ -613,7 +621,7 @@ void EditorLayer::stop() {
     m_viewports.scene().setWorld(shownWorld());
     if (m_editorController) {
         m_editorController->setActiveWorld(panelsWorld()); // panels → the editing world
-        m_editorController->showSceneView();                // back to editing: the Scene tab comes to the front
+        m_editorController->showWorldView();                // back to editing: the World view, with its panels
     }
     // Play is a simulation: its asset mutations (script ABI, e.g. terrain digging) do not
     // survive Stop — the affected assets are reloaded from disk. Unsaved EDITOR edits
@@ -641,6 +649,7 @@ void EditorLayer::scriptsWereBuilt() {
     }
     m_loader.reloadScriptsDll();
     if (std::exchange(m_playAfterBuild, false)) {
+        if (m_editorController) { m_editorController->buildBeforePlayEnded(/*built*/ true); }
         ScriptEngine *scripts = GameContext::getScriptEngine();
         if (scripts != nullptr && scripts->isLoaded()) { play(); }
     }
@@ -653,7 +662,7 @@ bool EditorLayer::buildBeforePlay(bool ask) {
     m_playAfterBuild = true;
     m_playAfterBuildAsks = ask;
     LOG_INFO_EDITOR("The scripts changed since they were built: the game starts when the build is done.");
-    if (m_editorController) { m_editorController->showPanel("cmake"); }
+    if (m_editorController) { m_editorController->showBuildBeforePlay(); }
     m_builds.start(BuildTargetKind::Scripts, BuildAction::Build);
     return true;
 }
@@ -664,6 +673,7 @@ bool EditorLayer::buildBeforePlay(bool ask) {
 void EditorLayer::followBuildBeforePlay() {
     if (!m_playAfterBuild || m_builds.isRunning()) { return; }
     m_playAfterBuild = false;
+    if (m_editorController) { m_editorController->buildBeforePlayEnded(/*built*/ false); } // the errors stay on screen
     if (!m_playAfterBuildAsks || m_builds.lastResult() != ProjectBuilds::Result::Failed || !m_editorController) { return; }
     ScriptEngine *scripts = GameContext::getScriptEngine();
     if (scripts == nullptr || !scripts->isLoaded()) { return; }
@@ -696,8 +706,8 @@ void EditorLayer::openWorldAsset(AssetId worldAssetId) {
         LOG_ERROR_EDITOR("Failed to open world: %s", worldPath.string().c_str());
         return;
     }
-    // Its tab comes forward, also when the world was open and active already (behind the Game tab).
-    if (m_editorController) { m_editorController->showSceneView(); }
+    // Its tab comes forward, also when the world was open and active already (behind another tab).
+    if (m_editorController) { m_editorController->showWorldView(); }
 }
 
 void EditorLayer::newWorld() {
@@ -706,20 +716,27 @@ void EditorLayer::newWorld() {
     m_documents.newWorld();
 }
 
-// What the Hierarchy says it shows: the file of the document in front, and of a prefab its one
+// What the Hierarchy says it shows: the name of the document in front, and of a prefab its one
 // tree.
 void EditorLayer::showDocumentName() {
     if (!m_editorController) { return; }
     WorldFile *active = m_documents.activeWorld();
-    const std::string file = active == nullptr ? std::string() : active->name();
     Entity prefabRoot = active != nullptr ? active->prefabRoot() : Entity();
-    m_editorController->setWorldDisplayName(worldDisplayName(), file, prefabRoot.isValid() ? prefabRoot.getId() : UUID(0));
+    m_editorController->setWorldDisplayName(worldDisplayName(), prefabRoot.isValid() ? prefabRoot.getId() : UUID(0));
 }
 
 std::string EditorLayer::worldDisplayName() {
     if (!hasWorld()) { return {}; }
     const path_t &worldPath = m_documents.activeWorld()->path();
     return worldPath.empty() ? "Untitled World" : worldPath.filename().stem().string();
+}
+
+void EditorLayer::documentsWillActivateWorld() {
+    // The game plays a copy of the world in front: it ends before that world leaves the front
+    // (the tabs do not switch while it runs; opening a world stops it). Then what the tab of the
+    // world shows of it — its tree, its selection — stays with the tab.
+    stop();
+    if (m_editorController) { m_editorController->worldWillDeactivate(); }
 }
 
 void EditorLayer::documentsDidActivateWorld() {
@@ -730,10 +747,12 @@ void EditorLayer::documentsDidActivateWorld() {
     Editor::selection().deselectEntities(); // the selection is of one world, and ids repeat between worlds
     Editor::selection().setWorld(shownWorld());
     if (m_editorController) {
-        m_editorController->worldContextChanged(); // the entity tabs point into the previous world
+        m_editorController->worldContextChanged(); // the history of the selection points into the previous world
         m_editorController->setActiveWorld(panelsWorld());
     }
     worldDidChange();
+    // The tab of this world shows what it showed when it was left.
+    if (m_editorController) { m_editorController->worldDidActivate(); }
 }
 
 void EditorLayer::documentsDidLoadWorld() {
@@ -856,22 +875,12 @@ void EditorLayer::focusSelection() {
 /* ------------------------------ The settings ------------------------------ */
 
 TypeContext &EditorLayer::settingsStore(SettingsScope scope) {
-    switch (scope) {
-        case SettingsScope::Project: return m_documents.projectSettingsFile().settings();
-        case SettingsScope::Editor: return m_documents.editorSettingsFile().settings();
-        case SettingsScope::World: break;
-    }
-    return editingWorld().context(); // the world scope is the coordinator's (the panels' world)
+    return scope == SettingsScope::Project ? m_documents.projectSettingsFile().settings()
+                                           : m_documents.editorSettingsFile().settings();
 }
 
 std::filesystem::path EditorLayer::settingsFilePath(Panda::SettingsScope scope) {
-    switch (scope) {
-        case SettingsScope::Project: return m_documents.projectSettingsFile().path();
-        case SettingsScope::Editor: return m_documents.editorSettingsFile().path();
-        case SettingsScope::World: // the world settings live in the world file
-            return hasWorld() ? m_documents.activeWorld()->path() : std::filesystem::path();
-    }
-    return {};
+    return scope == SettingsScope::Project ? m_documents.projectSettingsFile().path() : m_documents.editorSettingsFile().path();
 }
 
 void EditorLayer::applyEditorSettings() {
@@ -928,15 +937,15 @@ void EditorLayer::loaderWillCloseProject() {
     Editor::selection().clear();
     if (m_editorController) {
         m_editorController->closeAuxiliaryWindow(); // what it shows is the project's
-        m_editorController->projectWillClose();    // the tabs of its entities and assets, the history
+        m_editorController->projectWillClose();    // the tabs of its assets, the history
     }
     if (m_previews) { m_previews->clear(); } // the previews and the thumbnails hold its assets
 }
 
-// The forms of the open entity tabs show the scripts of the build that was loaded: a field
-// published since, a class that is gone.
+// The inspector shows the scripts of the build that was loaded: a field published since, a class
+// that is gone.
 void EditorLayer::loaderDidReloadScripts() {
-    if (m_editorController) { m_editorController->refreshEntityForms(); }
+    if (m_editorController) { m_editorController->refreshInspector(); }
 }
 
 void EditorLayer::loaderDidLoadCloseProject() {

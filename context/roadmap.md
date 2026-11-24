@@ -33,8 +33,8 @@ Large directions that are still ahead. Finished work is one line with a pointer 
 - **Safer script handles**: `resolveScriptEntity` guards across the whole ABI.
 - **Modules and plugins**: engine and editor registries, terrain and particles as modules, theme
   plugins (`context/plugins.md`).
-- **Scene and Game tabs**: the editor's view and the game's frame as two viewport tabs over one
-  world render per frame; Simulate is gone (`context/architecture.md`, "The Scene and the Game").
+- **World view and Game in the world tab**: the editor's view and the game's frame as two viewports over one
+  world render per frame; Simulate is gone (`context/architecture.md`, "The World view and the Game").
 - **Commands and the keymap**: one registry of the commands of the editor, the keys in one table
   with a user `keymap.json`, the command palette, the Keymap page
   (`context/architecture.md`, "Commands").

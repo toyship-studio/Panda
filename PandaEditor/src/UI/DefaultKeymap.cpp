@@ -31,6 +31,12 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         {"hierarchy.search", "primary-f"},
         {"tab.close", "primary-w"},
         {"dock.toggleFullscreen", "shift-space"},
+        // Window: the parts of the window, shown and hidden — the files (the navigator of Xcode),
+        // the tree and the inspector of the world tab, the output under the center (the panel of VS Code).
+        {"window.toggleFiles", "primary-0"},
+        {"window.toggleHierarchy", "primary-alt-1"},
+        {"window.toggleInspector", "primary-alt-0"},
+        {"window.toggleBottomPanel", "primary-j"},
         // View
         {"camera.focusSelection", "f"},
         // Entity (the world has the keyboard)

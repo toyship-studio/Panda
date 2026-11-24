@@ -8,7 +8,7 @@ or without it. This page lists what a module writes and what it must not change.
 
 | File | What the module writes | Carried by |
 |---|---|---|
-| `.world` | a key per component on an entity (`"beaconComponent": {…}`); a top-level key per world settings section (`"terrain": {…}`) | the JSON coders of the editor; the binary coder of the export |
+| `.world` | a key per component on an entity (`"beaconComponent": {…}`) | the JSON coders of the editor; the binary coder of the export |
 | `.Panda/project.json` | a key per project settings section | JSON |
 | `settings.json` of the user | a key per editor settings section | JSON |
 | `X.<ext>.pmeta` | the numeric kind id of the module's assets (`type`) | JSON |

@@ -49,7 +49,7 @@ repository.
 | What | Where |
 |---|---|
 | two asset kinds sharing an extension (`detect` by the file header), `load` / `placeholder` / `save` | `engine/src/Panda/Terrain/TerrainExtensions.cpp`, `TerrainSerialization.cpp`, `Terrain2DAsset.hpp`, `Terrain3DAsset.hpp` |
-| world settings sections (`terrain`, `flora`) and their forms | `engine/include/Panda/Terrain/TerrainLodSettings.hpp`, `FloraDistances.hpp`; `editor/src/Panda/TerrainEditor/TerrainEditorExtensions.cpp` |
+| project settings sections (`terrain`, `flora`) and their forms | `engine/include/Panda/Terrain/TerrainLodSettings.hpp`, `FloraDistances.hpp`; `editor/src/Panda/TerrainEditor/TerrainEditorExtensions.cpp` |
 | a system with `submit` in every rendering mode, occluders, and the lifecycle hooks that put static bodies into the physics world after the `physics` system | `engine/src/Panda/Terrain/TerrainSystem.cpp`, `TerrainPhysics.cpp` |
 | a resource provider with shader templates and a custom vertex layout with its depth and id programs; historical static ids | `engine/src/Panda/Terrain/TerrainResources.cpp`, `engine/resources/terrain-shaders/` |
 | a script table and its Bamboo header with edits that remesh and update the physics | `engine/include/Panda/Terrain/TerrainScriptApi.hpp`, `engine/src/Panda/Terrain/TerrainScriptHost.cpp`, `sdk/` |

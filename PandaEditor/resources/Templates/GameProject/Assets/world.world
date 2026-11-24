@@ -1,13 +1,4 @@
 {
-    "lighting": {
-        "ambientColor": {
-            "x": 1.0,
-            "y": 1.0,
-            "z": 1.0,
-            "w": 1.0
-        },
-        "ambientIntensity": 0.11999999731779099
-    },
     "entities": [
         {
             "id": 732211536,
@@ -37,7 +28,7 @@
                 }
             },
             "cameraComponent": {
-                "isPrimary": true,
+                "isMain": true,
                 "camera": {
                     "projectionType": 0,
                     "fieldOfView": 70.0,
@@ -78,6 +69,7 @@
                 }
             },
             "directionalLightComponent": {
+                "isMain": true,
                 "color": {
                     "x": 1.0,
                     "y": 1.0,
@@ -162,7 +154,8 @@
                     "z": 1.0
                 }
             },
-            "cubeMapComponent": {
+            "skyComponent": {
+                "isMain": true,
                 "material": 0
             },
             "scriptListComponent": {

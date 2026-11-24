@@ -15,6 +15,10 @@ set(CMAKE_CXX_STANDARD 20)
 # ---- Package directories ----
 set(PANDA_SDK_PACKAGE_DIR ${BIN_DIRECTORY}/PandaSDK)
 set(PANDA_SDK_PACKAGE_INCLUDE_DIR ${PANDA_SDK_PACKAGE_DIR}/include)
+# The headers of the third-party libraries the headers of the engine include (glm, EnTT, box2d,
+# box3d, miniaudio) lie apart: the config gives them to a build as system headers — no warnings of
+# code that is not ours — and the headers of the engine as ordinary ones a build follows.
+set(PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR ${PANDA_SDK_PACKAGE_DIR}/vendor/include)
 set(PANDA_SDK_PACKAGE_LIB_DIR ${PANDA_SDK_PACKAGE_DIR}/lib)
 set(PANDA_SDK_PACKAGE_CMAKE_DIR ${PANDA_SDK_PACKAGE_LIB_DIR}/cmake/PandaSDK)
 set(PANDA_SDK_PACKAGE_RESOURCES_DIR ${PANDA_SDK_PACKAGE_DIR}/resources)
@@ -181,13 +185,14 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Bamboo
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/PandaUI
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Foundation
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/glm
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_DIR}/vendor
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/PandaAsync
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/include/Bamboo ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Bamboo
         ${PANDA_SDK_MODULE_HEADER_COPY_COMMANDS}
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_UI_DIRECTORY}/include/PandaUI ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/PandaUI
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_ASYNC_DIRECTORY}/include/PandaAsync ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/PandaAsync
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/glm/glm ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/glm
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/glm/glm ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}/glm
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Panda/ScriptEngine/ABI
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${PANDA_DIRECTORY}/include/Panda/ScriptEngine/ABI/ScriptManifest.hpp
@@ -203,19 +208,15 @@ add_custom_command(OUTPUT ${PANDA_SDK_PACKAGE_DIR}/.package.stamp
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Fern
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Rain
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/rapidjson
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/miniaudio
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_DIRECTORY}/include/Panda ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Panda
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${FOUNDATION_DIRECTORY}/include/Foundation ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Foundation
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${MIREN_DIRECTORY}/include/Miren ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Miren
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${FERN_DIRECTORY}/include/Fern ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Fern
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${PANDA_ROOT_DIRECTORY}/Rain/include/Rain ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/Rain
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/entt/src/entt ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/entt
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box2d/include/box2d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box2d
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box3d/include/box3d ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/box3d
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/miniaudio/include/miniaudio ${PANDA_SDK_PACKAGE_INCLUDE_DIR}/miniaudio
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/entt/src/entt ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}/entt
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box2d/include/box2d ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}/box2d
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/box3d/include/box3d ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}/box3d
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${VENDOR_DIRECTORY}/miniaudio/include/miniaudio ${PANDA_SDK_PACKAGE_VENDOR_INCLUDE_DIR}/miniaudio
         ${PANDA_SDK_MODULE_COPY_COMMANDS}
 
         # === 1b. Docs — the agent package (.world/.mat formats, scripting, overview) ===

@@ -27,7 +27,7 @@ namespace StaticResources {
     // The default sky: the environment map of the world on a cube around the camera.
     static void createSky(AssetHandler *handler) {
         // The built-in environment map — a placeholder for the system slot environmentMap until
-        // the world sets its own (Settings → World → Environment Map): an equirect gradient
+        // the sky of the world names its own (Sky → Environment Map): an equirect gradient
         // zenith → horizon → ground, baked in code (there is no file in the resources). The id slot
         // is the same one the former sky texture had — the createAsset order does not change.
         {

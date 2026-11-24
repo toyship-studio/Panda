@@ -216,6 +216,7 @@ private:
     void loaderDidLoadCloseProject() override;
     void loaderDidReloadScripts() override;
     // FileDocumentsOutput.
+    void documentsWillActivateWorld() override;
     void documentsDidActivateWorld() override;
     void documentsDidLoadWorld() override;
     void documentsDidReadSettings(SettingsScope scope) override;
@@ -235,7 +236,7 @@ private:
     bool menuBarUpdateReady() override;
 
     // ---- Once a frame.
-    void syncViewports();   // the frames of the Scene and Game tabs → the engine viewports; their textures → the panels
+    void syncViewports();   // the frames of the Scene and Game surfaces → the engine viewports; their textures → the panels
     void updateViewportTools(double deltaTime); // EDIT: the viewport tools (brushes), before the world update
     void updateViewportHelperLines();           // the outlines of the overlays (colliders) → the viewport
     void updateGizmo();     // the gizmo follows the Scene pointer, moves the selection, shows its overlay

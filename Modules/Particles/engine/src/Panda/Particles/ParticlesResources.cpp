@@ -39,10 +39,9 @@ namespace {
             Vertex(glm::vec3(-0.5f, 0.5f, 0.f), glm::vec2(0.f, 0.f), normal, white, 1.f, 0),
         };
         const uint32_t indices[] = {0, 1, 2, 0, 2, 3};
+        const uint32_t vertexBytes = static_cast<uint32_t>(sizeof(Vertex) * vertices.size());
         MeshData quad(
-            StaticResources::generalVertexLayout,
-            Foundation::Memory::copying(vertices.data(), sizeof(Vertex) * vertices.size()),
-            static_cast<uint32_t>(sizeof(Vertex) * vertices.size()),
+            StaticResources::generalVertexLayout, Foundation::Memory::copying(vertices.data(), vertexBytes), vertexBytes,
             Foundation::Memory::copying(indices, sizeof(indices)), 6
         );
         quad.vertexStride = sizeof(Vertex);

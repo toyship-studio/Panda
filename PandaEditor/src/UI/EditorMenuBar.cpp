@@ -128,8 +128,16 @@ void EditorMenuBar::rebuild() {
         item(editMenu, "Redo", "edit.redo");
 
         auto &windowMenu = menuBar.addMenu("Window");
-        item(windowMenu, "World Settings", "window.worldSettings"); // the viewport sidebar
-        item(windowMenu, "Game", "window.game");                    // the Game tab: the frame of the game
+        // The parts of the window: the files on the left, the tree and the inspector of the world
+        // tab, the output under the center.
+        item(windowMenu, "Files", "window.toggleFiles");
+        item(windowMenu, "Hierarchy", "window.toggleHierarchy");
+        item(windowMenu, "Inspector", "window.toggleInspector");
+        item(windowMenu, "Bottom Panel", "window.toggleBottomPanel");
+        windowMenu.addSeparator();
+        // The middle of the world tab: the world as the editor shows it, or the frame of the game.
+        item(windowMenu, "World", "window.world");
+        item(windowMenu, "Game", "window.game");
         windowMenu.addSeparator();
         item(windowMenu, "Plugins", "window.plugins"); // the Plugins tab (themes are applied there)
     }

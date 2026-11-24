@@ -1,4 +1,5 @@
 #include "UI/EntityActions.hpp"
+#include "UI/WorldTabs.hpp"
 
 #include "App/EditorLayer.hpp"
 #include "Project/Documents/WorldFile.hpp"
@@ -96,9 +97,8 @@ Panda::Entity EntityActions::parentFor(Panda::UUID parentId) {
 /* ------------------------------ The targets of an edit ------------------------------ */
 
 std::vector<Panda::Entity> EntityActions::targets() {
-    Panda::World *shown = world();
-    if (shown == nullptr) { return {}; }
-    return m_targetActive ? entitiesOf(*shown, m_target) : selection().entities();
+    if (world() == nullptr) { return {}; }
+    return selection().entities();
 }
 
 Panda::Entity EntityActions::primaryTarget() {
@@ -110,16 +110,6 @@ std::vector<Panda::UUID> EntityActions::targetIds() {
     std::vector<Panda::UUID> ids;
     for (Panda::Entity entity : targets()) { ids.push_back(entity.getId()); }
     return ids;
-}
-
-void EntityActions::beginTarget(const std::vector<Panda::UUID> &ids) {
-    m_target = ids;
-    m_targetActive = true;
-}
-
-void EntityActions::endTarget() {
-    m_targetActive = false;
-    m_target.clear();
 }
 
 /* ------------------------------ The Hierarchy ------------------------------ */
@@ -421,7 +411,7 @@ void EntityActions::unpackPrefabs(const std::vector<Panda::UUID> &ids) {
 void EntityActions::openPrefabOf(Panda::UUID id) {
     Panda::World *shown = world();
     Panda::Entity entity = shown != nullptr ? shown->getById(id) : Panda::Entity();
-    if (const Panda::AssetId prefab = Panda::Prefabs::prefabOf(entity)) { m_workspace.openDocumentAsset(prefab); }
+    if (const Panda::AssetId prefab = Panda::Prefabs::prefabOf(entity)) { m_workspace.worldTabs().open(prefab); }
 }
 
 bool EntityActions::refusePrefabEditInPlay() {
@@ -489,7 +479,7 @@ void EntityActions::applyAddition(Panda::UUID top) {
     applyPrefab(addition.instance.getId(), Panda::Prefabs::Scope{addition.top, {}, {}}, /*forced*/ false);
 }
 
-/* ------------------------------ The entity tabs ------------------------------ */
+/* ------------------------------ The inspector ------------------------------ */
 
 void EntityActions::entityDidEditName(const std::string &name) {
     rename(targetIds(), name);
@@ -538,7 +528,7 @@ void EntityActions::commitTransformEdit(const std::function<void(Panda::Entity)>
     command.saveAfterEdit();
     shown->getCommandHistory().record(command);
     shown->setChanged();
-    selection().transformChanged(); // the gizmo follows the edit of the tab
+    selection().transformChanged(); // the gizmo follows the edit of the inspector
     m_workspace.transformShown();   // the fields show it already: no refresh under the caret
 }
 
@@ -599,7 +589,7 @@ void EntityActions::setComponentPresence(const std::string &component, bool add)
     const ComponentInspector *inspector = editorExtensions().componentInspectors.find(component);
     if (shown == nullptr || inspector == nullptr || inspector->setPresence == nullptr) { return; }
     inspector->setPresence(*shown, targets(), add);
-    // The tab rereads the entity — the section appears or goes — and the Hierarchy its icon: a
+    // The inspector rereads the entity — the section appears or goes — and the Hierarchy its icon: a
     // component may be what the entity is there (a camera, a light).
     m_workspace.refreshFromWorld();
 }
@@ -621,9 +611,7 @@ void EntityActions::entityDidAddScript(const std::string &className) {
             Panda::ExternalScript(static_cast<Panda::Handle>(entity.getId()), 0u, clazz.name, fields, clazz.order)
         );
     }
-    // A Script section with the real fields appears: the form that asked rereads its sections
-    // itself (EditorTabs). The selection is not shown again — the form may be a pinned tab of
-    // an entity that is not the selection, and the tab of the selection would come in front of it.
+    m_workspace.refreshInspector(); // a Script section with the real fields appears
 }
 
 void EntityActions::entityDidRemoveScript(int scriptIndex) {
@@ -635,6 +623,7 @@ void EntityActions::entityDidRemoveScript(int scriptIndex) {
             primary.setWorldChanged();
         }
     }
+    m_workspace.refreshInspector();
 }
 
 void EntityActions::entityDidEditScriptField(
@@ -654,11 +643,11 @@ void EntityActions::entityDidEditScriptField(
         std::move(value), structural
     );
     shown->getCommandHistory().execute(command);
-    // A structural edit made other rows of the list: the form that asked rereads them (EditorTabs).
+    if (structural) { m_workspace.refreshInspector(); } // the rows of the list are other rows now
 }
 
 void EntityActions::entityDidClickBackground() {
-    m_workspace.deselectAll();
+    m_workspace.selectEntities({});
 }
 
 void EntityActions::entityDidRevertPrefab(bool whole, const std::string &component, const std::string &field) {

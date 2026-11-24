@@ -129,8 +129,7 @@ ViewportPanelView::ViewportPanelView(ViewportPanelOutput *output)
 }
 
 void ViewportPanelView::addSubviews() {
-    // The scene column: the surface fills it, the overlays sit on top of it (absolute). The sidebar
-    // is a sibling column on the right, so the overlays never cover it.
+    // The scene column: the surface fills it, the overlays sit on top of it (absolute).
     m_sceneHost = std::make_shared<Panel>();
     m_sceneHost->setBackgroundColor(Color(0x00000000));
     m_sceneHost->layout().setFlexGrow(1.f);
@@ -141,7 +140,7 @@ void ViewportPanelView::addSubviews() {
 
     // Scene surface (fills the column) — camera/picking input. Overlay toolbar on top.
     m_scene = std::make_shared<ViewportView>(this);
-    m_scene->setAccessibilityId("scene"); // the surface of the Scene, for a UI test
+    m_scene->setAccessibilityId("world"); // the surface of the World view, for a UI test
     m_sceneHost->addSubview(m_scene);
 
     m_helperLines = std::make_shared<HelperLinesOverlay>(); // helpers (colliders) — above the scene, below the gizmo
@@ -184,23 +183,14 @@ void ViewportPanelView::addSubviews() {
 
     m_overlay->addSubview(makeOverlayDivider());
 
-    // The two buttons that open settings say which in a word: an icon alone reads as "settings"
-    // for both. The display options of the viewport (the editor scope: what the viewport draws,
-    // nothing of it is saved into the world) — a popover next to the button.
+    // The display options of the viewport (the editor scope: what the viewport draws, nothing of
+    // it is saved into the world) — a popover next to the button; its word says what it opens.
     auto display = std::make_shared<IconButton>(Ic::Configure, Ic::GizmoSize, 28.f);
     display->setTitle("Display");
     display->setTooltip("Display Options: what the viewport draws (an editor setting)");
     IconButton *displayPtr = display.get();
     display->setOnClick([this, displayPtr] { m_output->viewportDidRequestDisplayOptions(displayPtr); });
     m_overlay->addSubview(display);
-
-    // The world settings sidebar (the world scope: saved in the world file) — shown and hidden
-    // by the button, which stays highlighted while the sidebar is open.
-    m_worldSettingsButton = std::make_shared<IconButton>(Ic::Globe, Ic::GizmoSize, 28.f);
-    m_worldSettingsButton->setTitle("World");
-    m_worldSettingsButton->setTooltip("World Settings: lighting, shadows, wind (saved in the world file)");
-    m_worldSettingsButton->setOnClick([this] { m_output->viewportDidToggleWorldSettings(); });
-    m_overlay->addSubview(m_worldSettingsButton);
 
     m_sceneHost->addSubview(m_overlay);
 
@@ -232,43 +222,6 @@ void ViewportPanelView::addSubviews() {
     m_editBannerHost->addSubview(m_editBanner);
     m_editBannerHost->setHidden(true);
     m_sceneHost->addSubview(m_editBannerHost);
-
-    // The world settings sidebar: an opaque column with a header and the sections (set by the
-    // coordinator). Hidden until the user shows it.
-    m_sidebar = std::make_shared<Panel>();
-    m_sidebar->layout().setWidth(Length::points(320.f));
-    m_sidebar->layout().setFlexDirection(FlexDirection::Column);
-    m_sidebar->layout().setAlignItems(Align::Stretch);
-    m_sidebar->surface().setBorderWidth(0.f);
-
-    m_sidebarHeader = std::make_shared<Panel>();
-    m_sidebarHeader->setBackgroundColor(Color(0x00000000));
-    m_sidebarHeader->layout().setFlexDirection(FlexDirection::Row);
-    m_sidebarHeader->layout().setAlignItems(Align::Center);
-    m_sidebarHeader->layout().setPadding(Edge::Left, 12.f);
-    m_sidebarHeader->layout().setPadding(Edge::Right, 6.f);
-    m_sidebarHeader->layout().setPadding(Edge::Vertical, 6.f);
-    auto title = std::make_shared<Label>("WORLD SETTINGS");
-    title->setFont(Typo::PanelTitle);
-    title->setLetterSpacing(Typo::PanelTitleTracking);
-    title->setTextRole(TextRole::Muted);
-    title->layout().setFlexGrow(1.f);
-    m_sidebarHeader->addSubview(title);
-    auto close = std::make_shared<IconButton>(Ic::Clear, Ic::HeaderSize, 23.f);
-    close->setTooltip("Hide World Settings");
-    close->setOnClick([this] { m_output->viewportDidToggleWorldSettings(); });
-    m_sidebarHeader->addSubview(close);
-    m_sidebar->addSubview(m_sidebarHeader);
-
-    m_sidebarContentHost = std::make_shared<Panel>();
-    m_sidebarContentHost->setBackgroundColor(Color(0x00000000));
-    m_sidebarContentHost->layout().setFlexGrow(1.f);
-    m_sidebarContentHost->layout().setFlexDirection(FlexDirection::Column);
-    m_sidebar->addSubview(m_sidebarContentHost);
-
-    m_sidebar->setHidden(true);
-    m_sidebar->layout().setDisplay(Display::None);
-    addSubview(m_sidebar);
 }
 
 void ViewportPanelView::setKeyHints(const Commands &commands) {
@@ -282,26 +235,6 @@ void ViewportPanelView::setKeyHints(const Commands &commands) {
     for (size_t i = 0; i < m_gizmoButtons.size() && i < 3; ++i) {
         m_gizmoButtons[i]->setTooltip(commands.hint(TITLES[i], IDS[i]) + snap);
     }
-}
-
-void ViewportPanelView::setSidebarContent(std::shared_ptr<View> content) {
-    m_sidebarContentHost->removeAllSubviews();
-    if (content) { m_sidebarContentHost->addSubview(std::move(content)); }
-    setNeedsLayout();
-}
-
-void ViewportPanelView::setWorldSettingsAvailable(bool available) {
-    if (m_worldSettingsButton) { m_worldSettingsButton->setCollapsed(!available); }
-    if (!available && isSidebarVisible()) { setSidebarVisible(false); }
-}
-
-void ViewportPanelView::setSidebarVisible(bool visible) {
-    if (m_sidebarVisible == visible) { return; }
-    m_sidebarVisible = visible;
-    m_sidebar->setHidden(!visible);
-    m_sidebar->layout().setDisplay(visible ? Display::Flex : Display::None);
-    if (m_worldSettingsButton) { m_worldSettingsButton->setActive(visible); }
-    setNeedsLayout();
 }
 
 void ViewportPanelView::setEditingSession(bool active, const std::string &title) {
@@ -371,19 +304,12 @@ void ViewportPanelView::applyBorder() {
 }
 
 void ViewportPanelView::setupLayout() {
-    layout().setFlexDirection(FlexDirection::Row); // [scene column | world settings sidebar]
+    layout().setFlexDirection(FlexDirection::Row);
     layout().setAlignItems(Align::Stretch);
 }
 
 void ViewportPanelView::setupStyle() {
     setBackgroundColor(ThemeColor::windowBackground); // what shows before the first frame arrives
-    if (m_sidebar) {
-        // Opaque: the controls must read on any scene behind them; a border line separates it
-        // from the scene.
-        m_sidebar->setBackgroundColor(ThemeColor::windowBackground);
-        m_sidebar->surface().setBorderColor(ThemeColor::border);
-        m_sidebar->surface().setBorderWidth(1.f);
-    }
     if (m_overlay) {
         // A floating layer: the popover elevation (a hairline shadow, like GPUI's elevated surfaces).
         m_overlay->setBackgroundColor(ThemeColor::surface);

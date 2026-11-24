@@ -81,7 +81,7 @@ protected:
         } else if (m_owner->isPrefab()) {
             // A prefab is a file: shown where it lies, selected like any asset.
             if (doubleClick) {
-                editorHost().selectAsset(Panda::AssetId(entity));
+                editorHost().openAsset(Panda::AssetId(entity));
             } else {
                 editorHost().revealAsset(Panda::AssetId(entity));
             }

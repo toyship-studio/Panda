@@ -183,11 +183,11 @@ is not computed and not compiled in. The switches, from the heaviest:
 |---|---|---|---|
 | The features | `.Panda/project.json`, `shaderFeatures` | none: the scene is unlit, a pixel is a texture and a color | all of them |
 | Lamps | the feature `lamps` | off: no loop over lamps in a lit pixel (a game that has none, or bakes them into its vertices) | the nearest 8 in every lit pixel, each may cast shadows |
-| Screen-space occlusion | the feature `ssao`, the world's `graphics.ssao` | off: no passes | two passes over the depth of the frame; `slices`, `steps`, `fullResolution` |
-| The shadows of the sun | the feature `shadows`, the world's `graphics.shadows` | `softness` 0 — four taps where the sun shows; one or two cascades (`cascadeCount`) of 1024 (`tileSize`), a short `distance` | `softness` above 0 — the sun as a disc: 28 taps where the sun shows; three or four cascades of 2048 and more |
-| The occlusion volume | the feature `occlusion` | off | chunk bakes and a 3D texture |
+| Screen-space occlusion | the feature `ssao`; the camera's `ambientOcclusion`; the budget — `ambientOcclusion` of `project.json` | off: no passes | two passes over the depth of the frame; `slices`, `steps`, `fullResolution` |
+| The shadows of the sun | the feature `shadows`; the sun's `castShadows` and `shadowSoftness`; the maps — `shadows` of `project.json` | `shadowSoftness` 0 — four taps where the sun shows; one or two cascades (`cascadeCount`) of 1024 (`tileSize`), a short `distance` | `shadowSoftness` above 0 — the sun as a disc: 28 taps where the sun shows; three or four cascades of 2048 and more |
+| The occlusion volume | the feature `occlusion`; a world with plants | off; a world without plants has none | chunk bakes and a 3D texture |
 | Bloom, auto exposure, antialiasing | the camera | each off: its passes are not run | a pyramid of passes, a measure of the frame, a pass over the picture |
-| Fog | the world's `graphics.fog.enabled` | off | a pass over the frame |
+| Fog | the sky's `fog.enabled` | off | a pass over the frame |
 
 What a cascade costs is mostly its casters: each is drawn once more per cascade. The engine
 draws only those that can cast into what the camera sees, and a lit shader asks for the shadow

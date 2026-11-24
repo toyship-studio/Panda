@@ -34,21 +34,21 @@ struct PostprocessingFrameInputs {
     BloomSettings bloom; // built-in bloom of the camera: executed BEFORE the user chain
     // Screen position of the sun (WorldView::sunScreen): bloom_apply flares. z = 0 — off.
     glm::vec4 sunScreen = glm::vec4(0.f);
-    // The camera of the frame (WorldView::camera) and the ambient occlusion settings of the
-    // world: the occlusion is computed from the depth of this frame for the next one of the view
-    // (PostprocessingPipeline::screenOcclusion). Disabled by default.
+    // The camera of the frame (WorldView::camera) and the ambient occlusion of the camera (at the
+    // cost of the project): the occlusion is computed from the depth of this frame for the next
+    // one of the view (PostprocessingPipeline::screenOcclusion). Disabled by default.
     glm::mat4 projection = glm::mat4(1.f);
     glm::mat4 viewProj = glm::mat4(1.f);
     SsaoSettings ssao = disabledSsao();
-    // The fog of the world over the scene, before everything else of the pipeline (FogRenderer).
-    // Disabled by default.
+    // The fog of the sky of the world over the scene, before everything else of the pipeline
+    // (FogRenderer). Disabled by default.
     FogFrame fog;
     // The exposure compensation and the curve of the final Tonemap pass. A chain with
     // handlesTonemap develops the frame itself: it reads the same values from PANDA_POST.
     TonemapSettings tonemap;
 
-    // The look of a camera: its bloom, auto exposure, tonemap and clip planes. The one place that
-    // maps a camera to the pipeline — the editor and the runtime call it.
+    // The look of a camera: its bloom, auto exposure, tonemap, ambient occlusion and clip planes.
+    // The one place that maps a camera to the pipeline — the editor and the runtime call it.
     void setCamera(const struct CameraComponent &camera);
     // What the frame takes from the view it was drawn through and from the world it shows: the
     // camera of the frame, the sun on screen, the ambient occlusion and the fog. The one place

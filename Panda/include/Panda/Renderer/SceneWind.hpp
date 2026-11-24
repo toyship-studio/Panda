@@ -4,20 +4,13 @@
 
 namespace Panda {
 
-// Scene wind settings. Owner — the world (the "wind" section of .world, the controls — the
-// editor's world settings); an application without a world keeps its own settings.
-struct SceneWindSettings final : public Rain::Codable {
+// The wind of a frame: the main WindComponent of the world drawn (WorldView::render), calm in a
+// world without one; an application without a world keeps its own.
+struct SceneWindSettings final {
     float strength = 0.25f;       // 0..1 — overall strength
     float speed = 1.6f;           // tempo of gusts and flutter
     float gustiness = 0.6f;       // contrast: 0 — steady flow, 1 — lulls and squalls
     float directionDegrees = 0.f; // where it blows to, in XZ (0 = +X)
-
-    RAIN_FIELDS_BEGIN(SceneWindSettings)
-    RAIN_FIELD(strength)
-    RAIN_FIELD(speed)
-    RAIN_FIELD(gustiness)
-    RAIN_FIELD(directionDegrees)
-    RAIN_FIELDS_END
 };
 
 // The shared scene wind — one per application. The strength in the vegetation shaders is the

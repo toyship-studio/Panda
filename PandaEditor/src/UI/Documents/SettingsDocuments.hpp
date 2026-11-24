@@ -16,8 +16,8 @@ namespace Editor {
 // The settings documents (the document model, context/plugins.md): the sections of a scope in a
 // tab. The project settings are a document of `.Panda/project.json` — their own undo stack, dirty
 // until saved, the close question; the editor settings apply at once and are saved by every edit —
-// no dirty state and no undo. The world settings are not a document: they are the sidebar of the
-// viewport, inside the world document.
+// no dirty state and no undo. A world has no settings: what it looks like is components of its
+// entities, edited in the inspector of its tab.
 
 class ProjectSettingsDocument final : public Document {
 public:

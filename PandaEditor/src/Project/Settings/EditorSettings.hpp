@@ -2,6 +2,8 @@
 
 #include "RecentProject.hpp"
 
+#include <optional>
+
 namespace Panda {
 
 // The editor's own files live in the user data directory (SystemTools::userDataDirectory; not in
@@ -46,23 +48,52 @@ struct DockPanelPlacement final : public Rain::Codable {
     RAIN_FIELDS_END
 };
 
-/// A pinned editor tab of an object: the id encodes the object ("edit:e:<uuid>" / "edit:a:<id>"),
-/// dock — where it lived. Restored after the world is loaded (dead targets are skipped).
-struct PinnedTabPlacement final : public Rain::Codable {
+/// An open tab of a document the layout reopens: the id names the document ("asset:<id>",
+/// "doc:<type>"), dock — where it was. Restored after the project is loaded (an asset that is
+/// gone is skipped). The worlds are reopened from the session of the project instead.
+struct OpenTabPlacement final : public Rain::Codable {
     std::string id;
-    int dock = 1; // Editor::Dock (default Right)
+    int dock = 3; // Editor::Dock (default Center)
 
-    RAIN_FIELDS_BEGIN(PinnedTabPlacement)
+    RAIN_FIELDS_BEGIN(OpenTabPlacement)
     RAIN_FIELD(id)
     RAIN_FIELD(dock)
+    RAIN_FIELDS_END
+};
+
+/// What is open around the middle of a world tab: the docks of the window and the two columns of
+/// the tab (its tree, its inspector).
+struct SidePanelsState final : public Rain::Codable {
+    bool left = true;
+    bool right = true;
+    bool bottom = true;
+    bool tree = true;
+    bool inspector = true;
+
+    bool operator==(const SidePanelsState &other) const {
+        return left == other.left && right == other.right && bottom == other.bottom && tree == other.tree &&
+               inspector == other.inspector;
+    }
+
+    RAIN_FIELDS_BEGIN(SidePanelsState)
+    RAIN_FIELD(left)
+    RAIN_FIELD(right)
+    RAIN_FIELD(bottom)
+    RAIN_FIELD(tree)
+    RAIN_FIELD(inspector)
     RAIN_FIELDS_END
 };
 
 /// The docking layout of the editor: panels, dock visibility, split weights, active tabs.
 /// An empty panel list = the state has not been saved (first launch) — the defaults are applied.
 struct DockLayoutState final : public Rain::Codable {
+    // The model of the window the layout was saved for. A layout of another one names panels and
+    // docks that are other ones now (the Hierarchy was a panel of the left dock before the world
+    // tab held it): it is not applied, the window opens with the defaults.
+    static constexpr int MODEL = 2;
+    int model = 0;
     std::vector<DockPanelPlacement> panels;
-    std::vector<PinnedTabPlacement> pinnedTabs; // pinned editor tabs (the preview one is not saved)
+    std::vector<OpenTabPlacement> openTabs; // the tabs of documents but the worlds
     bool leftVisible = true;
     bool rightVisible = true;
     bool bottomVisible = true;
@@ -76,15 +107,26 @@ struct DockLayoutState final : public Rain::Codable {
     std::string selectedBottom;
     std::string selectedCenter;
     int focusedDock = -1; // Editor::Dock whose active tab had the keyboard focus; -1 = unknown (leave the focus alone)
-    bool worldSettingsVisible = false; // the world settings sidebar of the viewport
+    // What a world tab shows beside its Scene (WorldEditorView): the tree and the inspector,
+    // shown or hidden, and the shares of the three columns (0 = not set: the defaults).
+    bool worldTreeVisible = true;
+    bool worldInspectorVisible = true;
+    float worldTreeWeight = 0.f;
+    float worldSceneWeight = 0.f;
+    float worldInspectorWeight = 0.f;
+    // The Game of a world tab keeps the panels it was left with (EditorController::showView): its
+    // own ones, once they differ from the ones above, which are the World view's. None — the
+    // Game shows with what is open.
+    std::optional<SidePanelsState> gamePanels;
     std::string contentBrowserView;     // how the Content Browser shows Assets: "list", or icons (anything else)
     bool contentBrowserFolders = true;  // its folder tree, beside the icons
 
     bool isValid() const {
-        return !panels.empty();
+        return model == MODEL && !panels.empty();
     }
 
     RAIN_FIELDS_BEGIN(DockLayoutState)
+    RAIN_FIELD(model)
     RAIN_FIELD(panels)
     RAIN_FIELD(leftVisible)
     RAIN_FIELD(rightVisible)
@@ -99,8 +141,13 @@ struct DockLayoutState final : public Rain::Codable {
     RAIN_FIELD(selectedBottom)
     RAIN_FIELD(selectedCenter)
     RAIN_FIELD(focusedDock)
-    RAIN_FIELD(pinnedTabs)
-    RAIN_FIELD(worldSettingsVisible)
+    RAIN_FIELD(openTabs)
+    RAIN_FIELD(worldTreeVisible)
+    RAIN_FIELD(worldInspectorVisible)
+    RAIN_FIELD(worldTreeWeight)
+    RAIN_FIELD(worldSceneWeight)
+    RAIN_FIELD(worldInspectorWeight)
+    RAIN_FIELD(gamePanels)
     RAIN_FIELD(contentBrowserView)
     RAIN_FIELD(contentBrowserFolders)
     RAIN_FIELDS_END

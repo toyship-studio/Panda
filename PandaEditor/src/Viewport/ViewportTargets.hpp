@@ -5,7 +5,7 @@
 
 namespace Panda {
 
-// The render targets of the editor viewports (context/architecture.md, "The Scene and the Game").
+// The render targets of the editor viewports (context/architecture.md, "The World view and the Game").
 // The world is rendered once per frame through one WorldView, whose targets hold the HDR frame at
 // the size of the viewport that renders; the selection mask and the id buffer belong to the Scene;
 // every viewport tab owns the output texture its panel shows. Sizes are in points, the pixel size

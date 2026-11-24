@@ -89,7 +89,22 @@ void ToolbarPanelView::addSubviews() {
 
     addSubview(left);
 
-    // CENTER: the Play / Stop transport capsule (recessed track, colored icons).
+    // CENTER: the switch of the middle of the world tab, then the Play / Stop transport capsule
+    // (recessed track, colored icons).
+    auto center = std::make_shared<Panel>();
+    center->setBackgroundColor(Color(0x00000000));
+    center->layout().setFlexDirection(FlexDirection::Row);
+    center->layout().setAlignItems(Align::Center);
+    center->layout().setGap(8.f);
+    m_view = std::make_shared<SegmentedControl>();
+    m_view->setAccessibilityId("view");
+    m_view->setSegments({"World", "Game"}); // the world as the editor shows it, or the game it runs
+    m_view->setSelectedIndex(0);
+    m_view->setOnSelectionChanged([this](SegmentedControl &control) {
+        if (!m_settingView) { m_output->toolbarDidSelectView(control.selectedIndex() == 1); }
+    });
+    center->addSubview(m_view);
+
     auto capsule = std::make_shared<Panel>();
     capsule->setBackgroundColor(ThemeColor::inputDeep);
     capsule->layout().setFlexDirection(FlexDirection::Row);
@@ -118,7 +133,8 @@ void ToolbarPanelView::addSubviews() {
     m_stop->setOnClick([this] { m_output->toolbarDidTapStop(); });
     capsule->addSubview(m_stop);
 
-    addSubview(capsule);
+    center->addSubview(capsule);
+    addSubview(center);
 
     // RIGHT: the same basis 0 + grow 1 pair as on the left, with the update indicator at its end.
     auto right = std::make_shared<Panel>();
@@ -177,6 +193,14 @@ void ToolbarPanelView::setCanPlay(bool canPlay) {
 
 void ToolbarPanelView::setCanStop(bool canStop) {
     if (m_stop) { m_stop->setEnabled(canStop); }
+}
+
+void ToolbarPanelView::setShownView(bool game, bool enabled) {
+    if (!m_view) { return; }
+    m_settingView = true;
+    m_view->setSelectedIndex(game ? 1 : 0);
+    m_settingView = false;
+    m_view->setEnabled(enabled);
 }
 
 void ToolbarPanelView::setupLayout() {

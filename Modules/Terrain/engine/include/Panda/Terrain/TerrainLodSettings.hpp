@@ -4,10 +4,11 @@
 
 namespace Panda {
 
-// World settings of the terrain contribution (key "terrain" in .world,
-// World::context<TerrainLodSettings>; TERRAIN section of the settings panel): LOD and draw
-// distances (meters, terrain local space; drawDistance 0 — no limit) and widths of the outer tile
-// rings (columns; 0 — the tier is disabled, detail drops off earlier).
+// Settings of the project from the terrain contribution (the "terrain" section of
+// `.Panda/project.json`, read through GameContext::getProjectSettings; the TERRAIN section of the
+// project settings): what a frame of a terrain may cost — LOD and draw distances (meters, terrain
+// local space; drawDistance 0 — no limit) and widths of the outer tile rings (columns; 0 — the
+// tier is disabled, detail drops off earlier).
 struct TerrainLodSettings final : public Rain::Codable {
     float lod1 = 120.f;
     float lod2 = 240.f;

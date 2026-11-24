@@ -11,7 +11,7 @@ capsule in the tree prefab; a rock is a convex mesh collider. Nothing else of th
 used: a tree is not an entity.
 
 Engine part contributions: `terrain2dComponent` / `terrain3dComponent`, asset kinds
-`terrain2d` / `terrain3d` (`.terrain`), world settings `terrain` (LOD distances, tile rings)
+`terrain2d` / `terrain3d` (`.terrain`), project settings `terrain` (LOD distances, tile rings)
 and `flora` (flora distances), world system (submit, occluders, physics), static resources
 (terrain and grass shaders from `engine/resources/terrain-shaders`, materials, noise texture), script host table
 `terrain`. Editor part (`editor/`): inspector sections, terrain asset editor tab, brushes,

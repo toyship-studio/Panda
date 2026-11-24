@@ -1,6 +1,5 @@
 #pragma once
 
-#include "UI/Widgets/ViewportVeil.hpp"
 
 #include <PandaUI/PandaUI.hpp>
 
@@ -67,10 +66,6 @@ public:
     // The frame of the Scene as a texture. flipVertical=true for a render target whose origin is
     // at the bottom left (it arrives flipped along Y).
     void setSceneTexture(PandaUI::TextureHandle texture, bool flipVertical = false);
-    // false — the Game renders and the Scene keeps its last frame: the veil says so.
-    void setLive(bool live) {
-        m_veil->setShown(!live);
-    }
     // The gizmo is "over a handle"/being dragged → the LMB is its (it reads the pointer through
     // takePointer), rect-select does not start.
     void setGizmoActive(bool active) {
@@ -110,7 +105,6 @@ private:
     std::shared_ptr<PandaUI::ImageView> m_sceneImage; // displays the scene FBO texture
     std::shared_ptr<PandaUI::Label> m_placeholder;    // caption while there is no scene texture
     std::shared_ptr<PandaUI::Panel> m_marquee;        // rect-select rubber-band marquee (hidden outside a drag)
-    std::shared_ptr<ViewportVeil> m_veil;             // over the frame while the Game has the focus
     bool m_pressed = false;                           // LMB is held (rect-select drag capture)
     bool m_dragging = false;                          // the press left the click slop: it stretches a rectangle
     bool m_dragAdditive = false;                      // shift/ctrl/super at the drag start (adding to the selection)

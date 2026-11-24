@@ -1,8 +1,14 @@
 #include "Panda/Extensions/ComponentTypes.hpp"
+#include "Panda/GameLogic/World.hpp"
 
 #include <Foundation/Foundation.hpp>
 
 namespace Panda {
+
+bool worldHasMain(Entity entity, entt::id_type typeId, bool (*isMain)(Entity)) {
+    World *world = entity.getWorld();
+    return world != nullptr && world->findMain(typeId, isMain).isValid();
+}
 
 void ComponentTypeRegistry::add(ComponentType type) {
     PND_ASSERT_F(find(type.name) == nullptr, "COMPONENT TYPE %s REGISTERED TWICE", type.name.c_str());

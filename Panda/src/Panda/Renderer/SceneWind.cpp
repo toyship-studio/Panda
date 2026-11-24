@@ -40,12 +40,12 @@ void SceneWind::apply(const SceneWindSettings &settings) {
     // fields below, the wind block, the modules that read the settings.
     const bool enabled = ShaderFeatures::isEnabled(ShaderFeature::Wind);
     if (!enabled) { s_settings.strength = 0.f; }
-    // set dedups by value — apply may be called every frame; the hint is shown in the
-    // editor at a disabled material field (next to it — a link button to the settings).
-    const char *hint = enabled ? "Set by scene wind"
+    // set dedups by value — apply may be called every frame; the hint is shown in the editor at a
+    // disabled material field (next to it — a link button to the wind of the world).
+    const char *hint = enabled ? "Set by the wind of the world"
                                : "The wind feature is off in this project (Project Settings > Rendering)";
-    MaterialSystemValues::set("windStrength", s_settings.strength, hint, "WIND");
-    MaterialSystemValues::set("windGustiness", s_settings.gustiness, hint, "WIND");
+    MaterialSystemValues::set("windStrength", s_settings.strength, hint, "windComponent");
+    MaterialSystemValues::set("windGustiness", s_settings.gustiness, hint, "windComponent");
 }
 
 const SceneWindSettings &SceneWind::settings() {

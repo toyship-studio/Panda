@@ -5,6 +5,7 @@
 #include "Panda/Renderer/PostprocessingPipeline.hpp" // projectSunToScreen
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
+#include "Panda/Renderer/RenderingSettings.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
 
 #include <Foundation/Profile.hpp>
@@ -16,26 +17,28 @@ namespace Panda {
 
 namespace {
 
-    // The lights of the frame: the ambient of the world settings; from the components — the first
-    // enabled sun and the lamps (point lights and spots), up to RENDERER_MAX_POINT_LIGHTS of those
+    // The lights of the frame: the ambient of the main sky (none without a sky); the main sun,
+    // when it is on; the lamps (point lights and spots), up to RENDERER_MAX_POINT_LIGHTS of those
     // nearest to the camera (the position and the direction come from the world transform).
     void collectLights(World &world, const glm::vec3 &cameraPosition, bool withLamps, WorldLightingData &lighting) {
-        const WorldLightingSettings &settings = world.getSettings().lighting;
-        lighting.ambientColor = settings.ambientColor;
-        lighting.ambientIntensity = settings.ambientIntensity;
+        if (Entity sky = world.findMain<SkyComponent>(); sky.isValid()) {
+            const SkyComponent &component = sky.getComponent<SkyComponent>();
+            lighting.ambientColor = component.ambientColor;
+            lighting.ambientIntensity = component.ambientIntensity;
+        } else {
+            lighting.ambientIntensity = 0.f;
+        }
 
-        auto suns = world.getAllEntitiesWith<DirectionalLightComponent, TransformComponent>();
-        for (auto entityHandle : suns) {
-            if (!world.isValidEntt(entityHandle)) { continue; }
-            auto &lightComponent = suns.get<DirectionalLightComponent>(entityHandle);
-            if (!lightComponent.isEnabled || lightComponent.intensity <= 0.f) { continue; }
-            const glm::mat4 worldTransform = world.getWorldSpaceTransformMatrix(world.entity(entityHandle));
-            const glm::vec3 forward = glm::normalize(glm::vec3(worldTransform * glm::vec4(0.f, 0.f, -1.f, 0.f)));
-            lighting.directionalLight.direction = -forward;
-            lighting.directionalLight.color = lightComponent.color;
-            lighting.directionalLight.intensity = lightComponent.intensity;
-            lighting.directionalLight.castShadows = lightComponent.castShadows;
-            break;
+        if (Entity sun = world.findMain<DirectionalLightComponent>(); sun.isValid()) {
+            const DirectionalLightComponent &light = sun.getComponent<DirectionalLightComponent>();
+            if (light.isEnabled && light.intensity > 0.f) {
+                const glm::mat4 worldTransform = world.getWorldSpaceTransformMatrix(sun);
+                const glm::vec3 forward = glm::normalize(glm::vec3(worldTransform * glm::vec4(0.f, 0.f, -1.f, 0.f)));
+                lighting.directionalLight.direction = -forward;
+                lighting.directionalLight.color = light.color;
+                lighting.directionalLight.intensity = light.intensity;
+                lighting.directionalLight.castShadows = light.castShadows;
+            }
         }
 
         // A project without the `lamps` feature has none: its shaders do not read them.
@@ -86,14 +89,19 @@ namespace {
         }
     }
 
-    // Version of the occluder source: a change in any system rebakes the occlusion volume.
+    // Version of the occluder source: a change in any system rebakes the occlusion volume. 0 —
+    // nothing of the world occludes (no system has a source in it): the volume is not made.
     uint64_t occluderVersion(World &world) {
         uint64_t version = 1469598103934665603ull;
+        bool any = false;
         for (const WorldSystem &system : GameContext::getExtensions().worldSystems.systems()) {
             if (system.occluderVersion == nullptr) { continue; }
-            version = (version ^ system.occluderVersion(world)) * 1099511628211ull;
+            const uint64_t source = system.occluderVersion(world);
+            if (source == 0) { continue; }
+            version = (version ^ source) * 1099511628211ull;
+            any = true;
         }
-        return version;
+        return !any ? 0 : version != 0 ? version : 1;
     }
 
 } // namespace
@@ -113,12 +121,14 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
         m_data.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
         m_data.ambientIntensity = 1.f;
     }
-    if (features.has(ShaderFeature::Environment)) {
-        const WorldLightingSettings &settings = world.getSettings().lighting;
-        m_data.environment.map = settings.environmentMap.as<TextureAsset>();
-        m_data.environment.intensity = settings.environmentIntensity;
-        // The light of the sky for the lit shaders, baked when the world gets another map. A world
-        // without a map has the built-in gradient for a sky, and that sky lights it the same way.
+    Entity mainSky = world.findMain<SkyComponent>();
+    if (features.has(ShaderFeature::Environment) && mainSky.isValid()) {
+        const SkyComponent &sky = mainSky.getComponent<SkyComponent>();
+        m_data.environment.map = sky.environmentMap.as<TextureAsset>();
+        m_data.environment.intensity = sky.environmentIntensity;
+        // The light of the sky for the lit shaders, baked when the sky gets another map. A sky
+        // without a map has the built-in gradient, and that sky lights the world the same way; a
+        // world without a sky has no light of it.
         m_environment.update(m_data.environment.map ? m_data.environment.map : StaticResources::defaultSkyTexture);
         m_data.environment.lighting = m_environment.atlas();
     }
@@ -128,11 +138,24 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     // A point at infinity: behind the camera or far outside the frame z = 0, the flares are
     // turned off.
     m_sunScreen = sun.intensity > 0.f ? projectSunToScreen(viewProj, sun.direction) : glm::vec4(0.f);
-    const WorldGraphicsSettings &graphics = world.getSettings().graphics;
     // The shadow cascades are fitted to the camera and the sun of the frame; the view of the world
-    // draws the depth passes next, before the scene.
-    CascadedShadowMap::Settings shadowSettings = graphics.shadows;
-    if (!features.has(ShaderFeature::Shadows)) { shadowSettings.enabled = false; }
+    // draws the depth passes next, before the scene. The maps are the project's, the look the sun's.
+    TypeContext &project = GameContext::getProjectSettings();
+    const ShadowSettings &shadows = project.get<ShadowSettings>();
+    CascadedShadowMap::Settings shadowSettings;
+    shadowSettings.enabled = features.has(ShaderFeature::Shadows);
+    shadowSettings.cascadeCount = shadows.cascadeCount;
+    shadowSettings.tileSize = shadows.tileSize;
+    shadowSettings.distance = shadows.distance;
+    shadowSettings.lampTileSize = shadows.lampTileSize;
+    shadowSettings.slopeBias = shadows.slopeBias;
+    shadowSettings.normalOffset = shadows.normalOffset;
+    shadowSettings.receiverBias = shadows.receiverBias;
+    if (Entity sun = world.findMain<DirectionalLightComponent>(); sun.isValid()) {
+        const DirectionalLightComponent &light = sun.getComponent<DirectionalLightComponent>();
+        shadowSettings.strength = light.shadowStrength;
+        shadowSettings.softness = light.shadowSoftness;
+    }
     const glm::vec3 shadowLight = sun.castShadows && sun.intensity > 0.f ? sun.direction : glm::vec3(0.f);
     if (m_shadowMap.update(shadowSettings, viewProj, cameraPosition, shadowLight)) {
         m_data.shadows = m_shadowMap.data();
@@ -144,11 +167,13 @@ LightingSystem::update(World &world, const glm::mat4 &viewProj, const glm::vec3 
     );
     // Occlusion volume: a window around the camera built from the flora scattering (rebaked in the
     // background on a window shift / a flora edit / a sun rotation), read by all lit shaders.
-    OcclusionVolume::Settings occlusionSettings = graphics.occlusion;
-    if (!features.has(ShaderFeature::Occlusion)) { occlusionSettings.enabled = false; }
+    // A world where nothing occludes (no flora) has no volume: no bakes for an empty one.
+    const uint64_t occluders = occluderVersion(world);
+    OcclusionVolume::Settings occlusionSettings = project.get<OcclusionVolume::Settings>();
+    occlusionSettings.enabled = features.has(ShaderFeature::Occlusion) && occluders != 0;
     m_occlusion.update(
         occlusionSettings, cameraPosition, sun.intensity > 0.f ? sun.direction : glm::vec3(0.f, 1.f, 0.f),
-        occluderVersion(world),
+        occluders,
         [&world](const glm::vec3 &minWorld, const glm::vec3 &maxWorld, std::vector<Occluder> &out) {
             collectOccluders(world, minWorld, maxWorld, out);
         }

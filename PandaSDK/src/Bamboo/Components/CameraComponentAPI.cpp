@@ -1,9 +1,15 @@
 #include "Bamboo/Components/CameraComponentAPI.hpp"
+#include "Bamboo/Internal/MainThread.hpp"
 #include "Panda/OuterScriptHook.hpp"
 
 namespace Bamboo {
 
 namespace CameraComponentAPI {
+    void setMain(EntityHandle entity) {
+        if (!Internal::requireMainThreadApi("CameraComponentAPI::setMain")) { return; }
+        Panda::ExternalCalls::entity_SetMain(entity.id, "cameraComponent");
+    }
+
     void setPostprocessingEnabled(EntityHandle entity, bool enabled) {
         Panda::ExternalCalls::cameraComponent_SetPostprocessingEnabled(entity.id, enabled ? 1u : 0u);
     }

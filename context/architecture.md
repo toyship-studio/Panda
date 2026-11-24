@@ -140,15 +140,19 @@ and background jobs (`PandaAsync`).
   `documents.projectSettings().name`; `settingsField` registers each under its key) — `name`
   (the name of the project; a folder whose file has none is not a project and is not opened),
   `startWorld` (the world the game starts in), `shaderFeatures`, `disabledModules` (the ids of
-  the modules the project switches off) and `mcp`; the sections of modules after them, in the
-  store of the file (`PandaEditor/src/Project/Settings/ProjectSettings.hpp`,
-  `EditorSettingsTypes.cpp`). The editor scope is the same: `EditorSettings` (`viewport`,
-  `appearance`, `updates`, `externalTools`, `toolchain`), and so is the core's part of a world:
-  `WorldSettings` (`lighting`, `graphics`, `wind`; `World::getSettings`). A form of the
-  Settings window or of the world sidebar edits a copy of its part — a field, or a field of a
-  field (`graphics.fog`) — and writes that part alone into the struct as the store has it then
-  (`fieldCopy`, `writeField`, the Kit's `editSettings`), so one form never writes back what
-  another changed. The state
+  the modules the project switches off) and `mcp` — the editor's own, `editorOnly`: the export
+  does not give them to the game —; then what a frame of the game may cost, the sections the core
+  and the modules register for the game (`shadows`, `ambientOcclusion`, `occlusionVolume` —
+  `Panda/Renderer/RenderingSettings.hpp`; the Terrain module's `terrain` and `flora`). The engine
+  reads those through `GameContext::getProjectSettings()`: in the editor the store of this file
+  (an edit applies at once, Save writes it), in a game what the export put into its manifest from
+  the saved file (`RuntimeManifest::projectSettings`, `SettingsMapper::encodeGameSettings`). The
+  editor scope is the same: `EditorSettings` (`viewport`, `appearance`, `updates`,
+  `externalTools`, `toolchain`). A world has no settings: what it looks like is components of its
+  entities (the sky, the sun, the camera, the wind — "World: registry owner", "The main one of a
+  kind"). A form of the Settings window edits a copy of its part — a field, or a field of a field —
+  and writes that part alone into the struct as the store has it then (`fieldCopy`, `writeField`,
+  the Kit's `editSettings`), so one form never writes back what another changed. The state
   of the last session (`ProjectSession`: the worlds that were open, in tab order, with the pose
   of the editor camera in each, the one that was active, and what the Export window was last
   set to) is `.Panda/session.json`, outside version control. A project opens the worlds of its
@@ -159,8 +163,11 @@ and background jobs (`PandaAsync`).
   (`SystemTools::userDataDirectory()`): `settings.json`, the editor scope (`viewport`,
   `appearance`, the sections of modules), written on every change, and `session.json` (recent
   projects, the window, the dock layout: the panels and their docks, the split weights, the active
-  tab of every dock including the center, the pinned editor tabs and the dock that had the keyboard
-  focus — restored after the pinned tabs are reopened, since each one selects itself as it opens).
+  tab of every dock including the center, the open tabs of assets and of the documents of the
+  registry, what the world tab shows beside its middle and the dock that had the keyboard focus —
+  restored after the tabs are reopened, since each one selects itself as it opens; a layout saved
+  for another model of the window — `DockLayoutState::MODEL` — is not applied, the window opens
+  with the defaults).
   The stores (`TypeContext`) of both scopes are file documents (`SettingsFile`, below); they
   read and write their files with `SettingsMapper`. `ProjectLoader` is the life of the project:
   opening, creating and closing it, its modules, its script build, its shader features and the
@@ -168,7 +175,7 @@ and background jobs (`PandaAsync`).
   through `ProjectLoader::releaseOpenedProject` — the loader tells the application
   (`ProjectLoaderOutput::loaderWillCloseProject`), and everything that holds an asset of the
   project lets go while the registry is still there: the game stops, the selection is cleared,
-  the asset and entity tabs close, the Settings window closes, the previews are dropped. After
+  the asset tabs close, the Settings window closes, the previews are dropped. After
   that the documents and the registry are closed. A reference kept across this point names an
   asset the next project does not have.
 - **The assets of a project are the files of its `Assets` folder**
@@ -188,8 +195,9 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
 
 - **Model**: the source of truth: engine types plus the selection of the editor,
   `Editor::selection()` (`PandaEditorKit/Selection.hpp`): the selected entities of the world the
-  editor shows, or the selected assets of the project — one or the other — and the selected
-  entities as one body for the gizmo (the median, the entities a drag moves). One object for
+  editor shows and, apart from them, the selected assets of the project (neither takes the
+  other's place), and the selected entities as one body for the gizmo (the median, the entities a
+  drag moves). One object for
   everything editor-side: the viewport picks into it, the gizmo and the outline read it, the
   panels and the tabs show it, the editor parts of modules ask it. It calls nobody back: who
   shows the selection compares `version()` once a frame (`EditorController::syncSelection`). The
@@ -251,9 +259,22 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   system, outlines, gradients, a rounded clip) side by side.
 - **Coordinator** (`EditorController`), the workspace of an open project: it builds the chrome
   (the panels, the docks, the tabs), keeps it in step with the application once a frame and is
-  the host of the editor parts of modules (`EditorHost`). What the user does goes to the part it
-  belongs to, each the `Output` of its panels and a file of `PandaEditor/src/UI`:
-  `EntityActions` — the Hierarchy and the entity tabs (create, duplicate, copy and paste, delete,
+  the host of the editor parts of modules (`EditorHost`). **The window**: the files of the
+  project on the left, the whole height of it (the Content Browser, a list by default — the
+  project panel of VS Code and Zed); the tabs of the documents in the center; the output of the
+  builds (Output, CMake, Statistics, Profiler) in the dock under the center, hidden until it is
+  asked for (a build, its button in the strip, ⌘J — `window.toggleBottomPanel`); the right dock
+  empty unless a panel or a tab is moved there. **A world tab is the world** (`WorldEditorView`,
+  `UI/Documents`): its tree (`HierarchyPanelView`) on the left, its World view — or its Game — in the
+  middle, the inspector of its selection (`EntityEditorView`) on the right, the document outline
+  and the inspector of Interface Builder inside the tab of the file; there is no Hierarchy panel
+  and no tab of an entity. One instance of it lives in the tab of the active world and moves with
+  it (`WorldTabs::sync`); the tree and the inspector are shown and hidden by the commands of the
+  Window menu and by two buttons of the visibility strip that are not panels (`StripToggle`), and
+  whether they show and the shares of the three columns are kept with the layout. What the user
+  does goes to the part it belongs to, each the `Output` of its panels and a file of
+  `PandaEditor/src/UI`:
+  `EntityActions` — the Hierarchy and the inspector (create, duplicate, copy and paste, delete,
   reparent, rename, the transform, components, scripts; every edit a command of the world's
   history; and the prefabs: instances, Create Prefab, Unpack, Revert, Apply —
   `context/prefabs.md`, "The editor"); `AssetActions` — the Content Browser (select, create, rename, move, duplicate, import of
@@ -262,26 +283,31 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   overlay are answered by the coordinator itself. A part changes the model and EXPLICITLY asks
   the workspace to update what shows it (`refreshFromWorld`, `selectionChanged`,
   `refreshAssetPanels`; retained mode: no subscriptions, no reactivity). Panels do not know
-  about each other. An edit of an entity tab goes to the entities of that tab, whatever is
-  selected (`EntityActions::targets`: a pinned tab edits its own). A change of the selection,
+  about each other. An edit of the inspector goes to the selected entities
+  (`EntityActions::targets`); the form is built again only when the selected entities change, or
+  the world under them does (`EditorController::refreshInspector`): a file selected in the
+  Content Browser leaves the form as it is — where it is scrolled, the field with the caret. A
+  change of the selection,
   whoever made it (a pick in the viewport, a row of the Hierarchy, Add Child), reaches the
   panels at once when the chrome made it and once a frame otherwise
   (`EditorController::syncSelection` → `selectionChanged`); a single selected entity is revealed in the Hierarchy — its
   ancestors expand and the tree scrolls to its row when it is out of view
   (`HierarchyPanelView::revealEntity` → `TreeView::revealItem`, applied after the rows are
-  rebuilt). A multi-selection has no primary entity and moves nothing. The tab of the
-  Hierarchy says which document it shows: its caption is the file in front (`world.world`,
-  `Lamp.prefab` — `DockPanel::caption`, the title of the panel stays "Hierarchy" for the menus),
-  and for a prefab the tree is the tree of its root alone (`setRootEntity`).
+  rebuilt). A multi-selection has no primary entity and moves nothing. For a prefab the tree is
+  the tree of its root alone (`setRootEntity`). **A world tab comes back as it was left**: when
+  another world takes its place (`FileDocumentsOutput::documentsWillActivateWorld`) the tab keeps
+  what it shows of its world — the open branches of the tree, where it is scrolled, its search, the
+  selected entities (`WorldTabState`; `HierarchyPanelView::captureState`) — and gets it back when
+  its world is active again (`EditorController::worldDidActivate`). The history of the selection
+  (Back and Forward of the toolbar) is of the entities of the world in front, and another world
+  starts another history.
   **A selection gesture of the viewport is one thing from the press to the release**
   (`ViewportView`, `RectSelectPhase`): the press picks what is under the pointer, a move within
   the click slop changes nothing (the hand trembles), a move past it stretches a rectangle, the
   release commits — a click with the point of the press, so a click selects one entity however
-  the view moved under it. The tabs the selection opens wait for the release
-  (`EditorController::m_tabsAwaitGesture`, `ViewportPanel::isSelecting`): a tab that opens
-  resizes the viewport, and a viewport that changes its frame under a pressed button would turn
-  the click into a rectangle. A gesture whose view did change its frame is dropped
-  (`RectSelectPhase::Drop`), not committed.
+  the view moved under it. The inspector is a column of the tab: a selection does not change
+  the frame of the World view. A gesture whose view did change its frame (the window was resized under
+  it) is dropped (`RectSelectPhase::Drop`), not committed.
 - **Application** (`EditorLayer`): the frame and the events, and the owner of the parts the
   editor is made of — the file documents (`documents()`: the open worlds, the settings, the
   assets) and what Save and a reload from disk do to them (`documentActions()`), the project (`project()`),
@@ -297,10 +323,10 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   parts, gives each frame and each event of the window to the one it belongs to, and keeps what
   is between them.
   - `PlaySession` — the game inside the editor: the playing copy of the active world, the UI of
-    the game over the Game surface, the input of the window while the Game tab has it, the
-    world a script asks for, a script that quits. It knows the game and the viewports, not the
-    editor around them: `EditorLayer::play` and `stop` put the editor's own steps (the
-    selection, the Scene, the panels, the Game tab) around `begin` / `run` / `end`.
+    the game over the Game surface, the input of the window while the Game has it, the world a
+    script asks for, a script that quits. It knows the game and the viewports, not the editor
+    around them: `EditorLayer::play` and `stop` put the editor's own steps (the selection, the
+    World view, the panels, the Game in the middle of the world tab) around `begin` / `run` / `end`.
   - `DocumentActions` — Save, Save All, the reload from disk, the revert and the
     unsaved-changes gate, written once over `FileDocument` (below).
   - `DiskWatch` — the files the editor works on, followed: what changes on disk is taken by
@@ -314,7 +340,7 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
     forgets projects through the loader and says what came of it in its status line.
   The world on screen is not a state of its own: `shownWorld()` is the playing copy while the
   game plays and the world being edited otherwise, and what points at a world — the selection,
-  the Scene — is pointed again where that changes (Play, Stop, another active world).
+  the World view — is pointed again where that changes (Play, Stop, another active world).
 
 #### The document model
 
@@ -364,18 +390,19 @@ world with the starter content (not an edit: the world is clean until it is touc
 `closeWorld` drops one — its neighbor becomes the active one, and after the last world none
 is. A project opens with the worlds of its session, and with none when the session names none.
 With no world open the center of the editor is empty but for a quiet "+" (New World, the
-panels), the Hierarchy says so, Play is off, and the panels have no world to read
+panels), Play is off, and the panels have no world to read
 (`EditorController::setActiveWorld(nullptr)`); the engine side of the editor points at an empty
 world that is not a document (`EditorLayer::editingWorld`), so nothing there needs to know the
-case. `EditorLayer` follows the list through `documentsDidActivateWorld` (another world is
-shown, or none: the selection, the entity tabs and the panels reset) and `documentsDidLoadWorld`
+case. `EditorLayer` follows the list through `documentsWillActivateWorld` (the tab of the world
+that goes keeps what it shows of it), `documentsDidActivateWorld` (another world is shown, or none:
+the panels follow, and the tab of the new one gets back what it kept) and `documentsDidLoadWorld`
 (the active world got another content). A world shown for the first time brings no place for
 the editor camera: the editor looks at it from its main camera (`documentsLookAtWorld`). The
 game plays a copy of the active world, so that world does not change while the game runs: a tab
 click is refused, a command that changes it (open, new, closing the active tab) stops the game
 first. The active document may be a prefab (`EditorLayer::isEditingPrefab`): everything that
-edits a world edits it, Play is off, the settings of the world (the sidebar of the viewport)
-are not offered — a prefab has none — and the entity actions keep its one root (new entities,
+edits a world edits it, Play is off, the tree shows its one tree, and the entity actions keep
+its one root (new entities,
 pasted ones and models go under it; it is not deleted, moved or duplicated). A saved prefab
 reaches the instances in the other open documents at once
 (`AssetHandlerEditor::prefabChanged`).
@@ -453,9 +480,8 @@ editor that is installed as an application only is reached through the command l
 inside its bundle. An editor that cannot be told a line opens the file.
 
 A tab that edits a file of the project is titled with the name of that file (`world.world`,
-`bark.mat`): the title answers "what will Save write". The tabs that are views or tools keep
-the name of what they show — an entity tab the entity, the Game and the Plugins tabs — and
-their file is one right-click away.
+`bark.mat`): the title answers "what will Save write". The tabs that are tools keep the name of
+what they show — the Plugins and the UI Gallery tabs.
 
 When the selected tab of a dock closes, the tab shown before it comes back
 (`DockManager::lastShownIn`; with none, the tab that took its place in the row). A closed
@@ -470,27 +496,22 @@ The tab documents:
   world file (a world without a file yet asks for one), closing the tab closes the world (with
   the question when it has edits). `WorldTabs` is the whole of it: the tabs follow the loader's
   list and the active world follows the selected tab (`WorldTabs::sync`, once a frame: a tab
-  callback never rebuilds the docks it is called from). The editor has one viewport: it lives in the tab
-  of the active world (the content of a world tab is a host panel, the viewport is re-parented
-  into the active one), so a world tab stays in the center (`DockPanel::movable`; it is dragged
-to another place of its bar only). World tabs
-  are reopened from the project session, not from the saved layout (`DockPanel::restored`); the
-  layout only remembers that a world was in front. The settings of the active world are the sidebar of
-  the viewport (the N-panel of Blender): the sections of the world scope over the world's
-  context, opaque, shown and hidden by the overlay button and Window → World Settings, remembered
-  in the layout. Edits are undo steps of the world (`SettingsUpdate<T>`, Kit
-  `commitSettings<T>`); the sidebar rereads the world on load, on Play/Stop and after undo. The
-  "Settings" link under a system field of a material opens it at the section of that value
-  (`MaterialSystemValues::section`).
-- the **Game** (`GameDocument`, a document type `game`): the frame of the game — the main camera
-  of the world, the game UI and the game input, no editor layer; see "The Scene and the Game"
-  below. Nothing to save or undo; opened by Play, Window → Game and the "+" of a dock.
-- an **entity tab** (`EditorTabs::EntityDocument`): a view of the world document (Save and the
-  file are the world's, no dirty dot of its own) — the form of
-  `EntityEditorView` over the live targets: the name, the transform and the scripts are the
-  form's own, every component section comes from `componentInspectors` — the core registers
-  its camera, lights, sprite, meshes and sky there (`registerCoreComponentInspectors`) the way
-  a module registers its components, and there is no other path. A script section is never
+  callback never rebuilds the docks it is called from). What a world tab shows — its tree, its
+  World view or its Game, its inspector (`WorldEditorView`) — is one instance that lives in the tab of
+  the active world (the content of a world tab is a host panel, the view is re-parented into the
+  active one), so a world tab stays in the center (`DockPanel::movable`; it is dragged to another
+  place of its bar only). World tabs are reopened from the project session, not from the saved
+  layout (`DockPanel::restored`); the layout only remembers that a world was in front. A world
+  has no settings of its own: how it looks is components of its entities ("The main one of a
+  kind" below), edited in its inspector. A system field of a material (the wind) names the
+  component of the world that sets it, and its link selects the main one of it
+  (`MaterialSystemValues::component`, `EditorHost::showMain`).
+- the **inspector** of a world tab (`EntityEditorView`, not a document of its own: Save, Undo
+  and the dirty dot are the world's) — the form of the selected entities: the name, the
+  transform and the scripts are the form's own, every component section comes from
+  `componentInspectors` — the core registers its camera, lights, sprite, meshes, sky and wind
+  there (`registerCoreComponentInspectors`) the way a module registers its components, and
+  there is no other path. A script section is never
   empty: it shows the published fields of the class, or says that the class publishes none and
   how to publish one (`PANDA_FIELD`), or — for a class the loaded script build does not have —
   that the script is not in the build. A field is a row; a list field is a header (the count,
@@ -504,15 +525,17 @@ to another place of its bar only). World tabs
   source — a row of another list does not take it) onto another row and takes its place. A link
   under the fields opens the source of the class in the
   external editor (`EditorHost::scriptSource`: the file of `Scripts/` with its
-  `REGISTER_SCRIPT`). The forms are read again when the scripts are rebuilt
-  (`ProjectLoaderOutput::loaderDidReloadScripts`). The edits dirty the world and
-  go into its stack; adding and removing a component go through a per-tab proxy that
-  substitutes the selection with the tab's targets;
-- an **asset tab** (`EditorTabs::AssetDocument`): the document of the asset — dirty state, Save
-  and revert through `AssetDocuments`, the undo stack per asset, the form of `AssetEditorView`
-  with the editor of the kind from `EditorExtensions::assetKinds` (the core kinds — texture,
-  material, postprocessing, mesh — register theirs in `CoreAssetEditors` the same way as the
-  modules);
+  `REGISTER_SCRIPT`). The form is read again when the scripts are rebuilt
+  (`ProjectLoaderOutput::loaderDidReloadScripts`). The edits dirty the world and go into its
+  stack;
+- an **asset tab** (`EditorTabs::AssetDocument`, a tab of the center): the document of the
+  asset — dirty state, Save and revert through `AssetDocuments`, the undo stack per asset, the
+  form of `AssetEditorView` (a column of the width a form reads at, in the middle of a tab of any
+  width) with the editor of the kind from `EditorExtensions::assetKinds` (the core kinds —
+  texture, material, postprocessing, mesh — register theirs in `CoreAssetEditors` the same way
+  as the modules). It opens by a double click on the file (Open in its menu, a double click on a
+  well that names the asset, Go to: `EditorHost::openAsset`); a click only selects. A world or a
+  prefab opens in a world tab, a file the editor has no form for in the external editor;
 - the **project settings** (`ProjectSettingsDocument`): `.Panda/project.json` — the sections of
   the project scope, its own undo stack, dirty (the flag lives with the file document) until
   Save or the close question, revert rereads the file; a saved change of the shader features recompiles the shaders of the project
@@ -600,10 +623,11 @@ dragged as what it holds: `folder` with the ids of every asset in it and under i
 the browser shows names (`nameLess`: the case does not matter, a run of digits is a number). The
 type of a folder is its own on purpose: a target has to ask for many assets to get them (a list
 field of a script), and a well or the viewport, which take `asset.<kind>`, do not react to a
-folder. A selection of several assets is dragged into the form of an entity whose tab is kept
-(pinned): selecting assets opens their own preview tab next to it and leaves a kept tab alone.
-A structural edit of a form — a script added, a row of a list — rebuilds the tab that asked
-(`EditorTabs`), not the tab of the selection: the selection may be those assets.
+folder. The selection of the browser is its own (`Selection::assets`, apart from the entities of
+the world): a click on a file selects it there and leaves the inspector of the world tab as it
+is, so a selection of several assets is dragged into a field of the entity it shows. A
+structural edit of the form — a script added, a row of a list — builds the inspector again
+(`EditorController::refreshInspector`).
 
 What is dragged within the browser onto a folder — a folder cell of the grid, a folder row of
 either tree, a crumb of the path — moves there; the folder under the pointer wears the drop
@@ -622,16 +646,15 @@ when the settings have an edit of their own that is not saved. After a move the 
 on the moved assets; the icons stay in the folder they show and the moved cells leave it (Finder,
 Unity), the list opens the folder they went into (VS Code).
 
-Selection opens a preview tab in the right dock (replaced by the next selection, pinned by a
-double click or an edit). A world is a document, not an asset with parameters: a click on a
-`.world` in the Content Browser shows it in the preview tab of the center (`WorldTabs::open`, the
-title in italics; there is one such tab, the next world shown this way takes its place), a
-double click on the file or on the tab keeps it, and so does an edit of the world; a world that
-is open only comes forward, and while the game plays a click only selects the file. A world tab
-is dragged to another place of its bar, not to another dock (`TabDrag::WithinBar`): the one
-viewport lives in the center. The documents of `EditorExtensions::documentTypes` (the Plugins
+A click on a file selects it; a double click opens its document
+(`ContentBrowserOutput::contentDidRequestOpen` → `EditorController::openAsset`): a `.world` or a
+`.prefab` in a world tab (`WorldTabs::open`; a world that is open only comes forward), an asset
+with a form in a tab of its own (`EditorTabs::openAsset`), a file without a form in the external
+editor. There are no preview tabs: a tab is a document that was asked for. A world tab is
+dragged to another place of its bar, not to another dock (`TabDrag::WithinBar`): what a world
+tab shows lives in the center. The documents of `EditorExtensions::documentTypes` (the Plugins
 tab; modules may add theirs) open from the "+" of any dock and from the menu bar, one instance
-per type, and are restored with the layout.
+per type, and are restored with the layout, as the asset tabs are.
 
 **The Settings window.** The editor settings, the project settings and the keymap are not tabs:
 they are the pages of one window over the main one (`SettingsWindowView`, `UI/SettingsWindow`),
@@ -660,21 +683,44 @@ thread waiting for a drawable forever. The menu follows Zed: File → Settings h
 Settings (Cmd+,), Open Project Settings and Open Keymap — the pages — and Open Settings File /
 Open Project Settings File / Open Keymap File, which open `settings.json`,
 `.Panda/project.json` and `keymap.json` in the external editor (the editor has no text editor
-of its own; a file never written is written first). Window → World Settings toggles the
-viewport sidebar, Window → Plugins opens the Plugins tab. Undo/redo go to the document of the
-tab with the focus; a side dock without a document (Hierarchy) means the world; a viewport
-editing session (the terrain brush) means the document of its asset.
+of its own; a file never written is written first). The Window menu shows and hides the parts
+of the window — Files (⌘0), Hierarchy (⌥⌘1), Inspector (⌥⌘0), Bottom Panel (⌘J) — switches the
+middle of the world tab (World, Game) and opens the Plugins tab. Undo/redo go to the document of
+the tab with the focus — the tree, the World view and the inspector of a world tab mean that
+world; a side dock
+without a document (the Content Browser) means the world in front; a viewport editing session
+(the terrain brush) means the document of its asset.
 
-Limits: an asset form is built only for a single selected asset. With several entities selected
-the inspector shows the primary entity, marks the fields that differ as "mixed" and applies an
-edit to all selected entities. Entity selection and asset selection are mutually exclusive.
+Limits: an asset tab shows one asset. With several entities selected the inspector shows the
+primary entity, marks the fields that differ as "mixed" and applies an
+edit to all selected entities. The entities of the world and the assets of the browser are
+selected apart: one does not take the other's place.
 
-#### The Scene and the Game
+#### The World view and the Game
 
 Two viewports over one world (`PandaEditor/src/Viewport/EditorViewports.hpp`), the model of
-Unity's Scene and Game views:
+Unity's Scene and Game views — both in the middle of the world tab, one at a time
+(`WorldEditorView::showGame`): the switch **World | Game** of the toolbar goes from one to the
+other, Play shows the Game, Stop the World view. The game plays in the tab of its world, so the
+tree and the inspector show the playing copy while it runs (Unreal plays in the viewport of its
+level the same way). The editor has no "scene": the document is a world, and the left side of
+the switch is that world as the editor shows it. In the code the two are `ViewportKind::Scene`
+(`SceneViewport`, `ViewportPanelView`) and `ViewportKind::Game`; what a user and a tool see is
+`World` (`screenshot` with `view: "world"`, `viewport/world` of the `ui` tool).
 
-- **Scene** — the editor's view of the active world through the editor camera: selection and its
+- **The panels around the middle belong to what it shows** (`EditorController::showView`). The
+  docks of the window and the two columns of the tab — the files, the tree, the inspector, the
+  bottom panel — are shown and hidden by the same buttons and keys in both views, and each view
+  keeps the set it was left with: the game may have the whole window while the world keeps its
+  tree and its inspector, and Play and Stop go from one to the other with no panel to hide or to
+  bring back (Unity's Maximize on Play, without the option: what is hidden around the Game is
+  what the next Play hides; a field watched in the inspector while the game runs stays there the
+  same way). The Game has a set of its own once it differs from the World view's; until then it
+  shows with what is open. Both are in the layout of the session (`DockLayoutState::gamePanels`
+  beside the flags of the World view). The output of a build Play waits for is not a panel the
+  user asked for: it comes for the build and goes when the build has made the game
+  (`showBuildBeforePlay` / `buildBeforePlayEnded`); a failed build leaves it, with the errors.
+- **World** — the editor's view of the active world through the editor camera: selection and its
   outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
   The outline is made in two steps: the selected entities, each with everything under it (a
   model is an entity per node and its root has no geometry of its own), are drawn as a
@@ -691,38 +737,38 @@ Unity's Scene and Game views:
   (`EditorViewportSettings`, the `viewport` section of the editor settings).
   It is the viewport in the tab of the active world ("The document model" above). In EDIT it
   shows the editing world; in PLAY the playing copy, as it runs (what a separate Simulate mode
-  used to do: Simulate is gone, the Scene during Play is it).
+  used to do: Simulate is gone, the World view during Play is it).
 - **Game** — the frame of the game: the main camera, the game PandaUI on top (`GameUI` draws
   its main window into the output of the Game, after the frame of the game is composed there),
   the input of the game (`Panda::Input` and the game UI get the game's events while the Game
-  renders; `Input`'s viewport frame is always the Game tab's). No editor layer ever lands in
+  renders; `Input`'s viewport frame is always the Game surface's). No editor layer ever lands in
   it. In EDIT it is a still view of the main camera over the editing world; a world without a
   main camera is shown through the editor camera with a caption.
-- **One world render per frame: the viewport in focus.** The Scene and the Game are not
-  rendered together. The world is drawn once, through one `WorldView` (`EditorViewports`) sized
-  to the viewport that is *live*: the one the user works in — the viewport whose surface had
-  the focus last (a click on it; Play gives the focus to the Game, Stop back to the Scene) —
-  when its tab is on screen (the selected tab of a visible dock), otherwise the other one.
-  Every tab owns its output (`ViewportSurface`: the composite of the frame is a view over the
-  output of the live one). The viewport that is not live keeps its last frame under a veil
-  (`ViewportVeil`: a light gray over the picture and a small white caption, "Not rendering:
-  the Scene has the focus"); the veil takes no input, so a click on the surface under it gives
-  it the focus and it renders from the next frame. While the Scene has the focus in PLAY the
-  game goes on — it is simulated, its UI is updated — only its picture is not drawn. Two live
-  cameras would mean a second view of the world — its targets and passes, a second fit of the
-  camera-dependent state (CSM, exposure, terrain LOD, the occlusion window) — every frame, for
-  a picture the user is not working with: not done.
-- The editor edits or plays (`EditorLayer::play` / `stop`); Play opens (or raises) the Game tab and gives it the focus, Stop
-  raises the Scene and gives the focus back to it. Edits made in PLAY land in the playing copy
-  and are discarded on Stop, as before: the tabs change where one looks, not what survives.
+- **One world render per frame: the viewport the tab shows, while it is on screen.** The World
+  view and the Game are never on screen together, and the world is drawn once, through one
+  `WorldView` (`EditorViewports`) sized to the viewport that is *live*: the one the middle of the
+  world tab shows. Each surface owns its output (`ViewportSurface`: the composite of the frame
+  is a view over the output of the live one) and keeps its last frame for the moment it shows
+  again. While the World view is shown in PLAY the game goes on — it is simulated, its UI is
+  updated — only its picture is not drawn. Behind the tab of another document (a material)
+  nobody looks at the world: it is **not drawn at all** (`EditorViewports::isOnScreen`) — the
+  game still runs — and the counters of the frame are zero. Two live cameras would mean a second view of the world — its targets and passes, a
+  second fit of the camera-dependent state (CSM, exposure, terrain LOD, the occlusion window) —
+  every frame, for a picture the user is not working with: not done.
+- The editor edits or plays (`EditorLayer::play` / `stop`); Play shows the Game in the world tab
+  and gives it the focus, Stop shows the World view. Edits made in PLAY land in the playing copy
+  and are discarded on Stop: the switch changes where one looks, not what survives.
 - **`Panda::Input` is the game's input, and only the game's.** `EditorLayer::onEvent` gives
   every input event either to the game or to the editor chrome, never to both, and marks the
   editor's as handled so `Application` feeds `Input` nothing of them. In Play, while the Game
-  renders, the game's are the pointer over the Game surface and the keys of the focused Game tab
-  (`PlaySession::ownsEvent`; a button's release goes where its press went, so a drag may cross the
-  surface edge either way); the game UI sees them first, then `Input`. A click on the game
-  focuses the tab. The game *has* the input (`Input::setFocused`, `PlaySession::updateInput`)
-  while the Game tab renders and has the focus, the window is focused and no modal is up: a
+  is on screen, the game's are the pointer where the Game surface is what lies under it — a menu,
+  a popup or a dialog of the editor over the frame takes its own clicks
+  (`EditorController::isGameUnderPointer`, the hit test of the UI, not the rectangle of the
+  surface) — and the keys while that surface has the focus (`PlaySession::ownsEvent`; a button's
+  release goes where its press went, so a drag may cross the surface edge either way); the game
+  UI sees them first, then `Input`. A click on the game focuses it. The game *has* the input
+  (`Input::setFocused`, `PlaySession::updateInput`) while the Game is on screen and has the
+  focus, the window is focused and no modal is up: a
   transition is the scripts' `onApplicationFocus`, the loss releases what the game held
   (`Input::releaseAll`) and the cursor lock (it locks again on focus — `setCursorLocked` is ignored
   while the game has no focus). **A locked cursor is the game's alone**: it points at nothing, so
@@ -731,7 +777,7 @@ Unity's Scene and Game views:
   (`PlaySession::ownsEvent`: the lock moves it to the middle of the window, which may lie outside
   the Game surface). A game with a locked cursor frees it itself — for its menu — and loses it
   with the focus of the window.
-- **The editor's 3D input lives in the Scene surface** (`ViewportView`, a PandaUI view), not in
+- **The editor's 3D input lives in the surface of the World view** (`ViewportView`, a PandaUI view), not in
   `Panda::Input`: it collects the flight of the editor camera (WASD while it has the focus, a
   right-button drag or a trackpad gesture rotate, the wheel zooms) and the pointer, and the
   engine takes them once a frame (`takeNavigation` → `CameraController::Navigation` →
@@ -748,8 +794,8 @@ Unity's Scene and Game views:
   the selection mask, the id buffer), the surfaces, the editor camera, the gizmo and the
   selection (`SceneViewport`), the grid and the helpers, and renders the frame of the live
   viewport: `beginFrame` (the camera of the frame) → `World::update` (the simulation, in Play) →
-  `render` (the world through the view, the editor passes of the Scene, the look of the main
-  camera, the composite into the output).
+  `render` (the world through the view, the editor passes of the World view, the look of the
+  main camera, the composite into the output).
 
 #### Asset previews
 
@@ -784,7 +830,7 @@ Code: `PandaEditor/src/Preview/` (`AssetPreviews`, `PreviewStage`, `PreviewRende
   lease pins it and, for an sRGB format (RGBA8 or BC7), shows a display copy made by a blit.
 - **The view is a little viewport** (`AssetPreviewView`): a two-finger swipe of the trackpad or
   a drag with a mouse button orbits, the wheel or a pinch zooms, a double click returns to the
-  first view; a material has the menu of primitives in the corner. The gestures are the Scene's:
+  first view; a material has the menu of primitives in the corner. The gestures are the World view's:
   the same angles, so the same hand turns both. A swipe belongs to the view it began over
   (`Context::handleScroll`): a form scrolling a preview under the fingers does not start
   turning it.
@@ -879,7 +925,7 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 - **Where a key works.** A key no view used reaches the registry through
   `Context::setUnhandledKeyDownHandler` — never while a text field has the focus or an overlay
   is open. A command of `CommandScope::World` (the entity commands) runs by its key only while
-  the world has the keyboard — the Scene surface or the Hierarchy (`worldHasKeyboard`); with
+  the world has the keyboard — the surface of the World view or the Hierarchy (`worldHasKeyboard`); with
   the focus in the Content Browser or nowhere the same keys are not theirs. The palette, a menu
   and the MCP server run a command by id whatever has the keyboard. Two commands on one chord
   are allowed: the first whose handler applies takes the key. A selection that opens a tab
@@ -892,9 +938,10 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
 - **An edit of the world is a command of its history**, the name of an entity included
   (`EntityActions::rename` commits the tag component) and a drop onto the root of the Hierarchy
   (`HierarchyCommand` with no parent): what the user did, Undo takes back. When the world
-  changes under the forms — undo, redo, a pasted or reset component — every entity tab reads its
-  targets again (`EditorTabs::refreshEntityForms`, from `refreshFromWorld`); an edit made in a
-  form does not go that way, since a rebuild would take the field from under the caret.
+  changes under the form — undo, redo, a pasted or reset component — the inspector reads the
+  selected entities again (`EditorController::refreshInspector`, from `refreshFromWorld`); an edit
+  made in the form does not go that way, since a rebuild would take the field from under the
+  caret.
 - **A component has a text form** — the object a world file holds for it,
   `{"pointLightComponent": {...}}` (`WorldMapper::saveComponent` / `loadComponent`, by the type
   registry of the engine, so a module's component has it too). The menu of a component section
@@ -907,10 +954,9 @@ popup and modal" in `context/pandaui.md`). The rule for choosing one in the edit
   are written in place.
 - **An asset tab holds its asset.** The editor frees every asset nobody references at the end
   of a frame (`EditorLayer::onUpdate`: `cleanup`). An open tab is a reference
-  (`AssetHandlerEditor::setAssetOpenedInTab`; a preview tab that takes another asset in place
-  reports the one it leaves and the one it takes): without it a material no entity uses was
-  read from its file again for every frame of its preview, and an edit made in its tab was gone
-  with the frame.
+  (`AssetHandlerEditor::setAssetOpenedInTab`): without it a material no entity uses was read
+  from its file again for every frame of its preview, and an edit made in its tab was gone with
+  the frame.
 - **The Output panel is for what the user has to know.** A line of `LOG_*_EDITOR` is written
   as a sentence that names the file and, for an error, says what to do; a successful load of an
   asset is not news (`LOG_TRACE` on the console). The editor log is the only source of the
@@ -1037,7 +1083,7 @@ What follows from the rules:
   the view) — into a texture of the view (the editor: the composite reads it) or into a target
   of the caller (the runtime: the screen; a preview: its display texture). Callers: the runtime
   (`RuntimeLayer`: update → render → developInto the screen → the game UI), the editor
-  (`EditorViewports`, "The Scene and the Game" above), the previews (`PreviewRenderer`).
+  (`EditorViewports`, "The World view and the Game" above), the previews (`PreviewRenderer`).
 - **A Miren frame is a list of views (passes) in the order they were made.** `Miren::addView`
   describes a pass — its target, viewport and what entering it clears — and answers with an id
   for the draws and the view inputs of this frame; the views are executed in the order they
@@ -1098,14 +1144,34 @@ What follows from the rules:
   the world and is not the id of an asset (`World::newEntityId`); `changeEntityId` gives an
   entity another id together with everything that names it. A new component is one line of
   type registration (`CoreComponentTypes.cpp` in the core, or the registration function of a
-  module). The copy carries the settings of the world scope, the core's and the modules' alike
-  (`SettingsMapper::copy`).
-- The per-world state of systems and the settings of the world scope live in the world's
-  `TypeContext`: `World::context<T>()` (creates the value on first access), `findContext<T>`,
-  `eraseContext<T>`, `context()` for the store itself. The state of the systems lives as long as
-  the world and `clear()` does not touch it; the settings are the registry's: they exist from
-  the world's birth, `clear()` resets them and drops the foreign sections, loading resets them
-  before reading (`SettingsMapper::reset`).
+  module).
+- **The main one of a kind.** A world has no settings: what it looks like is components of its
+  entities. A world uses one camera, one sun, one sky and one wind (`BaseComponents.hpp`): of each
+  kind the component with `isMain` is the one it uses (`World::findMain<T>`), the others are
+  spares — a sky of the night, the camera of a cutscene — until `World::setMain<T>(entity)` (a
+  script: `SkyComponentAPI::setMain`, … — `entity_SetMain` of the ABI) makes one of them the main
+  one and the others spares. The type of such a kind is registered with `mainComponentType<T>`
+  (`ComponentType::isMain` / `setMain`), and nothing that adds to a world takes the place of what
+  the world uses: a component made by name next to the main one is a spare, in a world without
+  one the main one (the editor's Add Component the same way — `toggleComponentPresence`), and so
+  is a **copy** that joins the world — a duplicate, a paste, an instance of a prefab
+  (`World::joinAsSpares`, from `duplicateEntity` / `importEntity` / `instantiate`): the duplicate
+  of the camera is a spare camera, a prefab with a camera put into a world that has one brings a
+  spare. Two main ones are therefore a mistake only a file can hold — a component is the main one
+  unless its file says otherwise: the reader of a world names them in a warning
+  (`WorldMapper`, `World::findMains`), the inspector marks the one that is not used, and which one
+  the world uses is not a rule to count on (the order of its registry). A world without a main
+  sky is lit by its lamps and its sun alone,
+  against black (no ambient, no light of a sky, no fog); without a main sun it has no sunlight and
+  no cascaded shadows; without a main wind it is calm (`World::wind`); without a main camera the
+  game looks through nothing. The look of the frame is the main components' (`LightingSystem`:
+  the sun, the ambient and the environment of the sky; `PostprocessingFrameInputs`: the ambient
+  occlusion of the camera, the fog of the sky; `WorldView::render`: the wind), and what it may
+  cost is the project's (`GameContext::getProjectSettings`: the maps of the shadows, the budget of
+  the occlusion, the occlusion volume — a world where nothing occludes has none).
+- The per-world state of systems lives in the world's `TypeContext`: `World::context<T>()`
+  (creates the value on first access), `findContext<T>`, `eraseContext<T>`. It lives as long as
+  the world and `clear()` does not touch it.
 - Tombstones: `DeletedComponent` (an empty tag). An entity deleted by a command stays in the
   registry for the sake of undo and is invisible to the world (`isValidEntt`, `isValid`; the
   children of a deleted entity count as deleted). `AddRemoveEntitiesCommand` sets the tag through
@@ -1123,8 +1189,8 @@ What follows from the rules:
   created, deleted or reparented, and in `clear`) and the command history (`getCommandHistory`;
   one per world instance, so edits made in Play accumulate in the playing world and go away with
   it) are unconditional mechanisms of `World`. The editor reacts to the structure version
-  (`EditorController::syncWorldStructure`: reload the Hierarchy panel and drop invalid ids from the
-  selection).
+  (`EditorController::syncWorldStructure`: reload the tree of the world tab and drop invalid ids
+  from the selection).
 - Play runs on a copy, and nothing flows back from it: Stop discards what the
   simulation and the inspector changed there, and Save (Cmd+S) in any state writes the world
   being edited (`DocumentActions::saveWorld`). A value tuned in Play is carried over by hand after
@@ -1177,6 +1243,15 @@ macOS and the iOS simulator/device packages (Metal by default). The iOS builds u
 MirenShaderTool. SDK archives stay in their platform/configuration build trees; packaging copies
 them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse another tree's archive.
 
+The headers of the package are two folders. `include/` — the engine and the SDK — are ordinary
+include directories of whatever links the package, so a build follows a change of them: Xcode
+leaves system headers out of what an object depends on, and an engine part of a module compiled
+for an export against the headers of an older SDK would be linked with the libraries of a newer
+one. `vendor/include/` — glm, EnTT, box2d, box3d, miniaudio — are system headers: their warnings
+are not the game's (`PandaSDK/cmake/PandaRuntimeConfig.cmake.in`). The editor mirrors the package
+into its bundle file by file (`cmake/sync_panda_sdk.cmake`): a header whose bytes did not change
+keeps its time, and a build recompiles only what a changed header reaches.
+
 ### ABI
 
 - The two sides talk through stable function tables
@@ -1184,7 +1259,7 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   the SDK), `ScriptPluginApi` (what the script bundle gives to the engine) and the exported entry
   point `pandaLoadScriptBundle`. In these names "plugin" means the script bundle; editor plugins
   are a different thing (`context/plugins.md`).
-- A layout change bumps `SCRIPT_ABI_VERSION` (39 now); the engine rejects a bundle built for
+- A layout change bumps `SCRIPT_ABI_VERSION` (40 now); the engine rejects a bundle built for
   another version, so scripts have to be rebuilt. Backward compatibility of the ABI is not needed
   (the engine is not released). The ABI is flat and C-compatible: the way to Swift, C# or Java is
   not closed, but nothing is complicated for them in advance. `getManifest` (v28) answers
@@ -1195,13 +1270,18 @@ them into `bin/PandaSDK/lib/<platform>`, so switching builds cannot reuse anothe
   `PandaUI::DrawCommand`, which crosses the ABI with the draw list (the rounded clip mask of a
   command, with a radius per corner). v33 appended `invokeApplicationFocusAtScript` and
   `invokeApplicationPauseAtScript` to `ScriptPluginApi` (`Script::onApplicationFocus` /
-  `onApplicationPause`): the editor fires the focus with the input of the Game tab
+  `onApplicationPause`): the editor fires the focus with the input of the Game
   (`PlaySession::updateInput`), the runtime with the focus of the window; the pause comes from
   the window being minimized (`Fern` `WindowMinimized` / `WindowRestored`) and later from the
   background of a mobile platform. v38 appended `world_Instantiate` to `ScriptHostApi`
   (`WorldAPI::instantiate`): a copy of what a handle names — a duplicate of an entity of the
   world, or a new instance of the prefab whose asset id the handle is. v39 appended
-  `haptics_Play` (`Bamboo::Haptics::play`, through `Fern::playHaptic`).
+  `haptics_Play` (`Bamboo::Haptics::play`, through `Fern::playHaptic`). v40: a world has no
+  lighting settings any more — the four calls of `WorldLightingAPI` are calls of the sky of an
+  entity in their places (`skyComponent_SetAmbientColor`, `…AmbientIntensity`,
+  `…EnvironmentIntensity`, `…EnvironmentMap`: `Bamboo::SkyComponentAPI`), and `entity_SetMain`
+  is appended (the main one of a kind: `SkyComponentAPI::setMain`, `CameraComponentAPI::setMain`,
+  `DirectionalLightComponentAPI::setMain`).
 - Binding is direct: `InnerScriptHook` (the engine-side implementation,
   `Panda/src/Panda/ScriptEngine/InnerScriptHook.cpp`) and `OuterScriptHook` (the SDK-side host
   binding, `PandaSDK/src/Panda/OuterScriptHook.cpp`), with no hidden architecture. Every entity
@@ -1349,7 +1429,7 @@ against the main thread registered when the bundle was loaded (`pandaLoadScriptB
 main thread of Panda). In a debug build a violation fails fast with a diagnostic; in a release
 build the guard returns `false` and the caller skips the host call. The guard is applied to the
 high-risk APIs (`WorldAPI`, `EntityAPI`, `AssetManagerAPI`, `MeshAPI`, `TextureAPI`,
-`MeshComponentAPI`, `DirectionalLightComponentAPI`, `WorldLightingAPI`, `Rigidbody3DComponentAPI`,
+`MeshComponentAPI`, `DirectionalLightComponentAPI`, `SkyComponentAPI`, `Rigidbody3DComponentAPI`,
 `WheelJoint3DComponentAPI`, `Physics3DAPI`); the rest need the same one-liner (see "Open items").
 
 ### Script jobs: Bamboo::Async over the scripting ABI
@@ -1607,7 +1687,7 @@ second way to do what a text file already does. The user-facing page is
   the chrome (`PandaUI::Context::handlePointerDown` and the rest — where `PandaUIFernHost` puts
   the events of the window), so a hover is a frame older than the press that follows it, as with
   a hand. While a gesture plays, the real mouse is not heard (`EditorUI::setPointerOverridden`).
-  The Scene follows too: its surface is a view that collects the pointer for the gizmo, the
+  The World view follows too: its surface is a view that collects the pointer for the gizmo, the
   tools and the camera (`ViewportView`). This is still not a way to edit a project: the files
   are.
 - `game_input` is the hands for the game that plays: keys, the mouse with its wheel and fingers go
@@ -1631,10 +1711,11 @@ second way to do what a text file already does. The user-facing page is
   lands on something else. `ui` waits the same way for what it is asked about (`gone`, `count`,
   `value`, `label`), so a script that drives the editor has no pauses in it. The parts of the
   editor carry ids for this: a dock its place (`leftDock`, `rightDock`, `bottomDock`,
-  `centerDock`: `centerDock/tab:world.world` is the tab of a world, where the Hierarchy tab says
-  the same file), a panel its dock id (`hierarchy`, `contentBrowser`), the form of an
-  entity `inspector`, its sections the names of their components, a field of a script the name
-  of the field in the class, the buttons of the toolbar what they do (`play`, `undo`).
+  `centerDock`: `centerDock/tab:world.world` is the tab of a world), a panel its id
+  (`contentBrowser`, `output`), the parts of a world tab theirs (`worldEditor`, `hierarchy`,
+  `viewport`, `game`, `inspector`), its sections the names of their components, a field of a
+  script the name of the field in the class, the buttons of the toolbar what they do (`play`,
+  `undo`, the switch `view`), the buttons of the strip `show.<id>`.
 - A UI test of the editor is a client of these three tools and nothing more — the editor has no
   test code in it. A test starts the editor on a copy of a project (`--unattended`, `--user-data`
   and `--mcp` below), uses it by paths, and checks what the editor shows (the elements) and what
@@ -1698,9 +1779,6 @@ second way to do what a text file already does. The user-facing page is
 - Worlds: an open world that is not active keeps what its systems built for drawing (the
   meshes of a terrain) until its tab closes. Releasing it on deactivation is
   a hook the world systems do not have yet.
-- Worlds: the tabs of the worlds cannot be reordered by dragging (they are pinned to the
-  center, and a pinned tab is not draggable), and a switch of the active world drops the
-  selection and the entity tabs instead of remembering them per world.
 - Scripting: the engine-side duplicate of the main-thread guard in `InnerScriptHook` (protection
   against bypassing the SDK) is not done.
 - Scripting: `requireMainThreadApi` covers only the high-risk Bamboo APIs; the remaining ones are

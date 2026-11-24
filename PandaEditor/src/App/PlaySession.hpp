@@ -5,6 +5,7 @@
 #include <Panda/UI/GameUI.hpp>
 
 #include <cstdint>
+#include <functional>
 
 namespace Fern {
 struct Event;
@@ -17,7 +18,7 @@ class EditorViewports;
 
 // The game inside the editor (Play). It runs in a copy of the world being edited — its physics,
 // its scripts — draws its UI over the Game surface and owns the input of the window while the
-// Game tab has it; Stop drops what the copy became. The session is the game alone: what the
+// Game has it; Stop drops what the copy became. The session is the game alone: what the
 // editor shows of it — the selection, the panels, the tabs — is the application's
 // (EditorLayer::play, stop).
 class PlaySession final {
@@ -35,8 +36,8 @@ public:
         return m_world;
     }
 
-    // ---- Play in two steps, with the editor's own in between: the Game tab opens and the
-    // ---- viewports take its size before the game starts — its UI and its scripts read them.
+    // ---- Play in two steps, with the editor's own in between: the world tab shows the Game and
+    // ---- the viewports take its size before the game starts — its UI and its scripts read them.
     void begin(World &source); // the copy is made; nothing runs yet and the game has no input
     void run();                      // the UI of the game is there, then its scripts start
     // Stop: the copy runs no more, the UI and the input of the game are gone.
@@ -73,12 +74,14 @@ public:
     // (updateInput), a minimized editor pauses the scripts.
     void windowEvent(const Fern::Event &event);
     void windowResized(); // the UI of the game follows the size
-    // Whether an input event is the game's while it plays and the Game renders: the pointer over
-    // the Game surface, the keys while the Game tab has the focus. The release of a button goes
-    // where its press went: a drag that started on the game may leave the surface, one that
-    // started on the chrome (a splitter) may end over it. A dialog of the editor on top takes
-    // the new interactions; the releases still follow their presses.
-    bool ownsEvent(const Fern::Event &event, bool gameTabFocused, bool modalOpen);
+    // Whether an input event is the game's while it plays and the Game is on screen: the pointer
+    // over the Game surface — `overGame(x, y)`: the surface is what lies under that point of the
+    // window, not a menu, a popup or a dialog of the editor over it — and the keys while the Game
+    // has the focus. The release of a button goes where its press went: a drag that started on
+    // the game may leave the surface, one that started on the chrome (a splitter) may end over it.
+    bool ownsEvent(
+        const Fern::Event &event, bool gameTabFocused, bool modalOpen, const std::function<bool(double x, double y)> &overGame
+    );
     // An event the game owns goes to its UI first; true — a view of it took the event. What is
     // left Application feeds to Panda::Input.
     bool handleEvent(Fern::Event *event);

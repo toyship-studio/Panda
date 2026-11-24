@@ -49,8 +49,7 @@ namespace {
 
 } // namespace
 
-AssetEditorView::AssetEditorView(std::function<void()> onEdited)
-    : m_onEdited(std::move(onEdited)) {
+AssetEditorView::AssetEditorView() {
     // A form takes the focus as a whole: its tab, when chosen, puts no caret into a field.
     setFocusable(true);
     addSubviews();
@@ -63,40 +62,50 @@ void AssetEditorView::addSubviews() {
     m_body->setScrollDirection(ScrollDirection::Vertical);
     m_body->layout().setFlexGrow(1.f);
     m_body->getContentView()->layout().setFlexDirection(FlexDirection::Column);
+    m_body->getContentView()->layout().setAlignItems(Align::Center);
     m_body->getContentView()->layout().setPadding(Edge::Horizontal, 12.f);
     m_body->getContentView()->layout().setPadding(Edge::Vertical, 12.f);
-    m_body->getContentView()->layout().setGap(6.f);
     addSubview(m_body);
+
+    // The form is a column of the width a form reads at, in the middle of a tab of any width (the
+    // settings editor of VS Code): a field stretched over a wide tab is hard to follow to its label.
+    auto column = std::make_shared<Panel>();
+    column->setBackgroundColor(Color(0x00000000));
+    column->layout().setFlexDirection(FlexDirection::Column);
+    column->layout().setWidth(Length::percent(100.f));
+    column->layout().setMaxWidth(Length::points(760.f));
+    column->layout().setGap(6.f);
+    m_body->addContentSubview(column);
 
     m_name = std::make_shared<Label>("");
     m_name->setFont(Typo::Body.withWeight(FontWeight::Medium));
-    m_body->addContentSubview(m_name);
+    column->addSubview(m_name);
 
     m_subtitle = std::make_shared<Label>("");
     m_subtitle->setFont(Typo::ValueSmall);
     m_subtitle->setTextRole(TextRole::Muted);
     m_subtitle->setNumberOfLines(0);
-    m_body->addContentSubview(m_subtitle);
+    column->addSubview(m_subtitle);
 
     m_preview = std::make_shared<AssetPreviewView>();
-    m_body->addContentSubview(m_preview);
+    column->addSubview(m_preview);
 
     m_props = std::make_shared<Panel>();
     m_props->setBackgroundColor(Color(0x00000000));
     m_props->layout().setFlexDirection(FlexDirection::Column);
     m_props->layout().setGap(6.f);
-    m_body->addContentSubview(m_props);
+    column->addSubview(m_props);
 }
 
-void AssetEditorView::setAssets(const std::vector<Panda::AssetId> &assets) {
-    m_assets = assets;
+void AssetEditorView::setAsset(Panda::AssetId asset) {
+    m_asset = asset;
     // The editor of the kind lives as long as the form shows THIS asset.
-    if (m_editor && !(assets.size() == 1 && assets.front() == m_editorAsset)) {
+    if (m_editor && asset != m_editorAsset) {
         m_editor.reset();
         m_editorAsset = 0;
     }
     // The large preview belongs to the form: every tab has its own.
-    m_preview->setAsset(assets.size() == 1 ? assets.front() : Panda::AssetId(0));
+    m_preview->setAsset(asset);
     bind();
 }
 
@@ -106,14 +115,14 @@ void AssetEditorView::rebuild() {
 
 void AssetEditorView::bind() {
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (m_assets.size() == 1 && handler) {
+    if (m_asset && handler) {
         const auto &registry = handler->getRegistry();
-        auto it = registry.find(m_assets.front());
+        auto it = registry.find(m_asset);
         if (it != registry.end()) {
             m_name->setText(handler->getAssetName(it->first));
             // Subtitle: type · size of the files in the project (in the future — also the size in
             // the runtime Asset Package: important for the game size).
-            const uint64_t sizeOnDisk = handler->assetSizeOnDisk(m_assets.front());
+            const uint64_t sizeOnDisk = handler->assetSizeOnDisk(m_asset);
             const std::string type = assetTypeString(it->second.type);
             std::string subtitle = sizeOnDisk > 0 ? type + " · " + formatByteSize(sizeOnDisk) : type;
             // What the file holds, where the engine knows it: the pixels of a texture, the
@@ -151,7 +160,7 @@ void AssetEditorView::bind() {
             return;
         }
     }
-    m_name->setText(m_assets.size() == 1 ? "Asset" : std::to_string(m_assets.size()) + " assets selected");
+    m_name->setText("Asset");
     m_subtitle->setText("-");
     m_props->removeAllSubviews();
     setNeedsLayout();
@@ -160,32 +169,28 @@ void AssetEditorView::bind() {
 void AssetEditorView::rebuildProperties() {
     m_props->removeAllSubviews();
     Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
-    if (!handler || m_assets.size() != 1) { return; }
-    const Panda::AssetId id = m_assets.front();
+    if (!handler || !m_asset) { return; }
+    const Panda::AssetId id = m_asset;
     const auto &registry = handler->getRegistry();
     auto it = registry.find(id);
     if (it == registry.end()) { return; }
     const std::string kind = assetTypeString(it->second.type);
     const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
     if (ui == nullptr || ui->createEditor == nullptr) {
-        // A kind without an editor (a world, a shader, a file): the header says what it is. A file
-        // the editor has no form for is text it does not edit (it has no text editor): the form
-        // hands it to the external editor of the settings, as a double click in the Content Browser
-        // does — a shader opens with both files of its pair.
-        auto label = std::make_shared<Label>(kind == "world" ? "World" : kind);
+        // A kind without an editor (a shader, a file of the modules that are off): the header says
+        // what it is. A file the editor has no form for is text it does not edit (it has no text
+        // editor): the form hands it to the external editor of the settings, as a double click in
+        // the Content Browser does — a shader opens with both files of its pair.
+        auto label = std::make_shared<Label>(kind);
         label->setFont(Typo::Item);
         label->setTextRole(TextRole::Secondary);
-        auto section = makeFormSection(kind == "world" ? "WORLD" : "ASSET");
+        auto section = makeFormSection("ASSET");
         section->addContent(std::make_shared<PropertyRow>("Type", label, false));
-        if (kind == "world") {
-            section->addContent(makeFormHint("A click in the Content Browser shows the world in the preview tab, a double click keeps the tab."));
-        } else {
-            const Panda::path_t file = handler->getProjectPath() / handler->assetPath(id);
-            section->addContent(makeFormButtonRow({makeFormButton("Open in External Editor", ButtonStyle::Neutral, [file] {
-                editorHost().openInExternalEditor(file);
-            })}));
-            section->addContent(makeFormHint("The external editor is set in Settings → External Tools."));
-        }
+        const Panda::path_t file = handler->getProjectPath() / handler->assetPath(id);
+        section->addContent(makeFormButtonRow({makeFormButton("Open in External Editor", ButtonStyle::Neutral, [file] {
+            editorHost().openInExternalEditor(file);
+        })}));
+        section->addContent(makeFormHint("The external editor is set in Settings → External Tools."));
         m_props->addSubview(section);
         setNeedsLayout();
         return;
@@ -194,9 +199,6 @@ void AssetEditorView::rebuildProperties() {
         AssetEditorContext context;
         context.asset = id;
         context.rebuild = [this] { requestRebuild(); };
-        context.edited = [this] {
-            if (m_onEdited) { m_onEdited(); }
-        };
         m_editor = ui->createEditor(context);
         m_editorAsset = id;
     }

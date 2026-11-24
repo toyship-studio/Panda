@@ -1,6 +1,9 @@
 #include "GameExporter.hpp"
 #include "Project/Assets/ShaderCook.hpp"
 #include "Project/Loader/AssetHandlerEditor.hpp"
+
+#include <Panda/Serialization/SettingsMapper.hpp>
+#include <Rain/Coders/JsonDecoder.hpp>
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/Assets/Base/CookedMesh.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
@@ -228,7 +231,7 @@ GameExporter::exportGame(const ExportSettings &settings, const path_t &projectPa
     if (!createRuntimeDataDirectory(settings.runtimeDataDirectory)) {
         return fail("Failed to prepare the folder of the cooked data");
     }
-    if (!exportRuntimeManifest(settings.runtimeDataDirectory, settings)) {
+    if (!exportRuntimeManifest(settings.runtimeDataDirectory, settings, projectPath)) {
         return fail("Failed to write the runtime manifest");
     }
     if (!exportModuleList(settings.runtimeDataDirectory, settings.modules)) {
@@ -287,13 +290,24 @@ bool GameExporter::createRuntimeDataDirectory(const path_t &runtimeDataDir) {
     return true;
 }
 
-bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const ExportSettings &settings) {
+bool GameExporter::exportRuntimeManifest(const path_t &runtimeDataDir, const ExportSettings &settings, const path_t &projectPath) {
     RuntimeManifest runtimeManifest;
     runtimeManifest.worldPath = getRuntimeWorldPath(settings.startWorld).generic_string();
     runtimeManifest.gameName = settings.appName; // save directory in the OS persistent path
     // The shader features of the project: the shaders of the game are cooked for this set
     // (ShaderCook), the runtime enables exactly it (ShaderFeatures).
     runtimeManifest.shaderFeatures = ShaderFeatures::enabled().names();
+    // The settings of the project the game reads (the cost of a frame), as project.json holds
+    // them: the game is made of the saved files.
+    TypeContext saved;
+    SettingsMapper::reset(SettingsScope::Project, saved);
+    if (std::ifstream projectFile(projectPath / ".Panda" / "project.json"); projectFile.is_open()) {
+        Rain::JsonDecoder decoder;
+        if (!SettingsMapper::load(SettingsScope::Project, saved, decoder, projectFile)) {
+            LOG_WARN_EDITOR(".Panda/project.json is not valid JSON: the game gets the default settings of the project.");
+        }
+    }
+    runtimeManifest.projectSettings = SettingsMapper::encodeGameSettings(saved);
     path_t binPath = runtimeDataDir / "project.bin";
     std::ofstream file(binPath, std::ios::binary);
     if (!file.is_open()) {

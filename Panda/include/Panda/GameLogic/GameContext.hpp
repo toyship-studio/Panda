@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Panda/Assets/Base/AssetHandler.hpp"
+#include "Panda/Base/TypeContext.hpp"
 #include "Panda/ScriptEngine/ScriptEngine.hpp"
 
 #include <functional>
@@ -29,6 +30,13 @@ public:
     static World *getRunningWorld();
     static AssetHandler *getAssetHandler();
     static void setAssetHandler(AssetHandler *handler);
+    // The settings of the project the engine reads — the sections of the project scope the core
+    // and the modules register: what a frame may cost (the shadow maps, the ambient occlusion, the
+    // distances of the terrain). The host names the store: the editor — the one of
+    // `.Panda/project.json` (an edit applies at once), the game — the sections the export put into
+    // its manifest. Without a host (nullptr) — the defaults.
+    static TypeContext &getProjectSettings();
+    static void setProjectSettings(TypeContext *settings);
     static ScriptEngine *getScriptEngine();
     static void setScriptEngine(ScriptEngine *engine);
     static void setWorldLoadRequestHandler(WorldLoadRequestHandler handler);
@@ -52,6 +60,7 @@ private:
     friend class World; // sets the running world when it starts and stops
     static World *s_runningWorld;
     static AssetHandler *s_assetHandler;
+    static TypeContext *s_projectSettings;
     static ScriptEngine *s_scriptEngine;
     static WorldLoadRequestHandler s_worldLoadRequestHandler;
     static QuitRequestHandler s_quitRequestHandler;

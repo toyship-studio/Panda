@@ -102,6 +102,10 @@ public:
     // Expansion — UI state keyed by item identity.
     void setExpanded(TreeItem item, bool expanded);
     bool isExpanded(TreeItem item) const;
+    // Every expanded item, and all of them at once: what a view keeps of a tree when it shows
+    // another model, and gives back when it shows this one again.
+    std::vector<TreeItem> expandedItems() const;
+    void setExpandedItems(const std::vector<TreeItem> &items);
     // The item and every item under it open or close — Alt (Option) with a click on the arrow or
     // with ←/→, as in the Finder.
     void setBranchExpanded(TreeItem item, bool expanded);

@@ -47,11 +47,23 @@ public:
     virtual void hierarchyDidRequestOpenPrefab(Panda::UUID entityId) = 0;
 };
 
-// VIEW: the hierarchy panel. The tree is read directly from the engine World (TreeItem = UUID), and
-// intents are sent outward through HierarchyPanelOutput. Contains no model mutations.
+// What the tree shows of a world besides the world itself: the open branches, where it is
+// scrolled, what it searches. The tab of a world keeps it while another world is in front.
+struct HierarchyState {
+    std::vector<Panda::UUID> expanded;
+    float scroll = 0.f;
+    std::string search;
+};
+
+// VIEW: the hierarchy panel — the left column of a world tab. The tree is read directly from the
+// engine World (TreeItem = UUID), and intents are sent outward through HierarchyPanelOutput.
+// Contains no model mutations.
 class HierarchyPanelView final : public EditorView {
 public:
     explicit HierarchyPanelView(HierarchyPanelOutput *output);
+
+    HierarchyState captureState() const;
+    void restoreState(const HierarchyState &state); // an empty state: the roots, nothing open
 
     // Input.
     void setWorld(Panda::World *world); // tree source; reload() after structural changes

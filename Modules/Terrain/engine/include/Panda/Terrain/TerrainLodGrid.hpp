@@ -29,7 +29,7 @@ public:
     // The number of tile LOD tiers on top of the chunk core.
     static constexpr int TILE_TIERS = 5;
 
-    // The LOD/draw distances and the ring widths are world settings of the contribution
+    // The LOD/draw distances and the ring widths are project settings of the contribution
     // (TerrainLodSettings).
     using Settings = TerrainLodSettings;
 

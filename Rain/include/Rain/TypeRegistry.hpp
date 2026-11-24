@@ -157,7 +157,7 @@ public:
     template<typename T>
     TypeInfo findOrCreateType() {
         std::string_view name = typeName<T>();
-        const TypeId hash = std::hash<std::string_view>()(name);
+        const TypeId hash = static_cast<TypeId>(std::hash<std::string_view>()(name));
         const auto it = m_data.find(hash);
         if (it == m_data.end()) {
             std::string str(name);

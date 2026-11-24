@@ -1,4 +1,6 @@
 #include "Panda/Terrain/TerrainSystem.hpp"
+
+#include <Panda/GameLogic/GameContext.hpp>
 #include "Panda/Terrain/TerrainLodSettings.hpp"
 #include "Panda/Terrain/TerrainComponents.hpp"
 #include "Panda/GameLogic/World.hpp"
@@ -16,8 +18,9 @@ namespace {
 
     void submit(World &world, Renderer3D &renderer, const glm::vec3 &cameraPosition, const glm::mat4 &viewProj) {
         PANDA_PROFILE_SCOPE_N("World: terrain");
-        const FloraDistances &flora = world.context<FloraDistances>();
-        const TerrainLodSettings &lodSettings = world.context<TerrainLodSettings>();
+        TypeContext &project = GameContext::getProjectSettings();
+        const FloraDistances &flora = project.get<FloraDistances>();
+        const TerrainLodSettings &lodSettings = project.get<TerrainLodSettings>();
         int submits = 0;
         auto view2d = world.getAllEntitiesWith<IdComponent, Terrain2DComponent, TransformComponent>();
         for (auto entityHandle : view2d) {
@@ -63,8 +66,10 @@ namespace {
     }
 
     // Version of the crown source (the scattering + the layer crown densities of each terrain).
+    // 0 — the world has no terrain with flora: nothing of this system occludes.
     uint64_t occluderVersion(World &world) {
         uint64_t version = 1469598103934665603ull;
+        bool any = false;
         auto view = world.getAllEntitiesWith<Terrain2DComponent, TransformComponent>();
         for (auto entityHandle : view) {
             if (!world.isValidEntt(entityHandle)) { continue; }
@@ -73,8 +78,9 @@ namespace {
             if (!terrain.get()) { continue; }
             version = (version ^ terrain->occluderVersion()) * 1099511628211ull;
             version = (version ^ static_cast<uint64_t>(entityHandle)) * 1099511628211ull;
+            any = true;
         }
-        return version;
+        return !any ? 0 : version != 0 ? version : 1;
     }
 
 } // namespace

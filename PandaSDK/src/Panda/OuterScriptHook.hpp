@@ -31,10 +31,8 @@ namespace ExternalCalls {
     extern World_CreateEntity world_CreateEntity;
     using World_DestroyEntity = Scripting::WorldDestroyEntityFn;
     extern World_DestroyEntity world_DestroyEntity;
-    using WorldLighting_SetAmbientColor = Scripting::WorldLightingSetAmbientColorFn;
-    extern WorldLighting_SetAmbientColor worldLighting_SetAmbientColor;
-    using WorldLighting_SetAmbientIntensity = Scripting::WorldLightingSetAmbientIntensityFn;
-    extern WorldLighting_SetAmbientIntensity worldLighting_SetAmbientIntensity;
+    extern Scripting::SkyComponentSetAmbientColorFn skyComponent_SetAmbientColor;
+    extern Scripting::SkyComponentSetAmbientIntensityFn skyComponent_SetAmbientIntensity;
 
     using Input_IsKeyPressed = Scripting::InputIsKeyPressedFn;
     extern Input_IsKeyPressed input_IsKeyPressed;
@@ -153,13 +151,14 @@ namespace ExternalCalls {
     extern Scripting::InputGetMousePositionFn input_GetMousePosition;
     extern Scripting::InputGetMouseScrollFn input_GetMouseScroll;
     extern Scripting::PointLightComponentSetFn pointLightComponent_Set;
-    extern Scripting::WorldLightingSetEnvironmentIntensityFn worldLighting_SetEnvironmentIntensity;
+    extern Scripting::SkyComponentSetEnvironmentIntensityFn skyComponent_SetEnvironmentIntensity;
     extern Scripting::CameraComponentSetFieldOfViewFn cameraComponent_SetFieldOfView;
     extern Scripting::CameraComponentGetFieldOfViewFn cameraComponent_GetFieldOfView;
-    extern Scripting::WorldLightingSetEnvironmentMapFn worldLighting_SetEnvironmentMap;
+    extern Scripting::SkyComponentSetEnvironmentMapFn skyComponent_SetEnvironmentMap;
     extern Scripting::MeshReadFn mesh_Read;
     extern Scripting::WorldInstantiateFn world_Instantiate;
     extern Scripting::HapticsPlayFn haptics_Play;
+    extern Scripting::EntitySetMainFn entity_SetMain;
 
     using Console_Log = Scripting::ConsoleLogFn;
     extern Console_Log console_Log;

@@ -3,6 +3,7 @@
 
 get_filename_component(_PANDA_SDK_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 set(_PANDA_SDK_INCLUDE_DIR "${_PANDA_SDK_PREFIX}/include")
+set(_PANDA_SDK_VENDOR_INCLUDE_DIR "${_PANDA_SDK_PREFIX}/vendor/include") # glm, EnTT, box2d, box3d, miniaudio
 
 if(APPLE AND IOS)
     if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
@@ -51,7 +52,14 @@ function(_panda_sdk_add_static_library TARGET_NAME LIB_NAME)
     add_library(${TARGET_NAME} STATIC IMPORTED)
     set_target_properties(${TARGET_NAME} PROPERTIES
         IMPORTED_LOCATION "${_library_path}"
-        INTERFACE_INCLUDE_DIRECTORIES "${_PANDA_SDK_INCLUDE_DIR}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_PANDA_SDK_INCLUDE_DIR};${_PANDA_SDK_VENDOR_INCLUDE_DIR}"
+        # The headers of the engine are ordinary include directories of what links it, so a build
+        # follows them: Xcode leaves system headers out of what an object depends on, and a module
+        # of the game compiled against the headers of an older SDK would be linked with the
+        # libraries of a newer one (SYSTEM — CMake 3.25+). The third-party headers are system ones:
+        # their warnings are not the game's.
+        SYSTEM FALSE
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_PANDA_SDK_VENDOR_INCLUDE_DIR}"
     )
 endfunction()
 

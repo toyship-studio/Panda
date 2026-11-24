@@ -13,7 +13,10 @@ build of the Export project itself (cmake, the targets, the toolchain) is in
 - **The cooked data**, `<project>/.Panda/Cooked/Runtime/`, which the Export project copies into
   the game as it is:
   - `project.bin` — the manifest (`RuntimeManifest`, binary Rain): the path of the start world
-    in the pack, the name of the game (its save folder), the shader features of the project;
+    in the pack, the name of the game (its save folder), the shader features of the project and
+    the settings of the project the game reads — what a frame may cost, the sections the core
+    and the modules register, as the saved `project.json` holds them
+    (`SettingsMapper::encodeGameSettings`; the editor's own sections stay out);
   - `modules.txt` — the ids of the enabled modules that have an engine part, one per line. It
     is loose because cmake reads it while it configures (`context/plugins.md`);
   - `Assets.pak` — everything else: the pack (`AssetPack`).

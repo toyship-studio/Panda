@@ -187,9 +187,8 @@ unpacking one.
   viewport shows it alone, it has its own undo history and Save. It is not played: Play is off
   while a prefab is in front. The document holds one entity that is not of the file — a sky to
   light the stage — which is never saved.
-- The tab of the Hierarchy is titled with the file of the document in front
-  (`DockPanel::caption`); for a prefab the tree starts at the root entity of the prefab, and
-  that root cannot be deleted, duplicated or moved out.
+- The tab of a prefab has a tree of its own, as a world tab has; it starts at the root entity
+  of the prefab, and that root cannot be deleted, duplicated or moved out.
 - In the Hierarchy the entities of an instance are drawn in the accent color, its root with
   the sign of a prefab; an addition keeps the look of a plain entity with a `+` over the lower
   corner of its icon (the topmost entity of the addition).

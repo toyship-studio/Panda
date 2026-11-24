@@ -768,7 +768,6 @@ void TerrainAssetEditor::build(View &container) {
     host.tool = &terrainTool();
     host.state = &m_state;
     host.rebuild = m_context.rebuild;
-    host.edited = m_context.edited;
     if (m_voxels) {
         buildTerrainEditor3D(container, m_context.asset, host);
     } else {

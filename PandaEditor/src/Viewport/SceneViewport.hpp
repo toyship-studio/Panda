@@ -13,7 +13,7 @@
 namespace Panda {
 
 // The editor's side of the Scene viewport: the gizmo and the rect selection (mouse picking through
-// the id buffer of the shared scene targets). The frame is the on-screen frame of the Scene tab;
+// the id buffer of the shared scene targets). The frame is the on-screen frame of the World view;
 // the render targets and the camera are owned by EditorViewports.
 class SceneViewport final {
 public:
@@ -40,7 +40,7 @@ public:
 
     void setCamera(Camera *camera);
     void setWorld(World *world);
-    void setFrame(Rect frame); // the on-screen frame of the Scene tab (points)
+    void setFrame(Rect frame); // the on-screen frame of the World view (points)
     Rect getFrame() const {
         return m_frame;
     }

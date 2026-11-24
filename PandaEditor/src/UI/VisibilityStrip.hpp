@@ -11,20 +11,24 @@
 
 namespace Editor {
 
-// Strip item: a panel (id + icon) in its dock + whether it is active (visible and its tab is selected).
+// Strip item: a panel (id + icon) in its dock + whether it is active (visible and its tab is
+// selected); or a toggle of the owner (StripToggle: dockable false), active while it shows.
 struct StripItem {
     std::string id;
     std::string icon;
+    std::string tooltip;
     Dock dock;
-    bool open;   // the tab exists (open) or is closed (dim, a click opens it in its dock)
-    bool active; // open, visible and its tab is selected → highlight
+    bool open;     // the tab exists (open) or is closed (dim, a click opens it in its dock)
+    bool active;   // open, visible and its tab is selected → highlight
+    bool dockable; // a panel: RMB moves it to another dock
 };
 
 // Bottom visibility strip (design §5) — the "dock control center". The buttons are built from the
-// docking specification: on the left — panels of the left dock; on the right — of the bottom one,
-// then the right one (Inspector outermost). The active panel is highlighted (accentSoft). LMB —
-// show/activate the panel (again — hide the dock); RMB — the Dock Left/Right/Bottom menu (move).
-// Commands go to the delegate (DockManager).
+// docking specification: on the left — panels of the left dock, then the toggles of that side
+// (the tree of the world tab); on the right — of the bottom one, then the right one, then the
+// toggles of that side (the inspector of the world tab outermost). The active panel is highlighted
+// (accentSoft). LMB — show/activate the panel (again — hide the dock); RMB — the Dock
+// Left/Right/Bottom menu (move). Commands go to the delegate (DockManager).
 class VisibilityStripView final : public PandaUI::Panel {
 public:
     explicit VisibilityStripView(VisibilityStripDelegate *delegate);

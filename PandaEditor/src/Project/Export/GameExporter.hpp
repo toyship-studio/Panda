@@ -114,7 +114,7 @@ public:
 
 private:
     bool createRuntimeDataDirectory(const path_t &runtimeDataDir);
-    bool exportRuntimeManifest(const path_t &runtimeDataDir, const ExportSettings &settings);
+    bool exportRuntimeManifest(const path_t &runtimeDataDir, const ExportSettings &settings, const path_t &projectPath);
     bool exportModuleList(const path_t &runtimeDataDir, const std::vector<std::string> &modules);
     // What the game uses: the start world, what the project includes by name, and everything
     // those name, followed until nothing new is found. A world is cooked on the way (reading it

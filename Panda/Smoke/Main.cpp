@@ -20,10 +20,14 @@
 #include <Panda/Assets/Base/AssetImporterBase.hpp>
 #include <Panda/Assets/Base/CookedMesh.hpp>
 #include <Panda/Renderer/OcclusionVolume.hpp>
+#include <Panda/Renderer/RenderingSettings.hpp>
+#include <Panda/Serialization/SettingsMapper.hpp>
 #include <Panda/Runtime/AssetPack.hpp>
 #include <Panda/Runtime/GameFiles.hpp>
+#include <Panda/Runtime/RuntimeManifest.hpp>
 #include <Panda/Renderer/WorldView.hpp>
 #include <Panda/Renderer/ShaderInterface/ShaderInterface.hpp>
+#include <Panda/Extensions/Extensions.hpp>
 #include <Panda/Extensions/Settings.hpp>
 #include <Panda/Serialization/ComponentDtos.hpp>
 #include <Panda/Serialization/ReferenceCollector.hpp>
@@ -241,8 +245,12 @@ int main(int argc, const char **argv) {
         sun.getTransform().setRotation(glm::quatLookAt(-toLight, glm::vec3(0.f, 1.f, 0.f)));
         auto &light = sun.addComponent<Panda::DirectionalLightComponent>();
         light.intensity = 1.f;
+        // The sky lights the world: the light of its environment (the built-in gradient) and a
+        // little flat ambient.
+        Panda::Entity sky = world->instantiateEntity();
+        sky.setName("Sky");
+        sky.addComponent<Panda::SkyComponent>().ambientIntensity = 0.1f;
     }
-    world->getSettings().lighting.ambientIntensity = 0.1f;
 
     // The camera looks straight down from a height of 12 m: screen +x = world +x, the middle
     // row = z = 0.
@@ -549,12 +557,6 @@ int main(int argc, const char **argv) {
         }
         return result;
     };
-    const auto memberJson = [&](const std::string &text, const char *key) {
-        Rain::Value document;
-        Rain::parseJson(text, document);
-        const Rain::Value *member = document.find(key);
-        return member != nullptr ? Rain::writeJson(*member) : std::string();
-    };
 
     // What a number field reads (PandaUI::NumberField::evaluate): a number, or arithmetic of numbers
     // with the usual precedence and parentheses; a comma is a decimal point; a text that is not a
@@ -834,12 +836,6 @@ int main(int argc, const char **argv) {
         // The order of a world file depends on the world alone (World::orderedChildren), not on
         // how the entities lie in memory: a world read and written again is the same text.
         report("a world saved twice is the same file", first == second);
-        report(
-            "settings survive the round trip",
-            memberJson(first, "lighting") == memberJson(second, "lighting") &&
-                memberJson(first, "graphics") == memberJson(second, "graphics") &&
-                memberJson(first, "wind") == memberJson(second, "wind")
-        );
         // Foreign component: plant an unknown key into the first entity of the file.
         Rain::Value document;
         Rain::parseJson(first, document);
@@ -861,64 +857,85 @@ int main(int argc, const char **argv) {
             foreignKept && kept != resavedEntities.end() &&
                 kept->second.find("\"org.example/rocketComponent\":{\"fuel\":3,\"name\":\"rocket\"}") != std::string::npos
         );
+    }
+
+    // The kinds a world uses one of (BaseComponents.hpp: the camera, the sun, the sky, the wind):
+    // the main one is the one the world uses; making another the main one makes the first a
+    // spare; one made by name next to the main one is a spare (the editor's Add Component, a
+    // script, a paste), in a world without one it is the main one.
+    std::printf("the main one of a kind\n");
+    {
+        auto *kinds = new Panda::World();
+        const Panda::ComponentType *skyType = Panda::GameContext::getExtensions().components.find("skyComponent");
+        Panda::Entity first = kinds->instantiateEntity();
+        Panda::Entity second = kinds->instantiateEntity();
+        skyType->create(first);
+        skyType->create(second);
+        report(
+            "the first sky made by name is the main one, the next a spare",
+            first.getComponent<Panda::SkyComponent>().isMain && !second.getComponent<Panda::SkyComponent>().isMain &&
+                kinds->findMain<Panda::SkyComponent>() == first
+        );
+        kinds->setMain(*skyType, second);
+        report(
+            "setMain makes the others spares",
+            !first.getComponent<Panda::SkyComponent>().isMain && kinds->findMain<Panda::SkyComponent>() == second
+        );
+        // A copy does not take the place of what the world uses: the duplicate of the main sky
+        // is a spare, and the world goes on with the sky it had.
+        Panda::Entity duplicate = kinds->duplicateEntity(second);
+        report(
+            "a duplicate of the main one is a spare",
+            duplicate.isValid() && !duplicate.getComponent<Panda::SkyComponent>().isMain &&
+                kinds->findMain<Panda::SkyComponent>() == second && kinds->findMains(*skyType).size() == 1
+        );
+        // …while a copy that comes into a world without a sky brings the sky of that world.
+        auto *other = new Panda::World();
+        Panda::Entity imported = other->importEntity(*kinds, second);
+        report(
+            "a copy is the main one of a world that had none",
+            imported.isValid() && imported.getComponent<Panda::SkyComponent>().isMain &&
+                other->findMain<Panda::SkyComponent>() == imported
+        );
+        delete other;
+        delete kinds;
+    }
+
+    // The settings of the project a game reads (the cost of a frame) go into its manifest — a
+    // binary file, the game reads no JSON — and come back from it whole.
+    std::printf("the settings of the project in the manifest\n");
+    {
+        Panda::TypeContext project;
+        Panda::SettingsMapper::reset(Panda::SettingsScope::Project, project);
+        project.get<Panda::ShadowSettings>().distance = 42.f;
+        project.get<Panda::AmbientOcclusionSettings>().slices = 5;
 #if PANDA_SMOKE_HAS_TERRAIN
-        // Contribution settings (the terrain flora distances) — the top-level "flora" key: the
-        // value of the world survives the round trip; a foreign top-level key (the plugin is not
-        // loaded) — as is.
-        Panda::FloraDistances &flora = world->context<Panda::FloraDistances>();
-        const float savedGrass = flora.grass;
-        flora.grass = 123.f;
-        const std::string floraJson = saveWorldJson(*world);
-        flora.grass = savedGrass;
-        auto *floraWorld = new Panda::World();
-        const bool floraLoaded = loadWorldJson(*floraWorld, floraJson);
-        const std::string floraResaved = floraLoaded ? saveWorldJson(*floraWorld) : std::string("{}");
-        report(
-            "plugin world settings survive the round trip",
-            floraLoaded && floraWorld->context<Panda::FloraDistances>().grass == 123.f &&
-                memberJson(floraJson, "flora").find("\"grass\":123") != std::string::npos &&
-                memberJson(floraJson, "flora") == memberJson(floraResaved, "flora") &&
-                memberJson(floraJson, "terrain") == memberJson(floraResaved, "terrain")
-        );
-        delete floraWorld;
+        project.get<Panda::FloraDistances>().grass = 123.f;
 #endif
-        Rain::Value settingsDocument;
-        Rain::parseJson(first, settingsDocument);
-        Rain::Value weather = Rain::Value::object();
-        weather.add("rain", 0.5);
-        settingsDocument.add("org.example/weather", std::move(weather));
-        auto *settingsWorld = new Panda::World();
-        const bool settingsLoaded = loadWorldJson(*settingsWorld, Rain::writeJson(settingsDocument));
-        const std::string settingsResaved = settingsLoaded ? saveWorldJson(*settingsWorld) : std::string("{}");
-        delete settingsWorld;
+        Panda::RuntimeManifest written;
+        written.worldPath = "Assets/world.world";
+        written.projectSettings = Panda::SettingsMapper::encodeGameSettings(project);
+        std::stringstream file(std::ios::in | std::ios::out | std::ios::binary);
+        Rain::BinaryEncoder().encode(file, written);
+        Panda::RuntimeManifest read;
+        const bool manifestRead = Rain::BinaryDecoder().decode(file, read);
+        Panda::TypeContext game;
+        const bool loaded = manifestRead && Panda::SettingsMapper::decodeGameSettings(game, read.projectSettings);
         report(
-            "foreign world settings survive load and save",
-            settingsLoaded && settingsResaved.find("org.example/weather") != std::string::npos &&
-                memberJson(settingsResaved, "org.example/weather") == "{\"rain\":0.5}"
+            "the settings of the project survive the manifest",
+            loaded && read.worldPath == written.worldPath && game.get<Panda::ShadowSettings>().distance == 42.f &&
+                game.get<Panda::AmbientOcclusionSettings>().slices == 5
+#if PANDA_SMOKE_HAS_TERRAIN
+                && game.get<Panda::FloraDistances>().grass == 123.f
+#endif
         );
-        // A section missing from the file loads as the defaults (the registry resets every
-        // section before reading), and clear() brings the settings back to the defaults and drops
-        // the foreign sections: a new world does not inherit the previous one.
-        Rain::Value withoutWind;
-        Rain::parseJson(first, withoutWind);
-        withoutWind.erase("wind");
-        auto *defaultsWorld = new Panda::World();
-        defaultsWorld->getSettings().wind.strength = 0.9f;
-        const bool defaultsLoaded = loadWorldJson(*defaultsWorld, Rain::writeJson(withoutWind));
+        Panda::TypeContext broken;
+        broken.get<Panda::ShadowSettings>().distance = 7.f;
         report(
-            "a missing settings section loads as the defaults",
-            defaultsLoaded && defaultsWorld->getSettings().wind.strength == Panda::SceneWindSettings().strength
+            "settings that are not an object of the format give the defaults",
+            !Panda::SettingsMapper::decodeGameSettings(broken, "not binary Rain") &&
+                broken.get<Panda::ShadowSettings>().distance == Panda::ShadowSettings{}.distance
         );
-        const bool foreignBeforeClear = loadWorldJson(*defaultsWorld, Rain::writeJson(settingsDocument)) &&
-                                        defaultsWorld->findContext<Panda::ForeignSettings>() != nullptr;
-        defaultsWorld->getSettings().lighting.ambientIntensity = 0.5f;
-        defaultsWorld->clear();
-        report(
-            "clear resets the settings and drops foreign sections",
-            foreignBeforeClear && defaultsWorld->findContext<Panda::ForeignSettings>() == nullptr &&
-                defaultsWorld->getSettings().lighting.ambientIntensity == Panda::WorldLightingSettings().ambientIntensity
-        );
-        delete defaultsWorld;
     }
 
 #ifdef PND_EDITOR
@@ -1297,7 +1314,9 @@ int main(int argc, const char **argv) {
     check("ground past the shadow is lit", far > lit * 0.85f, shadowed, lit, far);
 
     std::printf("shadows disabled\n");
-    world->getSettings().graphics.shadows.enabled = false;
+    Panda::Entity sunEntity = world->findByTag("Sun");
+    Panda::ShadowSettings &shadowSettings = Panda::GameContext::getProjectSettings().get<Panda::ShadowSettings>();
+    sunEntity.getComponent<Panda::DirectionalLightComponent>().castShadows = false;
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
     lit = sampleGround(pixels, viewProj, 4.f);
@@ -1305,9 +1324,9 @@ int main(int argc, const char **argv) {
     check("no shadow without shadows", shadowed > lit * 0.85f && lit > 40.f, shadowed, lit, far);
 
     std::printf("shadows enabled, 1 cascade of 512\n");
-    world->getSettings().graphics.shadows.enabled = true;
-    world->getSettings().graphics.shadows.cascadeCount = 1;
-    world->getSettings().graphics.shadows.tileSize = 512;
+    sunEntity.getComponent<Panda::DirectionalLightComponent>().castShadows = true;
+    shadowSettings.cascadeCount = 1;
+    shadowSettings.tileSize = 512;
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
     lit = sampleGround(pixels, viewProj, 4.f);
@@ -1317,8 +1336,8 @@ int main(int argc, const char **argv) {
     // The caster has left all cascades (the depth passes are empty): the atlas must be cleared —
     // otherwise a ghost shadow remains from the previous frames.
     std::printf("caster moved away (atlas must clear)\n");
-    world->getSettings().graphics.shadows.cascadeCount = 3;
-    world->getSettings().graphics.shadows.tileSize = 1024;
+    shadowSettings.cascadeCount = 3;
+    shadowSettings.tileSize = 1024;
     cubeEntity.getTransform().setPosition({400.f, 1.5f, 0.f});
     renderAndRead();
     shadowed = sampleGround(pixels, viewProj, -2.5f);
@@ -1346,7 +1365,7 @@ int main(int argc, const char **argv) {
     // makes a grid mismatch noticeable (~0.1 m per texel), the camera is low (a pixel is ~1.5 cm).
     // First a rotation of the view direction (the cascade slices travel after the camera).
     std::printf("camera look-around (shadow edge stability)\n");
-    world->getSettings().graphics.shadows.tileSize = 256;
+    shadowSettings.tileSize = 256;
     const glm::mat4 lowProjection = perspectiveForBackend(glm::radians(60.f), 1.f, 0.1f, 100.f);
     const glm::vec3 lookCamera(2.f, 8.f, 6.f);
     cameraPosition = lookCamera;
@@ -1381,7 +1400,7 @@ int main(int argc, const char **argv) {
     // pauses (like a flight in the editor): the edge of the cube shadow on the ground must stand
     // still. The plane is removed. Only with the Terrain module (the build without modules skips it).
     std::printf("terrain receiver, continuous camera motion (shadow edge stability)\n");
-    world->getSettings().graphics.shadows.tileSize = 512;
+    shadowSettings.tileSize = 512;
     Panda::Entity groundEntity = world->findByTag("Ground");
     if (groundEntity.isValid()) { world->destroy(groundEntity); }
     {
@@ -1493,7 +1512,7 @@ int main(int argc, const char **argv) {
         edgeMax,
         edgeMax - edgeMin
     );
-    world->getSettings().graphics.shadows.tileSize = 1024;
+    shadowSettings.tileSize = 1024;
 #endif
 
     for (int frame = 0; frame < 2; frame++) {

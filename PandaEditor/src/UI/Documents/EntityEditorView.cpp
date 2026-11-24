@@ -171,7 +171,7 @@ void EntityEditorView::addSubviews() {
     m_placeholder->layout().setFlexGrow(1.f);
     m_placeholder->layout().setJustifyContent(Justify::Center);
     m_placeholder->layout().setAlignItems(Align::Center);
-    auto placeholderLabel = std::make_shared<Label>("Select an object or asset");
+    auto placeholderLabel = std::make_shared<Label>("Select an entity");
     placeholderLabel->setFont(Typo::Caption);
     placeholderLabel->setTextRole(TextRole::Muted);
     m_placeholder->addSubview(placeholderLabel);
@@ -201,6 +201,15 @@ void EntityEditorView::wireEditing() {
 
 void EntityEditorView::setEntities(const std::vector<Panda::Entity> &entities) {
     if (entities.empty()) {
+        // The form outlives what it showed (one inspector for the world in front): it lets go of
+        // its targets and of the sections built for them — their world may be gone, a project
+        // closed or opened again.
+        m_entities.clear();
+        m_componentsContainer->removeAllSubviews();
+        m_markedSections.clear();
+        m_addable.clear();
+        m_difference = {};
+        m_addedTo = 0;
         showMode(Mode::Empty);
         return;
     }

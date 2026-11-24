@@ -73,8 +73,10 @@ live this way.
 - **LOD is a tile pyramid** around the camera: a core of full chunk columns (a 3D chunk is not cut
   vertically; physics chunks separately), then 5 tiers of tiles spanning {2, 4, 8, 16, 32} columns
   (grid step = span, which gives a constant angular error; the last tier runs to the map edge or
-  to drawDistance). Settings: `World::context<TerrainLodSettings>`, the `"terrain"` key in
-  `.world`, Settings → TERRAIN (LOD1 / LOD2, Ring 2/3/4 Width, Draw Distance). A tier switches by
+  to drawDistance). Settings: what a frame may cost, the project's —
+  `GameContext::getProjectSettings().get<TerrainLodSettings>()`, the `"terrain"` section of
+  `.Panda/project.json`, Project Settings → TERRAIN (LOD1 / LOD2, Ring 2/3/4 Width, Draw
+  Distance). A tier switches by
   a hierarchical traversal ONLY when the replacement is ready (the parent or all children, never
   both, so there is no z-fight and no holes).
 - **Skirts** close the joints. A skirt (`TerrainMesherLod::SKIRT_DEPTH`, 3 m down) exists on BOTH
@@ -165,9 +167,10 @@ Two lists of a DIFFERENT nature (`Terrain/FloraSettings.hpp`, part of `.terrain`
   2..4 use the material colors; layer 1 has no color of its own in the 2D material. Neither grass
   layers nor the material affect the mosaic. The runtime slot is `farGrainTexture`; while the
   first bake is in flight the fade stays beyond the horizon.
-- Distances are world settings of the terrain contribution: `World::context<FloraDistances>()`
-  (the `settings` registry, the top-level `"flora"` key of `.world`: `grass`,
-  `grassDissolve`, `tree`, `imposter`; Settings → FLORA). `grass` 80 m is for grass and bushes
+- Distances are project settings of the terrain contribution: what a frame may cost, the same
+  for every terrain of the game — `GameContext::getProjectSettings().get<FloraDistances>()` (the
+  `settings` registry, the `"flora"` section of `.Panda/project.json`: `grass`,
+  `grassDissolve`, `tree`, `imposter`; Project Settings → FLORA). `grass` 80 m is for grass and bushes
   (Tuft thins from 45%: tufts leave one by one, each shrinks into its root over 15% of the zone
   before its threshold; this is also the end of the cross-fade into grains), `grassDissolve` 0 is
   the end of the per-tuft dissolve of grass meshes (0 = grass), `tree` 80 m is for tree meshes

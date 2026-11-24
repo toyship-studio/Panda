@@ -35,23 +35,29 @@ struct DockPanel {
     bool open = true;     // false — the panel is closed (not in the dock; available via the strip and "+")
     bool inStrip = true;  // show the icon in the VisibilityStrip (the world tabs — false)
     bool closable = true; // a tab with a close button
-    // A temporary editor tab of an object (entity/asset): lives in the common specification — rebuild,
-    // moving between docks and the menus work as for panels — but it is not saved into the layout, does
+    // A tab of a document (a world, an asset, a document of the registry): lives in the common
+    // specification — rebuild, moving between docks and the menus work as for panels — but it does
     // not get into the strip and "+", and closing REMOVES it (does not switch it to open=false).
     bool transient = false;
-    bool preview = false; // unpinned (the title is dimmed); a double click on the tab pins it
-    bool dirty = false;   // the "unsaved" dot of the tab (setPanelDirty)
+    bool dirty = false; // the "unsaved" dot of the tab (setPanelDirty)
     // false — the tab stays in its dock: it is dragged to another place of the bar only and has
     // no "Dock ..." items (a world tab: the viewport lives in the center). Such a tab is what its
     // dock is for and opens before the tabs that can leave (openTransientPanel).
     bool movable = true;
     // false — a transient tab its owner reopens itself (the worlds of the project session): it
-    // is not saved among the pinned tabs of the layout.
+    // is not saved among the open tabs of the layout.
     bool restored = true;
-    // What the tab says in place of the title; empty — the title. The title is the name of the
-    // panel (the "+" menu lists it); the caption is what it shows now (the Hierarchy: the file of
-    // the document in front).
-    std::string caption;
+};
+
+// A button of the visibility strip that is not a panel of a dock: what a world tab shows beside
+// its Scene (the tree, the inspector), shown and hidden by its owner.
+struct StripToggle {
+    std::string id;      // "show.<id>" is what a UI test finds the button by
+    std::string icon;
+    std::string tooltip;
+    Dock side = Dock::Left; // the group of the strip: Left — after the panels of the left dock; Right — outermost
+    std::function<bool()> isOn;
+    std::function<void()> toggle;
 };
 
 // Commands from the visibility strip — implemented by DockManager (it is the docking coordinator).
@@ -83,6 +89,7 @@ public:
     }
 
     bool isVisible(Dock dock) const;          // effective: not hidden by the user AND the dock has panels
+    bool userVisible(Dock dock) const;        // what the user asked for, whether the dock has panels or not
     void setVisible(Dock dock, bool visible); // hides/shows the whole dock
     void toggle(Dock dock) {
         setVisible(dock, !isVisible(dock));
@@ -99,14 +106,13 @@ public:
 
     void setPanelDirty(const std::string &id, bool dirty); // "unsaved" indicator (dot) on the panel's tab
     void setPanelTitle(const std::string &id, std::string title); // the tab title (the file of its document)
-    void setPanelCaption(const std::string &id, std::string caption); // DockPanel::caption; empty — the title again
 
-    // --- Temporary editor tabs of objects (transient): the mechanism for the tabbed inspector. ---
-    // The policy (which object is in preview, replacement/deduplication) lives in the caller; docking
-    // is here. Open: there is no panel with this id — it is added at the end of the dock and selected
-    // (WITHOUT moving the focus: the object selection comes from the Hierarchy/viewport, the focus stays
-    // there); there is one — it is simply activated, and in its CURRENT dock (the user may have dragged
-    // the tab — that is respected).
+    // --- The tabs of documents (transient). ---
+    // The policy (which document, deduplication) lives in the caller; docking is here. Open: there
+    // is no panel with this id — it is added at the end of the dock and selected (WITHOUT moving the
+    // focus: a file opened from the Content Browser leaves the keyboard there); there is one — it is
+    // simply activated, and in its CURRENT dock (the user may have dragged the tab — that is
+    // respected).
     void openTransientPanel(DockPanel panel, Dock dock);
     bool activateTransientPanel(const std::string &id); // shows/selects an existing one (false — no such panel)
     void closeTransientPanel(const std::string &id); // removes the tab entirely (the caller's replace policy)
@@ -114,20 +120,9 @@ public:
     // tab goes (a panel stays available through the strip and "+"). false — no such open tab, a
     // tab that does not close, or the close was cancelled.
     bool closePanel(const std::string &id);
-    // Changes the id of a transient tab (the preview shows another object: the id reflects the object,
-    // the tab is the same).
-    void renameTransientPanel(const std::string &oldId, const std::string &newId);
-    // Replaces the tab content IN PLACE (the preview shows another object): without a dock rebuild.
-    void updateTransientPanel(
-        const std::string &id, std::string title, const std::string &icon,
-        std::shared_ptr<PandaUI::View> content
-    );
-    void setPanelPreview(const std::string &id, bool preview);
     bool panelExists(const std::string &id) const;
-    // A tab was closed (close button/menu) — a transient is REMOVED by it; a double click cleared preview.
-    bool isPanelPreview(const std::string &id) const; // an unpinned tab (setPanelPreview, a double click pins)
+    // A tab was closed (close button/menu) — a transient is REMOVED by it.
     void setOnTransientClosed(std::function<void(const std::string &id)> callback);
-    void setOnPanelPinned(std::function<void(const std::string &id)> callback);
     // Close gate of a transient tab (unsaved changes): false — the close is cancelled.
     // Does not concern regular panels (they are only hidden, there is nothing to lose).
     void setOnTransientCloseRequest(std::function<bool(const std::string &id)> callback);
@@ -145,11 +140,16 @@ public:
         m_tabMenuExtender = std::move(extender);
     }
 
+    // The buttons of the strip that are not panels (StripToggle); refreshStrip shows what they
+    // say now — the owner calls it after it changed what a toggle shows.
+    void setStripToggles(std::vector<StripToggle> toggles);
+    void refreshStrip();
+
     // Saving/restoring the layout: panels+order, dock visibility, split weights, active tabs, the
     // focused dock.
     Panda::DockLayoutState captureLayout() const;
     void applyLayout(const Panda::DockLayoutState &state); // an invalid (empty) state is ignored
-    // The active tab of every dock from the state, again: the pinned editor tabs are restored after
+    // The active tab of every dock from the state, again: the open tabs of documents are restored after
     // applyLayout and each one selects itself as it opens — the saved selection is put back on top.
     void applySelection(const Panda::DockLayoutState &state);
     // The keyboard focus into the active tab of the dock (the saved focused dock after a restore).
@@ -158,16 +158,18 @@ public:
     // Shows a panel WITHOUT a toggle (navigation/jumps from the UI): a closed one is reopened,
     // a hidden dock is revealed, the tab is selected; an already active one gets the focus.
     void showPanel(const std::string &id);
+    // The dock a panel lives in: whether it is on screen, and off the screen again — for who
+    // brought a panel without being asked and takes it back (the output of a build before Play).
+    bool isDockOfPanelVisible(const std::string &id) const;
+    void hideDockOfPanel(const std::string &id);
 
     // VisibilityStripDelegate.
     void stripDidActivatePanel(const std::string &id) override;
     void stripDidRequestDock(const std::string &id, Dock dock) override;
 
 private:
-    void rebuild();      // lays specification panels out into TabView docks + visibility of empty ones + strip
-    void refreshStrip(); // builds strip buttons from the specification (grouped by dock, active highlighted)
+    void rebuild(); // lays specification panels out into TabView docks + visibility of empty ones + strip
     void applyDockVisibility(Dock dock);
-    bool userVisible(Dock dock) const;
     bool hasPanels(Dock dock) const;
     int tabIndexOf(const std::string &id) const;       // index of the panel's tab within its dock
     DockPanel *findPanel(const std::string &id);
@@ -180,7 +182,6 @@ private:
     // The dock rebuild is done by the caller.
     void closePanelInternal(const std::string &id);
     bool allowClose(const std::string &id); // gate of transient tabs (m_onTransientCloseRequest)
-    void tabDoubleClicked(Dock dock, int tabIndex); // pin: clears preview on a transient tab
     // id BY VALUE: it is called from the lambdas of strip/menu buttons, which rebuild→refreshStrip destroys
     // in the course of the call — a reference to the string captured in the lambda would dangle (the
     // "appeared but not selected" bug).
@@ -216,8 +217,8 @@ private:
     void noteShown(const std::string &id);
     std::string lastShownIn(Dock dock) const; // empty — none of the open tabs of the dock was shown yet
     std::function<void(const std::string &)> m_onTransientClosed;
-    std::function<void(const std::string &)> m_onPanelPinned;
     std::function<bool(const std::string &)> m_onTransientCloseRequest;
+    std::vector<StripToggle> m_stripToggles;
     std::function<std::vector<AddMenuItem>()> m_addMenuItems;
     std::function<void(const std::string &, PandaUI::Menu &)> m_tabMenuExtender;
 

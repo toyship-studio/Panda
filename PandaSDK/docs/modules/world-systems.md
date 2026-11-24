@@ -84,7 +84,8 @@ the world does not run:
 - `collectOccluders(World &, minWorld, maxWorld, std::vector<Occluder> &out)` and
   `occluderVersion(World &)` — the occlusion volume of the lighting asks for the occluders in
   a world AABB (`Occluder {center, radiusXZ, radiusY, density}`: the tree crowns of a terrain)
-  and rebakes when the version changes.
+  and rebakes when the version changes; a version of 0 says the world has nothing of this system
+  that occludes — a world where every system says so has no volume, and no bakes.
 
 ## The lifecycle hooks of a running world
 
@@ -144,5 +145,13 @@ world system with its state in `World::context<T>`; the Audio module is the exam
 `isValidEntt`, `entity(handle)`, `getById`, `getWorldSpaceTransformMatrix`, `setWorldPose`
 (a pose in world space into the transform relative to the parent), `setParent`, `destroy`
 (a running world destroys between the hooks), `instantiateEntity`, `isRunning`,
-`context<T>` / `findContext<T>` / `eraseContext<T>`, the settings of the world scope
-(`context<MySettings>()`), the renderers. There is no `friend` for modules and no need for one.
+`context<T>` / `findContext<T>` / `eraseContext<T>`, `findMain<T>()` (the main component of a
+kind a world uses one of), the renderers; the settings of the project through
+`GameContext::getProjectSettings()`. There is no `friend` for modules and no need for one.
+
+A component of a kind a world uses one of (a weather, the main one of several) is registered with
+`mainComponentType<T>(name, encode, decode)`: its struct has `bool isMain`, the world uses the
+first that says so (`World::findMain<T>()`), `World::setMain<T>(entity)` makes another one the
+main one, and one made by name next to the main one comes as a spare. The editor gives such a
+component its Main row (`addMainRow<T>` of the Kit: a radio button over the world, with a note
+when the world uses another one or two say they are the main one).

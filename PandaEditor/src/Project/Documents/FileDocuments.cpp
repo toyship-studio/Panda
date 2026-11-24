@@ -158,6 +158,7 @@ void FileDocuments::activateWorld(WorldFile &world) {
 }
 
 void FileDocuments::showWorld(WorldFile *world) {
+    if (m_activeWorld != nullptr && m_activeWorld != world) { m_output->documentsWillActivateWorld(); }
     m_activeWorld = world;
     m_output->documentsDidActivateWorld();
     if (world == nullptr) { return; }

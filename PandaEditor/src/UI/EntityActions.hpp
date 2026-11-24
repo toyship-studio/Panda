@@ -22,23 +22,19 @@ namespace Editor {
 class EditorController;
 
 // What the user does to the entities of the world the panels show: the intents of the Hierarchy
-// (create, duplicate, copy and paste, delete, reparent, rename) and of the entity tabs (the name,
-// the Static flag, the transform, components, scripts). Every edit is a command of the history of
-// that world, so Undo takes it back; the panels follow through the workspace.
+// (create, duplicate, copy and paste, delete, reparent, rename) and of the inspector of the world
+// tab (the name, the Static flag, the transform, components, scripts). Every edit is a command of
+// the history of that world, so Undo takes it back; the panels follow through the workspace.
 class EntityActions final : public HierarchyPanelOutput, public EntityEditorOutput {
 public:
     EntityActions(EditorController &workspace, Panda::EditorLayer &app);
 
-    // The entities an edit applies to: the selection — or, while an edit of a tab runs, the
-    // entities of that tab (EditorTabs puts beginTarget / endTarget around the edit: a pinned tab
-    // edits its own entities whatever is selected).
+    // The entities an edit applies to: the selection, the entities the inspector shows.
     std::vector<Panda::Entity> targets();
     Panda::Entity primaryTarget(); // the first of them; invalid — none
     std::vector<Panda::UUID> targetIds();
-    void beginTarget(const std::vector<Panda::UUID> &ids);
-    void endTarget();
 
-    // The name of entities as one undoable edit (the field of the tab, Rename of the Hierarchy).
+    // The name of entities as one undoable edit (the field of the inspector, Rename of the Hierarchy).
     void rename(const std::vector<Panda::UUID> &ids, const std::string &name);
     // Models become entities of the world: a subtree per mesh asset (a drop onto the viewport,
     // Add to World of the Content Browser).
@@ -139,8 +135,6 @@ private:
 
     EditorController &m_workspace;
     Panda::EditorLayer &m_app;
-    std::vector<Panda::UUID> m_target; // the entities of the tab whose edit runs
-    bool m_targetActive = false;
     int m_nextEntity = 1; // counter for the names of new entities
 };
 

@@ -10,46 +10,62 @@ shows an error and does not touch the current world.
 
 ```json
 {
-    "lighting": { "ambientColor": {"x":1,"y":1,"z":1,"w":1}, "ambientIntensity": 0.12, "environmentMap": 0, "environmentIntensity": 1 },
-    "graphics": { "shadows": { ... }, "occlusion": { ... }, "ssao": { ... }, "fog": { ... } },
-    "wind": { "strength": 0.4, "speed": 1, "gustiness": 0.5, "directionDegrees": 0 },
-    "terrain": { "lod1": 120, "lod2": 240, "drawDistance": 0, "ring2Width": 4, "ring3Width": 16, "ring4Width": 32 },
-    "flora": { "grass": 80, "grassDissolve": 0, "tree": 80, "imposter": 4000 },
     "entities": [ { ... }, ... ]
 }
 ```
 
-Every top-level key but `entities` is a settings section by name: the core's `lighting`,
-`graphics` and `wind` and the sections of the modules (the Terrain module: `terrain` — LOD and
-draw distances in meters and the widths of the tile rings in columns, `flora` — flora distances
-in meters; the defaults are as in the example). A section and every field in it are optional:
-what is missing takes the engine defaults. The field names are the C++ field names of the
-settings structs: `graphics.shadows` — `enabled`, `cascadeCount`, `tileSize`, `distance`,
-`strength`, `softness` (the angular radius of the sun in degrees: the edge of a shadow widens with
-the distance from its caster; 0 — a fixed filter), `lampTileSize` (the side of a tile of the lamp
-shadow atlas in texels, 512), `slopeBias`, `normalOffset`, `receiverBias`;
-`graphics.occlusion` — `enabled`, `aoStrength`, `sunStrengthNear`, `sunStrengthFar`, `cellSize`,
-`windowChunks`, `extinction`, `surfaceOffset`, `contrast`; `graphics.ssao` — `enabled`, `radius`
-(m), `intensity`, and what the occlusion may cost: `slices` (directions around a pixel, 1–8,
-default 3), `steps` (depth samples along a direction each way, 1–12, default 4),
-`fullResolution` (the resolution of the frame instead of half of it, default false) — the
-Quality list of the editor is a name for a set of the three; `graphics.fog` — `enabled` (default
-false), `density` (the light a meter of air takes away at `baseHeight`: 0.002 — a hazy day,
-0.01 — a misty one, 0.1 — a thick fog), `heightFalloff` (every this many meters up the density
-halves; 0 — the same at every height), `baseHeight` (m), `startDistance` (m), `maxOpacity`
-(0–1), `tint` (multiplies the light the fog takes from the sky of the world), `sunScatter` (the
-glow around the sun, 0 — none), `affectSky`
-(`Panda/include/Panda/GameLogic/WorldSettings.hpp`, `Renderer/SceneWind.hpp`).
+A world file is its entities and nothing else. What a world looks like is components of its
+entities: the sky (`skyComponent`: the environment map, the ambient light, the fog), the sun
+(`directionalLightComponent`: its light and its shadows), the camera (`cameraComponent`: its
+exposure, bloom, ambient occlusion), the wind (`windComponent`). What a frame of it may cost —
+the maps of the shadows, the budget of the ambient occlusion, the distances of the terrain — is
+the same for every world of the game and lives in `.Panda/project.json` (see "The project files"
+below).
+
 A single component has the same text outside a world file: an object with the name of its type
 as the key, `{"pointLightComponent": {"color": {...}, "intensity": 10.0, ...}}`. Copy Values in
 the menu of a component section of the editor puts it on the clipboard and Paste Values reads
 it — into another entity, another world, another project.
 
-`lighting.environmentMap` is the id of a texture asset (an equirectangular `.hdr`): the default
-sky draws it and the lit shaders take the light of the sky from it, both scaled by
-`environmentIntensity`; `ambientColor` × `ambientIntensity` is a flat light added on top (0 —
-the map alone lights the scene). A section whose module is absent is preserved as is on load and save;
-the editor logs a warning about it.
+### The main one of a kind
+
+A world uses one camera, one sun, one sky and one wind: of each of these kinds the component with
+`"isMain": true` is the one it uses, the others are spares (a sky of the night a script makes the
+main one, the camera of a cutscene). A world without a main sky is lit by its lamps and its sun
+alone, against black; without a main sun it has no sunlight and no cascaded shadows; without a
+main wind it is calm; without a main camera the game has nothing to look through.
+
+**A component of such a kind written without `isMain` is the main one** — so a second camera, sun,
+sky or wind added to a file by hand needs `"isMain": false`. Two that say `true` (or say nothing)
+are a mistake: the editor and the game name them in a warning when the world is read (`World: 2
+entities have a main cameraComponent …`), the world uses one of them, and which one is not a rule
+to count on. The editor itself never makes two: a component added next to the main one comes as a
+spare, and so does a copy — a duplicate, a paste, an instance of a prefab; Main in its section
+makes it the main one and the others spares, in one step of Undo.
+
+- `skyComponent` — `isMain`; `material` (the material of the sky; 0 — the default sky: the
+  environment map, or the built-in gradient); `environmentMap` (the id of a texture asset, an
+  equirectangular `.hdr` or picture: the default sky draws it and the lit shaders take the light
+  of the sky from it; 0 — the built-in gradient), `environmentIntensity` (the exposure of the map:
+  the sky and its light together, 1); `ambientColor`, `ambientIntensity` (a flat light from
+  everywhere added on top, white × 0.12); `fog` — `enabled` (false), `density` (the light a meter
+  of air takes away at `baseHeight`: 0.002 — a hazy day, 0.01 — a misty one, 0.1 — a thick fog),
+  `heightFalloff` (every this many meters up the density halves; 0 — the same at every height),
+  `baseHeight` (m), `startDistance` (m), `maxOpacity` (0–1), `tint` (multiplies the light the fog
+  takes from the sky), `sunScatter` (the glow around the sun, 0 — none), `affectSky`.
+- `directionalLightComponent` — `isMain`, `color`, `intensity`, `isEnabled`, `castShadows`,
+  `shadowStrength` (0 — no shadow, 1 — the sun does not reach a shadowed point at all),
+  `shadowSoftness` (the angular radius of the sun in degrees: the edge of a shadow widens with the
+  distance from its caster; 0 — a fixed filter of a few texels, 1.5).
+- `cameraComponent` — `isMain`, the projection (`camera`), the look of the frame (`exposure`,
+  `tonemap`, `bloomEnabled`, the auto exposure, `antialiasing`, `postprocessing`) and
+  `ambientOcclusion` (true), `ambientOcclusionRadius` (how far an occluder reaches, m, 0.6),
+  `ambientOcclusionIntensity` (1) — the screen-space ambient occlusion of the `ssao` feature.
+- `windComponent` — `isMain`, `strength` (0–1, 0.25), `speed` (1.6), `gustiness` (0–1, 0.6),
+  `directionDegrees` (where it blows to in the ground plane, 0 — along +X).
+
+Every field is optional: what is missing takes the default (`Panda/include/Panda/GameLogic/
+Components/BaseComponents.hpp`).
 
 ## Entity
 
@@ -97,7 +113,7 @@ Invariants:
 
 `cameraComponent`, `directionalLightComponent`, `pointLightComponent`,
 `spriteRendererComponent`, `importedSubmeshComponent` (a mesh: `importedMesh` — asset id,
-`overrideMaterial`, `submeshIndex`, `primitiveIndex`), `cubeMapComponent`,
+`overrideMaterial`, `submeshIndex`, `primitiveIndex`), `skyComponent`, `windComponent`,
 `primitiveMeshComponent`, `terrain2dComponent`, `terrain3dComponent`,
 `particleEmitterComponent`, `rigidbody2dComponent`, `boxCollider2dComponent`,
 `rigidbody3dComponent`, `boxCollider3dComponent`, `sphereCollider3dComponent`,
@@ -162,7 +178,7 @@ without the component, and the log says so (`Component "…": its value is not r
 ## Prefabs and instances
 
 A prefab ([Prefabs](prefabs.md)) is a file `*.prefab` under `Assets`: an object with the
-`entities` of a world file and nothing else — no settings sections — whose entities form one
+`entities` of a world file, whose entities form one
 tree. The entity with `"parent": 0` is the root of the prefab; a file has exactly one. Everything
 an entity of a world may be, an entity of a prefab may be.
 
@@ -290,7 +306,12 @@ version control:
     "startWorld": "Assets/world.world",
     "shaderFeatures": ["lights", "lamps", "shadows", "environment"],
     "disabledModules": ["dev.pandaengine.terrain"],
-    "mcp": { "enabled": true, "port": 7717 }
+    "mcp": { "enabled": true, "port": 7717 },
+    "shadows": { "cascadeCount": 2, "tileSize": 2048, "distance": 60 },
+    "ambientOcclusion": { "slices": 3, "steps": 4, "fullResolution": false },
+    "occlusionVolume": { "aoStrength": 0.8 },
+    "terrain": { "drawDistance": 0 },
+    "flora": { "grass": 80 }
 }
 ```
 
@@ -307,6 +328,27 @@ version control:
   every other module is on.
 - `mcp` — `enabled`, `port`: the MCP server of the editor for this project (see
   `zed-and-agents.md`).
+
+What a frame may cost, the same for every world of the game (the export gives these sections to
+the game; every field is optional, what is missing takes the default):
+
+- `shadows` — the maps the shadows are drawn from: `cascadeCount` (the parts the shadow distance
+  of the sun is cut into, 1–4, 3), `tileSize` (the side of the map of a cascade, texels, 1024),
+  `distance` (how far from the camera the sun casts shadows, m, 100), `lampTileSize` (the side of
+  the map of a lamp that casts shadows, 512), and the offsets against the stripes a surface casts
+  on itself, in texels of a map: `slopeBias` (2), `normalOffset` (1), `receiverBias` (0.5).
+- `ambientOcclusion` — what the screen-space ambient occlusion may cost: `slices` (directions
+  around a pixel, 1–8, 3), `steps` (depth samples along a direction each way, 1–12, 4),
+  `fullResolution` (the resolution of the frame instead of half of it, false). The Quality list
+  of the editor is a name for a set of the three.
+- `occlusionVolume` — how the vegetation darkens the light under it (`aoStrength`,
+  `sunStrengthNear`, `sunStrengthFar`, `extinction`, `surfaceOffset`, `contrast`) and how fine and
+  how wide the volume around the camera is (`cellSize`, m; `windowChunks`, 2–8). A world without
+  plants has no volume.
+- The Terrain module: `terrain` — LOD and draw distances in meters and the widths of the tile
+  rings in columns (`lod1` 120, `lod2` 240, `drawDistance` 0 — no limit, `ring2Width` 4,
+  `ring3Width` 16, `ring4Width` 32); `flora` — flora distances in meters (`grass` 80,
+  `grassDissolve` 0, `tree` 80, `imposter` 4000).
 
 Modules may add sections of their own; a section whose module is absent is preserved.
 

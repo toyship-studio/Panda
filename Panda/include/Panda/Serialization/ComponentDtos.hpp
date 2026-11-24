@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Panda/Renderer/FogSettings.hpp"
+
 #include "Panda/GameLogic/Components/BaseComponents.hpp"
 #include "Panda/Prefabs/PrefabComponent.hpp"
 
@@ -123,7 +125,7 @@ struct ImportedSubmeshComponentDto : public Rain::Codable {
 };
 
 struct CameraComponentDto : public Rain::Codable {
-    bool isPrimary;
+    bool isMain = true;
     WorldCameraDto camera;
     UUID postprocessing = 0; // PostprocessingAsset id (0 — none; the default for old .world)
     bool postprocessingEnabled = true;
@@ -138,9 +140,12 @@ struct CameraComponentDto : public Rain::Codable {
     std::string tonemap = "agx"; // "agx", "aces", "neutral", "reinhard", "none" (Panda::Tonemap)
     float exposure = 0.f;        // stops
     bool antialiasing = true;    // FXAA over the finished frame
+    bool ambientOcclusion = true;
+    float ambientOcclusionRadius = 0.6f;
+    float ambientOcclusionIntensity = 1.f;
 
     RAIN_FIELDS_BEGIN(CameraComponentDto)
-    RAIN_FIELD(isPrimary)
+    RAIN_FIELD(isMain)
     RAIN_FIELD(camera)
     RAIN_FIELD(postprocessing)
     RAIN_FIELD(postprocessingEnabled)
@@ -155,20 +160,29 @@ struct CameraComponentDto : public Rain::Codable {
     RAIN_FIELD(tonemap)
     RAIN_FIELD(exposure)
     RAIN_FIELD(antialiasing)
+    RAIN_FIELD(ambientOcclusion)
+    RAIN_FIELD(ambientOcclusionRadius)
+    RAIN_FIELD(ambientOcclusionIntensity)
     RAIN_FIELDS_END
 };
 
 struct DirectionalLightComponentDto : public Rain::Codable {
+    bool isMain = true;
     Color color = Color(1.f, 1.f, 1.f, 1.f);
     float intensity = 1.f;
     bool isEnabled = true;
     bool castShadows = true;
+    float shadowStrength = 1.f;
+    float shadowSoftness = 1.5f;
 
     RAIN_FIELDS_BEGIN(DirectionalLightComponentDto)
+    RAIN_FIELD(isMain)
     RAIN_FIELD(color)
     RAIN_FIELD(intensity)
     RAIN_FIELD(isEnabled)
     RAIN_FIELD(castShadows)
+    RAIN_FIELD(shadowStrength)
+    RAIN_FIELD(shadowSoftness)
     RAIN_FIELDS_END
 };
 
@@ -193,10 +207,38 @@ struct PointLightComponentDto : public Rain::Codable {
 };
 
 struct SkyComponentDto : public Rain::Codable {
-    UUID material;
+    bool isMain = true;
+    UUID material = 0;
+    UUID environmentMap = 0;
+    float environmentIntensity = 1.f;
+    Color ambientColor = Color(1.f, 1.f, 1.f, 1.f);
+    float ambientIntensity = 0.12f;
+    FogSettings fog;
 
     RAIN_FIELDS_BEGIN(SkyComponentDto)
+    RAIN_FIELD(isMain)
     RAIN_FIELD(material)
+    RAIN_FIELD(environmentMap)
+    RAIN_FIELD(environmentIntensity)
+    RAIN_FIELD(ambientColor)
+    RAIN_FIELD(ambientIntensity)
+    RAIN_FIELD(fog)
+    RAIN_FIELDS_END
+};
+
+struct WindComponentDto : public Rain::Codable {
+    bool isMain = true;
+    float strength = 0.25f;
+    float speed = 1.6f;
+    float gustiness = 0.6f;
+    float directionDegrees = 0.f;
+
+    RAIN_FIELDS_BEGIN(WindComponentDto)
+    RAIN_FIELD(isMain)
+    RAIN_FIELD(strength)
+    RAIN_FIELD(speed)
+    RAIN_FIELD(gustiness)
+    RAIN_FIELD(directionDegrees)
     RAIN_FIELDS_END
 };
 

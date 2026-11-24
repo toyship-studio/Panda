@@ -37,8 +37,8 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_leftDock = std::make_shared<TabView>();
     m_rightDock = std::make_shared<TabView>();
     m_bottomDock = std::make_shared<TabView>();
-    // What a UI test finds a dock by: two tabs may say the same (the tab of a world and the
-    // Hierarchy, whose caption is the file of that world), and the dock tells them apart.
+    // What a UI test finds a dock by: two tabs of different docks may say the same, and the dock
+    // tells them apart.
     m_leftDock->setAccessibilityId("leftDock");
     m_rightDock->setAccessibilityId("rightDock");
     m_bottomDock->setAccessibilityId("bottomDock");
@@ -58,7 +58,6 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
         tv->setOnReorder([this, d](TabView &, int, int to) { tabReordered(d, to); });
         tv->setOnTabMoved([this, d](TabView &, std::uint64_t id, int idx) { tabMovedToDock(d, id, idx); });
         tv->setOnTabContextMenu([this, d](TabView &, int index, Point position) { showTabMenu(d, index, position); });
-        tv->setOnTabDoubleClicked([this, d](TabView &, int index) { tabDoubleClicked(d, index); });
         // Close button gate: a transient with unsaved changes may cancel the close.
         tv->setOnTabCloseRequest([this, d](TabView &view, int index) {
             return allowClose(panelForTabId(view.tabId(index)));
@@ -95,9 +94,11 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_centerColumn->addPane(m_center, 3.f);
     m_centerColumn->addPane(m_bottomDock, 2.f);
 
+    // The left dock holds the files of the project (a column 200 points wide in a window 1280
+    // wide); the right one is empty unless a panel is moved there.
     m_workspace = std::make_shared<SplitView>(SplitOrientation::Horizontal);
     m_workspace->addPane(m_leftDock, 1.f);
-    m_workspace->addPane(m_centerColumn, 3.2f);
+    m_workspace->addPane(m_centerColumn, 5.4f);
     m_workspace->addPane(m_rightDock, 1.6f);
 
     // Zoom overlay: a dim over the whole window + an inset frame (the zoomed zone is moved there). Hidden.
@@ -245,19 +246,10 @@ void DockManager::setPanelTitle(const std::string &id, std::string title) {
     panel->title = title; // a rebuild of the docks keeps it
     std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
     const int index = tabIndexOf(id);
-    if (tabs && index >= 0 && panel->caption.empty()) { tabs->setTabTitle(index, std::move(title)); }
+    if (tabs && index >= 0) { tabs->setTabTitle(index, std::move(title)); }
 }
 
-void DockManager::setPanelCaption(const std::string &id, std::string caption) {
-    DockPanel *panel = findPanel(id);
-    if (!panel || panel->caption == caption) { return; }
-    panel->caption = std::move(caption);
-    std::shared_ptr<TabView> tabs = dockTabView(panel->dock);
-    const int index = tabIndexOf(id);
-    if (tabs && index >= 0) { tabs->setTabTitle(index, panel->caption.empty() ? panel->title : panel->caption); }
-}
-
-/* ------------------------------ transient panels (editor tabs) ------------------------------ */
+/* ------------------------------ transient panels (the tabs of documents) ------------------------------ */
 
 bool DockManager::activateTransientPanel(const std::string &id) {
     DockPanel *existing = findPanel(id);
@@ -318,59 +310,12 @@ void DockManager::closeTransientPanel(const std::string &id) {
     rebuild();
 }
 
-void DockManager::renameTransientPanel(const std::string &oldId, const std::string &newId) {
-    DockPanel *p = findPanel(oldId);
-    if (!p || !p->transient || oldId == newId || findPanel(newId)) { return; }
-    const auto it = m_panelTabId.find(oldId);
-    if (it == m_panelTabId.end()) { return; }
-    const std::uint64_t tid = it->second; // same tab-id — the tab/position/selection do not change
-    m_panelTabId.erase(it);               // erase before insert: oldId may refer to p->id
-    std::replace(m_shownOrder.begin(), m_shownOrder.end(), std::string(oldId), newId); // a copy, for the same reason
-    p->id = newId;
-    m_panelTabId[p->id] = tid;
-}
-
-void DockManager::updateTransientPanel(
-    const std::string &id, std::string title, const std::string &icon, std::shared_ptr<View> content
-) {
-    DockPanel *p = findPanel(id);
-    if (!p || !p->transient) { return; }
-    const auto tv = dockTabView(p->dock);
-    const int index = tabIndexOf(id);
-    const bool sameContent = p->content == content; // replace preview reuses the tab's view
-    p->title = title;
-    p->icon = icon;
-    p->content = content;
-    if (!tv || index < 0) { return; } // dock hidden by the user — the tab will update from the specification
-    tv->setTabTitle(index, std::move(title));
-    tv->setTabIcon(index, icons().get(icon));
-    if (!sameContent) { tv->replaceTabContent(index, std::move(content)); }
-}
-
-void DockManager::setPanelPreview(const std::string &id, bool preview) {
-    DockPanel *p = findPanel(id);
-    if (!p) { return; }
-    p->preview = preview;
-    const auto tv = dockTabView(p->dock);
-    const int index = tabIndexOf(id);
-    if (tv && index >= 0) { tv->setTabPreview(index, preview); }
-}
-
-bool DockManager::isPanelPreview(const std::string &id) const {
-    const DockPanel *p = findPanel(id);
-    return p != nullptr && p->preview;
-}
-
 bool DockManager::panelExists(const std::string &id) const {
     return findPanel(id) != nullptr;
 }
 
 void DockManager::setOnTransientClosed(std::function<void(const std::string &)> callback) {
     m_onTransientClosed = std::move(callback);
-}
-
-void DockManager::setOnPanelPinned(std::function<void(const std::string &)> callback) {
-    m_onPanelPinned = std::move(callback);
 }
 
 void DockManager::setOnTransientCloseRequest(std::function<bool(const std::string &)> callback) {
@@ -412,17 +357,6 @@ bool DockManager::closePanel(const std::string &idRef) {
     closePanelInternal(id);
     rebuild();
     return true;
-}
-
-void DockManager::tabDoubleClicked(Dock dock, int tabIndex) {
-    const auto tv = dockTabView(dock);
-    if (!tv) { return; }
-    const std::string id = panelForTabId(tv->tabId(tabIndex));
-    DockPanel *p = findPanel(id);
-    if (!p || !p->preview) { return; } // pinning concerns only preview tabs
-    p->preview = false;
-    tv->setTabPreview(tabIndex, false);
-    if (m_onPanelPinned) { m_onPanelPinned(id); }
 }
 
 std::string DockManager::selectedPanelId(Dock dock) const {
@@ -493,16 +427,17 @@ void DockManager::showTabMenu(Dock dock, int tabIndex, Point position) {
 
 Panda::DockLayoutState DockManager::captureLayout() const {
     Panda::DockLayoutState state;
+    state.model = Panda::DockLayoutState::MODEL;
     state.panels.reserve(m_panels.size());
     for (const DockPanel &p : m_panels) {
         if (p.transient) {
-            // Pinned editor tabs are saved as a separate list (the id encodes the object),
-            // the preview one is session-only and goes away; a tab its owner reopens is the owner's.
-            if (!p.preview && p.restored) {
-                Panda::PinnedTabPlacement pinned;
-                pinned.id = p.id;
-                pinned.dock = static_cast<int>(p.dock);
-                state.pinnedTabs.push_back(std::move(pinned));
+            // The tabs of documents are saved as a list of their own (the id names the document);
+            // a tab its owner reopens (a world of the session) is the owner's.
+            if (p.restored) {
+                Panda::OpenTabPlacement tab;
+                tab.id = p.id;
+                tab.dock = static_cast<int>(p.dock);
+                state.openTabs.push_back(std::move(tab));
             }
             continue;
         }
@@ -649,11 +584,8 @@ void DockManager::rebuild() {
         // (movable=false: the worlds) are reordered in it.
         if (auto dock = dockTabView(p.dock)) {
             const TabDrag drag = !p.closable ? TabDrag::None : p.movable ? TabDrag::Free : TabDrag::WithinBar;
-            const int idx = dock->addTab(
-                p.caption.empty() ? p.title : p.caption, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon)
-            );
-            // The preview and the unsaved dot live in the specification, their look in the tab.
-            if (p.preview) { dock->setTabPreview(idx, true); }
+            const int idx = dock->addTab(p.title, p.content, p.closable, tabIdForPanel(p.id), drag, icons().get(p.icon));
+            // The unsaved dot lives in the specification, its look in the tab.
             if (p.dirty) { dock->setTabDirty(idx, true); }
         }
     }
@@ -705,14 +637,23 @@ void DockManager::setVisible(Dock dock, bool visible) {
 
 void DockManager::refreshStrip() {
     std::vector<StripItem> items;
-    items.reserve(m_panels.size());
+    items.reserve(m_panels.size() + m_stripToggles.size());
     for (const DockPanel &p : m_panels) {
-        if (!p.inStrip) { continue; } // the world tabs are not in the strip; closed panels are shown (dim)
+        if (!p.inStrip) { continue; } // the tabs of documents are not in the strip; closed panels are shown (dim)
         const auto tv = dockTabView(p.dock);
         const bool active = p.open && isVisible(p.dock) && tv && tv->selectedIndex() == tabIndexOf(p.id);
-        items.push_back(StripItem{p.id, p.icon, p.dock, p.open, active});
+        items.push_back(StripItem{p.id, p.icon, p.title, p.dock, p.open, active, /*dockable*/ true});
+    }
+    for (const StripToggle &toggle : m_stripToggles) {
+        const bool on = toggle.isOn && toggle.isOn();
+        items.push_back(StripItem{toggle.id, toggle.icon, toggle.tooltip, toggle.side, /*open*/ true, on, /*dockable*/ false});
     }
     m_strip->setItems(items);
+}
+
+void DockManager::setStripToggles(std::vector<StripToggle> toggles) {
+    m_stripToggles = std::move(toggles);
+    refreshStrip();
 }
 
 /* ------------------------------ strip / close / add commands ------------------------------ */
@@ -734,10 +675,29 @@ void DockManager::showPanel(const std::string &idRef) {
     refreshStrip();
 }
 
+bool DockManager::isDockOfPanelVisible(const std::string &id) const {
+    const DockPanel *panel = findPanel(id);
+    return panel != nullptr && panel->open && isVisible(panel->dock);
+}
+
+void DockManager::hideDockOfPanel(const std::string &id) {
+    const DockPanel *panel = findPanel(id);
+    if (panel == nullptr || panel->dock == Dock::Center) { return; }
+    setVisible(panel->dock, false);
+    refreshStrip();
+}
+
 void DockManager::stripDidActivatePanel(const std::string &idRef) {
     // A copy at the boundary: idRef lives in the lambda of a strip button, and rebuild/refreshStrip below
     // recreate the buttons and destroy that lambda together with the string.
     const std::string id = idRef;
+    for (const StripToggle &toggle : m_stripToggles) {
+        if (toggle.id != id) { continue; }
+        const std::function<void()> run = toggle.toggle; // a copy: the toggle may set the toggles anew
+        if (run) { run(); }
+        refreshStrip();
+        return;
+    }
     DockPanel *p = findPanel(id);
     if (!p) { return; }
     if (p->open) {

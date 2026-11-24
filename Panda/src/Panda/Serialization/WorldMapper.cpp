@@ -3,7 +3,6 @@
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Prefabs/PrefabComponent.hpp"
 #include "Panda/Serialization/ComponentDtos.hpp"
-#include "Panda/Serialization/SettingsMapper.hpp"
 
 #include <Rain/Coders/JsonDecoder.hpp>
 #include <Rain/Coders/JsonEncoder.hpp>
@@ -89,9 +88,31 @@ namespace {
 
     // --- World document: encoded as a single value (Rain calls the static encode/decode).
 
+    // Of a kind a world uses one of (ComponentType::isMain: the camera, the sun, the sky, the
+    // wind) a file names one main component. A file written by hand may name two — a component is
+    // the main one unless it says otherwise: said here, because the world uses one of them and
+    // nothing in the file tells which.
+    void reportMains(World &world, const ComponentTypeRegistry &types) {
+        for (const ComponentType &type : types.types()) {
+            if (type.isMain == nullptr) { continue; }
+            const std::vector<Entity> mains = world.findMains(type);
+            if (mains.size() < 2) { continue; }
+            // By name and id: names repeat, and the id is what the file is searched by.
+            const auto named = [](const Entity &entity) {
+                return entity.getName() + " (id " + std::to_string(static_cast<uint32_t>(entity.getId())) + ")";
+            };
+            std::string names;
+            for (const Entity &main : mains) { names += (names.empty() ? "" : ", ") + named(main); }
+            LOG_WARN_EDITOR(
+                "World: %zu entities have a main %s — %s — and a world uses one: %s now. Write \"isMain\": false "
+                "into the others.",
+                mains.size(), type.name.c_str(), names.c_str(), named(mains.front()).c_str()
+            );
+        }
+    }
+
     struct WorldDocument {
         World *world = nullptr;
-        bool settings = true; // false — a fragment: the entities alone
         // Not 0 — the entities of one tree, from this root down, and no others (a prefab).
         UUID root = 0;
 
@@ -99,7 +120,6 @@ namespace {
             World &world = *document.world;
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             encoder->beginObject(key);
-            if (document.settings) { SettingsMapper::encode(SettingsScope::World, world.context(), *encoder); }
             size_t droppedForeign = 0; // foreign components a coder without raw values leaves out
             encoder->beginArray("entities");
             // The file lists the entities the way the Hierarchy shows them (World::orderedChildren):
@@ -146,10 +166,19 @@ namespace {
 
         static bool decode(const char *key, Rain::Decoder *decoder, WorldDocument &document) {
             if (!decoder->beginObject(key)) { return false; }
+            // A world file is its entities. A key beside them is not read and a save leaves it
+            // out: said, not lost in silence — the file is written by hand and by agents too.
+            for (const std::string &name : decoder->getMemberKeys()) {
+                if (name == "entities") { continue; }
+                LOG_WARN_EDITOR(
+                    "World: \"%s\" is not a part of a world file (a world is its entities): it is not read, and a save "
+                    "leaves it out.",
+                    name.c_str()
+                );
+            }
             World &world = *document.world;
             const ComponentTypeRegistry &types = GameContext::getExtensions().components;
             world.clear();
-            SettingsMapper::decode(SettingsScope::World, world.context(), *decoder, {"entities"});
             EntityIssues issues;
             if (decoder->beginArray("entities")) {
                 while (decoder->arrayHasElement()) {
@@ -180,6 +209,7 @@ namespace {
             }
             decoder->endObject();
             issues.report();
+            reportMains(world, types);
             // A file written before the encoder dropped the tombstones of undoable deletions lists
             // children that do not exist; the sort and the hierarchy need every link to resolve.
             if (const size_t repaired = world.repairHierarchy()) {
@@ -273,7 +303,6 @@ bool WorldMapper::loadEntity(Entity entity, Rain::Decoder &decoder, std::istream
 void WorldMapper::saveTree(World &world, Entity root, Rain::Encoder &encoder, std::ostream &stream) {
     WorldDocument document;
     document.world = &world;
-    document.settings = false;
     document.root = root.getId();
     encoder.encode(stream, document);
 }
@@ -305,7 +334,6 @@ bool WorldMapper::load(World &world, const Rain::Value &value) {
 Rain::Value WorldMapper::saveTree(World &world, Entity root) {
     WorldDocument document;
     document.world = &world;
-    document.settings = false;
     document.root = root.getId();
     return Rain::JsonEncoder().encodeValue(document);
 }
@@ -353,7 +381,6 @@ void WorldMapper::saveEntities(
     }
     WorldDocument document;
     document.world = &fragment;
-    document.settings = false;
     encoder.encode(stream, document);
 }
 

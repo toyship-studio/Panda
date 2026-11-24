@@ -22,6 +22,9 @@ class AssetHandlerEditor;
 class FileDocumentsOutput {
 public:
     virtual ~FileDocumentsOutput() = default;
+    // The active world is about to give its place to another one (or to none): what the editor
+    // shows of it is kept while it still is in front.
+    virtual void documentsWillActivateWorld() = 0;
     // Another world became the active one: the editor shows it from now on.
     virtual void documentsDidActivateWorld() = 0;
     // The active world got another content: read from its file (opened into an untouched new

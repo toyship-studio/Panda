@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 namespace Editor {
 
@@ -37,8 +38,8 @@ namespace {
 // A world document: the tab of one open world — a view of its file document (WorldFile, found by
 // the id the tab was opened with: the file may close before its tab does). Dirty is the world's
 // change flag, Save writes the world file, the undo stack is the world's. The tab content is a
-// host panel: the one Scene viewport of the editor lives in the host of the active world
-// (WorldTabs::sync), the other hosts are empty.
+// host panel: what a world tab shows (WorldEditorView) lives in the host of the active world
+// (WorldTabs::sync), the other hosts are empty and keep what they showed of their world (kept).
 class WorldDocument final : public Document {
 public:
     WorldDocument(WorldTabs &tabs, uint32_t worldId)
@@ -56,6 +57,7 @@ public:
     const std::shared_ptr<Panel> &host() const {
         return m_host;
     }
+    WorldTabState kept; // what the tab showed of its world when another world came in front
 
     // The name of the file the tab edits, as every document tab shows it.
     std::string title() override {
@@ -109,12 +111,12 @@ private:
 };
 
 WorldTabs::WorldTabs(
-    Panda::EditorLayer &app, DockManager &docks, EditorTabs &tabs, std::shared_ptr<PandaUI::View> viewport
+    Panda::EditorLayer &app, DockManager &docks, EditorTabs &tabs, std::shared_ptr<PandaUI::View> content
 )
     : m_app(app)
     , m_docks(docks)
     , m_tabs(tabs)
-    , m_viewport(std::move(viewport)) {}
+    , m_content(std::move(content)) {}
 
 Panda::WorldFile *WorldTabs::worldFile(uint32_t worldId) const {
     return m_app.documents().findWorld(worldId);
@@ -136,6 +138,15 @@ Document *WorldTabs::activeDocument() {
 
 void WorldTabs::showActive() {
     m_docks.showPanel(tabIdOf(activeWorldId()));
+}
+
+void WorldTabs::keepActiveState(WorldTabState state) {
+    if (WorldDocument *active = document(activeWorldId())) { active->kept = std::move(state); }
+}
+
+WorldTabState WorldTabs::takeActiveState() {
+    WorldDocument *active = document(activeWorldId());
+    return active != nullptr ? std::exchange(active->kept, WorldTabState{}) : WorldTabState{};
 }
 
 void WorldTabs::sync() {
@@ -178,19 +189,6 @@ void WorldTabs::sync() {
         }
         m_docks.setPanelTitle(tabId, world->name()); // a no-op while the name stands (Save As changes it)
     }
-    // The preview tab of a world stops being one when the user pinned it (a double click on the
-    // tab), when the world is gone, and when the world was edited: an edit is not thrown away by
-    // a click on another file.
-    if (m_previewWorldId != 0) {
-        const Panda::WorldFile *previewWorld = worldFile(m_previewWorldId);
-        const std::string previewTab = tabIdOf(m_previewWorldId);
-        if (previewWorld == nullptr || !m_docks.isPanelPreview(previewTab)) {
-            m_previewWorldId = 0;
-        } else if (previewWorld->isDirty()) {
-            m_docks.setPanelPreview(previewTab, false);
-            m_previewWorldId = 0;
-        }
-    }
     // The active world and the selected tab follow each other.
     const uint32_t activeId = activeWorldId();
     const std::string activeTab = tabIdOf(activeId);
@@ -213,53 +211,28 @@ void WorldTabs::sync() {
             }
         }
     }
-    // The one Scene viewport of the editor lives in the tab of the active world.
+    // What a world tab shows lives in the tab of the active world.
     WorldDocument *active = document(activeWorldId());
-    if (active != nullptr && m_viewport->getSuperview() != active->host().get()) {
+    if (active != nullptr && m_content->getSuperview() != active->host().get()) {
         Context *context = m_docks.rootView()->getContext();
         View *focused = context ? context->getFocusedView() : nullptr; // a re-parent drops the focus
-        active->host()->addSubview(m_viewport);
+        active->host()->addSubview(m_content);
         if (context && focused) { context->setFocusedView(focused); }
     }
     m_inSync = false;
 }
 
-void WorldTabs::open(Panda::AssetId asset, bool preview) {
-    // The game plays a copy of the active world: a click only selects the file (a double click
-    // stops the game and opens the world, as it always did).
-    if (preview && m_app.isPlaying()) { return; }
-    const std::vector<uint32_t> before = m_worlds;
-    const uint32_t previousPreview = m_previewWorldId;
-    Context *context = m_docks.rootView()->getContext();
-    View *focused = context ? context->getFocusedView() : nullptr;
+void WorldTabs::open(Panda::AssetId asset) {
     m_app.openWorldAsset(asset);
     sync();
-    // A click in the Content Browser leaves the keyboard there (the arrows walk on over the files).
-    if (preview && context && focused) { context->setFocusedView(focused); }
-    const uint32_t opened = activeWorldId();
-    const bool isNew = std::find(before.begin(), before.end(), opened) == before.end();
-    if (!preview) {
-        if (opened == m_previewWorldId) {
-            m_docks.setPanelPreview(tabIdOf(opened), false);
-            m_previewWorldId = 0;
-        }
-        return;
-    }
-    if (!isNew) { return; }
-    m_previewWorldId = opened;
-    m_docks.setPanelPreview(tabIdOf(opened), true);
-    if (previousPreview != 0 && previousPreview != opened && worldFile(previousPreview) != nullptr) {
-        m_tabs.closeTab(tabIdOf(previousPreview)); // not edited: an edit pins the tab (sync)
-        sync();
-    }
 }
 
 void WorldTabs::documentClosed(Document *document) {
     auto *world = dynamic_cast<WorldDocument *>(document);
     if (world == nullptr) { return; }
-    // The viewport outlives the tab it lived in: the next sync moves it into the tab of the
-    // world that is active then.
-    if (m_viewport->getSuperview() == world->host().get()) { m_viewport->removeFromSuperview(); }
+    // The content outlives the tab it lived in: the next sync moves it into the tab of the world
+    // that is active then.
+    if (m_content->getSuperview() == world->host().get()) { m_content->removeFromSuperview(); }
     // The user closed the tab: the world leaves the list of the project on the next sync, not
     // from inside the dock's close.
     if (!m_closingTab) { m_closedByUser.push_back(world->worldId()); }

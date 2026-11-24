@@ -26,10 +26,11 @@ public:
     // The file items of an asset's context menu (the path, the external editor, the file manager).
     virtual void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) = 0;
     virtual void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) = 0; // a model becomes entities
-    virtual void contentDidRequestOpenWorld(Panda::AssetId assetId) = 0; // open the .world as the current world
-    // A double click on an asset the editor has no form for (a shader): its file goes to the
-    // external editor of the settings — the editor has no text editor of its own.
-    virtual void contentDidRequestOpenExternally(Panda::AssetId assetId) = 0;
+    // A double click (Open in the menu): the asset in its document — a world or a prefab in a world
+    // tab, an asset with a form in a tab of its own, a file the editor has no form for (a shader)
+    // in the external editor of the settings: the editor has no text editor of its own. A click
+    // only selects.
+    virtual void contentDidRequestOpen(Panda::AssetId assetId) = 0;
     // Files of the file manager dropped onto the browser go into the directory (a folder with what
     // is in it), and become assets.
     virtual void contentDidRequestImportFiles(const std::vector<Panda::path_t> &files, const Panda::path_t &directory) = 0;

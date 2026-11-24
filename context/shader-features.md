@@ -8,7 +8,8 @@ lighting features compute). The page for shader authors is `PandaSDK/docs/shader
 
 The set is the developer's decision about the game, made before its content: shaders and
 materials are written against it. It is static for a build and is not the player's quality
-setting; quality inside an enabled feature is data (world settings), a separate subject.
+setting; quality inside an enabled feature is data (the project's settings of what a frame may
+cost, and the look of the components of a world), a separate subject.
 
 ## The model
 
@@ -146,5 +147,5 @@ backend, each step by mtime; a changed set changes the expanded text and recompi
   separate passes over the frame. Two levers a weak phone would want are not built: a scene
   drawn smaller than the screen (a render scale of the camera: the targets of `WorldView`
   smaller than its view, the last pass of the chain stretching the picture — the composite of
-  the editor's Scene over the frame counts on equal sizes and has to follow), and a frame
+  the editor's World view over the frame counts on equal sizes and has to follow), and a frame
   without the emissive target when nothing glows.

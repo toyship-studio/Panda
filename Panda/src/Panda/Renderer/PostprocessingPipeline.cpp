@@ -3,6 +3,7 @@
 #include "Panda/Assets/StaticResources.hpp"
 #include "Panda/Assets/Base/AssetImporterBase.hpp"
 #include "Panda/GameLogic/Components/BaseComponents.hpp"
+#include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/GameLogic/World.hpp"
 #include "Panda/Renderer/WorldView.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
@@ -65,15 +66,23 @@ void PostprocessingFrameInputs::setCamera(const CameraComponent &camera) {
     tonemap.antialiasing = camera.antialiasing;
     cameraNear = camera.camera.getNear();
     cameraFar = camera.camera.getFar();
+    // The ambient occlusion the camera asks for, at the cost the project allows.
+    const AmbientOcclusionSettings &budget = GameContext::getProjectSettings().get<AmbientOcclusionSettings>();
+    ssao.enabled = camera.ambientOcclusion;
+    ssao.radius = camera.ambientOcclusionRadius;
+    ssao.intensity = camera.ambientOcclusionIntensity;
+    ssao.slices = budget.slices;
+    ssao.steps = budget.steps;
+    ssao.fullResolution = budget.fullResolution;
 }
 
 void PostprocessingFrameInputs::setView(const WorldView &view, World &world) {
     sunScreen = view.sunScreen();
     projection = view.camera().projection;
     viewProj = view.camera().viewProj;
-    const WorldGraphicsSettings &graphics = world.getSettings().graphics;
-    ssao = graphics.ssao;
-    fog.settings = graphics.fog;
+    // The fog is the air under the sky of the world: a world without a sky has none.
+    const Entity sky = world.findMain<SkyComponent>();
+    fog.settings = sky.isValid() ? sky.getComponent<SkyComponent>().fog : FogSettings{.enabled = false};
     fog.viewProj = viewProj;
     fog.scene = &view.sceneBlocks();
 }

@@ -57,13 +57,6 @@ namespace {
         return folder ? name : Panda::AssetHandlerEditor::splitName(name).first;
     }
 
-    // A kind the editor has a form for (EditorExtensions::assetKinds); the rest is text it does not
-    // edit, and a double click hands it to the external editor.
-    bool hasForm(const std::string &kind) {
-        const AssetKindUi *ui = editorExtensions().assetKinds.find(kind);
-        return ui != nullptr && ui->createEditor != nullptr;
-    }
-
     // The look of a kind is its entry in the editor registry (EditorExtensions::assetKinds), for
     // the kinds of the core and of the modules alike; a file of no kind is a gray generic file.
     Color colorForType(const std::string &type, bool folder) {
@@ -796,13 +789,7 @@ void ContentBrowserView::activate(Entry *entry) {
     }
     const FileEntry &file = static_cast<const FileEntry &>(*entry);
     if (file.assetId == 0 || !m_output) { return; }
-    const std::string kind = assetTypeOf(file.assetId);
-    // A world and a prefab are documents: each opens in a tab of its own.
-    if (kind == "world" || kind == "prefab") {
-        m_output->contentDidRequestOpenWorld(file.assetId);
-    } else if (!hasForm(kind)) {
-        m_output->contentDidRequestOpenExternally(file.assetId);
-    }
+    m_output->contentDidRequestOpen(file.assetId); // a document opens in its tab
 }
 
 void ContentBrowserView::emitSelection() {
@@ -979,10 +966,10 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
         std::vector<Panda::AssetId> targets = selectedAssets();
         if (std::find(targets.begin(), targets.end(), file.assetId) == targets.end()) { targets = {file.assetId}; }
         const std::string typeOfClicked = assetTypeOf(file.assetId);
-        if (typeOfClicked == "world" || typeOfClicked == "prefab") { // make it current (same as a double click)
-            const Panda::AssetId worldId = file.assetId;
-            menu->addItem(typeOfClicked == "world" ? "Open World" : "Open Prefab", [this, worldId] {
-                if (m_output) { m_output->contentDidRequestOpenWorld(worldId); }
+        {
+            const Panda::AssetId clicked = file.assetId; // what a double click does: the document in its tab
+            menu->addItem("Open", [this, clicked] {
+                if (m_output) { m_output->contentDidRequestOpen(clicked); }
             });
         }
         {

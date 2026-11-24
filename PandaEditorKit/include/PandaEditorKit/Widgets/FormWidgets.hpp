@@ -44,6 +44,9 @@ std::string humanizeIdentifier(const std::string &name);
 
 // Muted form hint (wraps to the section width).
 std::shared_ptr<PandaUI::Label> makeFormHint(const std::string &text);
+// A warning under a row: the yellow triangle and the text in the color of a warning — a state of
+// the data that wants the user, not an error (two skies of a world marked main).
+std::shared_ptr<PandaUI::View> makeFormWarning(const std::string &text);
 
 // The editor of a reference to an asset of kind kind (AssetKind::name): AssetWell with drop, a
 // picker and clearing; the asset name and selection — through the editor host (EditorHost).

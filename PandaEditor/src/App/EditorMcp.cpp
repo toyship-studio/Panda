@@ -116,7 +116,7 @@ namespace {
     }
 
     const char *viewName(ViewportKind view) {
-        return view == ViewportKind::Scene ? "scene" : "game";
+        return view == ViewportKind::Scene ? "world" : "game"; // as the switch of the toolbar names them
     }
 
 } // namespace
@@ -301,14 +301,15 @@ void EditorMcp::registerTools() {
     });
     m_server.addTool({
         "screenshot",
-        "A picture of a viewport as the editor shows it, or of the whole editor window. `scene`: the world "
+        "A picture of a viewport as the editor shows it, or of the whole editor window. `world`: the world "
         "through the editor camera, with the grid, the selection outline and the helper icons (place the camera "
         "with `camera`). `game`: the frame of the game through the main camera of the world, with the game UI — "
-        "the running game in Play, a still frame in Edit. The tab of the viewport comes forward for the shot. "
+        "the running game in Play, a still frame in Edit. The world tab shows that view for the shot (the switch "
+        "World | Game of the toolbar). "
         "`window`: the editor itself — its panels, tabs and dialogs with the viewport inside (the menu bar and the "
         "title of the system are not part of it). Takes a few frames.",
         R"({"type":"object","properties":{)"
-        R"("view":{"type":"string","enum":["scene","game","window","settings","export"],"description":"Default: game while playing, scene while editing. settings, export: the second window of the editor (Settings, Export Game) while it is open."},)"
+        R"("view":{"type":"string","enum":["world","game","window","settings","export"],"description":"Default: game while playing, world while editing. settings, export: the second window of the editor (Settings, Export Game) while it is open."},)"
         R"("width":{"type":"integer","description":"The picture is scaled down to this width in pixels when the viewport is wider. Default 1280."},)"
         R"("wait":{"type":"number","description":"Seconds to wait before the shot: assets still loading, a moment of the game to reach. Default 0, at most 30."},)"
         R"("file":{"type":"string","description":"Also write the PNG to this file: an absolute path, or one relative to the project folder."},)"
@@ -350,7 +351,7 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "play",
         "Starts the game inside the editor (Play): the scripts and the physics run in a copy of the active world, "
-        "the Game tab shows the frame. When the sources of the scripts changed since their build, they are built "
+        "the world tab shows the frame of the Game. When the sources of the scripts changed since their build, they are built "
         "first and the answer waits for it. Answers with what the start logged.",
         {},
         [this](const Rain::Value &) { return play(); },
@@ -363,7 +364,7 @@ void EditorMcp::registerTools() {
     });
     m_server.addTool({
         "camera",
-        "The editor camera of the Scene viewport. Without arguments answers where it is; `position` moves it, "
+        "The editor camera of the World view. Without arguments answers where it is; `position` moves it, "
         "`target` turns it to look at a point. World space, meters, Y up. The camera of the game is an entity "
         "of the world: it is edited in the world file.",
         R"({"type":"object","properties":{)"
@@ -396,12 +397,14 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "show",
         "Brings a part of the editor in front, as a click of the user would, so that a `screenshot` of the "
-        "`window` shows it. One of: `panel` — a panel by its id; `settings` — the settings; `asset` — selects "
-        "an asset: its tab opens (a material with its preview, a texture, a mesh); `entity` — selects an entity "
-        "of the active world by its name: its inspector tab opens.",
+        "`window` shows it. One of: `panel` — a panel by its id (hierarchy and inspector are the columns of the "
+        "world tab); `settings` — the settings; `asset` — opens an asset as a double click does: a world or a "
+        "prefab in its world tab, an asset with a form in its tab (a material with its preview, a texture, a "
+        "mesh); `entity` — selects an entity of the active world by its name: the inspector of the world tab "
+        "shows it.",
         R"({"type":"object","properties":{)"
-        R"("panel":{"type":"string","enum":["hierarchy","contentBrowser","output","cmake","statistics","profiler"]},)"
-        R"("settings":{"type":"string","enum":["world","project","editor","keymap","close"],"description":"world: the sidebar of the viewport. project, editor, keymap: a page of the Settings window (a window of its own). close: closes the second window of the editor — Settings or Export Game (the command export.open opens that one)."},)"
+        R"("panel":{"type":"string","enum":["hierarchy","inspector","contentBrowser","output","cmake","statistics","profiler"]},)"
+        R"("settings":{"type":"string","enum":["project","editor","keymap","close"],"description":"project, editor, keymap: a page of the Settings window (a window of its own). close: closes the second window of the editor — Settings or Export Game (the command export.open opens that one)."},)"
         R"("asset":{"type":"string","description":"The file of the asset, relative to the project folder (Assets/Materials/gold.mat)."},)"
         R"("entity":{"type":"string","description":"The name of the entity."}}})",
         [this](const Rain::Value &arguments) { return show(arguments); },
@@ -437,7 +440,7 @@ void EditorMcp::registerTools() {
     m_server.addTool({
         "pointer",
         "A gesture of the mouse in the editor window, made where the user would make it: for the editor itself as "
-        "the thing to test — a button, a menu, a field, a drag, the gizmo and the camera of the Scene. The place is "
+        "the thing to test — a button, a menu, a field, a drag, the gizmo and the camera of the World view. The place is "
         "an element by its path (`target`, see `ui`: the gesture goes to its middle, or to `at` in it; the call "
         "waits for the element to be there, scrolls it into sight, and fails when it is disabled or something "
         "lies over it) or a point of a `window` screenshot (`x`, `y`; of the default width — pass `of` when the "
@@ -628,8 +631,8 @@ Mcp::PendingResult EditorMcp::status() {
     answer.add("viewports", std::move(views));
     answer.add("camera", cameraValue());
 
-    const Renderer3D::Statistics stats3d = m_editor.viewports().worldView().renderer3D().getStats();
-    const Renderer2D::Statistics stats2d = m_editor.viewports().worldView().renderer2D().getStats();
+    const Renderer3D::Statistics stats3d = m_editor.viewports().statistics3D();
+    const Renderer2D::Statistics stats2d = m_editor.viewports().statistics2D();
     const Miren::GpuStats gpu = Miren::getGpuStats();
     const Editor::SystemStats system = Editor::sampleSystemStats();
     const double megabyte = 1024.0 * 1024.0;
@@ -695,7 +698,7 @@ Mcp::PendingResult EditorMcp::logs(const Rain::Value &arguments) {
 void EditorMcp::showViewport(ViewportKind view) {
     if (!m_editor.controller()) { return; }
     if (view == ViewportKind::Scene) {
-        m_editor.controller()->showSceneView();
+        m_editor.controller()->showWorldView();
     } else {
         m_editor.controller()->openGameView();
     }
@@ -710,7 +713,7 @@ Mcp::PendingResult EditorMcp::screenshot(const Rain::Value &arguments) {
     }
     if (view.empty()) {
         shot->view = m_editor.isPlaying() ? ViewportKind::Game : ViewportKind::Scene;
-    } else if (view == "scene") {
+    } else if (view == "world") {
         shot->view = ViewportKind::Scene;
     } else if (view == "game") {
         shot->view = ViewportKind::Game;
@@ -726,7 +729,7 @@ Mcp::PendingResult EditorMcp::screenshot(const Rain::Value &arguments) {
         shot->window = true;
         shot->settings = true;
     } else {
-        return Mcp::ready(Mcp::ToolResult::error("view is \"scene\", \"game\", \"window\" or \"settings\""));
+        return Mcp::ready(Mcp::ToolResult::error("view is \"world\", \"game\", \"window\", \"settings\" or \"export\""));
     }
     // A viewport shows a world: with none open there is nothing to shoot but the window.
     if (!shot->window && !m_editor.hasWorld()) {
@@ -770,7 +773,9 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
     }
     const EditorViewports &viewports = m_editor.viewports();
     const ViewportSurface &surface = viewports.surface(shot.view);
-    const bool live = viewports.live() == shot.view && surface.isReady() && surface.pixelWidth() > 0 && surface.pixelHeight() > 0;
+    // The view renders while the world tab shows it and is in front.
+    const bool live = viewports.live() == shot.view && viewports.isOnScreen() && surface.isReady() &&
+                      surface.pixelWidth() > 0 && surface.pixelHeight() > 0;
     ++shot.frames;
     if (!live) {
         shot.liveFrames = 0;
@@ -782,9 +787,8 @@ std::optional<Mcp::ToolResult> EditorMcp::stepScreenshot(Screenshot &shot) {
         if (shot.frames > SCREENSHOT_TIMEOUT_FRAMES) {
             return fail(
                 std::string("The ") + viewName(shot.view) +
-                " viewport does not render. One viewport renders per frame: in Edit the Scene while its tab is "
-                "visible, in Play the Game while its tab is visible — the other one cannot be shot while both "
-                "tabs are on screen."
+                " view does not render. One of the two renders per frame — the one the world tab shows — and "
+                "the tab of the active world has to be in front."
             );
         }
         return std::nullopt;
@@ -1041,7 +1045,7 @@ Mcp::PendingResult EditorMcp::openWorld(const Rain::Value &arguments) {
     if (m_editor.documents().openWorld(file) == nullptr) {
         return Mcp::ready(Mcp::ToolResult::error(file.filename().string() + " could not be opened: " + file.string() + "\n" + logSince(from)));
     }
-    if (m_editor.controller()) { m_editor.controller()->showSceneView(); }
+    if (m_editor.controller()) { m_editor.controller()->showWorldView(); }
     return Mcp::ready(textResult("Opened " + file.filename().string() + ".\n" + logSince(from)));
 }
 
@@ -1844,7 +1848,7 @@ Mcp::PendingResult EditorMcp::command(const Rain::Value &arguments) {
             item.add("id", entry.id);
             item.add("name", entry.group + ": " + entry.label);
             item.add("keys", std::move(keys));
-            if (entry.scope == Editor::CommandScope::World) { item.add("where", "scene, hierarchy"); }
+            if (entry.scope == Editor::CommandScope::World) { item.add("where", "world view, hierarchy"); }
             if (entry.customized) { item.add("user", true); }
             list.push(std::move(item));
         }
@@ -1886,9 +1890,7 @@ Mcp::PendingResult EditorMcp::show(const Rain::Value &arguments) {
         return Mcp::ready(textResult("The panel is in front."));
     }
     if (!settings.empty()) {
-        if (settings == "world") {
-            controller.openSettings(SettingsScope::World);
-        } else if (settings == "project") {
+        if (settings == "project") {
             controller.openSettings(SettingsScope::Project);
         } else if (settings == "editor") {
             controller.openSettings(SettingsScope::Editor);
@@ -1898,11 +1900,9 @@ Mcp::PendingResult EditorMcp::show(const Rain::Value &arguments) {
             controller.closeAuxiliaryWindow();
             return Mcp::ready(textResult("The second window is closed."));
         } else {
-            return Mcp::ready(Mcp::ToolResult::error("settings is \"world\", \"project\", \"editor\", \"keymap\" or \"close\""));
+            return Mcp::ready(Mcp::ToolResult::error("settings is \"project\", \"editor\", \"keymap\" or \"close\""));
         }
-        return Mcp::ready(textResult(
-            settings == "world" ? "The world settings are open in the viewport." : "The Settings window is open: shoot it with the `settings` view."
-        ));
+        return Mcp::ready(textResult("The Settings window is open: shoot it with the `settings` view."));
     }
     if (!asset.empty()) {
         auto *handler = AssetHandlerEditor::current();
@@ -1914,14 +1914,14 @@ Mcp::PendingResult EditorMcp::show(const Rain::Value &arguments) {
                 "Not an asset of the project: " + file.string() + " (a new file becomes one after `reload`)"
             ));
         }
-        controller.selectAsset(id);
-        return Mcp::ready(textResult("The asset is selected: its tab is open."));
+        controller.openAsset(id);
+        return Mcp::ready(textResult("The asset is open in its tab."));
     }
     if (!entity.empty()) {
         Entity found = m_editor.shownWorld()->findByTag(entity.c_str());
         if (!found.isValid()) { return Mcp::ready(Mcp::ToolResult::error("No entity is named " + entity)); }
         controller.selectEntity(found.getId());
-        return Mcp::ready(textResult("The entity is selected: its tab is open."));
+        return Mcp::ready(textResult("The entity is selected: the inspector of the world tab shows it."));
     }
     return Mcp::ready(Mcp::ToolResult::error("Say what to show: panel, settings, asset or entity"));
 }

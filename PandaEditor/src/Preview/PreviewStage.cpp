@@ -67,34 +67,30 @@ PreviewStage::PreviewStage() {
     setUpStudio();
 }
 
-// The studio: the built-in sky lights the subject and is reflected by it, a little flat fill,
-// a key light from the upper right of the first view. The light stands still while the camera
-// orbits — the far side of the subject is its shaded side. No shadows, no occlusion, no fog: a
-// picture of an asset, not of a place.
+// The studio: the built-in sky lights the subject and is reflected by it (it is not drawn: the
+// picture is composed over the form), a little flat fill, a key light from the upper right of the
+// first view. The light stands still while the camera orbits — the far side of the subject is its
+// shaded side. No shadows, no fog, no camera of its own (so no ambient occlusion), nothing that
+// occludes: a picture of an asset, not of a place.
 void PreviewStage::setUpStudio() {
-    WorldLightingSettings &lighting = m_world.getSettings().lighting;
-    lighting.ambientColor = Color(1.f, 1.f, 1.f, 1.f);
-    lighting.ambientIntensity = 0.1f;
-    lighting.environmentIntensity = 1.f;
-    WorldGraphicsSettings &graphics = m_world.getSettings().graphics;
-    graphics.shadows.enabled = false;
-    graphics.occlusion.enabled = false;
-    graphics.ssao.enabled = false;
-    graphics.fog.enabled = false;
+    Entity sky = m_world.instantiateEntity();
+    sky.setName("Studio Sky");
+    SkyComponent &light = sky.addComponent<SkyComponent>();
+    light.ambientIntensity = 0.1f;
 
     Entity key = m_world.instantiateEntity();
     key.setName("Key Light");
     // A light shines along the -Z of its entity: turned to come from the upper right front.
     const glm::vec3 toLight = glm::normalize(glm::vec3(0.45f, 0.55f, 1.f));
     key.getTransform().setRotation(glm::quatLookAt(-toLight, glm::vec3(0.f, 1.f, 0.f)));
-    DirectionalLightComponent &light = key.addComponent<DirectionalLightComponent>();
-    light.intensity = 1.6f;
-    light.castShadows = false;
+    DirectionalLightComponent &sun = key.addComponent<DirectionalLightComponent>();
+    sun.intensity = 1.6f;
+    sun.castShadows = false;
 }
 
 void PreviewStage::clear() {
     if (m_asset == AssetId(0)) { return; }
-    m_world.clear(); // the settings go back to their defaults with the entities
+    m_world.clear(); // the studio goes with the entities: it is set up again
     m_ruleMesh.reset();
     m_rule = -1;
     m_asset = AssetId(0);
@@ -210,6 +206,7 @@ void PreviewStage::draw(WorldView &view, const PreviewOrbit &orbit, float aspect
     camera.viewProj = camera.projection * glm::inverse(glm::translate(glm::mat4(1.f), position) * orientation);
     camera.skyViewProj = camera.projection * glm::inverse(orientation);
     camera.position = position;
+    camera.drawsSky = false;
 
     // The studio has no shadows and no occlusion (setUpStudio): the frame is the scene pass alone.
     view.render(m_world, camera);

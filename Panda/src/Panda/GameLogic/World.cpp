@@ -1,5 +1,4 @@
 #include "Panda/GameLogic/World.hpp"
-#include "Panda/Serialization/SettingsMapper.hpp"
 #include "Panda/GameLogic/Input.hpp"
 #include "Panda/GameLogic/Systems/RenderSystem.hpp"
 #include "Panda/GameLogic/Systems/ScriptSystem.hpp"
@@ -58,8 +57,6 @@ World::World()
     // Pools of all registered types: the world copy and the entity duplicate walk the pools
     // without types, the receiver must have them.
     prepareComponentTypes();
-    // The settings of the world scope exist from birth, with their defaults.
-    SettingsMapper::reset(SettingsScope::World, m_context);
 }
 
 void World::prepareComponentTypes() {
@@ -401,10 +398,7 @@ void World::clear() {
     }
     m_entityIdMap.clear();
     m_pendingDestroy.clear();
-    m_registry.clear(); // together with the tombstones
-    // An empty world has the default settings and no sections of modules that are not loaded;
-    // the state of the systems in the context is theirs and stays.
-    SettingsMapper::reset(SettingsScope::World, m_context);
+    m_registry.clear(); // together with the tombstones; the state of the systems in the context is theirs and stays
     bumpStructureVersion();
 }
 
@@ -412,14 +406,50 @@ bool World::isEmpty() {
     return !m_registry.storage<entt::entity>().size();
 }
 
-Entity World::findMainCameraEntity() {
-    auto view = m_registry.view<CameraComponent>();
-    for (auto entity : view) {
-        if (!isValidEntt(entity)) { continue; }
-        auto &comp = view.get<CameraComponent>(entity);
-        if (comp.isPrimary) { return {entity, this}; }
+Entity World::findMain(entt::id_type typeId, bool (*isMain)(Entity)) {
+    const entt::sparse_set *storage = m_registry.storage(typeId);
+    if (storage == nullptr) { return {}; }
+    for (entt::entity handle : *storage) {
+        if (isValidEntt(handle) && isMain(entity(handle))) { return entity(handle); }
     }
     return {};
+}
+
+SceneWindSettings World::wind() {
+    SceneWindSettings settings;
+    const Entity main = findMain<WindComponent>();
+    if (!main.isValid()) {
+        settings.strength = 0.f; // calm
+        return settings;
+    }
+    const WindComponent &wind = main.getComponent<WindComponent>();
+    settings.strength = wind.strength;
+    settings.speed = wind.speed;
+    settings.gustiness = wind.gustiness;
+    settings.directionDegrees = wind.directionDegrees;
+    return settings;
+}
+
+Entity World::findMain(const ComponentType &type) {
+    return type.isMain != nullptr ? findMain(type.typeId, type.isMain) : Entity();
+}
+
+std::vector<Entity> World::findMains(const ComponentType &type) {
+    std::vector<Entity> mains;
+    const entt::sparse_set *storage = m_registry.storage(type.typeId);
+    if (storage == nullptr || type.isMain == nullptr) { return mains; }
+    for (entt::entity handle : *storage) { // the order findMain looks in
+        if (isValidEntt(handle) && type.isMain(entity(handle))) { mains.push_back(entity(handle)); }
+    }
+    return mains;
+}
+
+void World::setMain(const ComponentType &type, Entity main) {
+    const entt::sparse_set *storage = m_registry.storage(type.typeId);
+    if (storage == nullptr || type.setMain == nullptr) { return; }
+    const std::vector<entt::entity> handles(storage->begin(), storage->end()); // setMain writes the pool
+    for (entt::entity handle : handles) { type.setMain(entity(handle), handle == main.m_handle); }
+    setChanged();
 }
 
 Camera *World::findMainCamera() {
@@ -496,9 +526,6 @@ World &World::operator=(World &other) {
     // registered components after this world was created (the editor's playing world lives since
     // the editor start).
     prepareComponentTypes();
-    // The settings of the world scope, the core's and the modules' alike (the wind too: the layer
-    // applies the current world's wind, Play does not reset it).
-    SettingsMapper::copy(SettingsScope::World, other.m_context, m_context);
     entt::registry &src = other.m_registry;
     entt::registry &dst = m_registry;
     for (auto entityHandle : src.view<entt::entity>()) {
@@ -553,7 +580,37 @@ Entity World::instantiate(const AssetRef<PrefabAsset> &prefab, UUID rootId, cons
     return instance;
 }
 
+void World::joinAsSpares(const std::vector<Entity> &copies) {
+    for (const ComponentType &type : GameContext::getExtensions().components.types()) {
+        if (type.isMain == nullptr || type.setMain == nullptr) { continue; }
+        const entt::sparse_set *storage = m_registry.storage(type.typeId);
+        if (storage == nullptr) { continue; }
+        // Most copies have no component of such a kind: nothing to look at.
+        std::vector<Entity> joined;
+        for (Entity copy : copies) {
+            if (storage->contains(copy.m_handle) && type.isMain(copy)) { joined.push_back(copy); }
+        }
+        if (joined.empty()) { continue; }
+        bool hasMain = false; // the world has a main one that is not among the copies
+        for (entt::entity handle : *storage) {
+            if (!isValidEntt(handle) || !type.isMain(entity(handle))) { continue; }
+            const bool copy = std::any_of(joined.begin(), joined.end(), [handle](const Entity &each) {
+                return each.m_handle == handle;
+            });
+            if (!copy) {
+                hasMain = true;
+                break;
+            }
+        }
+        for (Entity copy : joined) {
+            if (hasMain) { type.setMain(copy, false); }
+            hasMain = true; // the first of the copies is the main one of a world that had none
+        }
+    }
+}
+
 void World::settle(Entity root, const std::vector<Entity> &copies, Entity parent, const EntityPlacement &placement) {
+    joinAsSpares(copies);
     if (parent) { attach(root, parent); }
     if (placement.position) { root.getTransform().setPosition(*placement.position); }
     if (placement.rotation) { root.getTransform().setRotation(*placement.rotation); }

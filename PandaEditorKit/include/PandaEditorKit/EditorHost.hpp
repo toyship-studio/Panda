@@ -42,13 +42,16 @@ public:
     // The document data has been recreated as a whole (resize, import): the history described the
     // previous data — a reset, as on reload.
     virtual void clearAssetUndoStack(Panda::AssetId id) = 0;
-    virtual void selectAsset(Panda::AssetId id) = 0; // selection in the editor → the asset's editor tab
+    // The asset in its document: a world or a prefab in a world tab, an asset with a form in a tab
+    // of its own, a file the editor has no form for in the external editor; the Content Browser
+    // shows where it lies. What a double click on a reference field does.
+    virtual void openAsset(Panda::AssetId id) = 0;
     // "Where is it": the Content Browser opens the folder of the asset and blinks its cell, the
     // Hierarchy opens the ancestors of the entity and blinks its row. The selection and the tabs
-    // stay as they are — what a click on a reference field does (a double click selects).
+    // stay as they are — what a click on a reference field does (a double click opens or selects).
     virtual void revealAsset(Panda::AssetId id) = 0;
     virtual void revealEntity(Panda::UUID id) = 0;
-    virtual void selectEntity(Panda::UUID id) = 0; // selection in the editor → the entity's tab
+    virtual void selectEntity(Panda::UUID id) = 0; // selection in the editor → the inspector of the world tab
     // Asset thumbnail (material — a sphere, texture — a picture); invalid — none or still baking.
     virtual PandaUI::TextureHandle assetThumbnail(Panda::AssetId id) = 0;
     // The face of a font asset in the editor's own UI (the preview of the font tab); Sans when the
@@ -83,16 +86,19 @@ public:
     virtual void refreshAssetEditors(Panda::AssetId id) = 0; // the asset's tab forms re-read the document
 
     // --- Settings (the settings scopes, context/plugins.md) ---
-    // The store of a scope: the context of the world the panels show, the project store, the
-    // editor store.
+    // The store of a scope: the project store, the editor store.
     virtual Panda::TypeContext &settings(Panda::SettingsScope scope) = 0;
-    // An edit of a section of the scope as a command (Kit: commitSettings<T>). The world scope —
-    // the undo stack of the world and its dirty flag; the project scope — the stack of the project
-    // settings document and its dirty flag; the editor scope — executed, applied and saved at once.
+    // An edit of a section of the scope as a command (Kit: commitSettings<T>). The project scope —
+    // the stack of the project settings document and its dirty flag; the editor scope — executed,
+    // applied and saved at once.
     virtual void commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) = 0;
-    // The settings UI of a scope: the world sidebar of the viewport, the project or the editor
-    // settings document; section — the title of the section to reveal (empty — as is).
+    // The settings page of a scope (the project or the editor); section — the title of the
+    // section to reveal (empty — as is).
     virtual void openSettings(Panda::SettingsScope scope, const std::string &section = {}) = 0;
+    // The entity of the world in front whose component of this kind (its name in .world:
+    // "windComponent") is the main one is selected — the inspector shows it; a world without one
+    // says so in the log.
+    virtual void showMain(const std::string &component) = 0;
     // Closes the editor through the unsaved-changes dialog and starts it again: the way a changed
     // module set takes effect (modules are linked statically, nothing is loaded or unloaded live).
     virtual void restartEditor() = 0;

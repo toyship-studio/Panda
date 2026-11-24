@@ -2,7 +2,6 @@
 
 #include "Panda/Base/TypeContext.hpp"
 #include "Panda/GameLogic/Entity.hpp"
-#include "Panda/GameLogic/WorldSettings.hpp"
 #include "Panda/Renderer/SceneWind.hpp"
 #include "Panda/WorldCommands/CommandHistory.hpp"
 #include "Panda/Extensions/WorldSystems.hpp"
@@ -18,6 +17,7 @@
 namespace Panda {
 
 class PrefabAsset;
+struct ComponentType;
 
 // Where a copy of entities stands (World::duplicateEntity, World::instantiate): under which
 // entity, and the position and the rotation of its root in the space of that parent. What is
@@ -84,22 +84,39 @@ public:
     inline bool isRunning() {
         return m_isRunning;
     }
-    // The core settings of the world, as fields (WorldSettings: "lighting", "graphics", "wind"
-    // in .world), in the context like the settings of the modules. They exist from the world's
-    // birth; clear resets them.
-    WorldSettings &getSettings() {
-        return context<WorldSettings>();
-    }
-    const WorldSettings &getSettings() const {
-        return settings<WorldSettings>();
-    }
     glm::mat4 getWorldSpaceTransformMatrix(Entity entity);
     void convertToWorldSpace(Entity entity);
     void convertToLocalSpace(Entity entity);
     // Puts the entity at a position and a rotation given in world space: they go into its
     // transform relative to the parent, where the parent is now. The scale stays as it is.
     void setWorldPose(Entity entity, glm::vec3 position, glm::quat rotation);
-    Entity findMainCameraEntity();
+    // ---- The kinds a world uses one of: the camera, the sun, the sky, the wind (BaseComponents.hpp).
+    // The entity whose component of the kind is the main one; invalid — none is. Two that say so
+    // are a mistake of a file written by hand (the reader of a world and the editor say so): the
+    // world uses the one its registry gives first, which is no rule to count on.
+    template<typename T>
+    Entity findMain() {
+        return findMain(entt::type_hash<T>::value(), [](Entity entity) { return entity.getComponent<T>().isMain; });
+    }
+    Entity findMain(const ComponentType &type);
+    Entity findMain(entt::id_type typeId, bool (*isMain)(Entity));
+    // Every entity whose component of the kind says it is the main one, the one the world uses
+    // first: more than one is the mistake.
+    std::vector<Entity> findMains(const ComponentType &type);
+    // The component of the entity becomes the main one of its kind; the others of the world are spares.
+    template<typename T>
+    void setMain(Entity main) {
+        auto view = m_registry.view<T>();
+        for (auto handle : view) { view.template get<T>(handle).isMain = handle == main.m_handle; }
+        setChanged();
+    }
+    void setMain(const ComponentType &type, Entity main);
+    // The wind of a frame of the world: its main WindComponent; calm without one.
+    SceneWindSettings wind();
+    // The main camera: the one the game looks through.
+    Entity findMainCameraEntity() {
+        return findMain<CameraComponent>();
+    }
     Camera *findMainCamera();
 
     template<typename... Components>
@@ -252,6 +269,11 @@ private:
     // world, comes to life: the systems hear of its entities, which have just appeared with all
     // their components, and their scripts are created and started where they stand.
     void settle(Entity root, const std::vector<Entity> &copies, Entity parent, const EntityPlacement &placement);
+    // Copies that have just joined the world do not take the place of what it uses: of a kind a
+    // world has one main of (the camera, the sun, the sky, the wind), the component of a copy is
+    // a spare where the world has a main one — the original of a duplicate, the camera of the
+    // world a prefab is put into. In a world that had none, the first of the copies stays main.
+    void joinAsSpares(const std::vector<Entity> &copies);
     // The tombstone of the entity was put on or taken off (Entity::setDeleted): the running
     // systems lose or get back the entity and everything under it (entityRemoved / entityRestored).
     void deletionChanged(Entity entity);

@@ -1,9 +1,11 @@
 #include "ProjectLoader/RuntimeProjectLoader.hpp"
+
 #include "Panda/Extensions/Extensions.hpp"
 #include "Panda/GameLogic/GameContext.hpp"
 #include "Panda/Renderer/ShaderFeatures.hpp"
 #include "Panda/Runtime/AssetPack.hpp"
 #include "Panda/Runtime/GameFiles.hpp"
+#include "Panda/Serialization/SettingsMapper.hpp"
 #include "Panda/Serialization/WorldMapper.hpp"
 
 #include <Foundation/GraphicsAPI.hpp>
@@ -15,6 +17,10 @@ namespace Panda {
 RuntimeProjectLoader::RuntimeProjectLoader()
     : m_manifest()
     , m_runtimeDataPath() {}
+
+RuntimeProjectLoader::~RuntimeProjectLoader() {
+    GameContext::setProjectSettings(nullptr);
+}
 
 bool RuntimeProjectLoader::load(const path_t &runtimeDataPath, AssetHandlerRuntime &assetHandler, World &world) {
     m_runtimeDataPath = runtimeDataPath;
@@ -43,7 +49,13 @@ bool RuntimeProjectLoader::load(const path_t &runtimeDataPath, AssetHandlerRunti
         return false;
     }
 
-    // 3. The shader features of the game (ShaderFeatures): the scene shaders of the engine come
+    // 3. The settings of the project the game reads: the cost of a frame, as the export found it.
+    if (!SettingsMapper::decodeGameSettings(m_projectSettings, m_manifest.projectSettings)) {
+        LOG_ERROR("RUNTIME: the settings of the project in the manifest are not readable: the defaults are used");
+    }
+    GameContext::setProjectSettings(&m_projectSettings);
+
+    // 4. The shader features of the game (ShaderFeatures): the scene shaders of the engine come
     // from the export's cook for this set — the bundle holds the bake with every feature.
     std::string unknownFeatures;
     ShaderFeatures::setEnabled(ShaderFeatureSet::fromNames(m_manifest.shaderFeatures, &unknownFeatures));
@@ -54,7 +66,7 @@ bool RuntimeProjectLoader::load(const path_t &runtimeDataPath, AssetHandlerRunti
         runtimeDataPath / "Shaders" / "cooked", Foundation::ACTIVE_GRAPHICS_API
     );
 
-    // 4. Load world
+    // 5. Load world
     if (!loadWorld(runtimeDataPath, world)) {
         LOG_ERROR("RUNTIME: Failed to load world");
         return false;

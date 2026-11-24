@@ -139,7 +139,7 @@ namespace {
     void encodeCamera(Rain::Encoder &encoder, Entity entity) {
         CameraComponent &camera = entity.getComponent<CameraComponent>();
         CameraComponentDto dto;
-        dto.isPrimary = camera.isPrimary;
+        dto.isMain = camera.isMain;
         dto.camera.projectionType = camera.camera.getProjectionType();
         dto.camera.zNear = camera.camera.getNear();
         dto.camera.zFar = camera.camera.getFar();
@@ -158,13 +158,16 @@ namespace {
         dto.tonemap = tonemapName(camera.tonemap);
         dto.exposure = camera.exposure;
         dto.antialiasing = camera.antialiasing;
+        dto.ambientOcclusion = camera.ambientOcclusion;
+        dto.ambientOcclusionRadius = camera.ambientOcclusionRadius;
+        dto.ambientOcclusionIntensity = camera.ambientOcclusionIntensity;
         encoder.encode("cameraComponent", dto);
     }
     void decodeCamera(Rain::Decoder &decoder, Entity entity) {
         CameraComponentDto dto;
         if (!decoder.decode("cameraComponent", dto)) { return; }
         CameraComponent &camera = entity.addComponent<CameraComponent>();
-        camera.isPrimary = dto.isPrimary;
+        camera.isMain = dto.isMain;
         camera.camera.setProjectionType(dto.camera.projectionType);
         camera.camera.setNear(dto.camera.zNear);
         camera.camera.setFar(dto.camera.zFar);
@@ -183,25 +186,34 @@ namespace {
         camera.tonemap = tonemapFromName(dto.tonemap);
         camera.exposure = dto.exposure;
         camera.antialiasing = dto.antialiasing;
+        camera.ambientOcclusion = dto.ambientOcclusion;
+        camera.ambientOcclusionRadius = dto.ambientOcclusionRadius;
+        camera.ambientOcclusionIntensity = dto.ambientOcclusionIntensity;
     }
 
     void encodeDirectionalLight(Rain::Encoder &encoder, Entity entity) {
         DirectionalLightComponent &light = entity.getComponent<DirectionalLightComponent>();
         DirectionalLightComponentDto dto;
+        dto.isMain = light.isMain;
         dto.color = light.color;
         dto.intensity = light.intensity;
         dto.isEnabled = light.isEnabled;
         dto.castShadows = light.castShadows;
+        dto.shadowStrength = light.shadowStrength;
+        dto.shadowSoftness = light.shadowSoftness;
         encoder.encode("directionalLightComponent", dto);
     }
     void decodeDirectionalLight(Rain::Decoder &decoder, Entity entity) {
         DirectionalLightComponentDto dto;
         if (!decoder.decode("directionalLightComponent", dto)) { return; }
         DirectionalLightComponent &light = entity.addComponent<DirectionalLightComponent>();
+        light.isMain = dto.isMain;
         light.color = dto.color;
         light.intensity = dto.intensity;
         light.isEnabled = dto.isEnabled;
         light.castShadows = dto.castShadows;
+        light.shadowStrength = dto.shadowStrength;
+        light.shadowSoftness = dto.shadowSoftness;
     }
 
     void encodePointLight(Rain::Encoder &encoder, Entity entity) {
@@ -272,14 +284,49 @@ namespace {
     }
 
     void encodeSky(Rain::Encoder &encoder, Entity entity) {
+        const SkyComponent &sky = entity.getComponent<SkyComponent>();
         SkyComponentDto dto;
-        dto.material = entity.getComponent<SkyComponent>().material.getId();
-        encoder.encode("cubeMapComponent", dto);
+        dto.isMain = sky.isMain;
+        dto.material = sky.material.getId();
+        dto.environmentMap = sky.environmentMap.getId();
+        dto.environmentIntensity = sky.environmentIntensity;
+        dto.ambientColor = sky.ambientColor;
+        dto.ambientIntensity = sky.ambientIntensity;
+        dto.fog = sky.fog;
+        encoder.encode("skyComponent", dto);
     }
     void decodeSky(Rain::Decoder &decoder, Entity entity) {
         SkyComponentDto dto;
-        if (!decoder.decode("cubeMapComponent", dto)) { return; }
-        entity.addComponent<SkyComponent>().material = AssetRef<Asset>(dto.material);
+        if (!decoder.decode("skyComponent", dto)) { return; }
+        SkyComponent &sky = entity.addComponent<SkyComponent>();
+        sky.isMain = dto.isMain;
+        sky.material = AssetRef<Asset>(dto.material);
+        sky.environmentMap = AssetRef<Asset>(dto.environmentMap);
+        sky.environmentIntensity = dto.environmentIntensity;
+        sky.ambientColor = dto.ambientColor;
+        sky.ambientIntensity = dto.ambientIntensity;
+        sky.fog = dto.fog;
+    }
+
+    void encodeWind(Rain::Encoder &encoder, Entity entity) {
+        const WindComponent &wind = entity.getComponent<WindComponent>();
+        WindComponentDto dto;
+        dto.isMain = wind.isMain;
+        dto.strength = wind.strength;
+        dto.speed = wind.speed;
+        dto.gustiness = wind.gustiness;
+        dto.directionDegrees = wind.directionDegrees;
+        encoder.encode("windComponent", dto);
+    }
+    void decodeWind(Rain::Decoder &decoder, Entity entity) {
+        WindComponentDto dto;
+        if (!decoder.decode("windComponent", dto)) { return; }
+        WindComponent &wind = entity.addComponent<WindComponent>();
+        wind.isMain = dto.isMain;
+        wind.strength = dto.strength;
+        wind.speed = dto.speed;
+        wind.gustiness = dto.gustiness;
+        wind.directionDegrees = dto.directionDegrees;
     }
 
     void encodePrimitiveMesh(Rain::Encoder &encoder, Entity entity) {
@@ -325,8 +372,9 @@ void registerCoreComponentTypes(ComponentTypeRegistry &registry) {
     };
     registry.add(builtin(componentType<TagComponent>("tagComponent", encodeTag, decodeTag)));
     registry.add(builtin(componentType<TransformComponent>("transformComponent", encodeTransform, decodeTransform)));
-    registry.add(componentType<CameraComponent>("cameraComponent", encodeCamera, decodeCamera));
-    registry.add(componentType<DirectionalLightComponent>(
+    // The kinds a world uses one of (BaseComponents.hpp): the camera, the sun, the sky, the wind.
+    registry.add(mainComponentType<CameraComponent>("cameraComponent", encodeCamera, decodeCamera));
+    registry.add(mainComponentType<DirectionalLightComponent>(
         "directionalLightComponent", encodeDirectionalLight, decodeDirectionalLight
     ));
     registry.add(componentType<PointLightComponent>("pointLightComponent", encodePointLight, decodePointLight));
@@ -334,7 +382,8 @@ void registerCoreComponentTypes(ComponentTypeRegistry &registry) {
     registry.add(componentType<ImportedSubmeshComponent>(
         "importedSubmeshComponent", encodeImportedSubmesh, decodeImportedSubmesh
     ));
-    registry.add(componentType<SkyComponent>("cubeMapComponent", encodeSky, decodeSky));
+    registry.add(mainComponentType<SkyComponent>("skyComponent", encodeSky, decodeSky));
+    registry.add(mainComponentType<WindComponent>("windComponent", encodeWind, decodeWind));
     registry.add(componentType<PrimitiveMeshComponent>("primitiveMeshComponent", encodePrimitiveMesh, decodePrimitiveMesh));
     ComponentType scripts = componentType<ScriptListComponent>("scriptListComponent", encodeScripts, decodeScripts);
     scripts.entityRefs = scriptEntityRefs;

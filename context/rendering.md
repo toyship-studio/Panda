@@ -408,11 +408,11 @@ resolves it.
 - `isSystem(field)` and `hint(name)` serve the UI. The cached field UBO of a material is
   invalidated by `version()`. `set()` deduplicates by value, so it can be called every frame.
 - The material tab (`PandaEditor/src/UI/Documents/CoreAssetEditors.cpp`): a system field shows
-  the actual value and is disabled (opacity 0.55). Under it there are the hint and a "Settings"
-  link button (`ButtonStyle::Link`) that opens the section the value comes from
-  (`MaterialSystemValues::section(name)` → `editorHost().openSettings(SettingsScope::World,
-  section)`: the world settings sidebar of the viewport). A tooltip does not work on a disabled
-  view (it is excluded from hit testing), which is why the hint is a line of its own.
+  the actual value and is disabled (opacity 0.55). Under it there are the hint and a link button
+  (`ButtonStyle::Link`) named after the component of the world the value comes from: it selects
+  the entity of the main one (`MaterialSystemValues::component(name)` →
+  `editorHost().showMain(component)`; "Wind"). A tooltip does not work on a disabled view (it is
+  excluded from hit testing), which is why the hint is a line of its own.
 - The system values of today are `windStrength` and `windGustiness`, published by the scene wind
   (next section).
 
@@ -421,16 +421,16 @@ resolves it.
 `Panda::SceneWind` (`Panda/include/Panda/Renderer/SceneWind.hpp`) is the wind of the scene, one
 per application.
 
-- Settings (`SceneWindSettings`, Rain-Codable): `strength`, `speed`, `gustiness`,
-  `directionDegrees` (the default 0° is +X). In a world the owner is `World::getSettings().wind`
-  (the `wind` section of `.world`, the settings registry; editor: Settings → WIND). An
-  application without a world keeps its own settings.
+- Settings (`SceneWindSettings`): `strength`, `speed`, `gustiness`, `directionDegrees` (the
+  default 0° is +X). In a world they are the main `WindComponent` of it (`World::wind`: the
+  `windComponent` of an entity, the Wind section of its inspector); a world without one is calm.
+  An application without a world keeps its own settings.
 - A world brings its wind into its frame: `WorldView::render` calls `SceneWind::apply` with the
-  settings of the world it draws, so what a world draws is drawn in its own wind and no layer
-  has to remember it. `EditorLayer::onAttach` also applies the wind of the loaded world right after
-  `loadInitialData` (before `applyDockLayout` and before the first frame: pinned material tabs
-  must show the values of the world). An application without a world applies its own settings
-  before it renders.
+  wind of the world it draws, so what a world draws is drawn in its own wind and no layer has to
+  remember it. `EditorLayer::onAttach` also applies the wind of the loaded world right after
+  `loadInitialData` (before `applyDockLayout` and before the first frame: the material tabs of the
+  layout must show the values of the world). An application without a world applies its own
+  settings before it renders.
 - `apply()` publishes `windStrength` and `windGustiness` to `MaterialSystemValues` (the
   `veg_crown` and `veg_grass` templates have these fields). `windStrength = 0` switches the wind
   branch off: in calm, and in the impostor bake, where `FloraImposter` mutes the wind through the

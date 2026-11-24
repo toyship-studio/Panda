@@ -236,8 +236,8 @@ Registries of `EditorExtensions` (`editorExtensions()`; contributions are never 
 | `assetKinds` | `AssetKindUi {kind, icon, color, createEditor}`: icon and color of the kind in the Content Browser and tabs, and the tab form `AssetEditor` (one instance per tab; its state survives rebuilds) |
 | `assetCreators` | `AssetCreator {title, create(directory) -> path}`: what File → New and the Content Browser menu offer to create; `title` is the noun ("Terrain"); the core registers the file |
 | `viewportTools` | `ViewportTool {update(ViewportToolFrame), isDriving, appendHelperLines}`: runs before the world update, can capture the left mouse button (rect select and gizmo are off), draws lines over the viewport |
-| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the Scene tab shows (the editing world in EDIT, the playing copy in PLAY), once a frame while the Scene renders, with the editor camera (the collider outlines of the Physics module); the overlay reads its own editor-scope setting |
-| `settingsSections` | `SettingsSection {scope, title, build(section, TypeContext&)}`: the form of a settings section over the store of its scope (the world's context, the project or editor store); the core registers its sections first (`CoreSettingsSections`), the world ones are the viewport sidebar, the project and editor ones the pages of the Settings window. Edits go through the Kit's `commitSettings<T>(scope, value)` |
+| `viewportOverlays` | `ViewportOverlay {name, appendHelperLines(world, lines, viewProj, frame)}`: helper lines over the world the World view shows (the editing world in EDIT, the playing copy in PLAY), once a frame while the Scene renders, with the editor camera (the collider outlines of the Physics module); the overlay reads its own editor-scope setting |
+| `settingsSections` | `SettingsSection {scope, title, build(section, TypeContext&)}`: the form of a settings section over the store of its scope (the project or editor store); the core registers its sections first (`CoreSettingsSections`), they are the pages of the Settings window. Edits go through the Kit's `commitSettings<T>(scope, value)` |
 | `documentTypes` | `DocumentType {id, title, icon, create}` (`Document.hpp`): a document the "+" of any dock and the menu bar open, one instance per type, restored with the layout; the core registers the Plugins, the Game and the UI Gallery tabs (the settings are not tabs: `context/architecture.md`, "The Settings window") |
 | `statistics` | `StatisticsSection {title, rows, collect(values)}`: a section of the Statistics panel, polled once per frame |
 | `iconFolders` | folders of PNG icons relative to the application resources; loaded into the shared icon library when the part registers |
@@ -250,10 +250,10 @@ field; a double click selects),
 `assetThumbnail`, `pickAsset`, `openFileDialog`, `beginViewportEditing(title, document, onStop)` /
 `endViewportEditing` (a viewport session: Undo from the viewport goes to the session document,
 closing its tab calls `onStop`), `refreshFromWorld`, `refreshAssetEditors`,
-`settings(scope)` (the store of a scope), `commitSettings(scope, command)` (the world scope — an
-undo step of the world; the project scope — of the project settings document; the editor scope —
-applied and saved at once) and `openSettings(scope, section)` (the world sidebar, the project or
-editor page of the Settings window at a section). Dialogs use PandaUI `Dialog` directly; a word for
+`settings(scope)` (the store of a scope), `commitSettings(scope, command)` (the project scope —
+an undo step of the project settings document; the editor scope — applied and saved at once),
+`openSettings(scope, section)` (the project or editor page of the Settings window at a section)
+and `showMain(component)` (the main component of a kind in the world in front, selected). Dialogs use PandaUI `Dialog` directly; a word for
 the user is a line of the editor log (`LOG_INFO_EDITOR`, `LOG_WARN_EDITOR`, `LOG_ERROR_EDITOR`),
 which the Output panel shows. The document
 model of the tabs is described in `context/architecture.md`, "Editor UI".

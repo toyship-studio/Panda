@@ -101,7 +101,7 @@ namespace ShaderFeatures {
              "environment",
              "Environment",
              "PANDA_FEATURE_ENVIRONMENT",
-             "The environment map of the world: the default sky draws it and the lit shaders take the light of the "
+             "The environment map of the sky: the default sky draws it and the lit shaders take the light of the "
              "sky from it. One small atlas is baked when the map changes.",
              {{"environmentMap", "Texture2D", "SamplerState"}, {"environmentLighting", "Texture2D", "SamplerState"}},
              {}},
@@ -109,15 +109,15 @@ namespace ShaderFeatures {
              "wind",
              "Wind",
              "PANDA_FEATURE_WIND",
-             "Scene wind: the phases advance every frame and the vegetation sways.",
+             "The wind of the world: the phases advance every frame and the vegetation sways.",
              {},
              {}},
             {ShaderFeature::Ssao,
              "ssao",
              "Ambient Occlusion (SSAO)",
              "PANDA_FEATURE_SSAO",
-             "Screen-space ambient occlusion (GTAO): two passes over the depth of the frame; the world sets what "
-             "they cost (Settings → Ambient Occlusion).",
+             "Screen-space ambient occlusion (GTAO): two passes over the depth of the frame, for a camera that has "
+             "it; what they cost is the Ambient Occlusion section below.",
              {{"ssaoMap", "Texture2D", "SamplerState"}},
              {}},
         };

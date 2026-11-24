@@ -156,7 +156,7 @@ void EditorHelpersRenderer::render(
         icon.position = position;
         icon.type = IconType::Camera;
         icon.sizePixels = selected ? 18.f : 14.f;
-        icon.tint = camera.isPrimary ? Color(0.70f, 1.0f, 0.86f, 0.95f) : Color(1.0f, 1.0f, 1.0f, 0.95f);
+        icon.tint = camera.isMain ? Color(0.70f, 1.0f, 0.86f, 0.95f) : Color(1.0f, 1.0f, 1.0f, 0.95f);
         submitIcon(icon, viewProj, viewportSize, false);
         submitIcon(icon, viewProj, viewportSize, true);
     }

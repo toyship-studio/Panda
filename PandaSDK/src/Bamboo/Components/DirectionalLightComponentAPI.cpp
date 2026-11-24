@@ -5,6 +5,11 @@
 namespace Bamboo {
 
 namespace DirectionalLightComponentAPI {
+    void setMain(EntityHandle entity) {
+        if (!Internal::requireMainThreadApi("DirectionalLightComponentAPI::setMain")) { return; }
+        Panda::ExternalCalls::entity_SetMain(entity.id, "directionalLightComponent");
+    }
+
     void setColor(EntityHandle entity, Color color) {
         if (!Internal::requireMainThreadApi("DirectionalLightComponentAPI::setColor")) { return; }
         Panda::ExternalCalls::directionalLightComponent_SetColor(entity.id, color.r, color.g, color.b, color.a);

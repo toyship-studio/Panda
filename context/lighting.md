@@ -64,8 +64,8 @@ over the world every frame, a point light six) and the project has the `shadows`
 `Panda/Renderer/LampShadowMap`, owned by `LightingSystem`.
 
 - One depth atlas for all lamps, `lampShadowMap` (DEPTH32F with compare, like the atlas of the
-  sun): `LAMP_SHADOW_MAX_TILES` (8) square tiles in a row, `graphics.shadows.lampTileSize` (512)
-  texels each. A spot takes one tile — its cone, with a margin, seen from the lamp; a point light
+  sun): `LAMP_SHADOW_MAX_TILES` (8) square tiles in a row, `lampTileSize` (512) of the `shadows`
+  section of the project texels each. A spot takes one tile — its cone, with a margin, seen from the lamp; a point light
   six — the faces of a cube around it, 96° wide so that the filter of a point on the edge of a
   face stays inside the tile. The lamps come nearest to the camera first; a lamp whose tiles do
   not fit casts no shadow this frame. With no such lamp the atlas is released.
@@ -210,8 +210,12 @@ forest comes from the Occlusion Volume.
 - `MTL_SHADER_VALIDATION` breaks Apple GL-over-Metal; `scripts/miren_run_smoke.sh` sets it for
   the Metal build only.
 - `depthScale` accounts for `homogeneousDepth` (GL has half as many depth units per meter).
-- `World::operator=` copies the settings of the world scope through the settings registry
-  (`SettingsMapper::copy`; the Play world used to lose the graphics settings).
+- The shadows of a frame are made of two places (`LightingSystem::update` assembles
+  `CascadedShadowMap::Settings`): the maps and the offsets are the project's (`ShadowSettings`,
+  the `shadows` section of `.Panda/project.json`: `cascadeCount`, `tileSize`, `distance`,
+  `lampTileSize`, `slopeBias`, `normalOffset`, `receiverBias` — what a frame may cost), whether
+  they are cast and how dark and soft they are is the main sun's (`DirectionalLightComponent`:
+  `castShadows`, `shadowStrength`, `shadowSoftness`).
 
 ### Verification
 
@@ -452,9 +456,12 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
     large numbers, and that noise bends the normal of a floor seen at a low angle.
   - The slices and the steps are turned by a pattern that takes each of 25 values once in every
     5×5 block, so the 5×5 blur cancels it exactly on a flat surface.
-- Settings: `WorldGraphicsSettings::ssao` (`SsaoSettings`: `enabled`, `radius` 0.6 m,
-  `intensity`, `slices`, `steps`, `fullResolution`), Settings → AMBIENT OCCLUSION;
-  `graphics.ssao` in `.world`.
+- Settings: the main camera says whether there is occlusion and how far and how dark it reaches
+  (`CameraComponent::ambientOcclusion`, `ambientOcclusionRadius` 0.6 m,
+  `ambientOcclusionIntensity`; the Camera section of the inspector), the project what it may cost
+  (`AmbientOcclusionSettings`: `slices`, `steps`, `fullResolution`; the `ambientOcclusion`
+  section of `.Panda/project.json`, Project Settings → AMBIENT OCCLUSION);
+  `PostprocessingFrameInputs::setCamera` puts both into the `SsaoSettings` of the frame.
 - Limits: perspective cameras only (an orthographic frame gets none); what is off screen does
   not occlude; the normal is geometric, so a low-poly curved mesh shows its facets in the
   occlusion; transparent surfaces take the occlusion of what is behind them.
@@ -462,8 +469,9 @@ contacts and creases no shadow map gives. Shader feature `ssao`; `Panda/Renderer
 ## Fog
 
 The air between the camera and what it sees: `FogRenderer` (`Panda/Renderer/FogRenderer`,
-`fog.frag`), the `graphics.fog` section of a world, Settings → FOG. Not a shader feature: it is
-one pass of the engine over the finished scene, and a world without fog does not run it.
+`fog.frag`), the `fog` of the main sky of a world (`SkyComponent::fog`, `FogSettings`; the Fog
+rows of the Sky section of the inspector). Not a shader feature: it is one pass of the engine
+over the finished scene, and a world without fog — or without a sky — does not run it.
 
 - **Where.** The first step of `PostprocessingPipeline`, in linear HDR, before the auto
   exposure and the bloom (the exposure measures the frame with the air in it, a lamp glows
@@ -500,10 +508,11 @@ occlusion volume.
 
 ### Contract
 
-- Setting: `WorldLightingSettings::environmentMap` (`AssetRef<Asset>`, a texture) plus
-  `environmentIntensity` (exposure of the sky and the reflections together). Settings → WORLD →
-  Environment Map / Environment Intensity; in `.world`, `lighting.environmentMap` (asset
-  id, 0 means none) and `environmentIntensity`.
+- Setting: the main sky of the world, `SkyComponent::environmentMap` (`AssetRef<Asset>`, a
+  texture) plus `environmentIntensity` (exposure of the sky and the reflections together); the
+  Sky section of the inspector; in `.world`, `skyComponent.environmentMap` (asset id, 0 means the
+  built-in gradient) and `environmentIntensity`. A world without a main sky has no light of a sky
+  at all: no environment, no ambient (`collectLights`, `LightingSystem::update`).
 - Map layout: equirectangular, the top of the image is the zenith;
   `u = atan2(d.z, d.x) / 2π + 0.5`, `v = asin(−d.y) / π + 0.5`, where `d` is the world direction.
   Wrap is REPEAT (the seam is along u).

@@ -12,7 +12,7 @@ namespace Panda {
 class RuntimeProjectLoader {
 public:
     RuntimeProjectLoader();
-    ~RuntimeProjectLoader() = default;
+    ~RuntimeProjectLoader(); // the engine reads the settings of the project from here no more
 
     static bool loadManifest(const path_t &runtimeDataPath, RuntimeManifest &manifest);
 
@@ -25,6 +25,7 @@ private:
     bool loadWorldFile(const path_t &worldPath, World &world);
 
     RuntimeManifest m_manifest;
+    TypeContext m_projectSettings; // what the manifest says of the project (GameContext::getProjectSettings)
     path_t m_runtimeDataPath;
     Rain::BinaryDecoder m_binaryDecoder;
 };

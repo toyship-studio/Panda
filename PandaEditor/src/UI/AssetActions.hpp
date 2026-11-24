@@ -33,8 +33,7 @@ public:
     void contentDidRequestImport(const std::vector<Panda::AssetId> &assets) override;
     void contentAddFileItems(PandaUI::Menu &menu, Panda::AssetId asset) override;
     void contentDidRequestAddToWorld(const std::vector<Panda::AssetId> &assets) override;
-    void contentDidRequestOpenWorld(Panda::AssetId world) override;
-    void contentDidRequestOpenExternally(Panda::AssetId asset) override;
+    void contentDidRequestOpen(Panda::AssetId asset) override;
     void contentDidRequestImportFiles(const std::vector<Panda::path_t> &files, const Panda::path_t &directory) override;
     void contentDidRequestImportDialog(const Panda::path_t &directory) override;
     void contentDidShowFolder(const Panda::path_t &folder) override;

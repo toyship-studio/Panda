@@ -10,10 +10,12 @@
 
 namespace Editor {
 
-// What is selected in the editor: entities of the world it shows, or assets of the project — one
-// or the other, never both. One object for the whole editor (selection()): the viewport picks
-// into it, the gizmo and the outline read it, the panels and the tabs show it, the editor parts
-// of modules ask it.
+// What is selected in the editor: the entities of the world it shows — the tree, the Scene and
+// the inspector of the tab of that world show them — and, apart from them, the assets of the
+// project the Content Browser shows. The two do not take each other's place: a file clicked in
+// the browser leaves the form of the entity in its world tab, so the file is dragged into a field
+// of it. One object for the whole editor (selection()): the viewport picks into it, the gizmo and
+// the outline read it, the panels show it, the editor parts of modules ask it.
 //
 // Nobody is called back on a change: who shows the selection compares version() once a frame
 // (transformVersion() — the selected entities moved under the same selection).
@@ -35,7 +37,7 @@ public:
         return !m_entities.empty();
     }
     std::vector<Panda::Entity> entities() const; // the selected ones the world still has
-    // Instead of what was selected; an entity selection deselects the assets.
+    // Instead of the entities that were selected.
     void selectEntities(const std::vector<Panda::UUID> &ids);
     void addEntities(const std::unordered_set<Panda::UUID> &ids); // a rectangle, a click with Shift
     void removeEntities(const std::unordered_set<Panda::UUID> &ids);
@@ -47,13 +49,13 @@ public:
     const std::vector<Panda::AssetId> &assets() const {
         return m_assets;
     }
-    // Instead of what was selected; an asset selection deselects the entities.
+    // Instead of the assets that were selected.
     void selectAssets(std::vector<Panda::AssetId> ids);
     // The project lost assets (a file removed on disk, another project in the window): they
     // leave the selection.
     void forgetDeadAssets();
 
-    void clear(); // nothing is selected
+    void clear(); // nothing is selected: neither entities nor assets
 
     // ---- The selected entities as one body (the gizmo) ----
     // The selected entities without the descendants of selected ones: a parent moves its children.

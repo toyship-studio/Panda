@@ -35,7 +35,7 @@ same life cycle. The test project is `PhysicsTest` in the examples repository
 - The editor part registers the inspector sections of the seventeen components (an edit during
   Play rebuilds the body of a target from the new values, or makes its joint again), the collider
   outlines and the joint drawings as a viewport overlay (`EditorExtensions::viewportOverlays`,
-  the Scene tab in EDIT and PLAY) and the PHYSICS section of the editor settings (`physics` of
+  the World view in EDIT and PLAY) and the PHYSICS section of the editor settings (`physics` of
   `settings.json`: Show Colliders, Show Joints). A joint is drawn as authored: a cross at the
   anchor, the axis through it, a line to the nearest point of the connected body's colliders (not
   to its origin: the origin of a wall segment or a cabinet lies far from where it is seen). A mesh collider

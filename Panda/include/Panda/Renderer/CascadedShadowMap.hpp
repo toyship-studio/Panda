@@ -20,7 +20,10 @@ namespace Panda {
 // themselves are a world traversal (World::renderShadowCascades) for each cascade.
 class CascadedShadowMap final {
 public:
-    struct Settings : public Rain::Codable {
+    // What the shadows of a frame are: the project's maps and offsets (ShadowSettings) and the
+    // sun's look (DirectionalLightComponent: whether it casts them, how dark and soft they are).
+    // Made for a frame, not kept.
+    struct Settings {
         bool enabled = true;
         uint32_t cascadeCount = 3; // 1..RENDERER_MAX_SHADOW_CASCADES
         uint32_t tileSize = 1024;  // side of a cascade tile (texels)
@@ -36,19 +39,6 @@ public:
         // The side of a tile of the lamp shadow atlas (texels): a spot has one tile, a point
         // light six.
         uint32_t lampTileSize = 512;
-
-        RAIN_FIELDS_BEGIN(Settings)
-        RAIN_FIELD(enabled)
-        RAIN_FIELD(cascadeCount)
-        RAIN_FIELD(tileSize)
-        RAIN_FIELD(distance)
-        RAIN_FIELD(strength)
-        RAIN_FIELD(slopeBias)
-        RAIN_FIELD(normalOffset)
-        RAIN_FIELD(receiverBias)
-        RAIN_FIELD(softness)
-        RAIN_FIELD(lampTileSize)
-        RAIN_FIELDS_END
     };
 
     ~CascadedShadowMap();

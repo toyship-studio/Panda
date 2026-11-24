@@ -4,17 +4,21 @@
 #include "Panda/GameLogic/Entity.hpp"
 
 #include <type_traits>
+#include <utility>
 
 namespace Panda {
 
 // Toggle of component T on a set of entities: all have it — remove (the value is remembered
-// for undo), otherwise — add to those that lack it. A tag (empty T) carries no value. Every
-// toggle is a step of the history of its own: adding a component and removing it are two steps.
+// for undo), otherwise — add to those that lack it, with the value `added` (a component of a kind
+// a world uses one of comes as a spare next to the main one). A tag (empty T) carries no value.
+// Every toggle is a step of the history of its own: adding a component and removing it are two
+// steps.
 template<typename T>
 class AddRemoveComponentCommand : public WorldCommand {
 public:
-    AddRemoveComponentCommand(const std::unordered_set<Entity> &entities)
-        : m_entities(entities) {}
+    explicit AddRemoveComponentCommand(const std::unordered_set<Entity> &entities, T added = T{})
+        : m_entities(entities)
+        , component(std::move(added)) {}
 
     bool undo() override {
         return execute();

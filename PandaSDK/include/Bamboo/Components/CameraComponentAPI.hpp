@@ -5,6 +5,8 @@
 namespace Bamboo {
 
 namespace CameraComponentAPI {
+    // This camera becomes the one the game looks through; the others are spares (a cutscene).
+    void setMain(EntityHandle entity);
     // Toggle the camera postprocessing chain at runtime (e.g. pause menu blur on/off).
     void setPostprocessingEnabled(EntityHandle entity, bool enabled);
     bool isPostprocessingEnabled(EntityHandle entity);

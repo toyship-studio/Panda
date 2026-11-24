@@ -165,9 +165,10 @@ namespace Terrain {
         extensions.assetKinds.add(std::move(terrain2D));
         extensions.assetKinds.add(terrainKind("terrain3d", TYPE_3D, "Terrain 3D", detect3D, load3D, placeholder3D, save3D));
         extensions.worldSystems.add(worldSystem());
-        // World settings: terrain LOD and flora distances — top-level keys of .world.
-        extensions.settings.add(settingsType<TerrainLodSettings>(SettingsScope::World, "terrain"));
-        extensions.settings.add(settingsType<FloraDistances>(SettingsScope::World, "flora"));
+        // Settings of the project: how far the terrain and the flora are drawn — what a frame may
+        // cost, the same for every terrain of the game (the export gives them to the game).
+        extensions.settings.add(settingsType<TerrainLodSettings>(SettingsScope::Project, "terrain"));
+        extensions.settings.add(settingsType<FloraDistances>(SettingsScope::Project, "flora"));
         extensions.resourceProviders.add(Resources::provider());
         extensions.scriptHostApis.add(scriptHostApiTable());
     }

@@ -93,9 +93,9 @@ and auto exposure, and the authoring in VegetationLab.
   entry names the texture, `SceneBlocks` binds it). The alternative is 9 spherical
   harmonics coefficients (Photon); they win only when a bent normal arrives with GTAO, and the
   choice is made at the start of stage A.
-- **Settings** are sections of the world scope through the settings registry (`plugins.md`):
-  `atmosphere` (stage A) and `fog` (stage B), with their own keys in `.world` and panels in
-  Settings. The data is a new block `PANDA_ATMOSPHERE` of the feature, not a field of
+- **Settings** are the look of the sky of a world — fields of its main `SkyComponent` (the fog
+  is one already: `SkyComponent::fog`) — and, for what they may cost, sections of the project
+  (`plugins.md`, the settings registry). The data is a new block `PANDA_ATMOSPHERE` of the feature, not a field of
   `PANDA_LIGHTS`: a new capability is a new feature.
 - **Energy.** The model yields the sky irradiance and the sun irradiance in the same units; the
   sky share of the sun that the Occlusion Volume expects (1/5 to 1/10, `lighting.md`) is what a

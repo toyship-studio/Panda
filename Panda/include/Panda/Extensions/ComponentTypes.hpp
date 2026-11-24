@@ -46,6 +46,11 @@ struct ComponentType final {
     // a prefab): an id written into a component is a number like any other, and only its type
     // knows that it names an entity.
     void (*entityRefs)(Entity, const EntityRefVisitor &) = nullptr;
+    // A kind a world uses one of — the camera, the sun, the sky, the wind (BaseComponents.hpp):
+    // whether the component of the entity is the main one, and makes it so or not. Null — the
+    // world uses every component of the kind (a mesh, a lamp).
+    bool (*isMain)(Entity) = nullptr;
+    void (*setMain)(Entity, bool) = nullptr;
 };
 
 template<typename T>
@@ -66,6 +71,29 @@ ComponentType componentType(
         }
     };
     type.remove = [](Entity entity) { entity.removeComponent<T>(); };
+    return type;
+}
+
+// The world of the entity has a main component of the type (World::findMain).
+bool worldHasMain(Entity entity, entt::id_type typeId, bool (*isMain)(Entity));
+
+// The type of a kind a world uses one of: its `isMain` field says which (World::findMain). A
+// component of it made by name (a script, a paste) is the main one in a world that has none, a
+// spare next to the main one.
+template<typename T>
+ComponentType mainComponentType(
+    const char *name, void (*encode)(Rain::Encoder &, Entity), void (*decode)(Rain::Decoder &, Entity)
+) {
+    ComponentType type = componentType<T>(name, encode, decode);
+    type.isMain = [](Entity entity) { return entity.getComponent<T>().isMain; };
+    type.setMain = [](Entity entity, bool main) { entity.getComponent<T>().isMain = main; };
+    type.create = [](Entity entity) {
+        T component;
+        component.isMain = !worldHasMain(entity, entt::type_hash<T>::value(), [](Entity other) {
+            return other.getComponent<T>().isMain;
+        });
+        entity.addComponent<T>(component);
+    };
     return type;
 }
 

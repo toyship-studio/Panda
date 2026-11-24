@@ -43,6 +43,9 @@ struct Occluder {
 // Owner — World; Lab bakes a window of 2 × 2 chunks around the tree.
 class OcclusionVolume final {
 public:
+    // "occlusionVolume" of the project (`.Panda/project.json`): how the vegetation darkens the
+    // light under it, and how fine and how wide the volume is. `enabled` is the `occlusion`
+    // feature of the project (ShaderFeatures), set for the frame — not a setting of its own.
     struct Settings : public Rain::Codable {
         bool enabled = true;
         float aoStrength = 0.8f;      // ambient dimming by sky visibility
@@ -63,7 +66,6 @@ public:
         float contrast = 1.f;
 
         RAIN_FIELDS_BEGIN(Settings)
-        RAIN_FIELD(enabled)
         RAIN_FIELD(aoStrength)
         RAIN_FIELD(sunStrengthNear)
         RAIN_FIELD(sunStrengthFar)

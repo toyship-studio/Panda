@@ -249,6 +249,21 @@ bool TreeView::isExpanded(TreeItem item) const {
     return m_expanded.count(item) > 0;
 }
 
+std::vector<TreeItem> TreeView::expandedItems() const {
+    return std::vector<TreeItem>(m_expanded.begin(), m_expanded.end());
+}
+
+void TreeView::setExpandedItems(const std::vector<TreeItem> &items) {
+    std::unordered_set<TreeItem> expanded;
+    for (TreeItem item : items) {
+        if (item) { expanded.insert(item); }
+    }
+    if (expanded == m_expanded) { return; }
+    m_expanded = std::move(expanded);
+    m_needsRebuild = true;
+    setNeedsDisplay();
+}
+
 void TreeView::setSelectionMode(TreeSelectionMode mode) {
     if (m_selectionMode == mode) { return; }
     m_selectionMode = mode;

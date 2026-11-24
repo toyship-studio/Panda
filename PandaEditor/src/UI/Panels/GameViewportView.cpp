@@ -30,9 +30,6 @@ GameViewportView::GameViewportView() {
     m_message->setTextRole(TextRole::Dim);
     m_message->setUserInteractionEnabled(false);
     addSubview(m_message);
-
-    m_veil = std::make_shared<ViewportVeil>("Not rendering: the Scene has the focus");
-    addSubview(m_veil);
 }
 
 void GameViewportView::setTexture(TextureHandle texture, bool flipVertical) {

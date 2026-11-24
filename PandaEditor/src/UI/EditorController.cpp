@@ -27,6 +27,7 @@
 
 #include <Panda/Assets/FontAsset.hpp>
 #include <Panda/GameLogic/Entity.hpp>
+#include <Panda/Extensions/Extensions.hpp>
 #include <Panda/GameLogic/GameContext.hpp>
 #include <PandaEditorKit/Selection.hpp>
 #include <Panda/GameLogic/World.hpp>
@@ -52,8 +53,6 @@ namespace {
 
     constexpr const char *PLUGINS_DOCUMENT = "plugins";
     constexpr const char *UI_GALLERY_DOCUMENT = "uiGallery";
-    constexpr const char *GAME_DOCUMENT = "game";
-    constexpr const char *GAME_TAB_ID = "doc:game"; // EditorTabs names a document tab doc:<type>
     // A view is on screen when nothing up its chain is hidden (a tab that is not the selected one
     // of its dock is hidden by the TabView) and it belongs to a window.
     bool isViewOnScreen(const PandaUI::View *view) {
@@ -65,27 +64,6 @@ namespace {
     }
 
 } // namespace
-
-// The Game document: the Game tab. The frame of the game, rendered by the engine into the Game
-// surface; nothing to save or undo.
-class GameDocument final : public Document {
-public:
-    explicit GameDocument(EditorController *controller)
-        : m_controller(controller) {}
-
-    std::string title() override {
-        return "Game";
-    }
-    std::string icon() override {
-        return Ic::Play;
-    }
-    std::shared_ptr<PandaUI::View> view() override {
-        return m_controller->m_gameView;
-    }
-
-private:
-    EditorController *m_controller;
-};
 
 /* ------------------------------ Coordinator ------------------------------ */
 
@@ -209,49 +187,87 @@ void EditorController::registerDocumentTypes() {
         return std::unique_ptr<Document>(std::make_unique<UiGalleryDocument>(s_controller->m_app.ui().galleryHost()));
     };
     editorExtensions().documentTypes.add(std::move(gallery));
-
-    // The Game tab: the frame of the game (EditorViewports). Opened by Play, Window → Game and the "+".
-    DocumentType game;
-    game.id = GAME_DOCUMENT;
-    game.title = "Game";
-    game.icon = Ic::Play;
-    game.create = [] { return std::unique_ptr<Document>(std::make_unique<GameDocument>(s_controller)); };
-    editorExtensions().documentTypes.add(std::move(game));
 }
 
 ViewportSurfaces EditorController::viewportSurfaces() {
-    // The focus of a surface makes its viewport the one the user works in; it stays so while the
-    // focus is elsewhere in the editor (a field of a form, the Hierarchy).
-    if (m_gameView && m_gameView->isFocused()) {
-        m_gameInFocus = true;
-    } else if (m_viewportView && m_viewportView->sceneHasFocus()) {
-        m_gameInFocus = false;
-    }
     ViewportSurfaces surfaces;
-    surfaces.gameInFocus = m_gameInFocus;
-    if (m_viewportView) {
-        surfaces.scene = m_viewportView->sceneWorldFrame();
-        surfaces.sceneVisible = isViewOnScreen(m_viewportView.get()) && surfaces.scene.size.width >= 1.f &&
-                                surfaces.scene.size.height >= 1.f;
-    }
-    if (m_gameView) {
-        surfaces.game = m_gameView->getWorldFrame();
-        surfaces.gameVisible =
-            isViewOnScreen(m_gameView.get()) && surfaces.game.size.width >= 1.f && surfaces.game.size.height >= 1.f;
-    }
+    surfaces.scene = m_viewportView->sceneWorldFrame();
+    surfaces.game = m_gameView->getWorldFrame();
+    surfaces.showsGame = m_worldView->isShowingGame();
+    // One of the two is in the middle of the world tab; it is on screen while that tab is in front.
+    const PandaUI::View *shown = surfaces.showsGame ? static_cast<const PandaUI::View *>(m_gameView.get()) : m_viewportView.get();
+    const PandaUI::Rect &frame = surfaces.showsGame ? surfaces.game : surfaces.scene;
+    surfaces.visible = isViewOnScreen(shown) && frame.size.width >= 1.f && frame.size.height >= 1.f;
     return surfaces;
 }
 
 void EditorController::openGameView() {
-    if (!m_editorTabs || !m_dockManager) { return; }
-    m_editorTabs->openDocumentType(GAME_DOCUMENT, Dock::Center); // an open tab is activated in its dock
-    m_dockManager->showPanel(GAME_TAB_ID);                       // the focus: the keys go to the game
-    m_gameInFocus = true;
+    if (!m_worldTabs || !m_worldView) { return; }
+    m_worldTabs->showActive();
+    showView(true);
+    focusGameView(); // the keys go to the game
+}
+
+EditorController::SidePanels EditorController::shownSidePanels() const {
+    SidePanels panels;
+    panels.left = m_dockManager->userVisible(Dock::Left);
+    panels.right = m_dockManager->userVisible(Dock::Right);
+    panels.bottom = m_dockManager->userVisible(Dock::Bottom);
+    panels.tree = m_worldView->isTreeVisible();
+    panels.inspector = m_worldView->isInspectorVisible();
+    return panels;
+}
+
+void EditorController::showSidePanels(const SidePanels &panels) {
+    m_dockManager->setVisible(Dock::Left, panels.left);
+    m_dockManager->setVisible(Dock::Right, panels.right);
+    m_dockManager->setVisible(Dock::Bottom, panels.bottom);
+    m_worldView->setTreeVisible(panels.tree);
+    m_worldView->setInspectorVisible(panels.inspector);
+    m_dockManager->refreshStrip();
+}
+
+void EditorController::showView(bool game) {
+    if (m_worldView->isShowingGame() == game) { return; }
+    // The view that goes keeps the panels it has; the one that comes gets its own back.
+    const SidePanels shown = shownSidePanels();
+    if (game) {
+        m_worldPanels = shown;
+    } else {
+        m_gamePanels = shown == m_worldPanels ? std::nullopt : std::optional<SidePanels>(shown);
+    }
+    m_worldView->showGame(game);
+    if (!game) {
+        showSidePanels(m_worldPanels);
+    } else if (m_gamePanels) {
+        showSidePanels(*m_gamePanels);
+    }
+}
+
+void EditorController::showBuildBeforePlay() {
+    // Only a dock the build opened closes with it: one that was open stays, with the output in it.
+    const bool open = m_dockManager->isDockOfPanelVisible("cmake");
+    showPanel("cmake");
+    m_buildPanelCame = !open;
+}
+
+void EditorController::buildBeforePlayEnded(bool built) {
+    if (std::exchange(m_buildPanelCame, false) && built) { m_dockManager->hideDockOfPanel("cmake"); }
 }
 
 bool EditorController::showPanel(const std::string &id) {
     if (!m_dockManager) { return false; }
-    for (const char *known : {"hierarchy", "contentBrowser", "output", "cmake", "statistics", "profiler"}) {
+    // The parts of the world tab: the tab of the active world comes forward and shows the part.
+    if (id == "hierarchy" || id == "inspector") {
+        if (m_worldTabs) { m_worldTabs->showActive(); }
+        if (id == "hierarchy") {
+            setTreeVisible(true);
+        } else {
+            setInspectorVisible(true);
+        }
+        return true;
+    }
+    for (const char *known : {"contentBrowser", "output", "cmake", "statistics", "profiler"}) {
         if (id == known) {
             m_dockManager->showPanel(id);
             return true;
@@ -260,9 +276,26 @@ bool EditorController::showPanel(const std::string &id) {
     return false;
 }
 
-void EditorController::showSceneView() {
+void EditorController::setTreeVisible(bool visible) {
+    if (!m_worldView || m_worldView->isTreeVisible() == visible) { return; }
+    m_worldView->setTreeVisible(visible);
+    if (m_dockManager) { m_dockManager->refreshStrip(); }
+}
+
+void EditorController::setInspectorVisible(bool visible) {
+    if (!m_worldView || m_worldView->isInspectorVisible() == visible) { return; }
+    m_worldView->setInspectorVisible(visible);
+    if (m_dockManager) { m_dockManager->refreshStrip(); }
+}
+
+void EditorController::showWorldView() {
     if (m_worldTabs) { m_worldTabs->showActive(); }
-    m_gameInFocus = false;
+    if (m_worldView) { showView(false); }
+}
+
+bool EditorController::isGameUnderPointer(PandaUI::Point position) const {
+    Context *context = m_root ? m_root->getContext() : nullptr;
+    return context != nullptr && m_gameView && context->viewAt(position) == m_gameView.get();
 }
 
 void EditorController::focusGameView() {
@@ -273,18 +306,33 @@ void EditorController::focusGameView() {
 Panda::DockLayoutState EditorController::captureDockLayout() const {
     Panda::DockLayoutState state = m_dockManager->captureLayout();
     m_worldTabs->saveLayout(state); // which world is in front is the project session's to say
-    state.worldSettingsVisible = m_viewportView && m_viewportView->isSidebarVisible();
+    m_worldView->saveLayout(state);
+    // The panels the layout names are the World view's — the editor opens with it; the Game's own
+    // go beside them. While the Game shows, what is on screen is the Game's.
+    state.gamePanels = m_gamePanels;
+    if (m_worldView->isShowingGame()) {
+        const SidePanels shown = shownSidePanels();
+        state.gamePanels = shown == m_worldPanels ? std::nullopt : std::optional<SidePanels>(shown);
+        state.leftVisible = m_worldPanels.left;
+        state.rightVisible = m_worldPanels.right;
+        state.bottomVisible = m_worldPanels.bottom;
+        state.worldTreeVisible = m_worldPanels.tree;
+        state.worldInspectorVisible = m_worldPanels.inspector;
+    }
     state.contentBrowserView = m_contentView->mode() == ContentBrowserView::Mode::List ? "list" : "icons";
     state.contentBrowserFolders = m_contentView->foldersShown();
     return state;
 }
 
-void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
-    m_worldTabs->sync(); // the world tabs first: the pinned tabs of the center follow them
+void EditorController::applyDockLayout(const Panda::DockLayoutState &saved) {
+    // No layout yet, or one of another model of the window: the window opens with the defaults.
+    const Panda::DockLayoutState state = saved.isValid() ? saved : Panda::DockLayoutState{};
+    m_worldTabs->sync(); // the world tabs first: the other tabs of the center follow them
     m_dockManager->applyLayout(state);
-    // Pinned editor tabs: restored after the layout (the world is already set —
-    // EditorLayer calls setWorld before applyDockLayout; dead targets are skipped).
-    if (m_editorTabs) { m_editorTabs->restorePinned(state.pinnedTabs); }
+    // The tabs of documents: restored after the layout (the project is loaded — EditorLayer calls
+    // setWorld before applyDockLayout; an asset that is gone is skipped).
+    if (m_editorTabs) { m_editorTabs->restoreTabs(state.openTabs); }
+    m_worldView->applyLayout(state);
     if (state.isValid()) {
         // Every restored tab selected itself as it opened: the active tabs of the session go back on
         // top, and the keyboard returns to the dock it was in (the active document of undo).
@@ -294,31 +342,37 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &state) {
             m_dockManager->focusDock(static_cast<Dock>(state.focusedDock));
         }
     }
-    setWorldSettingsVisible(state.worldSettingsVisible);
-    m_contentView->setMode(state.contentBrowserView == "list" ? ContentBrowserView::Mode::List : ContentBrowserView::Mode::Icons);
+    // The files of the project are a column at the left: a list, the project panel of VS Code and
+    // Zed, unless the layout says icons.
+    m_contentView->setMode(
+        state.contentBrowserView == "icons" ? ContentBrowserView::Mode::Icons : ContentBrowserView::Mode::List
+    );
     m_contentView->setFoldersShown(state.contentBrowserFolders);
+    // The panels just applied are the World view's; the Game's own wait for the game.
+    m_gamePanels = state.gamePanels;
+    if (m_worldView->isShowingGame()) {
+        m_worldPanels = shownSidePanels();
+        if (m_gamePanels) { showSidePanels(*m_gamePanels); }
+    }
+    m_dockManager->refreshStrip(); // the buttons of the tree and the inspector say what is shown
 }
 
 void EditorController::setStripStatusText(const std::string &text) {
     if (m_dockManager) { m_dockManager->setStripStatusText(text); }
 }
 void EditorController::setWorld(Panda::World *world) {
-    if (m_editorTabs) { m_editorTabs->closeAllEntityTabs(); } // the tab targets are in the previous world
     setActiveWorld(world);
     refreshAssetPanels(); // the project registry is available together with the world
 }
 
 void EditorController::setActiveWorld(Panda::World *world) {
     m_panelsWorld = world;
-    // The settings sidebar edits this world's settings (in Play — the playing copy's).
-    if (m_worldSettingsView) { m_worldSettingsView->setStore(world ? &world->context() : nullptr); }
     m_lastStructureVersion = world ? world->getStructureVersion() : 0;
     m_hierarchyView->setWorld(world); // rereads the tree from World
-    // The forms of the entities follow the world: Play and Stop put another world under the open
-    // tabs — the same ids, other entities. A form left on the entities of the world that went
-    // shows what is no more and edits nothing.
-    if (m_editorTabs) { m_editorTabs->refreshEntityForms(); }
     refreshStatistics();
+    // The inspector follows the world: Play and Stop put another world under it — the same ids,
+    // other entities. A form left on the entities of the world that went shows what is no more
+    // and edits nothing.
     selectionChanged();
 }
 
@@ -343,9 +397,17 @@ void EditorController::refreshFromWorld() {
     m_hierarchyView->reload();
     refreshStatistics();
     selectionChanged();
-    // A loaded world, undo/redo, a pasted component: the values changed under the forms.
-    if (m_editorTabs) { m_editorTabs->refreshEntityForms(); }
-    if (m_worldSettingsView) { m_worldSettingsView->rebuild(); }
+    // A loaded world, undo/redo, a pasted component: the values changed under the inspector.
+    refreshInspector();
+}
+
+void EditorController::refreshInspector() {
+    if (!m_inspectorView) { return; }
+    const std::vector<Panda::Entity> entities = m_panelsWorld ? selection().entities() : std::vector<Panda::Entity>();
+    m_inspectorEntities.clear();
+    for (const Panda::Entity &entity : entities) { m_inspectorEntities.push_back(entity.getId()); }
+    m_inspectorWorld = m_panelsWorld;
+    m_inspectorView->setEntities(entities);
 }
 
 void EditorController::updateProfilerPanel() {
@@ -366,8 +428,8 @@ void EditorController::collectExtensionStatistics() {
 }
 
 void EditorController::extensionsChanged() {
-    if (m_worldSettingsView) { m_worldSettingsView->rebuild(); }
     m_settings->storesChanged();
+    refreshInspector(); // the sections of the components of the modules
     if (m_statisticsView) { m_statisticsView->rebuildExtensionSections(); }
 }
 
@@ -384,7 +446,7 @@ void EditorController::restartEditor() {
 }
 
 void EditorController::saveActiveDocument() {
-    // Cmd+S: the document of the tab with the focus (an entity tab and a side dock mean the world).
+    // Cmd+S: the document of the tab with the focus (a side dock means the world in front).
     if (Document *document = activeDocument()) { document->save(); }
 }
 
@@ -417,9 +479,24 @@ void EditorController::settingsFileReloaded(Panda::SettingsScope scope) {
 void EditorController::worldContextChanged() {
     m_lastUndoDocument = nullptr; // the undo target pointed into the previous context
     viewportDidRequestStopEditing(); // a viewport session edits what the previous world showed: the tool lets go
-    if (!m_editorTabs) { return; }
-    m_editorTabs->closeAllEntityTabs();
-    m_editorTabs->clearHistory();
+    clearSelectionHistory();
+}
+
+void EditorController::worldWillDeactivate() {
+    if (!m_worldTabs) { return; }
+    WorldTabState state;
+    state.tree = m_hierarchyView->captureState();
+    state.selection.assign(selection().entityIds().begin(), selection().entityIds().end());
+    m_worldTabs->keepActiveState(std::move(state));
+}
+
+void EditorController::worldDidActivate() {
+    if (!m_worldTabs) { return; }
+    // What the tab showed of its world when it was left: the branches open again, the selection
+    // comes back (the entities that are gone are not in it).
+    const WorldTabState kept = m_worldTabs->takeActiveState();
+    m_hierarchyView->restoreState(kept.tree);
+    if (!kept.selection.empty()) { selectEntities(kept.selection); }
 }
 
 void EditorController::projectWillClose() {
@@ -428,13 +505,11 @@ void EditorController::projectWillClose() {
     selectionChanged();
 }
 
-void EditorController::setWorldDisplayName(const std::string &name, const std::string &file, Panda::UUID prefabRoot) {
+void EditorController::setWorldDisplayName(const std::string &name, Panda::UUID prefabRoot) {
     if (m_hierarchyView) {
         m_hierarchyView->setRootTitle(name);
         m_hierarchyView->setRootEntity(prefabRoot);
     }
-    if (m_dockManager) { m_dockManager->setPanelCaption("hierarchy", file); }
-    if (m_viewportView) { m_viewportView->setWorldSettingsAvailable(prefabRoot == Panda::UUID(0)); }
 }
 
 void EditorController::thumbnailDidBecomeReady(Panda::AssetId assetId) {
@@ -462,37 +537,22 @@ void EditorController::selectionChanged() {
     m_lastSelectionVersion = selection().version();
     m_lastTransformVersion = selection().transformVersion();
 
+    // The entities: the tree, the inspector and the history of the world tab.
     std::vector<Panda::Entity> entities = m_panelsWorld ? selection().entities() : std::vector<Panda::Entity>();
-    if (!entities.empty()) {
-        std::vector<Panda::UUID> ids;
-        for (Panda::Entity &e : entities) { ids.push_back(e.getId()); }
-        m_hierarchyView->setSelectedEntities(ids);
-        // A single selection is found in the hierarchy: the ancestors open, the row scrolls into
-        // view (a click on a visible row changes nothing). A multi-selection has no primary
-        // entity to show — the set keeps no order — so it moves nothing.
-        if (ids.size() == 1) { m_hierarchyView->revealEntity(ids.front()); }
-        m_contentView->clearAssetSelection();
-    } else {
-        m_hierarchyView->setSelectedEntities({});
-        // The assets selected anywhere (a reference field, the history, Go to, an import) are
-        // the ones the Content Browser highlights where it shows them.
-        if (m_contentView->selectedAssets() != selection().assets()) { m_contentView->showSelectedAssets(selection().assets()); }
-    }
-    // Editor tabs: the selection opens/replaces the preview tab (the material preview is there too).
-    // A selected world or prefab is shown by its own tab (WorldTabs::open), not by a tab of asset
-    // parameters.
-    std::vector<Panda::AssetId> shownAssets;
-    if (entities.empty()) {
-        auto *handler = Panda::AssetHandlerEditor::current();
-        for (Panda::AssetId asset : selection().assets()) {
-            if (handler == nullptr || handler->documentFilePath(asset).empty()) { shownAssets.push_back(asset); }
-        }
-    }
-    // The tabs follow when the gesture that selects has ended: a tab opening in a dock next to
-    // the viewport changes the size of the Scene, and the rest of the gesture would be read over
-    // another picture than the one the press saw.
-    m_tabsAwaitGesture = m_viewportView && m_viewportView->isSelecting();
-    if (m_editorTabs && !m_tabsAwaitGesture) { m_editorTabs->showSelection(entities, shownAssets); }
+    std::vector<Panda::UUID> ids;
+    for (Panda::Entity &e : entities) { ids.push_back(e.getId()); }
+    m_hierarchyView->setSelectedEntities(ids);
+    // A single selection is found in the hierarchy: the ancestors open, the row scrolls into view
+    // (a click on a visible row changes nothing). A multi-selection has no primary entity to show
+    // — the set keeps no order — so it moves nothing.
+    if (ids.size() == 1) { m_hierarchyView->revealEntity(ids.front()); }
+    // The form is built again for other entities only: a file selected in the browser leaves it as
+    // it is — where it is scrolled, the field with the caret.
+    if (ids != m_inspectorEntities || m_panelsWorld != m_inspectorWorld) { refreshInspector(); }
+    if (!ids.empty()) { recordSelectionStep(ids); }
+    // The assets selected anywhere (a click in the browser, an import, a new asset) are the ones
+    // the Content Browser highlights where it shows them.
+    if (m_contentView->selectedAssets() != selection().assets()) { m_contentView->showSelectedAssets(selection().assets()); }
 }
 
 void EditorController::selectEntities(const std::vector<Panda::UUID> &ids) {
@@ -502,11 +562,57 @@ void EditorController::selectEntities(const std::vector<Panda::UUID> &ids) {
 
 void EditorController::selectAssets(const std::vector<Panda::AssetId> &ids) {
     // An empty selection while it is already empty is not a change (a click on a FOLDER is filtered
-    // to empty): the panels are not told, otherwise with an entity selected they would take the
-    // highlight off the folder that has just got it.
+    // to empty): the panels are not told, otherwise they would take the highlight off the folder
+    // that has just got it.
     if (ids.empty() && selection().assets().empty()) { return; }
     selection().selectAssets(ids);
     selectionChanged();
+}
+
+/* ----------------------------- Selection history ---------------------------- */
+
+void EditorController::recordSelectionStep(const std::vector<Panda::UUID> &entities) {
+    if (m_navigatingSelection) { return; } // Back / Forward do not record themselves again
+    std::vector<Panda::UUID> step = entities;
+    std::sort(step.begin(), step.end());
+    if (m_selectionCursor >= 0 && m_selectionHistory[static_cast<size_t>(m_selectionCursor)] == step) { return; }
+    constexpr size_t HISTORY_CAP = 50;
+    m_selectionHistory.resize(static_cast<size_t>(m_selectionCursor + 1)); // a new selection cuts the forward branch off
+    m_selectionHistory.push_back(std::move(step));
+    if (m_selectionHistory.size() > HISTORY_CAP) { m_selectionHistory.erase(m_selectionHistory.begin()); }
+    m_selectionCursor = static_cast<int>(m_selectionHistory.size()) - 1;
+    showSelectionHistory();
+}
+
+void EditorController::navigateSelection(int step) {
+    // The entries whose entities are all gone are passed over.
+    for (int cursor = m_selectionCursor + step; cursor >= 0 && cursor < static_cast<int>(m_selectionHistory.size());
+         cursor += step) {
+        std::vector<Panda::UUID> alive;
+        for (Panda::UUID id : m_selectionHistory[static_cast<size_t>(cursor)]) {
+            if (m_panelsWorld && m_panelsWorld->isValid(id)) { alive.push_back(id); }
+        }
+        if (alive.empty()) { continue; }
+        m_selectionCursor = cursor;
+        m_navigatingSelection = true;
+        selectEntities(alive);
+        m_navigatingSelection = false;
+        showSelectionHistory();
+        return;
+    }
+}
+
+void EditorController::clearSelectionHistory() {
+    m_selectionHistory.clear();
+    m_selectionCursor = -1;
+    showSelectionHistory();
+}
+
+void EditorController::showSelectionHistory() {
+    if (!m_toolbarView) { return; }
+    m_toolbarView->setCanNavigate(
+        m_selectionCursor > 0, m_selectionCursor + 1 < static_cast<int>(m_selectionHistory.size())
+    );
 }
 
 void EditorController::transformShown() {
@@ -521,25 +627,15 @@ Panda::path_t EditorController::contentDirectory() {
     return m_contentView ? m_contentView->currentDirectory() : Panda::path_t();
 }
 
-void EditorController::openDocumentAsset(Panda::AssetId asset) {
-    if (m_worldTabs) { m_worldTabs->open(asset, /*preview*/ false); }
-}
-
 PandaUI::Rect EditorController::hierarchyFrame() const {
     return m_hierarchyView->getWorldFrame();
 }
 
-void EditorController::deselectAll() {
-    selection().clear();
-    m_contentView->clearAssetSelection(); // a highlighted folder too
-    selectionChanged();
-}
-
 void EditorController::syncSelection() {
+    if (m_editorTabs) { m_editorTabs->syncLifetimes(); } // the asset of a tab is gone → the tab closes
     if (!m_panelsWorld) { return; }
-    // The viewport selected (a click, a rectangle) — or its gesture has ended and the tabs are due.
-    const bool gestureEnded = m_tabsAwaitGesture && !(m_viewportView && m_viewportView->isSelecting());
-    if (selection().version() != m_lastSelectionVersion || gestureEnded) {
+    // The viewport selected (a click, a rectangle), the game destroyed a selected entity.
+    if (selection().version() != m_lastSelectionVersion) {
         selectionChanged();
         return;
     }
@@ -548,9 +644,8 @@ void EditorController::syncSelection() {
     const std::uint64_t transformVersion = selection().transformVersion();
     if (transformVersion != m_lastTransformVersion) {
         m_lastTransformVersion = transformVersion;
-        if (m_editorTabs) { m_editorTabs->refreshTransforms(); }
+        if (m_inspectorView) { m_inspectorView->refreshTransform(); }
     }
-    if (m_editorTabs) { m_editorTabs->syncLifetimes(); } // tab targets died → the tabs are closed
 }
 
 void EditorController::updateChromeFromState(bool isEditMode) {
@@ -572,14 +667,21 @@ void EditorController::updateChromeFromState(bool isEditMode) {
     if (canRedo != m_tbCanRedo) { m_tbCanRedo = canRedo; m_toolbarView->setCanRedo(canRedo); }
     if (canPlay != m_tbCanPlay) { m_tbCanPlay = canPlay; m_toolbarView->setCanPlay(canPlay); }
     if (canStop != m_tbCanStop) { m_tbCanStop = canStop; m_toolbarView->setCanStop(canStop); }
+    const bool showsGame = m_worldView->isShowingGame();
+    const bool canSwitch = m_panelsWorld != nullptr;
+    if (showsGame != m_tbShowsGame || canSwitch != m_tbCanSwitchView) {
+        m_tbShowsGame = showsGame;
+        m_tbCanSwitchView = canSwitch;
+        m_toolbarView->setShownView(showsGame, canSwitch);
+    }
     if (isEditMode != m_shownEditMode) {
         m_shownEditMode = isEditMode;
-        if (m_editorTabs) { m_editorTabs->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
+        if (m_inspectorView) { m_inspectorView->setRuntimeMode(!isEditMode); } // "runtime world" banner in PLAY
     }
 
     // The "unsaved" dots: per tab, by isDirty of ITS document — a world tab by the change flag of
-    // its world, an asset tab by exactly its assets (the document model: tabs are the source of
-    // truth about what is unsaved).
+    // its world, an asset tab by its asset (the document model: tabs are the source of truth
+    // about what is unsaved).
     if (m_editorTabs) {
         m_editorTabs->syncDirtyStates();
         m_editorTabs->processPendingCloseRequests();
@@ -592,13 +694,22 @@ void EditorController::buildLayout() {
     auto centerTabs = std::make_shared<TabView>();
     std::vector<DockPanel> panels;
     m_viewportView = std::make_shared<ViewportPanelView>(this);
-    m_gameView = std::make_shared<GameViewportView>(); // the Game tab is a document (GameDocument) over this surface
-    // The viewport is not a panel of its own: every open world is a tab of the center
-    // (WorldTabs), and the viewport lives in the tab of the active one.
+    m_gameView = std::make_shared<GameViewportView>(); // the Game: the middle of the world tab in its place of the Scene
+    // The tree, the Scene and the inspector are not panels of their own: every open world is a tab
+    // of the center (WorldTabs), and what a world tab shows lives in the tab of the active one.
     m_viewportView->layout().setFlexGrow(1.f);
-    panels.push_back({"hierarchy", "Hierarchy", Ic::PanelHierarchy, m_hierarchyView, Dock::Left});
-    // The Inspector panel is gone: the selection opens as transient tabs (EditorTabs) in the right dock.
-    panels.push_back({"contentBrowser", "Content Browser", Ic::PanelContentBrowser, m_contentView, Dock::Bottom});
+    m_inspectorView = std::make_shared<EntityEditorView>(m_entityActions.get());
+    m_inspectorView->setScriptClassProvider([this] {
+        // The classes the picker offers: the manifest of the loaded script build, read when it opens.
+        std::vector<std::string> names;
+        if (Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine(); engine && engine->isLoaded()) {
+            for (const Panda::ScriptClassManifest &clazz : engine->getManifest().classes) { names.emplace_back(clazz.name); }
+        }
+        return names;
+    });
+    m_worldView = std::make_shared<WorldEditorView>(m_hierarchyView, m_viewportView, m_gameView, m_inspectorView);
+    // The files of the project are the left column of the window, the whole height of it.
+    panels.push_back({"contentBrowser", "Content Browser", Ic::PanelContentBrowser, m_contentView, Dock::Left});
     panels.push_back({"output", "Output", Ic::PanelOutput, m_outputView, Dock::Bottom});
     panels.push_back({"cmake", "CMake", Ic::PanelCMake, m_cmakeView, Dock::Bottom});
     // Diagnostic panels do not occupy the visibility strip — they are added through the dock's "+".
@@ -611,19 +722,28 @@ void EditorController::buildLayout() {
     // by its id, the same one `show` of the MCP server takes.
     for (const DockPanel &panel : panels) { panel.content->setAccessibilityId(panel.id); }
     m_toolbarView->setAccessibilityId("toolbar");
+    m_hierarchyView->setAccessibilityId("hierarchy");
     m_viewportView->setAccessibilityId("viewport");
+    m_inspectorView->setAccessibilityId("inspector");
+    m_worldView->setAccessibilityId("worldEditor");
     m_gameView->setAccessibilityId("game");
 
     m_dockManager = std::make_unique<DockManager>(m_toolbarView, centerTabs, std::move(panels));
+    // The output of the builds waits under the center until it is asked for: a build shows it, and
+    // so do its button in the strip and the command of the Window menu.
+    m_dockManager->setVisible(Dock::Bottom, false);
+    m_dockManager->setStripToggles({
+        {"hierarchy", Ic::PanelHierarchy, "Hierarchy", Dock::Left, [this] { return m_worldView->isTreeVisible(); },
+         [this] { setTreeVisible(!m_worldView->isTreeVisible()); }},
+        {"inspector", Ic::PanelInspector, "Inspector", Dock::Right, [this] { return m_worldView->isInspectorVisible(); },
+         [this] { setInspectorVisible(!m_worldView->isInspectorVisible()); }},
+    });
     m_editorTabs = std::make_unique<EditorTabs>(m_dockManager.get(), this);
-    m_worldTabs = std::make_unique<WorldTabs>(m_app, *m_dockManager, *m_editorTabs, m_viewportView);
+    m_worldTabs = std::make_unique<WorldTabs>(m_app, *m_dockManager, *m_editorTabs, m_worldView);
     // The file of a tab's document in its context menu.
     m_dockManager->setTabMenuExtender([this](const std::string &panelId, Menu &menu) {
         if (Document *document = m_editorTabs->documentForTab(panelId)) { addFileItems(menu, document->filePath()); }
     });
-    // The world settings live in the viewport sidebar (the world document), not in a panel.
-    m_worldSettingsView = std::make_shared<SettingsSectionsView>(Panda::SettingsScope::World);
-    m_viewportView->setSidebarContent(m_worldSettingsView);
     // The "+" of every dock offers the documents of the registry (the settings of the project and
     // of the editor, the documents of modules).
     m_dockManager->setAddMenuItemsProvider([this] {
@@ -706,10 +826,25 @@ void EditorController::clearAssetUndoStack(Panda::AssetId id) {
     if (auto *handler = Panda::AssetHandlerEditor::current()) { handler->documents().clearUndoStack(id); }
 }
 
-void EditorController::selectAsset(Panda::AssetId id) {
+void EditorController::openAsset(Panda::AssetId id) {
     if (id == Panda::AssetId(0) || isBuiltinAsset(id)) { return; } // a built-in one has no form and no file
-    revealAsset(id);    // the selection is shown where the asset lives too (going into its folder clears the grid)
-    selectAssets({id}); // opens or replaces the asset tab, and the cell of the asset is highlighted
+    Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+    if (handler == nullptr || !handler->hasAsset(id)) { return; }
+    revealAsset(id);    // where the asset lives (going into its folder clears the grid)
+    selectAssets({id}); // and its cell is highlighted
+    // A world and a prefab are documents of the center; an asset with a form has a tab of its own;
+    // a file the editor has no form for goes to the external editor of the settings.
+    if (!handler->documentFilePath(id).empty()) {
+        m_worldTabs->open(id);
+        return;
+    }
+    const AssetKindUi *kind = editorExtensions().assetKinds.find(assetTypeString(handler->getInfo(id).type));
+    if (kind != nullptr && kind->createEditor != nullptr) {
+        m_editorTabs->openAsset(id);
+        return;
+    }
+    const Panda::path_t relative = handler->assetPath(id);
+    if (!relative.empty()) { openInExternalEditor(handler->getProjectPath() / relative); }
 }
 
 void EditorController::importFiles(const std::vector<Panda::path_t> &files) {
@@ -724,7 +859,7 @@ void EditorController::revealAsset(Panda::AssetId id) {
 
 void EditorController::revealEntity(Panda::UUID id) {
     if (!id) { return; }
-    if (m_dockManager) { m_dockManager->showPanel("hierarchy"); }
+    showPanel("hierarchy");
     m_hierarchyView->flashEntity(id);
 }
 
@@ -796,7 +931,7 @@ void EditorController::viewportDidDropAssets(const std::vector<std::uint32_t> &a
         return;
     }
     // A world dropped onto the viewport opens, as a double click on it in the Content Browser does.
-    if (kind == "world" && !assetIds.empty()) { m_worldTabs->open(Panda::AssetId(assetIds.front()), /*preview*/ false); }
+    if (kind == "world" && !assetIds.empty()) { m_worldTabs->open(Panda::AssetId(assetIds.front())); }
 }
 
 /* ----------------------------- Toolbar output ---------------------------- */
@@ -832,6 +967,14 @@ void EditorController::toolbarDidTapStop() {
     m_app.stop();
 }
 
+void EditorController::toolbarDidSelectView(bool game) {
+    if (game) {
+        openGameView();
+    } else {
+        showWorldView();
+    }
+}
+
 void EditorController::toolbarDidSave() {
     m_app.documentActions().saveAll(); // every unsaved file document
 }
@@ -840,16 +983,6 @@ void EditorController::toolbarDidSave() {
 
 void EditorController::viewportDidRequestDisplayOptions(View *anchor) {
     showDisplayOptions(anchor);
-}
-
-void EditorController::viewportDidToggleWorldSettings() {
-    if (m_viewportView) { setWorldSettingsVisible(!m_viewportView->isSidebarVisible()); }
-}
-
-void EditorController::setWorldSettingsVisible(bool visible) {
-    if (!m_viewportView) { return; }
-    m_viewportView->setSidebarVisible(visible);
-    if (visible && m_worldSettingsView) { m_worldSettingsView->rebuild(); } // a hidden sidebar is not kept fresh
 }
 
 // The display options of the viewport: the VIEWPORT section of the editor scope in a popover next
@@ -875,23 +1008,12 @@ void EditorController::showDisplayOptions(View *anchor) {
 }
 
 Panda::TypeContext &EditorController::settings(Panda::SettingsScope scope) {
-    if (scope == Panda::SettingsScope::World) {
-        PND_ASSERT(m_panelsWorld != nullptr, "WORLD SETTINGS WITHOUT A WORLD");
-        return m_panelsWorld->context();
-    }
     return m_app.settingsStore(scope);
 }
 
 void EditorController::commitSettings(Panda::SettingsScope scope, Foundation::Shared<Panda::WorldCommand> command) {
     if (!command) { return; }
     switch (scope) {
-        case Panda::SettingsScope::World: {
-            // An undo step of the world: the sidebar edits dirty the world like any edit.
-            if (!m_panelsWorld) { return; }
-            m_panelsWorld->getCommandHistory().execute(std::move(command));
-            m_panelsWorld->setChanged();
-            return;
-        }
         case Panda::SettingsScope::Project: {
             // An undo step of the project settings page while the Settings window is open; an edit
             // made elsewhere (the start world chosen in the Export window) is applied as it is.
@@ -925,13 +1047,27 @@ void EditorController::openUiGallery() {
 
 void EditorController::openSettings(Panda::SettingsScope scope, const std::string &section) {
     switch (scope) {
-        case Panda::SettingsScope::World:
-            setWorldSettingsVisible(true);
-            if (m_worldSettingsView && !section.empty()) { m_worldSettingsView->revealSection(section); }
-            return;
         case Panda::SettingsScope::Project: showSettings(SettingsPage::Project, section); return;
         case Panda::SettingsScope::Editor: showSettings(SettingsPage::Editor, section); return;
     }
+}
+
+void EditorController::showMain(const std::string &component) {
+    const Panda::ComponentType *type = Panda::GameContext::getExtensions().components.find(component);
+    if (type == nullptr || m_panelsWorld == nullptr) { return; }
+    const Panda::Entity main = m_panelsWorld->findMain(*type);
+    if (!main.isValid()) {
+        const ComponentInspector *inspector = editorExtensions().componentInspectors.find(component);
+        LOG_WARN_EDITOR(
+            "The world has no %s: Add Component \xE2\x86\x92 %s on an entity of it.",
+            inspector != nullptr ? inspector->displayName.c_str() : component.c_str(),
+            inspector != nullptr ? inspector->displayName.c_str() : component.c_str()
+        );
+        return;
+    }
+    if (m_worldTabs) { m_worldTabs->showActive(); }
+    setInspectorVisible(true);
+    selectEntities({main.getId()});
 }
 
 void EditorController::toolbarDidExport() {
@@ -939,13 +1075,13 @@ void EditorController::toolbarDidExport() {
 }
 
 // Undo/redo go by the stack of the ACTIVE DOCUMENT (the document model): a document tab —
-// its stack (an entity tab's is the world's), the viewport session — the document of the brush,
-// otherwise the editing world. Called both by the toolbar and by the menu — the same semantics
-// regardless of the UI.
+// its stack (a world tab's — the tree, the Scene and the inspector in it — is the world's), the
+// viewport session — the document of the brush, otherwise the editing world. Called both by the
+// toolbar and by the menu — the same semantics regardless of the UI.
 Document *EditorController::activeDocument() {
     // The focus moves with every click (Context) — "where the user is" is reliable. The selected
-    // document tab of the dock with the focus — its document; a side dock without one (Hierarchy)
-    // — the world.
+    // document tab of the dock with the focus — its document; a side dock without one (the Content
+    // Browser) — the world.
     // The Settings window has the keyboard: Save and Undo mean the document of its page.
     if (Document *document = m_settings->focusedDocument()) { return document; }
     Context *context = m_root ? m_root->getContext() : nullptr;
@@ -1034,11 +1170,11 @@ void EditorController::toolbarDidDismissUpdate() {
 }
 
 void EditorController::toolbarDidNavigateBack() {
-    if (m_editorTabs) { m_editorTabs->goBack(); }
+    navigateSelection(-1);
 }
 
 void EditorController::toolbarDidNavigateForward() {
-    if (m_editorTabs) { m_editorTabs->goForward(); }
+    navigateSelection(+1);
 }
 
 /* ----------------------------- Commands ---------------------------------- */
@@ -1056,9 +1192,8 @@ namespace {
 
 // The keys of the entity commands belong to the places that show the world — the Scene surface
 // and the Hierarchy — and only while one of them has the keyboard. With the focus elsewhere (the
-// Content Browser, a settings tab, the settings sidebar of the viewport) or nowhere, the same
-// keys mean something else or nothing: Backspace there must not delete what is selected in the
-// world.
+// Content Browser, the inspector, a settings page) or nowhere, the same keys mean something else
+// or nothing: Backspace there must not delete what is selected in the world.
 bool EditorController::worldHasKeyboard() const {
     Context *context = m_root ? m_root->getContext() : nullptr;
     const View *focused = context ? context->getFocusedView() : nullptr;
@@ -1126,7 +1261,17 @@ void EditorController::registerCommands() {
     command("tab.close", "Window", "Close Tab", [this] { return closeFocusedTab(); });
     command("dock.toggleFullscreen", "Window", "Toggle Fullscreen of the Panel",
             [this] { return maximizeFocusedDock(); });
-    action("window.worldSettings", "Window", "World Settings", [this] { openSettings(Panda::SettingsScope::World); });
+    // The parts of the window, shown and hidden: the files, the tree and the inspector of the world
+    // tab, the output under the center.
+    action("window.toggleFiles", "Window", "Toggle Files", [this] { m_dockManager->toggle(Dock::Left); m_dockManager->refreshStrip(); });
+    action("window.toggleHierarchy", "Window", "Toggle Hierarchy", [this] { setTreeVisible(!m_worldView->isTreeVisible()); });
+    action("window.toggleInspector", "Window", "Toggle Inspector", [this] { setInspectorVisible(!m_worldView->isInspectorVisible()); });
+    action("window.toggleBottomPanel", "Window", "Toggle Bottom Panel", [this] {
+        m_dockManager->toggle(Dock::Bottom);
+        m_dockManager->refreshStrip();
+    });
+    // The middle of the world tab: the switch of the toolbar, by name.
+    action("window.world", "Window", "World", [this] { showWorldView(); });
     action("window.game", "Window", "Game", [this] { openGameView(); });
     action("window.plugins", "Window", "Plugins", [this] { openPlugins(); });
     action("help.uiGallery", "Help", "UI Gallery", [this] { openUiGallery(); });
@@ -1262,8 +1407,9 @@ void EditorController::registerCommands() {
     action("world.stop", "World", "Stop", [this] { toolbarDidTapStop(); });
 
     static const std::pair<const char *, const char *> PANELS[] = {
-        {"hierarchy", "Hierarchy"},   {"contentBrowser", "Content Browser"}, {"output", "Output"},
-        {"cmake", "CMake"},           {"statistics", "Statistics"},          {"profiler", "Profiler"},
+        {"hierarchy", "Hierarchy"}, {"inspector", "Inspector"}, {"contentBrowser", "Content Browser"},
+        {"output", "Output"},       {"cmake", "CMake"},         {"statistics", "Statistics"},
+        {"profiler", "Profiler"},
     };
     for (const auto &[panelId, title] : PANELS) {
         const std::string panel = panelId;
@@ -1306,7 +1452,7 @@ void EditorController::showCommandPalette() {
 }
 
 // Go to (⌘P): every entity of the world the panels show and every asset of the project by
-// name. An entity becomes the selection, an asset is selected and shown where it lives.
+// name. An entity becomes the selection, an asset opens in its document and is shown where it lives.
 void EditorController::showGoTo() {
     Context *context = m_root ? m_root->getContext() : nullptr;
     if (context == nullptr) { return; }
@@ -1331,7 +1477,7 @@ void EditorController::showGoTo() {
     for (size_t index = 0; index < assetItems.size(); index++) {
         items.push_back(std::move(assetItems[index]));
         const Panda::AssetId id = Panda::AssetId(assetIds[index]);
-        actions->push_back([this, id] { selectAsset(id); });
+        actions->push_back([this, id] { openAsset(id); });
     }
     showPalette(context, "Go to an asset or an entity…", std::move(items), [actions](int index) {
         if (index >= 0 && index < static_cast<int>(actions->size())) { (*actions)[static_cast<size_t>(index)](); }
@@ -1394,39 +1540,6 @@ void EditorController::refreshStatistics() {
 
 /* ------------------------------ EditorTabsHost ---------------------------- */
 
-EntityEditorOutput &EditorController::tabsHostOutput() {
-    return *m_entityActions;
-}
-
-void EditorController::tabsBeginEntityTarget(const std::vector<Panda::UUID> &ids) {
-    m_entityActions->beginTarget(ids);
-}
-
-void EditorController::tabsEndEntityTarget() {
-    m_entityActions->endTarget();
-}
-
-std::vector<Panda::Entity> EditorController::tabsResolveEntities(const std::vector<Panda::UUID> &ids) {
-    std::vector<Panda::Entity> result;
-    if (!m_panelsWorld) { return result; }
-    for (Panda::UUID id : ids) {
-        Panda::Entity e = m_panelsWorld->getById(id);
-        if (e.isValid()) { result.push_back(e); }
-    }
-    return result;
-}
-
-std::vector<std::string> EditorController::tabsScriptClasses() {
-    // Script classes for PickScript — the ScriptEngine manifest is read LIVE on open.
-    std::vector<std::string> names;
-    if (Panda::ScriptEngine *engine = Panda::GameContext::getScriptEngine(); engine && engine->isLoaded()) {
-        for (const Panda::ScriptClassManifest &clazz : engine->getManifest().classes) {
-            names.emplace_back(clazz.name);
-        }
-    }
-    return names;
-}
-
 void EditorController::tabsAssetTabOpened(Panda::AssetId id) {
     if (auto *handler = Panda::AssetHandlerEditor::current()) { handler->setAssetOpenedInTab(id, true); }
 }
@@ -1437,42 +1550,13 @@ void EditorController::tabsAssetTabClosed(Panda::AssetId id) {
     if (m_viewportEditingDocument == id) { viewportDidRequestStopEditing(); }
 }
 
-Panda::World *EditorController::tabsWorld() {
-    return m_panelsWorld;
-}
-
-bool EditorController::tabsSaveWorld() {
-    Document *world = m_worldTabs->activeDocument(); // an entity tab is a view of the active world
-    return world && world->save();
-}
-
 bool EditorController::tabsSaveAsset(Panda::AssetId id) {
     return m_app.documentActions().saveAsset(id);
-}
-
-std::filesystem::path EditorController::tabsWorldFilePath() {
-    Document *world = m_worldTabs->activeDocument();
-    return world ? world->filePath() : std::filesystem::path();
 }
 
 void EditorController::tabsDocumentClosed(Document *document) {
     if (m_lastUndoDocument == document) { m_lastUndoDocument = nullptr; }
     m_worldTabs->documentClosed(document);
-}
-
-void EditorController::tabsApplySelection(
-    const std::vector<Panda::UUID> &entities, const std::vector<Panda::AssetId> &assets
-) {
-    // The regular selection paths: Hierarchy/highlight/tab follow as on an ordinary click.
-    if (!entities.empty()) {
-        selectEntities(entities);
-    } else if (!assets.empty()) {
-        selectAssets(assets);
-    }
-}
-
-void EditorController::tabsHistoryChanged(bool canGoBack, bool canGoForward) {
-    if (m_toolbarView) { m_toolbarView->setCanNavigate(canGoBack, canGoForward); }
 }
 
 } // namespace Editor

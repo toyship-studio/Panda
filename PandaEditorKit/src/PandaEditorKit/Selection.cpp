@@ -45,9 +45,8 @@ void Selection::selectEntities(const std::vector<Panda::UUID> &ids) {
             if (m_world->isValid(id)) { selected.insert(id); }
         }
     }
-    if (selected == m_entities && m_assets.empty()) { return; }
+    if (selected == m_entities) { return; }
     m_entities = std::move(selected);
-    m_assets.clear();
     ++m_version;
     transformChanged();
 }
@@ -56,7 +55,6 @@ void Selection::addEntities(const std::unordered_set<Panda::UUID> &ids) {
     bool added = false;
     for (Panda::UUID id : ids) { added |= insertEntity(id); }
     if (!added) { return; }
-    m_assets.clear();
     ++m_version;
     transformChanged();
 }
@@ -85,13 +83,9 @@ void Selection::forgetDeadEntities() {
 }
 
 void Selection::selectAssets(std::vector<Panda::AssetId> ids) {
-    if (ids == m_assets) { return; } // an empty selection over an entity selection changes nothing
+    if (ids == m_assets) { return; }
     m_assets = std::move(ids);
     ++m_version;
-    if (!m_assets.empty() && !m_entities.empty()) {
-        m_entities.clear();
-        transformChanged();
-    }
 }
 
 void Selection::forgetDeadAssets() {

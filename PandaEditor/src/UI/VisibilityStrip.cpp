@@ -81,33 +81,35 @@ void VisibilityStripView::setStatusText(const std::string &text) {
 void VisibilityStripView::setItems(const std::vector<StripItem> &items) {
     m_leftGroup->removeAllSubviews();
     m_rightGroup->removeAllSubviews();
-    // On the left — panels of the left dock; on the right — of the bottom one, the center, then the
-    // right one (Inspector outermost). A panel is shown regardless of the dock and of whether it is
-    // open (a closed one — a muted icon).
-    for (const StripItem &it : items) {
-        if (it.dock == Dock::Left) { m_leftGroup->addSubview(makeButton(it)); }
-    }
-    for (const StripItem &it : items) {
-        if (it.dock == Dock::Bottom) { m_rightGroup->addSubview(makeButton(it)); }
-    }
-    for (const StripItem &it : items) {
-        if (it.dock == Dock::Center) { m_rightGroup->addSubview(makeButton(it)); }
-    }
-    for (const StripItem &it : items) {
-        if (it.dock == Dock::Right) { m_rightGroup->addSubview(makeButton(it)); }
-    }
+    // On the left — panels of the left dock, then the toggles of the left; on the right — panels
+    // of the bottom dock, the center, the right one, then the toggles of the right (outermost). A
+    // panel is shown regardless of the dock and of whether it is open (a closed one — a muted icon).
+    const auto add = [this, &items](const std::shared_ptr<Panel> &group, Dock dock, bool dockable) {
+        for (const StripItem &it : items) {
+            if (it.dock == dock && it.dockable == dockable) { group->addSubview(makeButton(it)); }
+        }
+    };
+    add(m_leftGroup, Dock::Left, true);
+    add(m_leftGroup, Dock::Left, false);
+    add(m_rightGroup, Dock::Bottom, true);
+    add(m_rightGroup, Dock::Center, true);
+    add(m_rightGroup, Dock::Right, true);
+    add(m_rightGroup, Dock::Right, false);
 }
 
 std::shared_ptr<IconButton> VisibilityStripView::makeButton(const StripItem &item) {
     auto btn = std::make_shared<IconButton>(item.icon, ICON, BTN_H);
     btn->setButtonSize(BTN_W, BTN_H);
     btn->setAccessibilityId("show." + item.id); // a UI test finds the button of a panel by the id of the panel
+    if (!item.tooltip.empty()) { btn->setTooltip(item.tooltip); }
     if (!item.open) { btn->setIconColor(ThemeColor::textDim); } // a closed panel — a dim icon
     btn->setActive(item.active);
     const std::string id = item.id;
     btn->setOnClick([this, id] { m_delegate->stripDidActivatePanel(id); });
-    IconButton *btnPtr = btn.get(); // lives in the strip group, no cycle
-    btn->setOnContextMenu([this, id, btnPtr] { showDockMenu(id, btnPtr); });
+    if (item.dockable) {
+        IconButton *btnPtr = btn.get(); // lives in the strip group, no cycle
+        btn->setOnContextMenu([this, id, btnPtr] { showDockMenu(id, btnPtr); });
+    }
     return btn;
 }
 

@@ -4,9 +4,10 @@
 
 namespace Panda {
 
-// Flora ranges are world settings of the terrain contribution (the "flora" key in .world, the
-// data — World::context<FloraDistances>; the FLORA section of the settings panel), not of a layer:
-// the frame cost and the quality are the same for all terrains. The range is determined by the
+// Flora ranges are settings of the project from the terrain contribution (the "flora" section of
+// `.Panda/project.json`, read through GameContext::getProjectSettings; the FLORA section of the
+// project settings), not of a layer: the frame cost and the quality are the same for every
+// terrain of the game. The range is determined by the
 // list: grass and bushes (GrassLayer) or trees (TreeLayer). Terrain2DAsset::render puts them into
 // the flora before each pass.
 struct FloraDistances final : public Rain::Codable {

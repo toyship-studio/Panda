@@ -16,14 +16,13 @@ class AssetPreviewView;
 // VIEW: the form of an asset tab — the header (name, type and size on disk), the large preview
 // (AssetPreviewView: a little viewport on a material or a model, the image of a texture) and the
 // editor of the asset kind from EditorExtensions::assetKinds (the core kinds register theirs the
-// same way as the modules: CoreAssetEditors). Several assets — a summary only.
+// same way as the modules: CoreAssetEditors).
 class AssetEditorView final : public EditorView {
 public:
-    // onEdited — the document was changed from the form: the tab pins itself, the dirty dot follows.
-    explicit AssetEditorView(std::function<void()> onEdited);
+    AssetEditorView();
 
-    // Input: the targets of the tab (by id; the data is resolved live).
-    void setAssets(const std::vector<Panda::AssetId> &assets);
+    // Input: the asset of the tab (by id; the data is resolved live).
+    void setAsset(Panda::AssetId asset);
     // The form rereads the document (undo/redo, a reload); the editor instance survives.
     void rebuild();
 
@@ -35,8 +34,7 @@ private:
     void rebuildProperties();
     void requestRebuild(); // at the start of the next tick: a form is not torn down from its own control
 
-    std::function<void()> m_onEdited;
-    std::vector<Panda::AssetId> m_assets;
+    Panda::AssetId m_asset = 0;
     // The editor of the kind: an instance per asset, survives form rebuilds (the state of lists
     // lives in it), dies when the asset or the tab changes.
     std::unique_ptr<AssetEditor> m_editor;

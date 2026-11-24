@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panda/Renderer/FogSettings.hpp"
 #include "Panda/Renderer/Tonemap.hpp"
 #include "Panda/Base/Base.hpp"
 #include "Panda/Serialization/ForeignValue.hpp"
@@ -145,8 +146,18 @@ struct RuntimeMeshComponent final {
     RuntimeMeshComponent(const RuntimeMeshComponent &other) = default;
 };
 
+// A world has one of each of a few kinds — a camera to look through, a sun, a sky, a wind: the
+// component that says so is the MAIN one of its kind (`isMain`). Making one the main one makes
+// the others of the world spares (World::setMain; Main in the inspector, a radio button; setMain
+// of a script — a sky of the night in the place of the day's, the camera of a cutscene). The
+// world uses its main one (World::findMain). A component of such a kind added to a world that
+// has none is the main one; one added next to the main one is a spare, and so is a copy that
+// joins the world — a duplicate, a paste, an instance of a prefab (World::joinAsSpares). Two
+// main ones are a mistake only a file written by hand can hold: the reader of a world says so,
+// and so does the editor.
+
 struct CameraComponent final {
-    bool isPrimary = true;
+    bool isMain = true; // the camera the game looks through
     WorldCamera camera;
     AssetRef<Asset> postprocessing;    // PostprocessingAsset — the camera's fullscreen pass chain
     bool postprocessingEnabled = true; // toggled from the game (Bamboo CameraComponentAPI)
@@ -165,13 +176,28 @@ struct CameraComponent final {
     Tonemap tonemap = Tonemap::AgX;
     float exposure = 0.f;
     bool antialiasing = true; // FXAA over the finished frame
+    // Screen-space ambient occlusion (the `ssao` feature of the project): the contact darkening of
+    // the ambient light the camera sees. What it may cost is the project's
+    // (AmbientOcclusionSettings).
+    bool ambientOcclusion = true;
+    float ambientOcclusionRadius = 0.6f;    // how far an occluder reaches (m)
+    float ambientOcclusionIntensity = 1.f;  // 0 — none, 1 — as computed, above — darker
 };
 
+// The sun: the light of a direction, along the -Z of its entity. The main one lights the world —
+// and the fog around it, the flares — and casts the cascaded shadows; a spare one does nothing
+// until it is made the main one (the moon of a night).
 struct DirectionalLightComponent final {
+    bool isMain = true;
     Color color = Color(1.f, 1.f, 1.f, 1.f);
     float intensity = 1.f;
     bool isEnabled = true;
-    bool castShadows = true; // cascaded shadows from this sun (the first enabled directional)
+    bool castShadows = true;    // the cascaded shadows (the maps — ShadowSettings of the project)
+    float shadowStrength = 1.f; // 0 — no shadow, 1 — the sun does not reach a shadowed point at all
+    // The angular radius of the sun, degrees: the edge of a shadow widens by tan(softness) per
+    // meter between the caster and the receiver — sharp at the contact, soft far from it. 0 — the
+    // fixed filter of a few texels.
+    float shadowSoftness = 1.5f;
 };
 
 // A lamp: a light at a point. intensity — what a white matte surface 1 m away, facing it, sends
@@ -201,8 +227,34 @@ struct ScriptListComponent final {
     }
 };
 
+// The sky of a world: what is drawn behind everything, the light of the sky and the air under it.
+// The main one is the sky of the world; a world without one is lit by its lamps and its sun alone,
+// against black.
 struct SkyComponent final {
+    bool isMain = true;
+    // The material of the sky; empty — the default sky: the environment map, or the built-in
+    // gradient without one.
     AssetRef<Asset> material;
+    // The environment map (an equirectangular texture, LDR or .hdr): distributed as the system
+    // texture environmentMap — the default sky shows it, PBR reflects it, and the light of it is
+    // baked for the lit shaders. Empty — the built-in gradient. Intensity — the exposure of the
+    // map (the sky and its light together: a night dims it).
+    AssetRef<Asset> environmentMap;
+    float environmentIntensity = 1.f;
+    // A flat light from everywhere, added to the light of the sky.
+    Color ambientColor = Color(1.f, 1.f, 1.f, 1.f);
+    float ambientIntensity = 0.12f;
+    FogSettings fog;
+};
+
+// The wind of a world: it sways every plant (the vegetation shaders, the system material fields
+// windStrength and windGustiness). The main one blows; a world without one is calm.
+struct WindComponent final {
+    bool isMain = true;
+    float strength = 0.25f;       // 0..1 — overall strength
+    float speed = 1.6f;           // tempo of gusts and flutter
+    float gustiness = 0.6f;       // contrast: 0 — steady flow, 1 — lulls and squalls
+    float directionDegrees = 0.f; // where it blows to, in XZ (0 = +X)
 };
 
 } // namespace Panda

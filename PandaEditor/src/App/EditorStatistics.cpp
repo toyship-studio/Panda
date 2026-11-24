@@ -49,8 +49,8 @@ void EditorStatistics::updateFrame(
     double deltaTime, EditorViewports &viewports, EditorUI &ui, Editor::EditorController &controller
 ) {
     // The current world has rendered the frame already (Edit or Play): the counters are of now.
-    const Renderer2D::Statistics stats2d = viewports.worldView().renderer2D().getStats();
-    const Renderer3D::Statistics stats3d = viewports.worldView().renderer3D().getStats();
+    const Renderer2D::Statistics stats2d = viewports.statistics2D();
+    const Renderer3D::Statistics stats3d = viewports.statistics3D();
     const uint64_t uiLayoutCount = ui.context().layoutPassCount();
     m_uiLayoutAccum += static_cast<uint32_t>(uiLayoutCount - m_lastUiLayoutCount);
     m_lastUiLayoutCount = uiLayoutCount;

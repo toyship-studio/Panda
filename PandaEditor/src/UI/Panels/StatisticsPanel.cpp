@@ -22,7 +22,7 @@ namespace {
         return divider;
     }
 
-    // Table section title: quiet uppercase caps on a flat background (design Statistics/World Settings).
+    // Table section title: quiet uppercase caps on a flat background (the sections of a form).
     void styleCapsSection(CollapsibleSection &section) {
         section.setTitleFont(Typo::SectionCaps);
         section.setTitleColor(ThemeColor::textDim);

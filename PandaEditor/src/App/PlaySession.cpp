@@ -82,7 +82,8 @@ bool PlaySession::takeQuitRequest() {
 }
 
 void PlaySession::updateInput(bool gameTabFocused, bool modalOpen) {
-    const bool active = m_playing && m_viewports.isGameLive() && !modalOpen && (m_driven || (m_windowFocused && gameTabFocused));
+    const bool active =
+        m_playing && m_viewports.isGameOnScreen() && !modalOpen && (m_driven || (m_windowFocused && gameTabFocused));
     if (active == m_inputActive) { return; }
     m_inputActive = active;
     Input::setFocused(active);
@@ -124,15 +125,12 @@ void PlaySession::windowResized() {
     m_gameUI.syncWindow(m_window);
 }
 
-bool PlaySession::ownsEvent(const Fern::Event &event, bool gameTabFocused, bool modalOpen) {
-    const auto inGameFrame = [this](double x, double y) {
-        const Rect &frame = m_viewports.gameFrame();
-        return x >= frame.origin.x && y >= frame.origin.y && x < frame.origin.x + frame.size.width &&
-               y < frame.origin.y + frame.size.height;
-    };
-    const auto cursorInGameFrame = [this, &inGameFrame]() {
+bool PlaySession::ownsEvent(
+    const Fern::Event &event, bool gameTabFocused, bool modalOpen, const std::function<bool(double x, double y)> &overGame
+) {
+    const auto cursorOverGame = [this, &overGame]() {
         const Fern::Vec2 cursor = m_window->getCursorPosition();
-        return inGameFrame(cursor.x, cursor.y);
+        return overGame(cursor.x, cursor.y);
     };
     // A cursor the game locked is the game's wherever it is said to be: the lock put it into the
     // middle of the window, which may lie outside the Game surface. (The lock ends with the focus
@@ -141,12 +139,12 @@ bool PlaySession::ownsEvent(const Fern::Event &event, bool gameTabFocused, bool 
     switch (event.type) {
         case Fern::EventType::MouseMoved: {
             const auto &moved = static_cast<const Fern::MouseMovedEvent &>(event);
-            return locked || m_mouseButtons != 0 || (!modalOpen && inGameFrame(moved.x, moved.y));
+            return locked || m_mouseButtons != 0 || overGame(moved.x, moved.y);
         }
         case Fern::EventType::MouseButtonPressed: {
             const auto &pressed = static_cast<const Fern::MouseKeyEvent &>(event);
             const uint32_t bit = 1u << static_cast<uint32_t>(pressed.button);
-            const bool game = locked || (!modalOpen && cursorInGameFrame());
+            const bool game = locked || cursorOverGame();
             m_mouseButtons = game ? (m_mouseButtons | bit) : (m_mouseButtons & ~bit);
             return game;
         }
@@ -158,14 +156,14 @@ bool PlaySession::ownsEvent(const Fern::Event &event, bool gameTabFocused, bool 
             return true;
         }
         case Fern::EventType::MouseScrolled:
-            return locked || (!modalOpen && cursorInGameFrame());
+            return locked || cursorOverGame();
         case Fern::EventType::TouchBegan: {
             const auto &touch = static_cast<const Fern::TouchBeganEvent &>(event);
-            return !modalOpen && inGameFrame(touch.x, touch.y);
+            return overGame(touch.x, touch.y);
         }
         case Fern::EventType::TouchMoved: {
             const auto &touch = static_cast<const Fern::TouchMovedEvent &>(event);
-            return !modalOpen && inGameFrame(touch.x, touch.y);
+            return overGame(touch.x, touch.y);
         }
         case Fern::EventType::TouchEnded:
         case Fern::EventType::KeyPressed:
@@ -184,7 +182,7 @@ bool PlaySession::handleEvent(Fern::Event *event) {
 
 void PlaySession::syncUiFrame() {
     const Fern::Size dpi = m_window->getDpi();
-    // The game UI lives in the Game tab: drawn over the output of the Game while it renders.
+    // The game UI lives in the Game view: drawn over the output of the Game while it renders.
     m_gameUI.setMainViewportFrame(m_viewports.gameFrame(), Size(dpi.width, dpi.height), m_viewports.gameTarget());
 }
 

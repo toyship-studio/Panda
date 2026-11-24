@@ -40,7 +40,7 @@ namespace RenderSystem {
         bool visible(const glm::mat4 &transform, const glm::vec3 &localMin, const glm::vec3 &localMax) const;
     };
 
-    // Sky: the first entity with SkyComponent (the component's material or the default one).
+    // Sky: the main SkyComponent of the world (its material or the default one); none — no sky.
     void submitSky(World &world, Renderer3D &renderer, const glm::mat4 &skyViewProj);
     // Sprites (they cast no shadow — not called in the depth pass).
     void submitSprites(World &world, Renderer2D &renderer, const Frustum &frustum);

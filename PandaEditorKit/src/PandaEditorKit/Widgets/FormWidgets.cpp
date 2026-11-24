@@ -3,6 +3,7 @@
 #include "PandaEditorKit/EditorHost.hpp"
 #include "PandaEditorKit/Widgets/AssetWell.hpp"
 #include "PandaEditorKit/Widgets/EntityWell.hpp"
+#include "PandaEditorKit/Widgets/Icons.hpp"
 #include "PandaEditorKit/Widgets/Typography.hpp"
 #include "PandaEditorKit/Widgets/Vector3Field.hpp"
 
@@ -79,6 +80,28 @@ std::string humanizeIdentifier(const std::string &name) {
     return result;
 }
 
+std::shared_ptr<View> makeFormWarning(const std::string &text) {
+    auto row = std::make_shared<Panel>();
+    row->setBackgroundColor(Color(0x00000000));
+    row->layout().setFlexDirection(FlexDirection::Row);
+    row->layout().setAlignItems(Align::Start);
+    row->layout().setGap(6.f);
+    row->layout().setWidth(Length::percent(100.f));
+    row->layout().setMargin(Edge::Vertical, 4.f);
+    auto icon = makeIcon(Ic::Warning, Ic::RowSize, ThemeColor::warning);
+    icon->layout().setFlexShrink(0.f);
+    row->addSubview(icon);
+    auto label = std::make_shared<Label>(text);
+    label->setFont(Typo::Caption);
+    label->setTextColor(ThemeColor::warning);
+    label->setNumberOfLines(0);
+    label->layout().setFlexGrow(1.f);
+    label->layout().setFlexShrink(1.f);
+    label->layout().setFlexBasis(0.f);
+    row->addSubview(label);
+    return row;
+}
+
 std::shared_ptr<Label> makeFormHint(const std::string &text) {
     auto hint = std::make_shared<Label>(text);
     hint->setFont(Typo::Caption);
@@ -92,7 +115,7 @@ std::shared_ptr<Label> makeFormHint(const std::string &text) {
 std::shared_ptr<View> makeAssetWell(const char *kind, uint32_t value, std::function<void(uint32_t)> set, bool required) {
     auto well = std::make_shared<AssetWell>(
         value, kind, [](uint32_t id) { return editorHost().assetTitle(Panda::AssetId(id)); }, std::move(set),
-        [](uint32_t id) { editorHost().selectAsset(Panda::AssetId(id)); }
+        [](uint32_t id) { editorHost().openAsset(Panda::AssetId(id)); }
     );
     if (required) { well->setRequired(true); }
     return well;

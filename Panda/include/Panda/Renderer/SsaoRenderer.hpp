@@ -2,6 +2,7 @@
 
 #include "Panda/Renderer/FullscreenQuad.hpp"
 #include "Panda/Renderer/PassTarget.hpp"
+#include "Panda/Renderer/RenderingSettings.hpp"
 #include "Panda/Renderer/WorldLighting.hpp"
 
 #include <Miren/Miren.hpp>
@@ -12,38 +13,23 @@
 
 namespace Panda {
 
-// "graphics.ssao" of a world: the screen-space ambient occlusion.
-struct SsaoSettings final : public Rain::Codable {
+// The ambient occlusion of a frame: what the camera asks for (CameraComponent: whether it has
+// it, how far an occluder reaches, how dark) and what the project lets it cost
+// (AmbientOcclusionSettings). Made for a frame, not kept.
+struct SsaoSettings final {
     bool enabled = true;
-    float radius = 0.6f;    // how far an occluder reaches (m)
-    float intensity = 1.f;  // 0 — none, 1 — the computed occlusion, above — darker (a power of it)
-    // The budget — what the occlusion may cost. A pixel reads the depth 2 × slices × steps times
-    // (and five more for its own point and normal); at full resolution there are four times the
-    // pixels. More slices — less grain for the blur to hide; more steps — an occluder between
-    // two samples is not missed; full resolution — the occlusion follows thin details and
-    // silhouettes.
-    int slices = 3;              // directions the surroundings of a pixel are cut in (1..MAX_SLICES)
-    int steps = 4;               // depth samples along a direction, each way (1..MAX_STEPS)
-    bool fullResolution = false; // at the resolution of the frame instead of half of it
-
-    static constexpr int MAX_SLICES = 8;
-    static constexpr int MAX_STEPS = 12;
-
-    RAIN_FIELDS_BEGIN(SsaoSettings)
-    RAIN_FIELD(enabled)
-    RAIN_FIELD(radius)
-    RAIN_FIELD(intensity)
-    RAIN_FIELD(slices)
-    RAIN_FIELD(steps)
-    RAIN_FIELD(fullResolution)
-    RAIN_FIELDS_END
+    float radius = 0.6f;   // how far an occluder reaches (m)
+    float intensity = 1.f; // 0 — none, 1 — the computed occlusion, above — darker (a power of it)
+    int slices = 3;        // AmbientOcclusionSettings
+    int steps = 4;
+    bool fullResolution = false;
 };
 
 // Screen-space ambient occlusion (shader feature `ssao`, context/lighting.md): how much of the
 // sky a point sees past the geometry around it, found in the depth buffer — the contact
 // darkening no shadow map gives. The horizon-based integral of GTAO (Jimenez et al., "Practical
 // Real-Time Strategies for Accurate Indirect Occlusion") at half resolution or at the full one,
-// then a depth-aware blur. What it costs is the budget of SsaoSettings.
+// then a depth-aware blur. What it costs is the budget of the project (AmbientOcclusionSettings).
 //
 // The occlusion belongs to the ambient light, so a lit shader must have it WHILE it shades,
 // before the depth of its own frame exists. The engine does not draw the scene twice for that:

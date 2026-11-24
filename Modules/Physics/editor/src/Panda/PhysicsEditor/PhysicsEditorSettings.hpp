@@ -6,7 +6,7 @@ namespace Panda {
 
 // "physics" of the editor scope (the user's settings.json): the viewport options of the module.
 struct PhysicsEditorSettings final : public Rain::Codable {
-    bool showColliders = true; // wireframe outlines of the colliders in the Scene tab
+    bool showColliders = true; // wireframe outlines of the colliders in the World view
     bool showJoints = true;    // the anchors and axes of the joints, and a line to the connected body
 
     RAIN_FIELDS_BEGIN(PhysicsEditorSettings)

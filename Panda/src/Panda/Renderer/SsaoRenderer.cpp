@@ -72,8 +72,8 @@ SsaoData SsaoRenderer::apply(
         static_cast<float>(targetHeight)
     );
     block.budget = glm::vec4(
-        static_cast<float>(std::clamp(settings.slices, 1, SsaoSettings::MAX_SLICES)),
-        static_cast<float>(std::clamp(settings.steps, 1, SsaoSettings::MAX_STEPS)), static_cast<float>(scale), 0.f
+        static_cast<float>(std::clamp(settings.slices, 1, AmbientOcclusionSettings::MAX_SLICES)),
+        static_cast<float>(std::clamp(settings.steps, 1, AmbientOcclusionSettings::MAX_STEPS)), static_cast<float>(scale), 0.f
     );
 
     const Miren::ViewId integralView = m_raw.addView(targetWidth, targetHeight, 0xffffffff);
