@@ -98,10 +98,12 @@ EditorController::EditorController(Panda::EditorLayer &app)
     registerCommands();
     m_toolbarView->setKeyHints(m_commands);
     m_viewportView->setKeyHints(m_commands);
+    showTabToggles();
     m_commands.addKeymapListener([] {
         if (s_controller == nullptr) { return; }
         s_controller->m_toolbarView->setKeyHints(s_controller->m_commands);
         s_controller->m_viewportView->setKeyHints(s_controller->m_commands);
+        s_controller->showTabToggles();
         s_controller->m_settings->keymapChanged();
     });
     selectionChanged(); // initial state: empty → status "-"
@@ -225,6 +227,7 @@ void EditorController::showSidePanels(const SidePanels &panels) {
     m_worldView->setTreeVisible(panels.tree);
     m_worldView->setInspectorVisible(panels.inspector);
     m_dockManager->refreshStrip();
+    m_dockManager->refreshTabToggles();
 }
 
 void EditorController::showView(bool game) {
@@ -245,6 +248,12 @@ void EditorController::showView(bool game) {
 }
 
 void EditorController::showBuildBeforePlay() {
+    // A maximized zone stays what the user made it: the build runs behind it (the strip says that
+    // it runs), and its output comes forward only with something to say — an error.
+    if (m_dockManager->isMaximized()) {
+        m_buildPanelCame = false;
+        return;
+    }
     // Only a dock the build opened closes with it: one that was open stays, with the output in it.
     const bool open = m_dockManager->isDockOfPanelVisible("cmake");
     showPanel("cmake");
@@ -252,7 +261,12 @@ void EditorController::showBuildBeforePlay() {
 }
 
 void EditorController::buildBeforePlayEnded(bool built) {
-    if (std::exchange(m_buildPanelCame, false) && built) { m_dockManager->hideDockOfPanel("cmake"); }
+    const bool came = std::exchange(m_buildPanelCame, false);
+    if (!built) {
+        showPanel("cmake"); // the errors, in front of whatever was maximized
+    } else if (came) {
+        m_dockManager->hideDockOfPanel("cmake");
+    }
 }
 
 bool EditorController::showPanel(const std::string &id) {
@@ -279,13 +293,29 @@ bool EditorController::showPanel(const std::string &id) {
 void EditorController::setTreeVisible(bool visible) {
     if (!m_worldView || m_worldView->isTreeVisible() == visible) { return; }
     m_worldView->setTreeVisible(visible);
-    if (m_dockManager) { m_dockManager->refreshStrip(); }
+    if (m_dockManager) { m_dockManager->refreshTabToggles(); }
 }
 
 void EditorController::setInspectorVisible(bool visible) {
     if (!m_worldView || m_worldView->isInspectorVisible() == visible) { return; }
     m_worldView->setInspectorVisible(visible);
-    if (m_dockManager) { m_dockManager->refreshStrip(); }
+    if (m_dockManager) { m_dockManager->refreshTabToggles(); }
+}
+
+void EditorController::showTabToggles() {
+    // The columns of the world tab, by where they are: the tree at the left, the inspector at
+    // the right. In the bar of the tab — at the right of the tab bar, as the editor actions of a
+    // code editor — while a world tab is in front; a material has no columns to hide.
+    m_dockManager->setTabToggles(
+        {
+            {"showHierarchy", Ic::Sidebar, m_commands.hint("Hierarchy", "window.toggleHierarchy"),
+             [this] { return m_worldView->isTreeVisible(); }, [this] { setTreeVisible(!m_worldView->isTreeVisible()); }},
+            {"showInspector", Ic::SidebarRight, m_commands.hint("Inspector", "window.toggleInspector"),
+             [this] { return m_worldView->isInspectorVisible(); },
+             [this] { setInspectorVisible(!m_worldView->isInspectorVisible()); }},
+        },
+        [](const std::string &tabId) { return WorldTabs::isWorldTab(tabId); }
+    );
 }
 
 void EditorController::showWorldView() {
@@ -321,6 +351,7 @@ Panda::DockLayoutState EditorController::captureDockLayout() const {
     }
     state.contentBrowserView = m_contentView->mode() == ContentBrowserView::Mode::List ? "list" : "icons";
     state.contentBrowserFolders = m_contentView->foldersShown();
+    state.contentBrowserRowHeight = m_contentView->listRowHeight();
     return state;
 }
 
@@ -348,13 +379,15 @@ void EditorController::applyDockLayout(const Panda::DockLayoutState &saved) {
         state.contentBrowserView == "icons" ? ContentBrowserView::Mode::Icons : ContentBrowserView::Mode::List
     );
     m_contentView->setFoldersShown(state.contentBrowserFolders);
+    m_contentView->setListRowHeight(state.contentBrowserRowHeight); // 0 — the default
     // The panels just applied are the World view's; the Game's own wait for the game.
     m_gamePanels = state.gamePanels;
     if (m_worldView->isShowingGame()) {
         m_worldPanels = shownSidePanels();
         if (m_gamePanels) { showSidePanels(*m_gamePanels); }
     }
-    m_dockManager->refreshStrip(); // the buttons of the tree and the inspector say what is shown
+    m_dockManager->refreshStrip();
+    m_dockManager->refreshTabToggles(); // the buttons of the tree and the inspector say what is shown
 }
 
 void EditorController::setStripStatusText(const std::string &text) {
@@ -732,17 +765,21 @@ void EditorController::buildLayout() {
     // The output of the builds waits under the center until it is asked for: a build shows it, and
     // so do its button in the strip and the command of the Window menu.
     m_dockManager->setVisible(Dock::Bottom, false);
-    m_dockManager->setStripToggles({
-        {"hierarchy", Ic::PanelHierarchy, "Hierarchy", Dock::Left, [this] { return m_worldView->isTreeVisible(); },
-         [this] { setTreeVisible(!m_worldView->isTreeVisible()); }},
-        {"inspector", Ic::PanelInspector, "Inspector", Dock::Right, [this] { return m_worldView->isInspectorVisible(); },
-         [this] { setInspectorVisible(!m_worldView->isInspectorVisible()); }},
-    });
     m_editorTabs = std::make_unique<EditorTabs>(m_dockManager.get(), this);
     m_worldTabs = std::make_unique<WorldTabs>(m_app, *m_dockManager, *m_editorTabs, m_worldView);
-    // The file of a tab's document in its context menu.
+    // The file of a tab's document in its context menu; a file that is an asset of the project
+    // has a place in the Content Browser too.
     m_dockManager->setTabMenuExtender([this](const std::string &panelId, Menu &menu) {
-        if (Document *document = m_editorTabs->documentForTab(panelId)) { addFileItems(menu, document->filePath()); }
+        Document *document = m_editorTabs->documentForTab(panelId);
+        if (document == nullptr) { return; }
+        const std::filesystem::path file = document->filePath();
+        if (file.empty()) { return; }
+        addFileItems(menu, file);
+        Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
+        const Panda::AssetId asset = handler != nullptr ? handler->getAssetId(file) : Panda::AssetId(0);
+        if (asset) {
+            menu.addItem("Reveal in Content Browser", [this, asset] { revealAsset(asset); });
+        }
     });
     // The "+" of every dock offers the documents of the registry (the settings of the project and
     // of the editor, the documents of modules).
@@ -1252,6 +1289,13 @@ void EditorController::registerCommands() {
     });
     command("contentBrowser.duplicate", "Assets", "Duplicate", [this] {
         return m_contentView->hasKeyboard() && m_contentView->requestDuplicateSelection();
+    });
+    // The rows of its list, larger and smaller: tall rows show the pictures of the assets.
+    command("contentBrowser.zoomIn", "Assets", "Larger Rows of the List", [this] {
+        return m_contentView->hasKeyboard() && m_contentView->zoomList(+1);
+    });
+    command("contentBrowser.zoomOut", "Assets", "Smaller Rows of the List", [this] {
+        return m_contentView->hasKeyboard() && m_contentView->zoomList(-1);
     });
     command("hierarchy.search", "Editor", "Find in Hierarchy", [this] {
         if (!showPanel("hierarchy")) { return false; }

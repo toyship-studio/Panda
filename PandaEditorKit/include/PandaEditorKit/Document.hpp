@@ -37,8 +37,9 @@ public:
         return true;
     }
     virtual void revert() {} // Don't Save: back to the file
-    // The file the document edits (absolute); empty — it has none (the Game, the Plugins tab).
-    // The tab menu shows it, reveals it in the file manager and opens it in the external editor.
+    // The file the document edits (absolute); empty — it has none (the Plugins tab). The tab menu
+    // copies its path, opens it in the external editor and reveals it in the file manager — and
+    // in the Content Browser, when the file is an asset of the project.
     virtual std::filesystem::path filePath() {
         return {};
     }

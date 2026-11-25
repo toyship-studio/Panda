@@ -218,7 +218,16 @@ void EditorLayer::onDetach() {
 
 void EditorLayer::onUpdate(double deltaTime) {
     syncWindowIdentity(deltaTime);
-    m_statistics.updateStatus(deltaTime, m_editorController.get(), m_documents.editorSettings().appearance.showSystemStatus);
+    // Play waits for the build of the scripts: the strip says so in the place of the numbers — the
+    // output of the build may be behind a maximized tab, and a Play that seems to do nothing is
+    // pressed again.
+    if (m_editorController && isWaitingToPlay() != m_waitShown) {
+        m_waitShown = isWaitingToPlay();
+        m_editorController->setStripStatusText(m_waitShown ? "Building the scripts\xE2\x80\xA6" : "");
+    }
+    if (!m_waitShown) {
+        m_statistics.updateStatus(deltaTime, m_editorController.get(), m_documents.editorSettings().appearance.showSystemStatus);
+    }
     m_updater.tick(deltaTime);
     pushUpdateStatus();
     if (m_play.takeQuitRequest()) { stop(); } // a script quit in the last frame: Stop before the worlds update

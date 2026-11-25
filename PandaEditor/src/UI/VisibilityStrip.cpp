@@ -81,20 +81,18 @@ void VisibilityStripView::setStatusText(const std::string &text) {
 void VisibilityStripView::setItems(const std::vector<StripItem> &items) {
     m_leftGroup->removeAllSubviews();
     m_rightGroup->removeAllSubviews();
-    // On the left — panels of the left dock, then the toggles of the left; on the right — panels
-    // of the bottom dock, the center, the right one, then the toggles of the right (outermost). A
-    // panel is shown regardless of the dock and of whether it is open (a closed one — a muted icon).
-    const auto add = [this, &items](const std::shared_ptr<Panel> &group, Dock dock, bool dockable) {
+    // On the left — panels of the left dock; on the right — panels of the bottom dock, the
+    // center, the right one. A panel is shown regardless of the dock and of whether it is open (a
+    // closed one — a muted icon).
+    const auto add = [this, &items](const std::shared_ptr<Panel> &group, Dock dock) {
         for (const StripItem &it : items) {
-            if (it.dock == dock && it.dockable == dockable) { group->addSubview(makeButton(it)); }
+            if (it.dock == dock) { group->addSubview(makeButton(it)); }
         }
     };
-    add(m_leftGroup, Dock::Left, true);
-    add(m_leftGroup, Dock::Left, false);
-    add(m_rightGroup, Dock::Bottom, true);
-    add(m_rightGroup, Dock::Center, true);
-    add(m_rightGroup, Dock::Right, true);
-    add(m_rightGroup, Dock::Right, false);
+    add(m_leftGroup, Dock::Left);
+    add(m_rightGroup, Dock::Bottom);
+    add(m_rightGroup, Dock::Center);
+    add(m_rightGroup, Dock::Right);
 }
 
 std::shared_ptr<IconButton> VisibilityStripView::makeButton(const StripItem &item) {
@@ -106,10 +104,8 @@ std::shared_ptr<IconButton> VisibilityStripView::makeButton(const StripItem &ite
     btn->setActive(item.active);
     const std::string id = item.id;
     btn->setOnClick([this, id] { m_delegate->stripDidActivatePanel(id); });
-    if (item.dockable) {
-        IconButton *btnPtr = btn.get(); // lives in the strip group, no cycle
-        btn->setOnContextMenu([this, id, btnPtr] { showDockMenu(id, btnPtr); });
-    }
+    IconButton *btnPtr = btn.get(); // lives in the strip group, no cycle
+    btn->setOnContextMenu([this, id, btnPtr] { showDockMenu(id, btnPtr); });
     return btn;
 }
 

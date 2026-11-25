@@ -84,6 +84,8 @@ public:
     // Thumbnail of a grid item (the kinds AssetPreviews draws): cache → a valid handle, otherwise
     // built asynchronously.
     PandaUI::TextureHandle thumbnailFor(int index) const;
+    // The same for a file wherever it is shown (a row of the list).
+    PandaUI::TextureHandle thumbnailOf(const FileEntry &file) const;
     // CollectionView prefetch: request thumbnails ahead of time / cancel the stale ones.
     void prefetchItems(const std::vector<int> &indices) const;
     void cancelPrefetching(const std::vector<int> &indices) const;
@@ -92,6 +94,7 @@ private:
     void relist(); // what the grid shows, after the folder, the search or the tree changed
     void orderByName(); // m_byName of the tree
     Panda::AssetId thumbnailAssetAt(int index) const; // the asset for the thumbnail (0 — none)
+    Panda::AssetId thumbnailAssetOf(const FileEntry *file) const;
 
     std::shared_ptr<Folder> m_root;
     Folder *m_currentFolder = nullptr;

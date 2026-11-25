@@ -315,7 +315,7 @@ bool FileDocuments::saveWorld(WorldFile &world) {
 
 bool FileDocuments::saveWorldAs(WorldFile &world) {
     const path_t assets = m_projectPath / AssetHandlerEditor::ASSETS_FOLDER;
-    std::optional<path_t> chosen = SystemTools::saveFileDialog("World\0*.world\0", assets.string().c_str(), "world.world");
+    std::optional<path_t> chosen = SystemTools::saveFileDialog(assets, "world.world");
     if (!chosen.has_value()) { return false; }
     path_t path = chosen.value();
     if (path.extension() != ".world") { path.replace_extension(".world"); }

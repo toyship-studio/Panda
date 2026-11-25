@@ -502,8 +502,7 @@ void StartScreenController::startScreenDidCancelProjectCreation() {
 }
 
 void StartScreenController::startScreenDidRequestChooseProjectLocation() {
-    const std::string initialFolder = defaultProjectParentPath().string();
-    const std::optional<Panda::path_t> folder = Panda::SystemTools::openFolderDialog(initialFolder.c_str());
+    const std::optional<Panda::path_t> folder = Panda::SystemTools::openFolderDialog(defaultProjectParentPath());
     if (!folder.has_value()) { return; }
     m_model.newProjectLocation = folder->string();
     syncView();

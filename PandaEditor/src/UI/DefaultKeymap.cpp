@@ -28,6 +28,8 @@ const std::vector<DefaultBinding> &defaultKeymap() {
         {"contentBrowser.delete", "delete"},
         {"contentBrowser.rename", "f2"},
         {"contentBrowser.duplicate", "primary-d"},
+        {"contentBrowser.zoomIn", "primary-="},
+        {"contentBrowser.zoomOut", "primary--"},
         {"hierarchy.search", "primary-f"},
         {"tab.close", "primary-w"},
         {"dock.toggleFullscreen", "shift-space"},

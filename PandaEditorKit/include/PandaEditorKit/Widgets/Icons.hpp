@@ -40,7 +40,8 @@ namespace Ic {
     inline constexpr const char *ChevronUp = "chevron-up";
     inline constexpr const char *ViewGrid = "view-grid"; // the Content Browser as icons
     inline constexpr const char *ViewList = "view-list"; // the Content Browser as a list (one tree)
-    inline constexpr const char *Sidebar = "sidebar";    // show/hide a side column (the folders)
+    inline constexpr const char *Sidebar = "sidebar";    // show/hide a column at the left (the folders, the tree of a world tab)
+    inline constexpr const char *SidebarRight = "sidebar-right"; // …at the right (the inspector of a world tab)
     inline constexpr const char *Material = "material";
     inline constexpr const char *Mesh = "mesh";
     // Object type icons (editor tabs, Hierarchy). Resolution by components — ObjectIcons.

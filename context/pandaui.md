@@ -114,7 +114,11 @@ PandaUI the editor shows in a tab (Help → UI Gallery) and the standalone examp
   from a selection that only moved (the arrows): a palette picks on the first.
 - Several contexts and windows are supported; the single-window path stays simple.
 - Large data: `CollectionView` and `TreeView` are virtualized (only visible cells exist);
-  `ListView` is a simple non-virtualized list.
+  `ListView` is a simple non-virtualized list. One cell whose data changed is bound again without
+  a reload — `CollectionView::reconfigureItem(index)`, `TreeView::reconfigureItem(item)` (a
+  picture that arrived for a row on screen). The rows of a `TreeView` are of one height, which may
+  change while it shows its data (`setRowHeight`: a list the user zooms) — the row at the top
+  stays at the top, the rows on screen are bound again, the model is not walked.
 - A `Combobox` whose list is longer than its dropdown shows (`maxVisibleRows`) is searched: the
   dropdown opens with a search field that has the keyboard — typing filters the choices (one that
   starts with the text first, then one that has it), the arrows walk them, Enter takes one, the

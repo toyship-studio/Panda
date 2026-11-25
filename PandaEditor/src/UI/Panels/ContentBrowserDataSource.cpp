@@ -244,7 +244,10 @@ const ContentBrowserDataSource::FileEntry *ContentBrowserDataSource::fileAt(int 
 }
 
 Panda::AssetId ContentBrowserDataSource::thumbnailAssetAt(int index) const {
-    const FileEntry *file = fileAt(index);
+    return thumbnailAssetOf(fileAt(index));
+}
+
+Panda::AssetId ContentBrowserDataSource::thumbnailAssetOf(const FileEntry *file) const {
     if (!file || file->assetId == 0) { return 0; }
     auto *handler = Panda::AssetHandlerEditor::current();
     if (!handler) { return 0; }
@@ -279,7 +282,12 @@ int ContentBrowserDataSource::indexOfFolder(const Panda::path_t &path) const {
 }
 
 PandaUI::TextureHandle ContentBrowserDataSource::thumbnailFor(int index) const {
-    const Panda::AssetId assetId = thumbnailAssetAt(index);
+    const FileEntry *file = fileAt(index);
+    return file != nullptr ? thumbnailOf(*file) : PandaUI::TextureHandle();
+}
+
+PandaUI::TextureHandle ContentBrowserDataSource::thumbnailOf(const FileEntry &file) const {
+    const Panda::AssetId assetId = thumbnailAssetOf(&file);
     if (!assetId) { return PandaUI::TextureHandle(); }
     auto *thumbnails = Panda::AssetPreviews::shared();
     return thumbnails ? thumbnails->thumbnailFor(assetId) : PandaUI::TextureHandle();

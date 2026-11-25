@@ -23,7 +23,7 @@ namespace Editor {
 //
 // One instance: it lives in the tab of the active world (WorldTabs moves it there, as it moved the
 // one Scene viewport before), and its parts read the world in front. The tree and the inspector are
-// hidden and shown by the commands of the Window menu and the buttons of the visibility strip;
+// hidden and shown by the commands of the Window menu and their two buttons in the bar of the tab;
 // whether they show and the shares of the three columns are kept with the layout of the editor.
 class WorldEditorView final : public PandaUI::Panel {
 public:

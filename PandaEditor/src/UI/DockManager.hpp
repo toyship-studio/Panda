@@ -49,13 +49,14 @@ struct DockPanel {
     bool restored = true;
 };
 
-// A button of the visibility strip that is not a panel of a dock: what a world tab shows beside
-// its Scene (the tree, the inspector), shown and hidden by its owner.
-struct StripToggle {
-    std::string id;      // "show.<id>" is what a UI test finds the button by
+// A button in the bar of the center dock, before its "+": a part of the document in front that
+// is shown and hidden — the tree and the inspector of a world tab. The strip at the bottom of the
+// window is for the panels of the docks; what lives inside a tab is switched in the bar of its
+// dock, where the tab is (the editor actions at the right of the tab bar of VS Code).
+struct TabToggle {
+    std::string id;      // what a UI test finds the button by
     std::string icon;
     std::string tooltip;
-    Dock side = Dock::Left; // the group of the strip: Left — after the panels of the left dock; Right — outermost
     std::function<bool()> isOn;
     std::function<void()> toggle;
 };
@@ -71,7 +72,9 @@ public:
 // Owns the editor layout and the docking (Zed-like). The Left/Right/Bottom docks are TabViews (a stack of
 // panels as tabs; the bar is hidden with a single tab → a lone dock looks like a regular panel). Center is
 // the viewport, fixed. The specification (panel→dock + order) lives here — groundwork for serializing
-// the positions. maximize is a zoom overlay of a zone (it does not change the visibility of the docks).
+// the positions. maximize gives a zone the whole work area — between the toolbar and the strip, which
+// stay: Play, Stop and the switch of the world tab are there — and does not change the visibility
+// of the docks; a panel of another dock asked for (the strip, showPanel) ends it.
 // The visibility strip is built from the specification and sends commands here: LMB to show/activate
 // a panel (again — to hide the dock), RMB to move it.
 class DockManager final : public VisibilityStripDelegate {
@@ -91,11 +94,11 @@ public:
     bool isVisible(Dock dock) const;          // effective: not hidden by the user AND the dock has panels
     bool userVisible(Dock dock) const;        // what the user asked for, whether the dock has panels or not
     void setVisible(Dock dock, bool visible); // hides/shows the whole dock
-    void toggle(Dock dock) {
-        setVisible(dock, !isVisible(dock));
-    }
+    // What a key or a menu item of the user does. While another zone is maximized the dock is
+    // out of sight whatever its state: the zoom ends and the dock shows.
+    void toggle(Dock dock);
 
-    void maximize(Dock dock);                     // zoom overlay of a zone (the same one again — restore)
+    void maximize(Dock dock);                     // the zone over the work area (the same one again — restore)
     bool isMaximized() const {
         return m_zoomView != nullptr;
     }
@@ -140,10 +143,14 @@ public:
         m_tabMenuExtender = std::move(extender);
     }
 
-    // The buttons of the strip that are not panels (StripToggle); refreshStrip shows what they
-    // say now — the owner calls it after it changed what a toggle shows.
-    void setStripToggles(std::vector<StripToggle> toggles);
+    // The buttons of the strip say which panels show: the owner calls it after it changed the
+    // visibility of a dock itself.
     void refreshStrip();
+    // The toggles of the documents of the center (TabToggle): shown in the bar while `applies`
+    // says the selected tab is such a document; refreshTabToggles shows what they say now — the
+    // owner calls it after it changed what a toggle shows.
+    void setTabToggles(std::vector<TabToggle> toggles, std::function<bool(const std::string &tabId)> applies);
+    void refreshTabToggles();
 
     // Saving/restoring the layout: panels+order, dock visibility, split weights, active tabs, the
     // focused dock.
@@ -218,12 +225,14 @@ private:
     std::string lastShownIn(Dock dock) const; // empty — none of the open tabs of the dock was shown yet
     std::function<void(const std::string &)> m_onTransientClosed;
     std::function<bool(const std::string &)> m_onTransientCloseRequest;
-    std::vector<StripToggle> m_stripToggles;
+    std::vector<TabToggle> m_tabToggles;
+    std::function<bool(const std::string &)> m_tabTogglesApply;
+    std::shared_ptr<PandaUI::Panel> m_tabToggleGroup; // in the bar of the center, before "+"
+    std::vector<std::shared_ptr<IconButton>> m_tabToggleButtons;
     std::function<std::vector<AddMenuItem>()> m_addMenuItems;
     std::function<void(const std::string &, PandaUI::Menu &)> m_tabMenuExtender;
 
-    // maximize (zoom overlay).
-    std::shared_ptr<PandaUI::Panel> m_maximizeRoot;
+    // maximize: the zone moves into a host that covers the work area.
     std::shared_ptr<PandaUI::Panel> m_maximizeHost;
     std::shared_ptr<PandaUI::View> m_zoomView;
     PandaUI::View *m_zoomHome = nullptr;

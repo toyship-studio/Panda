@@ -23,13 +23,14 @@ public:
     // before anything is read; empty — the folder of the system.
     static void setUserDataDirectory(path_t directory);
     static bool isUserDataDirectoryOverridden();
+    // The file dialogs of the system; nothing — the user cancelled (unattended — nobody is asked).
     static std::optional<path_t> openFileDialog();
-    // Files to open, as many as the user chose (empty — cancelled; unattended — none asked).
+    // Files to open, as many as the user chose (empty — cancelled).
     static std::vector<path_t> openFilesDialog();
-    static std::optional<path_t> openFolderDialog(const char *initialFolder = "");
-    static std::optional<path_t> saveFileDialog(
-        const char *filter = "All\0*.*\0", const char *defaultPath = nullptr, const char *defaultName = nullptr
-    );
+    // The dialog opens in the folder; an empty one — where the system chooses.
+    static std::optional<path_t> openFolderDialog(const path_t &initialFolder = {});
+    // A file to write: the dialog opens in the folder with the name filled in (UTF-8).
+    static std::optional<path_t> saveFileDialog(const path_t &folder = {}, const std::string &name = {});
 
     // A native BLOCKING dialog — only where the answer is needed synchronously in the middle of the
     // close flow (a tab/application with unsaved changes). Everything else is PandaUI modals

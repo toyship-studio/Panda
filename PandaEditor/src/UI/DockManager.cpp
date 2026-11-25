@@ -15,8 +15,6 @@ namespace Editor {
 using namespace PandaUI;
 
 namespace {
-    constexpr float MAXIMIZE_MARGIN = 12.f; // inset of the zoom overlay from the window edges (px)
-
     void stretchAbsolute(const std::shared_ptr<View> &view) {
         view->layout().setPositionType(PositionType::Absolute);
         view->layout().setPosition(Edge::Left, Length::points(0.f));
@@ -67,6 +65,7 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
             if (m_inRebuild) { return; }
             noteShown(selectedPanelId(d));
             refreshStrip();
+            if (d == Dock::Center) { refreshTabToggles(); } // of the document in front
         });
     }
 
@@ -101,29 +100,19 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_workspace->addPane(m_centerColumn, 5.4f);
     m_workspace->addPane(m_rightDock, 1.6f);
 
-    // Zoom overlay: a dim over the whole window + an inset frame (the zoomed zone is moved there). Hidden.
-    m_maximizeRoot = std::make_shared<Panel>();
-    m_maximizeRoot->setBackgroundColor(Color(0x00000000));
-    stretchAbsolute(m_maximizeRoot);
-    m_maximizeRoot->layout().setDisplay(Display::None);
-
-    auto backdrop = std::make_shared<Panel>();
-    backdrop->setBackgroundColor(Color(0x00000099));
-    stretchAbsolute(backdrop);
-    m_maximizeRoot->addSubview(backdrop);
-
+    // A maximized zone moves into a host that covers the work area and nothing else: the toolbar
+    // (Play, Stop, the switch of the world tab) and the strip stay what they are. Hidden until then.
     m_maximizeHost = std::make_shared<Panel>();
     m_maximizeHost->setBackgroundColor(ThemeColor::windowBackground);
     m_maximizeHost->setClipsToBounds(true);
-    m_maximizeHost->surface().setCornerRadius(Radius::lg);
-    m_maximizeHost->surface().setBorderWidth(1.f);
-    m_maximizeHost->surface().setBorderColor(ThemeColor::border);
-    m_maximizeHost->layout().setPositionType(PositionType::Absolute);
-    m_maximizeHost->layout().setPosition(Edge::Left, Length::points(MAXIMIZE_MARGIN));
-    m_maximizeHost->layout().setPosition(Edge::Top, Length::points(MAXIMIZE_MARGIN));
-    m_maximizeHost->layout().setPosition(Edge::Right, Length::points(MAXIMIZE_MARGIN));
-    m_maximizeHost->layout().setPosition(Edge::Bottom, Length::points(MAXIMIZE_MARGIN));
-    m_maximizeRoot->addSubview(m_maximizeHost);
+    stretchAbsolute(m_maximizeHost);
+    m_maximizeHost->layout().setDisplay(Display::None);
+    auto body = std::make_shared<Panel>();
+    body->setBackgroundColor(Color(0x00000000));
+    body->layout().setFlexDirection(FlexDirection::Column);
+    body->layout().setFlexGrow(1.f);
+    body->addSubview(m_workspace);
+    body->addSubview(m_maximizeHost);
 
     m_strip = std::make_shared<VisibilityStripView>(this);
 
@@ -132,9 +121,8 @@ DockManager::DockManager(std::shared_ptr<View> toolbar, std::shared_ptr<TabView>
     m_root->layout().setFlexDirection(FlexDirection::Column);
     m_root->layout().setFlexGrow(1.f);
     m_root->addSubview(std::move(toolbar));
-    m_root->addSubview(m_workspace);
+    m_root->addSubview(body);
     m_root->addSubview(m_strip);
-    m_root->addSubview(m_maximizeRoot);
 
     rebuild();
 }
@@ -418,7 +406,8 @@ void DockManager::showTabMenu(Dock dock, int tabIndex, Point position) {
         }
     }
     if (panel->closable || hasOthers) { menu->addSeparator(); }
-    menu->addItem("Maximize", [this, dock] { maximize(dock); });
+    // The zone that is maximized goes back among the others.
+    menu->addItem(m_zoomView && m_maximizedDock == dock ? "Restore" : "Maximize", [this, dock] { maximize(dock); });
 
     auto popup = std::make_shared<Popup>(menu, Rect(position.x, position.y, 0.f, 0.f));
     menu->setOnItemSelected([popup = popup.get()] { popup->dismiss(); });
@@ -534,6 +523,18 @@ std::shared_ptr<View> DockManager::makeDockTrailing(Dock dock) {
     row->layout().setAlignItems(Align::Center);
     row->layout().setGap(2.f);
 
+    // The center: what shows and hides the parts of the document in front (setTabToggles).
+    if (dock == Dock::Center) {
+        m_tabToggleGroup = std::make_shared<Panel>();
+        m_tabToggleGroup->setBackgroundColor(Color(0x00000000));
+        m_tabToggleGroup->layout().setFlexDirection(FlexDirection::Row);
+        m_tabToggleGroup->layout().setAlignItems(Align::Center);
+        m_tabToggleGroup->layout().setGap(2.f);
+        m_tabToggleGroup->layout().setMargin(Edge::Right, 8.f);
+        m_tabToggleGroup->setCollapsed(true);
+        row->addSubview(m_tabToggleGroup);
+    }
+
     // "+" on every dock, including the center (bottom panels can be added there next to the worlds).
     auto add = std::make_shared<IconButton>(Ic::Plus, Ic::HeaderSize, 23.f);
     add->setTooltip("Add Panel");
@@ -606,6 +607,7 @@ void DockManager::rebuild() {
     applyDockVisibility(Dock::Bottom);
     m_inRebuild = false;
     refreshStrip();
+    refreshTabToggles(); // the tab in front of the center may be another one
     // Back to the view that had the keyboard, when it is still shown (its tab was not closed).
     if (context && keepFocus && keepFocus->getContext() == context) { context->setFocusedView(keepFocus); }
 }
@@ -626,6 +628,7 @@ bool DockManager::isVisible(Dock dock) const {
 }
 
 void DockManager::setVisible(Dock dock, bool visible) {
+    if (!visible && m_zoomView && m_maximizedDock == dock) { restoreMaximized(); } // a zone that hides is not maximized
     switch (dock) {
         case Dock::Left: m_leftUserVisible = visible; break;
         case Dock::Right: m_rightUserVisible = visible; break;
@@ -635,25 +638,56 @@ void DockManager::setVisible(Dock dock, bool visible) {
     applyDockVisibility(dock);
 }
 
+void DockManager::toggle(Dock dock) {
+    if (m_zoomView && m_maximizedDock != dock) {
+        restoreMaximized();
+        setVisible(dock, true);
+        return;
+    }
+    setVisible(dock, !isVisible(dock));
+}
+
 void DockManager::refreshStrip() {
     std::vector<StripItem> items;
-    items.reserve(m_panels.size() + m_stripToggles.size());
+    items.reserve(m_panels.size());
     for (const DockPanel &p : m_panels) {
         if (!p.inStrip) { continue; } // the tabs of documents are not in the strip; closed panels are shown (dim)
         const auto tv = dockTabView(p.dock);
         const bool active = p.open && isVisible(p.dock) && tv && tv->selectedIndex() == tabIndexOf(p.id);
-        items.push_back(StripItem{p.id, p.icon, p.title, p.dock, p.open, active, /*dockable*/ true});
-    }
-    for (const StripToggle &toggle : m_stripToggles) {
-        const bool on = toggle.isOn && toggle.isOn();
-        items.push_back(StripItem{toggle.id, toggle.icon, toggle.tooltip, toggle.side, /*open*/ true, on, /*dockable*/ false});
+        items.push_back(StripItem{p.id, p.icon, p.title, p.dock, p.open, active});
     }
     m_strip->setItems(items);
 }
 
-void DockManager::setStripToggles(std::vector<StripToggle> toggles) {
-    m_stripToggles = std::move(toggles);
-    refreshStrip();
+void DockManager::setTabToggles(std::vector<TabToggle> toggles, std::function<bool(const std::string &)> applies) {
+    m_tabToggles = std::move(toggles);
+    m_tabTogglesApply = std::move(applies);
+    m_tabToggleGroup->removeAllSubviews();
+    m_tabToggleButtons.clear();
+    for (size_t index = 0; index < m_tabToggles.size(); index++) {
+        const TabToggle &toggle = m_tabToggles[index];
+        auto button = std::make_shared<IconButton>(toggle.icon, Ic::HeaderSize, 23.f);
+        button->setAccessibilityId(toggle.id);
+        button->setTooltip(toggle.tooltip);
+        button->setOnClick([this, index] {
+            if (index >= m_tabToggles.size()) { return; }
+            const std::function<void()> run = m_tabToggles[index].toggle; // a copy: the toggle may set the toggles anew
+            if (run) { run(); }
+            refreshTabToggles();
+        });
+        m_tabToggleGroup->addSubview(button);
+        m_tabToggleButtons.push_back(std::move(button));
+    }
+    refreshTabToggles();
+}
+
+void DockManager::refreshTabToggles() {
+    const bool shown = !m_tabToggles.empty() && m_tabTogglesApply && m_tabTogglesApply(selectedPanelId(Dock::Center));
+    m_tabToggleGroup->setCollapsed(!shown);
+    for (size_t index = 0; index < m_tabToggleButtons.size() && index < m_tabToggles.size(); index++) {
+        const TabToggle &toggle = m_tabToggles[index];
+        m_tabToggleButtons[index]->setActive(toggle.isOn && toggle.isOn());
+    }
 }
 
 /* ------------------------------ strip / close / add commands ------------------------------ */
@@ -662,6 +696,9 @@ void DockManager::showPanel(const std::string &idRef) {
     const std::string id = idRef; // a copy at the boundary (see stripDidActivatePanel)
     DockPanel *p = findPanel(id);
     if (!p) { return; }
+    // A panel of another dock is asked for while a zone is maximized: the zoom ends, or the panel
+    // would show behind it.
+    if (m_zoomView && p->dock != m_maximizedDock) { restoreMaximized(); }
     if (!p->open) {
         reopenPanel(id, p->dock); // a closed tab → appears in its standard dock
         return;
@@ -691,16 +728,9 @@ void DockManager::stripDidActivatePanel(const std::string &idRef) {
     // A copy at the boundary: idRef lives in the lambda of a strip button, and rebuild/refreshStrip below
     // recreate the buttons and destroy that lambda together with the string.
     const std::string id = idRef;
-    for (const StripToggle &toggle : m_stripToggles) {
-        if (toggle.id != id) { continue; }
-        const std::function<void()> run = toggle.toggle; // a copy: the toggle may set the toggles anew
-        if (run) { run(); }
-        refreshStrip();
-        return;
-    }
     DockPanel *p = findPanel(id);
     if (!p) { return; }
-    if (p->open) {
+    if (p->open && !(m_zoomView && p->dock != m_maximizedDock)) { // behind a maximized zone a panel is shown, not hidden
         const Dock dock = p->dock;
         const auto tv = dockTabView(dock);
         const bool active = tv && isVisible(dock) && tv->selectedIndex() == tabIndexOf(id);
@@ -717,6 +747,7 @@ void DockManager::stripDidRequestDock(const std::string &idRef, Dock dock) {
     const std::string id = idRef; // a copy at the boundary (see stripDidActivatePanel)
     DockPanel *p = findPanel(id);
     if (!p || p->dock == dock || !p->movable) { return; } // Center is allowed now — it is a full-fledged dock
+    restoreMaximized(); // the panel goes where it is seen
     p->dock = dock;
     rebuild();
     setVisible(dock, true);
@@ -876,7 +907,7 @@ void DockManager::maximize(Dock dock) {
     m_zoomView = zone;
     m_zoomHome = zone->getSuperview();
     m_maximizeHost->addSubview(zone);
-    m_maximizeRoot->layout().setDisplay(Display::Flex);
+    m_maximizeHost->layout().setDisplay(Display::Flex);
     m_maximizedDock = dock;
     if (auto btn = maxButton(dock)) { btn->setIconName(Ic::Restore); } // maximized → the "restore" icon
     if (ctx && keepFocus) { ctx->setFocusedView(keepFocus); }          // the focus stays where it was
@@ -889,7 +920,7 @@ void DockManager::restoreMaximized() {
     View *keepFocus = ctx ? ctx->getFocusedView() : nullptr; // keep focus across the re-parent back
     if (auto btn = maxButton(m_maximizedDock)) { btn->setIconName(Ic::Maximize); } // restored → "maximize"
     if (m_zoomHome) { m_zoomHome->addSubview(m_zoomView); }
-    m_maximizeRoot->layout().setDisplay(Display::None);
+    m_maximizeHost->layout().setDisplay(Display::None);
     m_zoomView = nullptr;
     m_zoomHome = nullptr;
     if (ctx && keepFocus) { ctx->setFocusedView(keepFocus); }

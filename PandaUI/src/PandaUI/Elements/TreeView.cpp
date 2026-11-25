@@ -64,6 +64,7 @@ public:
         m_active = active;
         m_dropHighlight = dropHighlight;
         const TreeViewAppearance &a = m_tree->appearance();
+        layout().setHeight(Length::points(m_tree->m_rowHeight)); // a row of the pool may be of another height
         m_content->layout().setPosition(
             Edge::Left, Length::points(a.basePadLeft + static_cast<float>(depth) * a.indent + a.disclosureSize + a.labelGap)
         );
@@ -227,9 +228,26 @@ void TreeView::reloadData() {
 
 void TreeView::setRowHeight(float height) {
     if (height <= 0.f || height == m_rowHeight) { return; }
+    // The row at the top stays at the top: the rows grow or shrink under the eye, the place in
+    // the tree does not jump.
+    const Point offset = getContentOffset();
+    const float scale = height / m_rowHeight;
     m_rowHeight = height;
-    m_needsRebuild = true;
+    setContentSize(Size(getFrame().size.width, static_cast<float>(m_flat.size()) * m_rowHeight));
+    setContentOffset(Point(offset.x, offset.y * scale));
+    // The structure did not change: the rows on screen are bound again at the new height (a
+    // pinch changes it every frame; the model is not walked for that).
+    if (!m_needsRebuild) { updateVisibleRows(true); }
     setNeedsDisplay();
+}
+
+void TreeView::reconfigureItem(TreeItem item) {
+    if (!m_dataSource.configureCell) { return; }
+    for (auto &[index, row] : m_visibleRows) {
+        if (row->item() != item) { continue; }
+        m_dataSource.configureCell(row->content(), item, m_flat[static_cast<size_t>(index)].depth);
+        return;
+    }
 }
 
 void TreeView::setExpanded(TreeItem item, bool expanded) {

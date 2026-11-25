@@ -55,7 +55,8 @@ Every tab of the editor edits one file, and the file is always in reach:
 - Right-click a tab or an asset in the Content Browser: the menu starts with the path of the
   file (a click copies it), **Open in External Editor** and **Reveal in File Manager**. A
   world tab shows the `.world` file; a texture or a model opens its text sidecar (`.pmeta`); a
-  shader opens both files of its pair.
+  shader opens both files of its pair. A tab of a file from `Assets` has **Reveal in Content
+  Browser** as well: the browser opens the folder of the file and blinks it.
 - The external editor is chosen in Editor Settings → External Tools, or as
   `"externalTools": {"editor": "zed"}` in `settings.json`: a command, the path of an executable,
   or empty for the application the system opens the file with. File → Settings → Open Settings

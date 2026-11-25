@@ -59,8 +59,14 @@ public:
 // modes, Finder's "as Icons" and "as List" (the buttons at the right of its toolbar):
 // - Icons: the folder tree on the left — the button at the left of the toolbar hides it —,
 //   breadcrumbs and the grid of the current folder on the right (subfolders + all files, the
-//   thumbnails of the kinds that have them);
-// - List: one tree of every folder and file, the project panel of VS Code and Zed.
+//   thumbnails of the kinds that have them). The folder tree needs room: a browser too narrow
+//   for two columns (the column at the left of the window) shows the grid alone, with the path
+//   in a row of its own, and has no button for the folders — a layout that cannot work is not
+//   offered;
+// - List: one tree of every folder and file, the project panel of VS Code and Zed. Its rows are
+//   made larger and smaller (a pinch, the Zoom In / Zoom Out commands, the menu of the
+//   background); rows tall enough show the picture of an asset in the place of the icon of its
+//   kind, as a list of the Finder with large icons does.
 // The search of the toolbar looks through all of Assets by name: the grid (or the list) shows what
 // it found as one flat set, folders first; the folder of each is its tooltip (a detail of the
 // row). The model, the grid data and the thumbnails live in ContentBrowserDataSource; here are
@@ -96,6 +102,14 @@ public:
         return m_foldersShown;
     }
     void setFoldersShown(bool shown); // the folder tree of the icons
+    // The height of a row of the list; remembered with the layout too. 0 — the default.
+    float listRowHeight() const {
+        return m_listRowHeight;
+    }
+    void setListRowHeight(float height);
+    // A step larger (+1) or smaller (-1): false — the list is not what the browser shows, or the
+    // rows are at the limit already.
+    bool zoomList(int step);
     // The search field takes the keyboard (the Find command, with the keyboard in the browser).
     void focusSearch();
     // The keys of the browser (EditorController: Delete, F2): what is selected goes — the user is
@@ -120,8 +134,10 @@ private:
     void setupLayout() override;
     void setupStyle() override;
 
+    void update(double deltaTime) override; // the width of the browser: with or without room for the folders
     bool keyDown(PandaUI::KeyEvent &event) override;
     bool pointerDown(PandaUI::PointerEvent &event) override;
+    bool scroll(PandaUI::ScrollEvent &event) override; // a pinch over the list resizes its rows
     // Drops: files of the file manager (Context::dropFiles) go into the folder under the point — a
     // folder cell of the grid, a folder row (the folder of a file row) of a tree, a crumb of the
     // path — or the folder shown; what is dragged within the browser moves into a folder under the
@@ -168,9 +184,13 @@ private:
     ContentBrowserDataSource m_dataSource; // FS model + grid data + thumbnails
     Mode m_mode = Mode::Icons;
     bool m_foldersShown = true;
+    bool m_narrow = false; // no room for the folders beside the grid (update)
+    float m_listRowHeight; // LIST_ROW until the user makes the rows larger
 
     std::shared_ptr<IconButton> m_foldersButton;
     std::shared_ptr<PandaUI::Panel> m_breadcrumb;
+    std::shared_ptr<PandaUI::Panel> m_crumbSlot; // the place of the path in the toolbar…
+    std::shared_ptr<PandaUI::Panel> m_pathRow;   // …and under the toolbar, in a narrow browser
     std::shared_ptr<PandaUI::TextField> m_searchField;
     std::shared_ptr<IconButton> m_iconsButton;
     std::shared_ptr<IconButton> m_listButton;

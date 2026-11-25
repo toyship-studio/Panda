@@ -435,22 +435,51 @@ bool SystemTools::answerUnattended(const char *question, SaveChangesChoice *choi
     return true;
 }
 
-std::optional<path_t> SystemTools::openFolderDialog(const char *initialFolder) {
-    if (answerUnattended("Choose a folder")) { return std::nullopt; }
-    NFD::Init();
-    nfdu8char_t *outPath;
-    nfdresult_t result = NFD::PickFolder(outPath);
-    std::optional<std::filesystem::path> res;
-    if (result == NFD_OKAY) {
-        res = outPath;
-        NFD::FreePath(outPath);
-    } else if (result == NFD_CANCEL) {
-        LOG_INFO("User pressed cancel.");
-    } else {
-        LOG_ERROR("Error: %s", NFD::GetError());
+namespace {
+
+    // The dialogs of the system (Vendor/nfd) are asked in UTF-8 on every platform. On Windows the
+    // library has a second set of functions, for wide characters, so a call names the UTF-8 one:
+    // by the type of the string it gives, or — when it gives none and the overloads of the C++
+    // wrapper differ in nothing — by its C name. A path is made from the answer as from UTF-8: a
+    // char string given to a path is read there in the code page of the system.
+
+    // One dialog that answers with a path; nothing — the user cancelled.
+    template<typename Ask> std::optional<path_t> askForPath(Ask ask) {
+        const NFD::Guard dialogs;
+        nfdu8char_t *path = nullptr;
+        const nfdresult_t result = ask(path);
+        if (result == NFD_OKAY) {
+            path_t chosen = pathFromUtf8(path);
+            NFD::FreePath(path);
+            return chosen;
+        }
+        if (result == NFD_ERROR) { LOG_ERROR("Error: %s", NFD::GetError()); }
+        return std::nullopt;
     }
-    NFD::Quit();
-    return res;
+
+    // The folder a dialog opens in, as the library takes it: UTF-8 with the separators of the
+    // system (the shell of Windows parses no others, and a folder it cannot parse fails the
+    // dialog); null — the folder the system chooses.
+    class DialogFolder final {
+    public:
+        explicit DialogFolder(path_t folder) {
+            const std::u8string text = folder.make_preferred().u8string();
+            m_text.assign(text.begin(), text.end());
+        }
+        operator const nfdu8char_t *() const {
+            return m_text.empty() ? nullptr : m_text.c_str();
+        }
+
+    private:
+        std::string m_text;
+    };
+
+} // namespace
+
+std::optional<path_t> SystemTools::openFolderDialog(const path_t &initialFolder) {
+    if (answerUnattended("Choose a folder")) { return std::nullopt; }
+    const DialogFolder folder(initialFolder);
+    return askForPath([&folder](nfdu8char_t *&path) { return NFD::PickFolder(path, folder); });
 }
 
 namespace {
@@ -486,35 +515,22 @@ path_t SystemTools::userDataDirectory() {
 
 std::optional<path_t> SystemTools::openFileDialog() {
     if (answerUnattended("Choose a file")) { return std::nullopt; }
-    NFD::Init();
-    nfdu8char_t *outPath;
-    nfdresult_t result = NFD::OpenDialog(outPath);
-    std::optional<std::filesystem::path> res;
-    if (result == NFD_OKAY) {
-        res = outPath;
-        NFD::FreePath(outPath);
-    } else if (result == NFD_CANCEL) {
-        LOG_INFO("User pressed cancel.");
-    } else {
-        LOG_ERROR("Error: %s", NFD::GetError());
-    }
-    NFD::Quit();
-    return res;
+    return askForPath([](nfdu8char_t *&path) { return NFD::OpenDialog(path); });
 }
 
 std::vector<path_t> SystemTools::openFilesDialog() {
     std::vector<path_t> chosen;
     if (answerUnattended("Choose files")) { return chosen; }
-    NFD::Init();
+    const NFD::Guard dialogs;
     const nfdpathset_t *paths = nullptr;
-    const nfdresult_t result = NFD::OpenDialogMultiple(paths);
+    const nfdresult_t result = ::NFD_OpenDialogMultipleU8(&paths, nullptr, 0, nullptr);
     if (result == NFD_OKAY) {
         nfdpathsetsize_t count = 0;
         NFD::PathSet::Count(paths, count);
         for (nfdpathsetsize_t index = 0; index < count; index++) {
             nfdu8char_t *path = nullptr;
             if (NFD::PathSet::GetPath(paths, index, path) == NFD_OKAY) {
-                chosen.push_back(path_t(reinterpret_cast<const char8_t *>(path)));
+                chosen.push_back(pathFromUtf8(path));
                 NFD::PathSet::FreePath(path);
             }
         }
@@ -522,27 +538,14 @@ std::vector<path_t> SystemTools::openFilesDialog() {
     } else if (result == NFD_ERROR) {
         LOG_ERROR("Error: %s", NFD::GetError());
     }
-    NFD::Quit();
     return chosen;
 }
 
-std::optional<path_t>
-SystemTools::saveFileDialog(const char *filter, const char *defaultPath, const char *defaultName) {
+std::optional<path_t> SystemTools::saveFileDialog(const path_t &folder, const std::string &name) {
     if (answerUnattended("Choose where to save the file")) { return std::nullopt; }
-    NFD::Init();
-    nfdu8char_t *outPath;
-    nfdresult_t result = NFD::SaveDialog(outPath, nullptr, 0, defaultPath, defaultName);
-    std::optional<std::filesystem::path> res;
-    if (result == NFD_OKAY) {
-        res = outPath;
-        NFD::FreePath(outPath);
-    } else if (result == NFD_CANCEL) {
-        LOG_INFO("User pressed cancel.");
-    } else {
-        LOG_ERROR("Error: %s", NFD::GetError());
-    }
-    NFD::Quit();
-    return res;
+    const DialogFolder in(folder);
+    const nfdu8char_t *named = name.empty() ? nullptr : name.c_str();
+    return askForPath([&in, named](nfdu8char_t *&path) { return NFD::SaveDialog(path, nullptr, 0, in, named); });
 }
 
 bool SystemTools::openWithDefaultApplication(const path_t &path) {

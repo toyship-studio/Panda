@@ -119,7 +119,8 @@ struct DockLayoutState final : public Rain::Codable {
     // Game shows with what is open.
     std::optional<SidePanelsState> gamePanels;
     std::string contentBrowserView;     // how the Content Browser shows Assets: "list", or icons (anything else)
-    bool contentBrowserFolders = true;  // its folder tree, beside the icons
+    bool contentBrowserFolders = true;  // its folder tree, beside the icons (where the browser is wide enough for both)
+    float contentBrowserRowHeight = 0.f; // the rows of its list; 0 — the default (larger rows show pictures)
 
     bool isValid() const {
         return model == MODEL && !panels.empty();
@@ -150,6 +151,7 @@ struct DockLayoutState final : public Rain::Codable {
     RAIN_FIELD(gamePanels)
     RAIN_FIELD(contentBrowserView)
     RAIN_FIELD(contentBrowserFolders)
+    RAIN_FIELD(contentBrowserRowHeight)
     RAIN_FIELDS_END
 };
 

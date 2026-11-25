@@ -20,9 +20,13 @@ dot that says it has unsaved edits are of that one file. The output of the build
 Statistics, Profiler) waits under the center until it is needed: a build shows it, and so do its
 buttons in the strip at the bottom of the window and ⌘J.
 
-The buttons of the strip show and hide the parts of the window: the files (⌘0) and the tree of
-the world tab (⌥⌘1) on the left, the panels under the center and the inspector of the world tab
-(⌥⌘0) on the right. A tab or a panel is dragged to another place by its title.
+The buttons of the strip at the bottom of the window show and hide its panels: the files (⌘0)
+on the left, the panels under the center (⌘J) on the right. The tree and the inspector of a world
+tab are parts of the tab, and their two buttons are in its bar — at the right of the tab bar, the
+signs of a column at the left (⌥⌘1) and at the right (⌥⌘0). A tab or a panel is dragged to another
+place by its title. The button at the very end of a tab bar (⇧Space) gives its tabs the whole
+window but for the toolbar — Play, Stop and the switch stay at hand — and the strip; a panel
+asked for from there brings the window back.
 
 ## Finding things
 
@@ -107,7 +111,12 @@ other tab; with the last one closed the center is empty — the "+" in the middl
 world, a double click on a world file opens one.
 
 The Content Browser shows the `Assets` folder of the project as it is on disk, the names in the
-order a person reads them (`level2` before `level10`). A right click on the empty space makes a
+order a person reads them (`level2` before `level10`). As a list — one tree of every folder and
+file — or as icons, the grid of one folder with the folder tree beside it; where the browser is
+too narrow for both (the column at the left) the icons come without the tree, the path in a row
+above them. **The rows of the list grow**: pinch over the list, or ⌘= and ⌘− with the keyboard in
+the browser, or Larger Rows in the menu of its empty space — tall rows show what a material, a
+texture or a model looks like in the place of the icon of its kind. A right click on the empty space makes a
 folder or an asset in the folder shown; a right click on a folder opens it, makes something
 inside it (New), or deletes it with everything in it — the editor asks first, and the files do
 not come back with Undo. An asset is dragged from here onto a field that takes it and into the
@@ -128,12 +137,14 @@ view is shown during Play the game goes on — it is simulated and its UI lives 
 is not drawn.
 
 **The Game keeps the panels it was left with.** The tree, the inspector, the files and the
-bottom panel are hidden and shown the same way while the game shows (the buttons of the strip,
-⌥⌘1, ⌥⌘0, ⌘0, ⌘J) — and what you hide around the Game comes back at Stop and is hidden again at
+bottom panel are hidden and shown the same way while the game shows (the two buttons in the bar
+of the tab, the buttons of the strip, ⌥⌘1, ⌥⌘0, ⌘0, ⌘J) — and what you hide around the Game comes back at Stop and is hidden again at
 the next Play. Give the game the whole window once, and every Play has it; keep the inspector
 beside the game to watch a field while it runs, and it stays there. The World view keeps its own
 panels the same way. The output of a build that Play started goes away by itself when the build
-has made the game; a build that failed leaves it, with the errors.
+has made the game; a build that failed leaves it, with the errors. From a tab that has the whole
+window the build runs out of sight — the strip at the bottom says "Building the scripts…" — and
+the game starts in that tab.
 
 The CMake panel builds the C++ scripts of the project: **Configure** runs cmake again
 (after a source file was added), **Build** compiles, **Clean** deletes the build folder so that

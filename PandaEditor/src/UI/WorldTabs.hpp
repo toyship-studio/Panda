@@ -40,6 +40,8 @@ public:
     void sync();
     // A world of the project in a tab: a world that is open already only comes forward.
     void open(Panda::AssetId world);
+    // The tab of the dock is the tab of a world (not of a material or of a panel).
+    static bool isWorldTab(const std::string &tabId);
     void showActive(); // the tab of the active world comes forward
     // The tab of the active world keeps what it shows of the world while another world is in
     // front, and gives it back when its world is active again (an empty state: a tab shown for

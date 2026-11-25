@@ -26,9 +26,6 @@ namespace {
     std::string tabIdOf(uint32_t worldId) {
         return TAB_PREFIX + std::to_string(worldId);
     }
-    bool isWorldTab(const std::string &tabId) {
-        return tabId.rfind(TAB_PREFIX, 0) == 0;
-    }
     uint32_t worldIdOfTab(const std::string &tabId) {
         return static_cast<uint32_t>(std::strtoul(tabId.c_str() + std::strlen(TAB_PREFIX), nullptr, 10));
     }
@@ -109,6 +106,10 @@ private:
     uint32_t m_worldId;
     std::shared_ptr<Panel> m_host;
 };
+
+bool WorldTabs::isWorldTab(const std::string &tabId) {
+    return tabId.rfind(TAB_PREFIX, 0) == 0;
+}
 
 WorldTabs::WorldTabs(
     Panda::EditorLayer &app, DockManager &docks, EditorTabs &tabs, std::shared_ptr<PandaUI::View> content

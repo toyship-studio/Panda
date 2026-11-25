@@ -270,8 +270,15 @@ The reference implementation is `PandaEditor/src/UI/`. There are three layers:
   and the inspector of Interface Builder inside the tab of the file; there is no Hierarchy panel
   and no tab of an entity. One instance of it lives in the tab of the active world and moves with
   it (`WorldTabs::sync`); the tree and the inspector are shown and hidden by the commands of the
-  Window menu and by two buttons of the visibility strip that are not panels (`StripToggle`), and
-  whether they show and the shares of the three columns are kept with the layout. What the user
+  Window menu and by two buttons in the bar of the tab — at the right of the tab bar of the
+  center, before its "+", while a world tab is in front (`DockManager::setTabToggles`, the editor
+  actions of a code editor's tab bar; the two signs of a column at the left and at the right).
+  The visibility strip at the bottom of the window is for the panels of the docks, not for what
+  lives inside a tab. Whether the two show and the shares of the three columns are kept with the
+  layout. **A maximized zone** (the button at the end of a tab bar, ⇧Space —
+  `DockManager::maximize`) takes the work area between the toolbar and the strip, which stay:
+  Play, Stop and the switch of the world tab are in the toolbar. It hides no dock; a panel of
+  another dock asked for (its button of the strip, a key of the Window menu, `showPanel`) ends it. What the user
   does goes to the part it belongs to, each the `Output` of its panels and a file of
   `PandaEditor/src/UI`:
   `EntityActions` — the Hierarchy and the inspector (create, duplicate, copy and paste, delete,
@@ -457,7 +464,9 @@ Three operations are written once over them, in `DocumentActions`, whatever the 
 `filePath`. They delegate the file side to the file document behind them. The dirty dot, Cmd+Z
 and the close question (Save / Don't Save / Cancel) come from this interface. The context menu
 of a tab — and of an asset in the Content Browser — starts with the file: its path (a click
-copies it), Open in External Editor and Reveal in File Manager. The external editor is a
+copies it), Open in External Editor and Reveal in File Manager. A tab whose file is an asset of
+the project (a world, a prefab, a material) has Reveal in Content Browser too: the browser comes
+forward, opens the folder of the file and blinks its cell. The external editor is a
 setting of the editor scope (`externalTools.editor`: a command such as `zed`, a path, or empty
 for the system default; `SystemTools::openInEditor`); a binary asset opens its text sidecar
 (`.pmeta`), a shader opens both files of the pair. A double click on an asset the editor has no
@@ -580,11 +589,23 @@ so the files derived from them and the loaded objects go too, and then the direc
 The Content Browser has two modes, Finder's "as Icons" and "as List" (the buttons at the right of
 its toolbar; `ContentBrowserView::Mode`). Icons: the folder tree on the left — the button at the
 left of the toolbar hides it —, the breadcrumbs of the current folder in the toolbar, the grid of
-the folder. List: one tree of every folder and file, the project panel of VS Code and Zed: a
-double click opens and closes a folder, File → New puts an asset into the folder of the selected
-row. The mode and the folder tree are remembered with the layout (`DockLayoutState`:
-`contentBrowserView`, `contentBrowserFolders`), the folder it shows with the session of the
-project (`ProjectSession::contentBrowserFolder`): a project opens where it was left. The search of the toolbar looks through all of
+the folder. **The folder tree needs room**: a browser narrower than 420 points — the column at the
+left of the window — shows the grid alone, with the path in a row of its own under the toolbar,
+and has no button for the folders (`ContentBrowserView::update` follows the width, not the dock:
+the same column widened gets the tree back). A layout that cannot work is not offered. A path
+longer than its row shortens from the head (`Ass… › Show… › Materials`). List: one tree of every
+folder and file, the project panel of VS Code and Zed: a double click opens and closes a folder,
+File → New puts an asset into the folder of the selected row. **The rows of the list are made
+larger and smaller** — a pinch over the list, ⌘= and ⌘− with the keyboard in the browser
+(`contentBrowser.zoomIn` / `zoomOut`), Larger Rows / Smaller Rows in the menu of its background —
+from the 24 points of the Hierarchy to 72; a row of 30 points and more shows the picture of the
+asset in the place of the icon of its kind, a list of the Finder with large icons
+(`ContentBrowserDataSource::thumbnailOf`: asked for the rows on screen only — the tree binds no
+others — and a row is bound again when its picture arrives, `TreeView::reconfigureItem`). The
+mode, the folder tree and the height of the rows are remembered with the layout
+(`DockLayoutState`: `contentBrowserView`, `contentBrowserFolders`, `contentBrowserRowHeight`), the
+folder it shows with the session of the project (`ProjectSession::contentBrowserFolder`): a
+project opens where it was left. The search of the toolbar looks through all of
 Assets by name, in any case: the grid (or the list) shows what it found as one flat set, folders
 first, by name as a person reads it, and the folder of each is its tooltip (a detail of the row);
 a folder chosen in the tree, a found folder opened, or an asset revealed that the search did not
@@ -720,6 +741,9 @@ the switch is that world as the editor shows it. In the code the two are `Viewpo
   beside the flags of the World view). The output of a build Play waits for is not a panel the
   user asked for: it comes for the build and goes when the build has made the game
   (`showBuildBeforePlay` / `buildBeforePlayEnded`); a failed build leaves it, with the errors.
+  Behind a maximized zone it does not come at all — the zone stays what the user made it, the
+  strip says "Building the scripts…" in the place of its numbers while Play waits
+  (`EditorLayer::isWaitingToPlay`), and only a failed build brings the panel forward.
 - **World** — the editor's view of the active world through the editor camera: selection and its
   outline, picking, the gizmo, the grid, helper icons and lines, the tools of the editor parts.
   The outline is made in two steps: the selected entities, each with everything under it (a
@@ -1715,7 +1739,8 @@ second way to do what a text file already does. The user-facing page is
   (`contentBrowser`, `output`), the parts of a world tab theirs (`worldEditor`, `hierarchy`,
   `viewport`, `game`, `inspector`), its sections the names of their components, a field of a
   script the name of the field in the class, the buttons of the toolbar what they do (`play`,
-  `undo`, the switch `view`), the buttons of the strip `show.<id>`.
+  `undo`, the switch `view`), the buttons of the strip `show.<id>`, the two of a world tab
+  `showHierarchy` and `showInspector`.
 - A UI test of the editor is a client of these three tools and nothing more — the editor has no
   test code in it. A test starts the editor on a copy of a project (`--unattended`, `--user-data`
   and `--mcp` below), uses it by paths, and checks what the editor shows (the elements) and what

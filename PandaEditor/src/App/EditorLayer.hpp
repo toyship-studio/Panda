@@ -305,6 +305,7 @@ private:
     PlaySession m_play;
     bool m_scriptsBuiltWhilePlaying = false; // the new library is loaded when the game has stopped
     bool m_playAfterBuild = false;           // Play waits for the build of the scripts (buildBeforePlay)
+    bool m_waitShown = false;                // …and the strip says so
     bool m_playAfterBuildAsks = false;       // its failure asks whether to play the last build
     Editor::ScenePointer m_scenePointer; // the pointer over the Scene surface this frame (the gizmo, the tools)
     // Every file the editor holds in memory: the settings of the editor and of the project, the

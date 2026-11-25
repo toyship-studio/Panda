@@ -96,8 +96,15 @@ public:
     void setDataSource(TreeDataSource dataSource);
     void reloadData(); // re-read the structure from the data source (after model changes)
 
-    // Row height (34 by default). Uniform for all rows; set it before populating with data.
+    // Row height (30 by default), uniform for all rows. It may change while the tree shows its
+    // data — a list zoomed by the user: the row at the top stays where it is.
     void setRowHeight(float height);
+    float rowHeight() const {
+        return m_rowHeight;
+    }
+    // Binds the row of the item again while it is on screen (its data changed: a picture that
+    // arrived); nothing for an item out of sight — its row is bound when it comes in.
+    void reconfigureItem(TreeItem item);
 
     // Expansion — UI state keyed by item identity.
     void setExpanded(TreeItem item, bool expanded);

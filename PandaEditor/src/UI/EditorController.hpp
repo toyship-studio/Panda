@@ -305,9 +305,12 @@ private:
     Document *m_lastUndoDocument = nullptr; // survives the focus loss caused by form rebuilds
     void showDisplayOptions(PandaUI::View *anchor); // the viewport section of the editor scope in a popover
     void refreshStatistics();                   // entity count → the statistics panel
-    // The tree and the inspector of the world tab, shown or hidden (the strip keeps their buttons lit).
+    // The tree and the inspector of the world tab, shown or hidden: by their two buttons in the
+    // bar of the tab (showTabToggles: at the right of the tab bar while a world tab is in front —
+    // the strip of the window is for the panels of the docks), by the Window menu and by a key.
     void setTreeVisible(bool visible);
     void setInspectorVisible(bool visible);
+    void showTabToggles(); // the two buttons, with the keys of the keymap in their tooltips
     // What is open around the middle of the world tab — the docks of the window, the tree and the
     // inspector of the tab — belongs to what the middle shows. The World view and the Game each
     // keep the panels they were left with: the game may have the whole window while the world

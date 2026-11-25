@@ -69,6 +69,15 @@ namespace {
     constexpr float TOOLBAR_HEIGHT = 34.f;
     constexpr float SEARCH_WIDTH = 200.f;  // the search field of the icons (the list gives it the row)
     constexpr float TOOL_BUTTON = 26.f;
+    // A browser narrower than this has no room for the folder tree beside the grid: a quarter of
+    // it for the tree would leave a tree of cut names and a grid of one column.
+    constexpr float NARROW_WIDTH = 420.f;
+    // The rows of the list: of the Hierarchy by default; the largest holds a picture of 64 points —
+    // a thumbnail at its own size on a 2x display (AssetPreviews::THUMBNAIL_SIZE).
+    constexpr float LIST_ROW = 24.f;
+    constexpr float LIST_ROW_MAX = 72.f;
+    constexpr float LIST_PICTURES_FROM = 30.f; // rows this tall show the picture of an asset
+    constexpr float LIST_ROW_STEPS[] = {24.f, 32.f, 44.f, 56.f, 72.f}; // Zoom In / Zoom Out
 
     const char *iconForType(const std::string &type, bool folder) {
         if (folder) { return Ic::Folder; }
@@ -186,11 +195,19 @@ namespace {
             , m_onClick(std::move(onClick)) {
             setCursor(Cursor::PointingHand);
             setBackgroundColor(Color(0x00000000));
+            layout().setFlexDirection(FlexDirection::Row);
             layout().setAlignItems(Align::Center);
             layout().setPadding(Edge::Horizontal, 3.f);
+            // A path longer than its row gives way from the head: the folders above shorten to a
+            // few letters ("Ass… › Show… › Materials"), the folder shown keeps its whole name.
+            layout().setFlexShrink(current ? 0.f : 1.f);
+            layout().setMinWidth(Length::points(current ? 0.f : 26.f));
             m_label = std::make_shared<Label>(text);
             m_label->setFont(Typo::Body);
+            m_label->setTextOverflowMode(TextOverflowMode::TailEllipsis);
+            m_label->layout().setFlexShrink(1.f);
             addSubview(m_label);
+            if (!current) { setTooltip(text); } // a shortened name is read here
             applyStyle();
         }
 
@@ -209,6 +226,13 @@ namespace {
         const Panda::path_t &folder() const { // what a drop onto the crumb goes into
             return m_folder;
         }
+        // A folder of the path is a button by its name, whether the name is shown whole or not.
+        void describeAccessibility(Accessibility &accessibility) const override {
+            accessibility.role = "button";
+            accessibility.label = m_label->getText();
+            accessibility.selected = m_current;
+            accessibility.atomic = true;
+        }
 
     private:
         void applyStyle() {
@@ -221,7 +245,8 @@ namespace {
         std::function<void()> m_onClick;
     };
 
-    // A row of the list: the icon of the kind, the name and — for a found entry — its folder.
+    // A row of the list: the icon of the kind — or, in a row tall enough, the picture of the
+    // asset —, the name and — for a found entry — its folder.
     class ListCell final : public Panel {
     public:
         ListCell() {
@@ -229,12 +254,20 @@ namespace {
             layout().setFlexDirection(FlexDirection::Row);
             layout().setAlignItems(Align::Center);
             layout().setGap(6.f);
+            // The slot is as wide as it is tall, so the names of a list stand on one line whatever
+            // stands in it.
+            m_slot = std::make_shared<Panel>();
+            m_slot->setBackgroundColor(Color(0x00000000));
+            m_slot->setUserInteractionEnabled(false);
+            m_slot->setClipsToBounds(true);
+            m_slot->layout().setJustifyContent(Justify::Center);
+            m_slot->layout().setAlignItems(Align::Center);
+            m_slot->layout().setFlexShrink(0.f);
             m_icon = std::make_shared<ImageView>();
             m_icon->setContentMode(ImageContentMode::Fit);
             m_icon->setUserInteractionEnabled(false);
-            m_icon->layout().setSize({Ic::RowSize + 2.f, Ic::RowSize + 2.f});
-            m_icon->layout().setFlexShrink(0.f);
-            addSubview(m_icon);
+            m_slot->addSubview(m_icon);
+            addSubview(m_slot);
             m_name = std::make_shared<Label>("");
             m_name->setFont(Typo::Body);
             m_name->layout().setFlexShrink(1.f);
@@ -246,11 +279,29 @@ namespace {
             addSubview(m_detail);
         }
         // registered — a file the engine knows (an unknown one is muted, as in the grid); broken —
-        // its files are incomplete or unreadable (the Output panel says what is wrong).
+        // its files are incomplete or unreadable (the Output panel says what is wrong). rowHeight —
+        // of the list now; thumbnail — the picture of the asset, when the row is tall enough to
+        // show one and the asset has it.
         void bind(const std::string &name, const char *icon, ThemeColor tint, bool registered, bool broken,
-                  const std::string &detail) {
-            m_icon->setTexture(icons().get(icon));
-            m_icon->setTintColor(tint);
+                  const std::string &detail, float rowHeight, TextureHandle thumbnail) {
+            const float slot = std::max(Ic::RowSize + 2.f, rowHeight - 6.f);
+            m_slot->layout().setSize({slot, slot});
+            if (thumbnail.isValid()) {
+                m_icon->setTexture(thumbnail);
+                m_icon->setFlipVertical(Foundation::ACTIVE_GRAPHICS_TRAITS.originBottomLeft);
+                m_icon->setTintColor(Color(0xFFFFFFFF));
+                m_icon->layout().setSize({slot, slot});
+                m_slot->surface().setCornerRadius(Radius::sm);
+            } else {
+                // The sign of a kind grows with the row, not as far as a picture would: it says
+                // what the file is, it does not show it.
+                const float sign = std::min(slot, Ic::RowSize + 2.f + (slot - Ic::RowSize - 2.f) * 0.5f);
+                m_icon->setTexture(icons().get(icon));
+                m_icon->setFlipVertical(false);
+                m_icon->setTintColor(tint);
+                m_icon->layout().setSize({sign, sign});
+                m_slot->surface().setCornerRadius(0.f);
+            }
             m_name->setText(name);
             if (broken) {
                 m_name->setTextColor(ThemeColor::danger);
@@ -262,6 +313,7 @@ namespace {
         }
 
     private:
+        std::shared_ptr<Panel> m_slot;
         std::shared_ptr<ImageView> m_icon;
         std::shared_ptr<Label> m_name;
         std::shared_ptr<Label> m_detail;
@@ -270,7 +322,8 @@ namespace {
 } // namespace
 
 ContentBrowserView::ContentBrowserView(ContentBrowserOutput *output)
-    : m_output(output) {
+    : m_output(output)
+    , m_listRowHeight(LIST_ROW) {
     addSubviews();
     setupLayout();
     setupStyle();
@@ -280,6 +333,16 @@ ContentBrowserView::ContentBrowserView(ContentBrowserOutput *output)
 
 void ContentBrowserView::addSubviews() {
     addSubview(makeToolbar());
+    // The path of a narrow browser: a row of its own under the toolbar (applyMode moves it there).
+    m_pathRow = std::make_shared<Panel>();
+    m_pathRow->setBackgroundColor(Color(0x00000000));
+    m_pathRow->layout().setFlexDirection(FlexDirection::Row);
+    m_pathRow->layout().setAlignItems(Align::Center);
+    m_pathRow->layout().setHeight(Length::points(24.f));
+    m_pathRow->layout().setFlexShrink(0.f);
+    m_pathRow->layout().setPadding(Edge::Horizontal, 6.f);
+    m_pathRow->setCollapsed(true);
+    addSubview(m_pathRow);
 
     // Icons: the folders | breadcrumbs (in the toolbar) + the grid.
     m_tree = std::make_shared<TreeView>();
@@ -332,6 +395,7 @@ std::shared_ptr<View> ContentBrowserView::makeToolbar() {
     bar->addSubview(m_foldersButton);
 
     m_breadcrumb = std::make_shared<Panel>();
+    m_breadcrumb->setAccessibilityId("path"); // the folders above the one shown, for a UI test
     m_breadcrumb->setBackgroundColor(Color(0x00000000));
     m_breadcrumb->setClipsToBounds(true); // a deep path does not run under the search
     m_breadcrumb->layout().setFlexDirection(FlexDirection::Row);
@@ -340,7 +404,15 @@ std::shared_ptr<View> ContentBrowserView::makeToolbar() {
     m_breadcrumb->layout().setFlexShrink(1.f);
     m_breadcrumb->layout().setGap(2.f);
     m_breadcrumb->layout().setPadding(Edge::Horizontal, 4.f);
-    bar->addSubview(m_breadcrumb);
+    // The path stands in the toolbar while the browser is wide, under it while it is narrow.
+    m_crumbSlot = std::make_shared<Panel>();
+    m_crumbSlot->setBackgroundColor(Color(0x00000000));
+    m_crumbSlot->layout().setFlexDirection(FlexDirection::Row);
+    m_crumbSlot->layout().setAlignItems(Align::Center);
+    m_crumbSlot->layout().setFlexGrow(1.f);
+    m_crumbSlot->layout().setFlexShrink(1.f);
+    m_crumbSlot->addSubview(m_breadcrumb);
+    bar->addSubview(m_crumbSlot);
 
     // The search of all of Assets by name: what it found replaces the folder in the grid (the
     // tree in the list); an empty field is the folder again.
@@ -474,7 +546,7 @@ void ContentBrowserView::configureGrid() {
 void ContentBrowserView::configureList() {
     m_list->setAccessibilityId("list");
     m_list->setSelectionMode(TreeSelectionMode::Multiple);
-    m_list->setRowHeight(24.f); // the rows of the Hierarchy
+    m_list->setRowHeight(m_listRowHeight);
     m_list->layout().setFlexGrow(1.f);
     TreeDataSource source;
     source.rootItem = [this]() -> TreeItem { return toItem(m_dataSource.root()); };
@@ -504,7 +576,10 @@ void ContentBrowserView::configureList() {
         ListCell &row = static_cast<ListCell &>(cell);
         const std::string detail = m_dataSource.isSearching() && entry != m_dataSource.root() ? folderOf(*entry) : std::string();
         if (entry->isFolder) {
-            row.bind(entry->name, Ic::Folder, ThemeColor(colorForType("folder", true)), true, false, detail);
+            row.bind(
+                entry->name, Ic::Folder, ThemeColor(colorForType("folder", true)), true, false, detail, m_listRowHeight,
+                TextureHandle()
+            );
             return;
         }
         const FileEntry &file = static_cast<const FileEntry &>(*entry);
@@ -512,8 +587,13 @@ void ContentBrowserView::configureList() {
         const std::string type = registered ? assetTypeOf(file.assetId) : std::string();
         Panda::AssetHandlerEditor *handler = Panda::AssetHandlerEditor::current();
         const bool broken = registered && handler && !handler->assetFilesExist(file.assetId);
+        // Rows tall enough show what the asset looks like (asked for the rows on screen only: the
+        // tree binds no others).
+        const TextureHandle thumbnail =
+            m_listRowHeight >= LIST_PICTURES_FROM ? m_dataSource.thumbnailOf(file) : TextureHandle();
         row.bind(file.name, registered ? iconForType(type, false) : Ic::FileGeneric,
-                 registered ? ThemeColor(colorForType(type, false)) : ThemeColor::textDim, registered, broken, detail);
+                 registered ? ThemeColor(colorForType(type, false)) : ThemeColor::textDim, registered, broken, detail,
+                 m_listRowHeight, thumbnail);
     };
     source.titleForItem = [](TreeItem item) { return toEntry(item)->name; };
     source.fillDragPayload = [this](DragPayload &payload, const std::vector<TreeItem> &items) {
@@ -567,18 +647,74 @@ void ContentBrowserView::applyMode() {
     const bool list = m_mode == Mode::List;
     m_split->setCollapsed(list);
     m_listColumn->setCollapsed(!list);
-    m_split->setPaneVisible(0, m_foldersShown);
-    m_foldersButton->setCollapsed(list); // the list is the folders itself
+    // The folders stand beside the grid where there is room for both; a narrow browser shows the
+    // grid alone and offers no button for what would not fit.
+    m_split->setPaneVisible(0, m_foldersShown && !m_narrow);
+    m_foldersButton->setCollapsed(list || m_narrow); // the list is the folders itself
     m_foldersButton->setActive(m_foldersShown);
     m_iconsButton->setActive(!list);
     m_listButton->setActive(list);
-    // The list has no current folder: the search takes the row.
+    // The path: in the toolbar of a wide browser, in a row under it in a narrow one. The list has
+    // no current folder: the search takes the row of the toolbar, as it does where the path is below.
+    const bool pathBelow = m_narrow && !list;
+    Panel *home = pathBelow ? m_pathRow.get() : m_crumbSlot.get();
+    if (m_breadcrumb->getSuperview() != home) { home->addSubview(m_breadcrumb); }
     m_breadcrumb->setCollapsed(list);
-    m_searchField->layout().setFlexGrow(list ? 1.f : 0.f);
-    m_searchField->layout().setWidth(list ? Length::autoValue() : Length::points(SEARCH_WIDTH));
+    m_crumbSlot->setCollapsed(list || m_narrow);
+    m_pathRow->setCollapsed(!pathBelow);
+    const bool wideSearch = list || m_narrow;
+    m_searchField->layout().setFlexGrow(wideSearch ? 1.f : 0.f);
+    m_searchField->layout().setWidth(wideSearch ? Length::autoValue() : Length::points(SEARCH_WIDTH));
     rebuildBreadcrumb();
     updateNothingFound();
     setNeedsLayout();
+}
+
+void ContentBrowserView::update(double deltaTime) {
+    EditorView::update(deltaTime);
+    const float width = getFrame().size.width;
+    if (width <= 0.f) { return; } // not laid out, or its dock is hidden
+    const bool narrow = width < NARROW_WIDTH;
+    if (narrow == m_narrow) { return; }
+    m_narrow = narrow;
+    applyMode();
+}
+
+/* ------------------------------ The rows of the list ------------------------------ */
+
+void ContentBrowserView::setListRowHeight(float height) {
+    height = height <= 0.f ? LIST_ROW : std::clamp(height, LIST_ROW, LIST_ROW_MAX);
+    if (height == m_listRowHeight) { return; }
+    m_listRowHeight = height;
+    m_list->setRowHeight(height); // the rows on screen are bound again, with or without their pictures
+}
+
+bool ContentBrowserView::zoomList(int step) {
+    if (m_mode != Mode::List) { return false; }
+    float target = m_listRowHeight;
+    if (step > 0) {
+        for (float size : LIST_ROW_STEPS) {
+            if (size > m_listRowHeight + 0.5f) {
+                target = size;
+                break;
+            }
+        }
+    } else {
+        for (float size : LIST_ROW_STEPS) {
+            if (size < m_listRowHeight - 0.5f) { target = size; }
+        }
+    }
+    if (target == m_listRowHeight) { return false; }
+    setListRowHeight(target);
+    return true;
+}
+
+bool ContentBrowserView::scroll(ScrollEvent &event) {
+    // A pinch over the list makes its rows larger or smaller, as it zooms what else can be looked
+    // at closer; the list itself scrolls by everything else.
+    if (event.magnification == 0.f || m_mode != Mode::List) { return false; }
+    setListRowHeight(m_listRowHeight * (1.f + event.magnification));
+    return true;
 }
 
 void ContentBrowserView::showRenameDialog(const Entry &entry, Point at) {
@@ -816,6 +952,9 @@ std::vector<Panda::AssetId> ContentBrowserView::selectedAssets() const {
 void ContentBrowserView::thumbnailDidBecomeReady(Panda::AssetId assetId) {
     const int index = m_dataSource.indexOfAsset(assetId);
     if (index >= 0) { m_grid->reconfigureItem(index); }
+    if (m_mode == Mode::List && m_listRowHeight >= LIST_PICTURES_FROM) {
+        if (FileEntry *file = m_dataSource.findAsset(assetId)) { m_list->reconfigureItem(toItem(file)); }
+    }
 }
 
 void ContentBrowserView::showSelectedAssets(const std::vector<Panda::AssetId> &assets) {
@@ -936,6 +1075,11 @@ void ContentBrowserView::showContextMenu(Entry *entry, Point position) {
             if (m_output) { m_output->contentDidRequestImportDialog(directory); }
         });
         menu->addItem("Reveal in File Manager", [directory] { Panda::SystemTools::revealInFileManager(directory); });
+        if (m_mode == Mode::List) { // the rows: larger ones show the pictures of the assets
+            menu->addSeparator();
+            if (m_listRowHeight < LIST_ROW_MAX - 0.5f) { menu->addItem("Larger Rows", [this] { zoomList(+1); }); }
+            if (m_listRowHeight > LIST_ROW + 0.5f) { menu->addItem("Smaller Rows", [this] { zoomList(-1); }); }
+        }
     } else if (entry->isFolder) {
         const Panda::path_t directory = entry->path;
         if (directory.empty()) { return; } // no project open
@@ -1014,7 +1158,11 @@ void ContentBrowserView::rebuildBreadcrumb() {
     for (Folder *node = m_dataSource.currentFolder(); node; node = node->parent) { chain.push_back(node); }
     std::reverse(chain.begin(), chain.end());
     for (size_t i = 0; i < chain.size(); ++i) {
-        if (i > 0) { m_breadcrumb->addSubview(makeIcon(Ic::ChevronRight, 13.f, ThemeColor::textDim)); }
+        if (i > 0) {
+            auto chevron = makeIcon(Ic::ChevronRight, 13.f, ThemeColor::textDim);
+            chevron->layout().setFlexShrink(0.f);
+            m_breadcrumb->addSubview(chevron);
+        }
         Folder *node = chain[i];
         const bool current = (i + 1 == chain.size());
         m_breadcrumb->addSubview(std::make_shared<Crumb>(node->name, node->path, current, [this, node] { setCurrentFolder(node); }));
